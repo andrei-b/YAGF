@@ -1,0 +1,21 @@
+<RCC>
+    <qresource prefix="/" >
+        <file>images/rcw.png</file>
+        <file>images/rccw.png</file>
+        <file>images/revert.png</file>
+        <file>images/select.png</file>
+        <file>images/smaller.png</file>
+        <file>images/larger.png</file>
+        <file>images/singlecolumn.png</file>
+        <file alias="yagf.png" >images/yagf.png</file>
+        <file>images/back.png</file>
+        <file>images/document_open.png</file>
+        <file>images/document_save_as.png</file>
+        <file>images/editcopy.png</file>
+        <file>images/filefind.png</file>
+        <file>images/fileopen.png</file>
+        <file>images/filesaveas.png</file>
+        <file>images/forward.png</file>
+        <file>images/scanner.png</file>
+    </qresource>
+</RCC>

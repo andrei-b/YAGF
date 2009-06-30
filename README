@@ -1,0 +1,7 @@
+This is a beta version so many things are not yet implemented as they are supposed to.
+The main things to do are
+- adding aspell dictionary supoort in the text editor window
+- adding more image prepocessing features
+- better integration with SANE
+Contributors are welcome.
+Contact me via anb@symmetrica.net.
