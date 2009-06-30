@@ -28,6 +28,9 @@ int main(int argc, char *argv[])
         if (!translator.load("yagf_" + QLocale::system().name(), "/usr/local/share/yagf/translations"))
 	  translator.load("yagf_" + QLocale::system().name(), "/usr/share/yagf/translations");
 	app.installTranslator(&translator);
+        QTranslator translator2;
+        translator2.load("qt_" + QLocale::system().name(), "/usr/share/qt4/translations");
+        app.installTranslator(&translator2);
 	MainForm * window = new MainForm;
 	window->show();
 	return app.exec();
