@@ -46,6 +46,8 @@
 #include "utils.h"
 #include "FileChannel.h"
 
+const QString version = "0.5";
+
 MainForm::MainForm(QWidget *parent):QMainWindow(parent)
 {
 	setupUi(this);
@@ -420,7 +422,7 @@ void MainForm::showAboutDlg()
 {
 	QPixmap icon;
 	icon.load(":/yagf.png");
-	QMessageBox aboutBox(QMessageBox::NoIcon, trUtf8("About YAGF"), trUtf8("<p align=\"center\"><b>YAGF - Yet Another Graphical Front-end for cuneiform</b></p> <p align=\"center\">Version 0.5</p> This is a free software. Visit <a href=\"http://symmetrica.net/cuneiform-linux/\">symmetrica.net/cuneiform-linux/</a> for more details."), QMessageBox::Ok);
+        QMessageBox aboutBox(QMessageBox::NoIcon, trUtf8("About YAGF"), trUtf8("<p align=\"center\"><b>YAGF - Yet Another Graphical Front-end for cuneiform</b></p> <p align=\"center\">Version %1</p> This is a free software. Visit <a href=\"http://symmetrica.net/cuneiform-linux/yagf-en.html\">http://symmetrica.net/cuneiform-linux/yagf-en.html</a> for more details.").arg(version), QMessageBox::Ok);
 	aboutBox.setIconPixmap(icon);
 	aboutBox.setTextFormat(Qt::RichText);
 	aboutBox.exec();
@@ -428,7 +430,7 @@ void MainForm::showAboutDlg()
 
 void MainForm::showHelp()
 {
-	QDesktopServices::openUrl(QUrl("http://symmetrica.net/cuneiform-linux/"));
+        QDesktopServices::openUrl(QUrl(trUtf8("http://symmetrica.net/cuneiform-linux/yagf-en.html")));
 }
 
 void MainForm::copyClipboard()
