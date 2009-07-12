@@ -302,9 +302,13 @@ void MainForm::scanImage()
                 sl.append (workingDir + "input.jpg");
                 QStringList env = QProcess::systemEnvironment();
                 QFileInfo lib;
-                lib.setFile("/usr/local/bin/libyagfpreload.so");
+                lib.setFile("/usr/local/lib/libyagfpreload.so");
                 if (!lib.exists())
-                    lib.setFile("/usr/bin/libyagfpreload.so");
+                    lib.setFile("/usr/lib/libyagfpreload.so");
+                if (!lib.exists()) {
+                    QMessageBox::warning(this, trUtf8("Error"), trUtf8("libyagfpreload.so not found"));
+                    return;
+                }
                 env.append("LD_PRELOAD=" + lib.filePath());
                 scanProcess->setEnvironment(env);
                 scanProcess->start("xsane", sl);
