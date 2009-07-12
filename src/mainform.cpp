@@ -103,9 +103,11 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
 	initSettings();
 	delTmpFiles();
 
-        process = new QProcess(this);
-        fileChannel = new FileChannel(workingDir + "input.jpg");
+        scanProcess = new QProcess(this);
+        fileChannel = new FileChannel("/var/tmp/yagf.fifo");
+        fileChannel->open(QIODevice::ReadOnly);
         ba = new QByteArray();
+        connect(fileChannel, SIGNAL(readyRead()), this, SLOT(readyRead()));
 }
 
 void MainForm::loadImage()
@@ -139,7 +141,8 @@ void MainForm::closeEvent(QCloseEvent *event)
 		}
 		
 	}	
-	writeSettings();
+        scanProcess->terminate();
+        writeSettings();
 	delTmpFiles();
 	event->accept();
 }
@@ -253,10 +256,24 @@ void MainForm::fillLanguagesBox()
 {
 	  language = "rus";
 	  selectLangsBox->addItem(trUtf8("Russian"), QVariant("rus"));
-	  selectLangsBox->addItem(trUtf8("English"), QVariant("eng"));
-	  selectLangsBox->addItem(trUtf8("French"), QVariant("fra"));
+          selectLangsBox->addItem(trUtf8("Russian-English"), QVariant("ruseng"));
+          selectLangsBox->addItem(trUtf8("Czech"), QVariant("cze"));
+          selectLangsBox->addItem(trUtf8("Danish"), QVariant("dan"));
+          selectLangsBox->addItem(trUtf8("Dutch"), QVariant("dut"));
+          selectLangsBox->addItem(trUtf8("English"), QVariant("eng"));
+          selectLangsBox->addItem(trUtf8("Estonian"), QVariant("est"));
+          selectLangsBox->addItem(trUtf8("French"), QVariant("fra"));
 	  selectLangsBox->addItem(trUtf8("German"), QVariant("ger"));
-	  selectLangsBox->addItem(trUtf8("Russian-English"), QVariant("ruseng"));
+          selectLangsBox->addItem(trUtf8("Hungarian"), QVariant("hun"));
+          selectLangsBox->addItem(trUtf8("Italian"), QVariant("ita"));
+          selectLangsBox->addItem(trUtf8("Latvian"), QVariant("lav"));
+          selectLangsBox->addItem(trUtf8("Lithuanian"), QVariant("lit"));
+          selectLangsBox->addItem(trUtf8("Polish"), QVariant("pol"));
+          selectLangsBox->addItem(trUtf8("Portugueze"), QVariant("por"));
+          selectLangsBox->addItem(trUtf8("Roman"), QVariant("rum"));
+          selectLangsBox->addItem(trUtf8("Spanish"), QVariant("spa"));
+          selectLangsBox->addItem(trUtf8("Swedish"), QVariant("swe"));
+          selectLangsBox->addItem(trUtf8("Ukrainian"), QVariant("ukr"));
 	  selectLangsBox->addItem(trUtf8("Russian-French"), QVariant("rus_fra"));
 	  selectLangsBox->addItem(trUtf8("Russian-German"), QVariant("rus_ger"));
 	  selectLangsBox->addItem(trUtf8("Russian-Spanish"), QVariant("rus_spa"));
@@ -271,35 +288,27 @@ void MainForm::newLanguageSelected(int index)
 
 void MainForm::scanImage()
 {
-        QString tmpFile = "input-01.jpg";
-        QFileInfo fi(workingDir + tmpFile);
-        while (fi.exists()) {
-                QString digits = extractDigits(tmpFile);
-                bool result;
-                int d = digits.toInt(&result);
-                if (!result) return;
-                d++;
-                if (d < 0) d = 0;
-                QString newDigits = QString::number(d);
-                while (newDigits.size() < digits.size())
-                newDigits = '0' + newDigits;
-                tmpFile = tmpFile.replace(digits, newDigits);
-                fi.setFile(workingDir, tmpFile);
-        }
-	if (useXSane) {
+        scanProcess->terminate();
+        scanProcess->waitForFinished(10000);
+        if (useXSane) {
 		if (!findProgram("xsane")) {
 			QMessageBox::warning(this, trUtf8("Warning"), trUtf8("xsane not found"));
 			return;
 		}
 		QStringList sl;
-		QProcess proc;
-		sl.append("-s");
-		sl.append("-n");
-		sl.append ("-N");
-		sl.append (workingDir + tmpFile);
-		proc.start("xsane", sl);
-		proc.waitForFinished(-1);
-		loadFile(workingDir + tmpFile);
+                sl.append("-s");
+                sl.append("-n");
+                sl.append ("-N");
+                sl.append (workingDir + "input.jpg");
+                QStringList env = QProcess::systemEnvironment();
+                QFileInfo lib;
+                lib.setFile("/usr/local/bin/libyagfpreload.so");
+                if (!lib.exists())
+                    lib.setFile("/usr/bin/libyagfpreload.so");
+                env.append("LD_PRELOAD=" + lib.filePath());
+                scanProcess->setEnvironment(env);
+                scanProcess->start("xsane", sl);
+//		proc.waitForFinished(-1);
 	}
 }
 
@@ -316,6 +325,7 @@ void MainForm::loadFile(const QString &fn)
 		displayLabel->setSelectionMode(true);
 		displayLabel->resetSelection();
 		scaleFactor = 1;
+                scaleImage(0.5);
 	}
 }
 
@@ -451,4 +461,41 @@ void MainForm::copyAvailable(bool yes)
 void MainForm::textChanged()
 {
     textSaved = !(textEdit->toPlainText().count());
+}
+
+void MainForm::readyRead() {
+   char * endMarker = "PIPETZ";
+   QByteArray tmp = fileChannel->read(0xFFFFFF);
+   while (tmp.count() != 0) {
+       ba->append(tmp);
+        if(tmp.contains(endMarker)) {
+          QString tmpFile = "input-01.jpg";
+          QFileInfo fi(workingDir + tmpFile);
+          while (fi.exists()) {
+                 QString digits = extractDigits(tmpFile);
+                 bool result;
+                 int d = digits.toInt(&result);
+                 if (!result) return;
+                 d++;
+                 if (d < 0) d = 0;
+                 QString newDigits = QString::number(d);
+                     while (newDigits.size() < digits.size())
+                 newDigits = '0' + newDigits;
+                 tmpFile = tmpFile.replace(digits, newDigits);
+                 fi.setFile(workingDir, tmpFile);
+         }
+         QFile f(fi.absoluteFilePath());
+         f.open(QIODevice::WriteOnly);
+         f.write(*ba);
+         f.close();
+         ba->clear();
+         tmp = fileChannel->read(0xFFFFFF);
+         loadFile(fi.absoluteFilePath());
+         break;
+        }
+        tmp = fileChannel->read(0xFFFFFF);
+    }
+   tmp = fileChannel->read(0xFFFFFF);
+   while (tmp.count() != 0)
+   tmp = fileChannel->read(0xFFFFFF);
 }

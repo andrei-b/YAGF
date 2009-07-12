@@ -81,8 +81,10 @@ private:
 	QSettings * settings;
 	bool useXSane;
 	bool textSaved;
-        QProcess * process;
+        QProcess * scanProcess;
         FileChannel * fileChannel;
         QByteArray * ba;
 //	QLabel * displayLabel;
+private slots:
+        void readyRead();
 };

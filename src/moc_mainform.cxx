@@ -23,7 +23,7 @@ static const uint qt_meta_data_MainForm[] = {
        1,       // revision
        0,       // classname
        0,    0, // classinfo
-      18,   10, // methods
+      19,   10, // methods
        0,    0, // properties
        0,    0, // enums/sets
 
@@ -46,6 +46,7 @@ static const uint qt_meta_data_MainForm[] = {
      297,    9,    9,    9, 0x08,
      317,  313,    9,    9, 0x08,
      337,    9,    9,    9, 0x08,
+     351,    9,    9,    9, 0x08,
 
        0        // eod
 };
@@ -61,6 +62,7 @@ static const char qt_meta_stringdata_MainForm[] = {
     "recognize()\0saveText()\0showAboutDlg()\0"
     "showHelp()\0copyClipboard()\0yes\0"
     "copyAvailable(bool)\0textChanged()\0"
+    "readyRead()\0"
 };
 
 const QMetaObject MainForm::staticMetaObject = {
@@ -108,8 +110,9 @@ int MainForm::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
         case 15: copyClipboard(); break;
         case 16: copyAvailable((*reinterpret_cast< bool(*)>(_a[1]))); break;
         case 17: textChanged(); break;
+        case 18: readyRead(); break;
         }
-        _id -= 18;
+        _id -= 19;
     }
     return _id;
 }
