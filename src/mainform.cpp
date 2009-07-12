@@ -46,7 +46,7 @@
 #include "utils.h"
 #include "FileChannel.h"
 
-const QString version = "0.5";
+const QString version = "0.6";
 
 MainForm::MainForm(QWidget *parent):QMainWindow(parent)
 {
@@ -434,6 +434,11 @@ void MainForm::showAboutDlg()
 	icon.load(":/yagf.png");
         QMessageBox aboutBox(QMessageBox::NoIcon, trUtf8("About YAGF"), trUtf8("<p align=\"center\"><b>YAGF - Yet Another Graphical Front-end for cuneiform</b></p> <p align=\"center\">Version %1</p> This is a free software. Visit <a href=\"http://symmetrica.net/cuneiform-linux/yagf-en.html\">http://symmetrica.net/cuneiform-linux/yagf-en.html</a> for more details.").arg(version), QMessageBox::Ok);
 	aboutBox.setIconPixmap(icon);
+        QList<QLabel *> labels = aboutBox.findChildren<QLabel*>();
+        for (int i = 0; i < labels.count(); i++) {
+            QLabel * lab = labels.at(i);
+            lab->setTextInteractionFlags(Qt::TextBrowserInteraction);
+        }
 	aboutBox.setTextFormat(Qt::RichText);
 	aboutBox.exec();
 }
