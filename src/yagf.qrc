@@ -17,5 +17,8 @@
         <file>images/filesaveas.png</file>
         <file>images/forward.png</file>
         <file>images/scanner.png</file>
+        <file alias="warning.png" >images/warning.png</file>
+        <file alias="critical.png" >images/critical.png</file>
+        <file alias="info.png" >images/info.png</file>
     </qresource>
 </RCC>

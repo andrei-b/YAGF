@@ -130,8 +130,12 @@ void MainForm::singleColumnButtonClicked()
 void MainForm::closeEvent(QCloseEvent *event)
 {
 	if (!textSaved) {
-		QMessageBox messageBox(QMessageBox::Question, "YAGF", trUtf8("There is an unsaved text in the editor window. Do you want to save it?"), 
+                QPixmap icon;
+                icon.load(":/info.png");
+
+                QMessageBox messageBox(QMessageBox::NoIcon, "YAGF", trUtf8("There is an unsaved text in the editor window. Do you want to save it?"),
 			QMessageBox::Save|QMessageBox::Discard|QMessageBox::Cancel, this);
+                messageBox.setIconPixmap(icon);
 		int result = messageBox.exec();
 		if (result == QMessageBox::Save)
 			saveText();
@@ -329,7 +333,11 @@ void MainForm::loadFile(const QString &fn)
 		displayLabel->setSelectionMode(true);
 		displayLabel->resetSelection();
 		scaleFactor = 1;
-                scaleImage(0.5);
+                if (pixmap->width() > 4000)
+                        scaleImage(0.25);
+                else
+                if (pixmap->width() > 2000)
+                        scaleImage(0.5);
 	}
 }
 
