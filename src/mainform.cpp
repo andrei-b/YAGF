@@ -40,6 +40,7 @@
 #include <QImage>
 #include <QDesktopServices>
 #include <QUrl>
+#include <QRegExp>
 #include <QClipboard>
 #include "mainform.h"
 #include "QSelectionLabel.h"
@@ -458,7 +459,7 @@ void MainForm::saveText()
                     textFile.write(textEdit->toPlainText().toUtf8());
                 else {
                     QString text = textEdit->toHtml().toUtf8();
-                    text.replace("<meta name=\"qrichtext\" content=\"1\" />", "<meta content=\"text/html; charset=utf-8\" http-equiv=\"content-type\" />");
+                    text.replace(QRegExp("<meta.*content=.*/>", Qt::CaseInsensitive), "<meta content=\"text/html; charset=utf-8\" http-equiv=\"content-type\" />");
                     textFile.write(text.toAscii());
                 }
 		textFile.close();
