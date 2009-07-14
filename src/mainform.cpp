@@ -456,8 +456,11 @@ void MainForm::saveText()
 		textFile.open(QIODevice::ReadWrite|QIODevice::Truncate);
                 if (outputFormat == "txt")
                     textFile.write(textEdit->toPlainText().toUtf8());
-                else
-                    textFile.write(textEdit->toHtml().toUtf8());
+                else {
+                    QString text = textEdit->toHtml().toUtf8();
+                    text.replace("<meta name=\"qrichtext\" content=\"1\" />", "<meta content=\"text/html; charset=utf-8\" http-equiv=\"content-type\" />");
+                    textFile.write(text.toAscii());
+                }
 		textFile.close();
 		textSaved = TRUE;
 	}
