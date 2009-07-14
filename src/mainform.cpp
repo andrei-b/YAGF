@@ -240,6 +240,9 @@ void MainForm::readSettings()
 	lastOutputDir = settings->value("mainwindow/lastOutputDir", lastOutputDir).toString();
 	language = settings->value("ocr/language", QString("rus")).toString();
 	selectLangsBox->setCurrentIndex(selectLangsBox->findData(QVariant(language)));
+        outputFormat = settings->value("ocr/outputFormat", QString("txt")).toString();
+        if (outputFormat == "") outputFormat = "txt";
+        selectFormatBox->setCurrentIndex(selectFormatBox->findData(QVariant(outputFormat)));
 }
 
 void MainForm::writeSettings()
@@ -383,6 +386,7 @@ void MainForm::recognize()
 {
 	const QString inputFile = "input.bmp";
 	const QString outputFile = "output.txt";
+        outputFormat = selectFormatBox->itemData(selectFormatBox->currentIndex()).toString();
 	if (!imageLoaded) {
 		QMessageBox::critical(this, trUtf8("Error"), trUtf8("No image loaded"));
 		return;
@@ -400,6 +404,8 @@ void MainForm::recognize()
 	QStringList sl;	
 	sl.append("-l");
 	sl.append(language);
+        sl.append("-f");
+        sl.append(outputFormat);
 	if (singleColumn)
 		sl.append("-c1");
         sl.append("-o");
@@ -418,15 +424,29 @@ void MainForm::recognize()
 	textFile.open(QIODevice::ReadOnly);
 	QByteArray text = textFile.readAll();
 	textFile.close();
-	textEdit->append(QString::fromUtf8(text.data()));
-	textSaved = FALSE;
+        QString textData = QString::fromUtf8(text.data());
+        if(outputFormat == "html") {
+            textData.replace("<img src=output_files", "<img src=" + workingDir + "output_files");
+        }
+
+        textEdit->append(textData);
+        textSaved = FALSE;
 	//QImage img = pix.toImage();
 }
 
 void MainForm::saveText()
 {
-	QFileDialog dialog(this,
-		trUtf8("Save Text"), lastOutputDir, trUtf8("Text files (*.txt *.html)"));
+        QString filter;
+        if (outputFormat == "txt")
+            filter = trUtf8("Text Files (*.txt)");
+        else
+            filter = trUtf8("HTML Files (*.html)");
+        QFileDialog dialog(this,
+                trUtf8("Save Text"), lastOutputDir, filter);
+        if (outputFormat == "txt")
+            dialog.setDefaultSuffix("txt");
+        else
+            dialog.setDefaultSuffix("html");
 	dialog.setAcceptMode(QFileDialog::AcceptSave);
 	if (dialog.exec()) {
 		QStringList fileNames;
@@ -434,7 +454,10 @@ void MainForm::saveText()
 		lastOutputDir = dialog.directory().path();
 		QFile textFile(fileNames.at(0));
 		textFile.open(QIODevice::ReadWrite|QIODevice::Truncate);
-		textFile.write(textEdit->toPlainText().toUtf8());
+                if (outputFormat == "txt")
+                    textFile.write(textEdit->toPlainText().toUtf8());
+                else
+                    textFile.write(textEdit->toHtml().toUtf8());
 		textFile.close();
 		textSaved = TRUE;
 	}
