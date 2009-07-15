@@ -241,8 +241,8 @@ void MainForm::readSettings()
 	lastOutputDir = settings->value("mainwindow/lastOutputDir", lastOutputDir).toString();
 	language = settings->value("ocr/language", QString("rus")).toString();
 	selectLangsBox->setCurrentIndex(selectLangsBox->findData(QVariant(language)));
-        outputFormat = settings->value("ocr/outputFormat", QString("txt")).toString();
-        if (outputFormat == "") outputFormat = "txt";
+        outputFormat = settings->value("ocr/outputFormat", QString("text")).toString();
+        if (outputFormat == "") outputFormat = "text";
         selectFormatBox->setCurrentIndex(selectFormatBox->findData(QVariant(outputFormat)));
 }
 
@@ -285,7 +285,7 @@ void MainForm::fillLanguagesBox()
 	  selectLangsBox->addItem(trUtf8("Russian-French"), QVariant("rus_fra"));
 	  selectLangsBox->addItem(trUtf8("Russian-German"), QVariant("rus_ger"));
 	  selectLangsBox->addItem(trUtf8("Russian-Spanish"), QVariant("rus_spa"));
-	  selectFormatBox->addItem("TEXT", QVariant("txt"));
+          selectFormatBox->addItem("TEXT", QVariant("text"));
 	  selectFormatBox->addItem("HTML", QVariant("html"));
 }
 
@@ -427,7 +427,7 @@ void MainForm::recognize()
 	textFile.close();
         QString textData = QString::fromUtf8(text.data());
         if(outputFormat == "html") {
-            textData.replace("<img src=output_files", "<img src=" + workingDir + "output_files");
+            textData.replace(QRegExp("<img src=output_files"), "<img src=" + workingDir + "output_files");
         }
 
         textEdit->append(textData);
@@ -438,13 +438,13 @@ void MainForm::recognize()
 void MainForm::saveText()
 {
         QString filter;
-        if (outputFormat == "txt")
+        if (outputFormat == "text")
             filter = trUtf8("Text Files (*.txt)");
         else
             filter = trUtf8("HTML Files (*.html)");
         QFileDialog dialog(this,
                 trUtf8("Save Text"), lastOutputDir, filter);
-        if (outputFormat == "txt")
+        if (outputFormat == "text")
             dialog.setDefaultSuffix("txt");
         else
             dialog.setDefaultSuffix("html");
@@ -455,7 +455,7 @@ void MainForm::saveText()
 		lastOutputDir = dialog.directory().path();
 		QFile textFile(fileNames.at(0));
 		textFile.open(QIODevice::ReadWrite|QIODevice::Truncate);
-                if (outputFormat == "txt")
+                if (outputFormat == "text")
                     textFile.write(textEdit->toPlainText().toUtf8());
                 else {
                     QString text = textEdit->toHtml().toUtf8();

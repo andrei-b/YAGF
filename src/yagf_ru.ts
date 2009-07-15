@@ -4,117 +4,117 @@
 <context>
     <name>MainForm</name>
     <message>
-        <location filename="mainform.cpp" line="58"/>
+        <location filename="mainform.cpp" line="59"/>
         <source>Recognition language</source>
         <translation>Язык распознавания</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="61"/>
+        <location filename="mainform.cpp" line="62"/>
         <source>Output format</source>
         <translation>Формат вывода</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="116"/>
+        <location filename="mainform.cpp" line="117"/>
         <source>Open Image</source>
         <translation>Открыть файл</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="116"/>
+        <location filename="mainform.cpp" line="117"/>
         <source>Image Files (*.png *.jpg *.jpeg *.bmp *.tiff *.tif *.gif *.pnm *.pgm *.pbm *.ppm)</source>
         <translation>Графические файлы  (*.png *.jpg *.jpeg *.bmp *.tiff *.tif *.gif *.pnm *.pgm *.pbm *.ppm)</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="133"/>
+        <location filename="mainform.cpp" line="137"/>
         <source>There is an unsaved text in the editor window. Do you want to save it?</source>
         <translation>В окне редактора несохраненный текст. Сохранить?</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="258"/>
+        <location filename="mainform.cpp" line="266"/>
         <source>Russian</source>
         <translation>Русский</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="263"/>
+        <location filename="mainform.cpp" line="271"/>
         <source>English</source>
         <translation>Английский</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="265"/>
+        <location filename="mainform.cpp" line="273"/>
         <source>French</source>
         <translation>Французский</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="266"/>
+        <location filename="mainform.cpp" line="274"/>
         <source>German</source>
         <translation>Немецкий</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="259"/>
+        <location filename="mainform.cpp" line="267"/>
         <source>Russian-English</source>
         <translation>Русский-английский</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="277"/>
+        <location filename="mainform.cpp" line="285"/>
         <source>Russian-French</source>
         <translation>Русский-французский</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="278"/>
+        <location filename="mainform.cpp" line="286"/>
         <source>Russian-German</source>
         <translation>Русский-немецкий</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="279"/>
+        <location filename="mainform.cpp" line="287"/>
         <source>Russian-Spanish</source>
         <translation>Русский-испанский</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="379"/>
+        <location filename="mainform.cpp" line="396"/>
         <source>Warning</source>
         <translation>Предупреждение</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="295"/>
+        <location filename="mainform.cpp" line="303"/>
         <source>xsane not found</source>
         <translation>xsane не найден</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="375"/>
+        <location filename="mainform.cpp" line="392"/>
         <source>Error</source>
         <translation>Ошибка</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="375"/>
+        <location filename="mainform.cpp" line="392"/>
         <source>No image loaded</source>
         <translation>Изображение не загружено</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="402"/>
+        <location filename="mainform.cpp" line="421"/>
         <source>Starting cuneiform failed</source>
         <translation>Не удалось запустить cuneiform</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="402"/>
+        <location filename="mainform.cpp" line="421"/>
         <source>The system said: </source>
         <translation>Ответ системы:</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="402"/>
+        <location filename="mainform.cpp" line="421"/>
         <source>program not found</source>
         <translation>программа не найдена</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="417"/>
+        <location filename="mainform.cpp" line="446"/>
         <source>Save Text</source>
         <translation>Сохранить текст</translation>
     </message>
     <message>
         <location filename="mainform.cpp" line="417"/>
         <source>Text files (*.txt *.html)</source>
-        <translation>Текстовые файлы (*.txt *.html)</translation>
+        <translation type="obsolete">Текстовые файлы (*.txt *.html)</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="435"/>
+        <location filename="mainform.cpp" line="474"/>
         <source>About YAGF</source>
         <translation>О программе</translation>
     </message>
@@ -124,89 +124,104 @@
         <translation type="obsolete">&lt;p align=&quot;center&quot;&gt;&lt;b&gt;YAGF - Yet Another Graphical Front-end for cuneiform&lt;/b&gt;&lt;/p&gt; &lt;p align=&quot;center&quot;&gt;Версия 0.5&lt;/p&gt;YAGF - свободное прораммное обеспечение. Подробности на странице &lt;a href=&quot;http://symmetrica.net/cuneiform-linux/&quot;&gt;symmetrica.net/cuneiform-linux/&lt;/a&gt;.</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="379"/>
+        <location filename="mainform.cpp" line="396"/>
         <source>cuneiform not found</source>
         <translation>Программа cuneiform не найдена</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="443"/>
+        <location filename="mainform.cpp" line="487"/>
         <source>http://symmetrica.net/cuneiform-linux/yagf-en.html</source>
         <translation>http://symmetrica.net/cuneiform-linux/yagf-ru.html</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="435"/>
+        <location filename="mainform.cpp" line="474"/>
         <source>&lt;p align=&quot;center&quot;&gt;&lt;b&gt;YAGF - Yet Another Graphical Front-end for cuneiform&lt;/b&gt;&lt;/p&gt; &lt;p align=&quot;center&quot;&gt;Version %1&lt;/p&gt; This is a free software. Visit &lt;a href=&quot;http://symmetrica.net/cuneiform-linux/yagf-en.html&quot;&gt;http://symmetrica.net/cuneiform-linux/yagf-en.html&lt;/a&gt; for more details.</source>
         <translation>&lt;p align=&quot;center&quot;&gt;&lt;b&gt;YAGF - Графическая оболочка для cuneiform&lt;/b&gt;&lt;/p&gt; &lt;p align=&quot;center&quot;&gt;Версия %1&lt;/p&gt; YAGF - открытое программное обеспечение. Подробности на домашней странице  YAGF &lt;a href=&quot;http://symmetrica.net/cuneiform-linux/yagf-ru.html&quot;&gt;http://symmetrica.net/cuneiform-linux/yagf-ru.html&lt;/a&gt;.</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="260"/>
+        <location filename="mainform.cpp" line="268"/>
         <source>Czech</source>
         <translation>Чешский</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="261"/>
+        <location filename="mainform.cpp" line="269"/>
         <source>Danish</source>
         <translation>Датский</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="262"/>
+        <location filename="mainform.cpp" line="270"/>
         <source>Dutch</source>
-        <translation type="unfinished">Голландский</translation>
+        <translation>Голландский</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="264"/>
+        <location filename="mainform.cpp" line="272"/>
         <source>Estonian</source>
         <translation>Эстонский</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="267"/>
+        <location filename="mainform.cpp" line="275"/>
         <source>Hungarian</source>
         <translation>Вернгерский</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="268"/>
+        <location filename="mainform.cpp" line="276"/>
         <source>Italian</source>
         <translation>Итальянский</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="269"/>
+        <location filename="mainform.cpp" line="277"/>
         <source>Latvian</source>
         <translation>Латышский</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="270"/>
+        <location filename="mainform.cpp" line="278"/>
         <source>Lithuanian</source>
         <translation>Литовский</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="271"/>
+        <location filename="mainform.cpp" line="279"/>
         <source>Polish</source>
         <translation>Польский</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="272"/>
+        <location filename="mainform.cpp" line="280"/>
         <source>Portugueze</source>
         <translation>Португальский</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="273"/>
+        <location filename="mainform.cpp" line="281"/>
         <source>Roman</source>
         <translation>Румынский</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="274"/>
+        <location filename="mainform.cpp" line="282"/>
         <source>Spanish</source>
         <translation>Испанский</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="275"/>
+        <location filename="mainform.cpp" line="283"/>
         <source>Swedish</source>
         <translation>Шведский</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="276"/>
+        <location filename="mainform.cpp" line="284"/>
         <source>Ukrainian</source>
         <translation>Украинский</translation>
+    </message>
+    <message>
+        <location filename="mainform.cpp" line="317"/>
+        <source>libxspreload.so not found</source>
+        <translation>Библиотека libxspreload.so не найдена</translation>
+    </message>
+    <message>
+        <location filename="mainform.cpp" line="442"/>
+        <source>Text Files (*.txt)</source>
+        <translation>Текстовые файлы (*.txt)</translation>
+    </message>
+    <message>
+        <location filename="mainform.cpp" line="444"/>
+        <source>HTML Files (*.html)</source>
+        <translation>Файлы HTML (*.html)</translation>
     </message>
 </context>
 <context>
