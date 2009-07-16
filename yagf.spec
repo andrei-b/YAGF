@@ -9,17 +9,16 @@
 # norootforbuild
 
 Name:		yagf
-Version:	0.6.1
+Version:	0.6.2
 Release:	1
 URL:		http://symmetrica.net/cuneiform-linux/yagf-ru.html
 License:	GPLv3+
 Source0:	%{name}-%{version}.tar.bz2
-Patch0:		yagf-0.6.1-lib64.patch
 Group:		Productivity/Graphics/Other
 Summary:	Graphical frontend for Cuneiform OCR tool
 BuildRoot:      %{_tmppath}/%{name}-%{version}-build
 BuildRequires:  libqt4-devel cmake update-desktop-files fdupes
-Requires:	cuneiform-multilang xsane
+Requires:	cuneiform xsane
 
 %description
 YAGF is a graphical front-end for Cuneiform OCR tool.

@@ -47,7 +47,7 @@
 #include "utils.h"
 #include "FileChannel.h"
 
-const QString version = "0.6.1";
+const QString version = "0.6.2";
 
 MainForm::MainForm(QWidget *parent):QMainWindow(parent)
 {
