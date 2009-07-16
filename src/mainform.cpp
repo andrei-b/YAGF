@@ -313,6 +313,10 @@ void MainForm::scanImage()
                 lib.setFile("/usr/local/lib/yagf/libxspreload.so");
                 if (!lib.exists())
                     lib.setFile("/usr/lib/yagf/libxspreload.so");
+                if (!lib.exists())
+                    lib.setFile("/usr/lib64/yagf/libxspreload.so");
+                if (!lib.exists())
+                    lib.setFile("/usr/local/lib64/yagf/libxspreload.so");
                 if (!lib.exists()) {
                     QMessageBox::warning(this, trUtf8("Error"), trUtf8("libxspreload.so not found"));
                     return;
