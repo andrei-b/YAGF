@@ -13,12 +13,12 @@ Version:	0.6.2
 Release:	1
 URL:		http://symmetrica.net/cuneiform-linux/yagf-ru.html
 License:	GPLv3+
-Source0:	%{name}-%{version}.tar.bz2
+Source0:	%{name}-%{version}.tar.gz
 Group:		Productivity/Graphics/Other
 Summary:	Graphical frontend for Cuneiform OCR tool
 BuildRoot:      %{_tmppath}/%{name}-%{version}-build
 BuildRequires:  libqt4-devel cmake update-desktop-files fdupes
-Requires:	cuneiform xsane
+Requires:	libqt4 > 4.2
 
 %description
 YAGF is a graphical front-end for Cuneiform OCR tool.
@@ -37,39 +37,24 @@ Authors:
 
 %prep
 %setup -q
-%patch0
 
 %build
 %{__mkdir} build
-cd build
-cmake ..
+#cd build
+cmake ./
 %{__make} %{?jobs:-j %jobs}
 
 %install
 %{makeinstall}
 # Create new .desktop because the original one is incorrect
-%{__cat} > YAGF.desktop << EOF
-[Desktop Entry]
-Encoding=UTF-8
-Name=YAGF
-GenericName=A graphical front-end for Cuneiform OCR tool
-GenericName[ru]=Графическая оболочка для Cuneiform
-Type=Application
-Exec=yagf
-Icon=yagf
-Categories=Graphics;Scanning;OCR;Qt;
-Comment=A graphical front-end for Cuneiform OCR tool
-Comment[ru]=Графическая оболочка для системы распознования текстов Cuneiform
-StartupNotify=true
-Terminal=false
-EOF
 %fdupes -s %{buildroot}
 %suse_update_desktop_file -i YAGF
 
 %clean
 [ "%{buildroot}" != "/" ] && %{__rm} -rf %{buildroot}
 
-%post -p /sbin/ldconfig
+%post 
+#-p /sbin/ldconfig - not needed actually, since libxspreload.so doesn't need to be cached.
 
 %postun -p /sbin/ldconfig
 
@@ -87,6 +72,9 @@ EOF
 %{_datadir}/applications/YAGF.desktop
 
 %changelog
+* Fri Jul 17 2009 Andrei Borovsky <anb@symmetrica.net> - 0.6.2
+- merged the patches with the appropriate files
+- removed unnessesary ldconfig call
 * Wed Jul 15 2009 Kyrill Detinov <lazy.kent.suse@gmail.com> - 0.6.1
 - update to 0.6.1
 - fixed build in x86-64

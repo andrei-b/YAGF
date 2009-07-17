@@ -29,6 +29,7 @@ class QSettings;
 class QProcess;
 class FileChannel;
 class QByteArray;
+class QFile;
 
 class MainForm : public QMainWindow, public Ui::MainWindow
 {
@@ -65,6 +66,8 @@ private:
 	void loadFile(const QString &fn);
 	void delTmpFiles();
 	void loadNext(int number);
+        void saveHtml(QFile * file);
+        void delTmpDir();
 	bool imageLoaded;
         bool hasCopy;
 	QComboBox * selectLangsBox;

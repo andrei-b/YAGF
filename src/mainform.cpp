@@ -203,7 +203,7 @@ void MainForm::scaleImage(double sf)
 	scaleFactor *= sf;
 	QPixmap pix = pixmap->scaled(QSize(pixmap->width()*scaleFactor, pixmap->height()*scaleFactor));
 	((QLabel*)(scrollArea->widget()))->setPixmap(pix);
-    ((QSelectionLabel*)(scrollArea->widget()))->resetSelection();
+        ((QSelectionLabel*)(scrollArea->widget()))->resetSelection();
 }
 
 void MainForm::initSettings()
@@ -358,6 +358,7 @@ void MainForm::delTmpFiles()
 		if (dir[i].endsWith("jpg") || dir[i].endsWith("bmp"))
 			dir.remove(dir[i]);
 	}
+        delTmpDir();
 }
 
 void MainForm::loadNext(int number)
@@ -389,7 +390,24 @@ void MainForm::loadPreviousPage()
 
 void MainForm::recognize()
 {
-	const QString inputFile = "input.bmp";
+        if (outputFormat == "html") {
+            if (!textSaved) {
+                    QPixmap icon;
+                    icon.load(":/info.png");
+
+                    QMessageBox messageBox(QMessageBox::NoIcon, "YAGF", trUtf8("There is an unsaved HTML text in the editor window. Do you want to save it?"),
+                        QMessageBox::Save|QMessageBox::Discard|QMessageBox::Cancel, this);
+                    messageBox.setIconPixmap(icon);
+                    int result = messageBox.exec();
+                    if (result == QMessageBox::Save)
+                    saveText();
+                    else if (result == QMessageBox::Cancel)
+                        return;
+            }
+            textEdit->clear();
+            this->delTmpDir();
+        }
+        const QString inputFile = "input.bmp";
 	const QString outputFile = "output.txt";
         outputFormat = selectFormatBox->itemData(selectFormatBox->currentIndex()).toString();
 	if (!imageLoaded) {
@@ -431,7 +449,9 @@ void MainForm::recognize()
 	textFile.close();
         QString textData = QString::fromUtf8(text.data());
         if(outputFormat == "html") {
-            textData.replace(QRegExp("<img src=output_files"), "<img src=" + workingDir + "output_files");
+            textData.replace("<img src=output_files", "[img src=" + workingDir + "output_files");
+            textData.replace(".bmp\">", ".bmp\"]");
+            textData.replace(".bmp>", ".bmp]");
         }
 
         textEdit->append(textData);
@@ -461,11 +481,8 @@ void MainForm::saveText()
 		textFile.open(QIODevice::ReadWrite|QIODevice::Truncate);
                 if (outputFormat == "text")
                     textFile.write(textEdit->toPlainText().toUtf8());
-                else {
-                    QString text = textEdit->toHtml().toUtf8();
-                    text.replace(QRegExp("<meta.*content=.*/>", Qt::CaseInsensitive), "<meta content=\"text/html; charset=utf-8\" http-equiv=\"content-type\" />");
-                    textFile.write(text.toAscii());
-                }
+                else
+                    saveHtml(&textFile);
 		textFile.close();
 		textSaved = TRUE;
 	}
@@ -546,4 +563,30 @@ void MainForm::readyRead() {
    tmp = fileChannel->read(0xFFFFFF);
    while (tmp.count() != 0)
    tmp = fileChannel->read(0xFFFFFF);
+}
+
+void MainForm::saveHtml(QFile * file) {
+    QString text = textEdit->document()->toHtml().toUtf8();
+    QString newDir = extractFilePath(file->fileName()) + extractFileName(file->fileName()) + ".files";
+    text.replace(QRegExp("<meta.*content=.*/>", Qt::CaseInsensitive), "<meta content=\"text/html; charset=utf-8\" http-equiv=\"content-type\" />");
+    text.replace(workingDir + "output_files",  newDir);
+    text.replace("[img src=", "<img src=");
+    text.replace(".bmp\"]", ".bmp\">");
+    text.replace(".bmp]", ".bmp>");
+    QDir dir(workingDir+"output_files");
+    dir.rename(workingDir+"output_files", newDir);
+    file->write(text.toAscii());
+}
+
+void MainForm::delTmpDir()
+{
+        QDir dir;
+        dir.setPath(workingDir + "output_files");
+        dir.setFilter(QDir::Files | QDir::NoSymLinks);
+        for (uint i = 0; i < dir.count(); i++) {
+                if (dir[i].endsWith("jpg") || dir[i].endsWith("bmp"))
+                        dir.remove(dir[i]);
+        }
+        dir.rmdir(workingDir + "output_files");
+
 }
