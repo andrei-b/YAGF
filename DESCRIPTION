@@ -3,3 +3,10 @@ With YAGF you can open already scanned image files or obtain new images via XSan
 Once you have a scanned image you can prepare it for recognition, select particular image areas for recognition, set the recognition language and so no.
 Recognized text is displayed in a editor window where it can be corrected, saved to disk or copied to clipboard.  
 YAGF also provides some facilities for a multi-page recognition (see the online help for more details).
+
+Building YAGF requires:
+  qt4 development tools version > 4.2
+  libaspell development package
+Running YAGF requires:
+  Qt 4.2 or later, aspell
+Of course it is desirable to have xsane installed.
