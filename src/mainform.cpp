@@ -48,6 +48,7 @@
 #include "FileChannel.h"
 #include "spellchecker.h"
 #include <QTextCodec>
+#include <QCheckBox>
 
 const QString version = "0.7";
 
@@ -62,6 +63,7 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
         QLabel * label1 = new QLabel();
 	label1->setMargin(4);
 	label1->setText(trUtf8("Output format"));
+        spellCheckBox = new QCheckBox(trUtf8("Check spelling"), 0);
 	frame->show();
 	selectFormatBox = new QComboBox();
 	toolBar->addWidget(label);
@@ -69,6 +71,7 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
 	toolBar->addWidget(selectLangsBox);
 	toolBar->addWidget(label1);
 	toolBar->addWidget(selectFormatBox);
+        toolBar->addWidget(spellCheckBox);
 	pixmap = new QPixmap();
 	QSelectionLabel * displayLabel = new QSelectionLabel();
 	scrollArea->setWidget(displayLabel);
@@ -114,7 +117,7 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
 
         spellChecker = new SpellChecker(textEdit);
 
-        connect(textEdit, SIGNAL(cursorPositionChanged()), this, SLOT(cursorPositionChanged()));
+        connect(textEdit->document(), SIGNAL(cursorPositionChanged ( const QTextCursor &)), this, SLOT(updateSP()));
 }
 
 void MainForm::loadImage()
@@ -190,12 +193,42 @@ void MainForm::rotate180ButtonClicked()
 
 void MainForm::enlargeButtonClicked()
 {
-	scaleImage(2);
+        if (scaleFactor < 0.25 )
+            scaleImage(0.25/scaleFactor);
+        else
+        if (scaleFactor < 0.33 )
+            scaleImage(0.33/scaleFactor);
+        else
+        if (scaleFactor < 0.5 )
+            scaleImage(0.5/scaleFactor);
+        else
+        if (scaleFactor < 0.75 )
+            scaleImage(0.75/scaleFactor);
+        else
+        if (scaleFactor < 1)
+            scaleImage(1/scaleFactor);
+        else
+            scaleImage(2);
 }
 
 void MainForm::decreaseButtonClicked() 
 {
-	scaleImage(0.5);
+        if (scaleFactor > 1 )
+            scaleImage(0.5);
+        else
+        if (scaleFactor > 0.75 )
+            scaleImage(0.75/scaleFactor);
+        else
+        if (scaleFactor > 0.5 )
+            scaleImage(0.5/scaleFactor);
+        else
+        if (scaleFactor > 0.33 )
+            scaleImage(0.33/scaleFactor);
+        else
+        if (scaleFactor > 0.25 )
+            scaleImage(0.25/scaleFactor);
+        else
+            scaleImage(0.2/scaleFactor);
 }
 
 void MainForm::scaleImage(double sf) 
@@ -250,6 +283,7 @@ void MainForm::readSettings()
         outputFormat = settings->value("ocr/outputFormat", QString("text")).toString();
         if (outputFormat == "") outputFormat = "text";
         selectFormatBox->setCurrentIndex(selectFormatBox->findData(QVariant(outputFormat)));
+        spellCheckBox->setChecked(settings->value("mainWindow/checkSpelling", bool(true)).toBool());
 }
 
 void MainForm::writeSettings()
@@ -258,6 +292,7 @@ void MainForm::writeSettings()
 	settings->setValue("mainwindow/pos", pos());
 	settings->setValue("mainwindow/fullScreen", isFullScreen());
 	settings->setValue("mainwindow/lastDir", lastDir);
+        settings->setValue("mainWindow/checkSpelling", spellCheckBox->isChecked());
 	settings->setValue("mainwindow/lastOutputDir", lastOutputDir);
 	settings->setValue("ocr/language", language);
 	settings->setValue("ocr/singleColumn", singleColumn);
@@ -467,8 +502,10 @@ void MainForm::recognize()
         }
         textEdit->append(textData);
         textSaved = FALSE;
-        if (dosp)
-                spellChecker->spellCheck();
+        if (dosp&&spellCheckBox->isChecked()) {
+            spellChecker->setLanguage(language);
+            spellChecker->spellCheck();
+        }
 	//QImage img = pix.toImage();
 }
 
@@ -604,12 +641,8 @@ void MainForm::delTmpDir()
 
 }
 
-void MainForm::checkSpelling()
+void MainForm::updateSP()
 {
-
-}
-
-void MainForm::cursorPositionChanged()
-{
-    spellChecker->checkWord();
+    if (spellCheckBox->isChecked())
+        spellChecker->checkWord();
 }

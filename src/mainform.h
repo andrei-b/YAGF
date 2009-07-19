@@ -22,6 +22,7 @@
 #include "ui_mainform.h" 
 
 class QComboBox;
+class QCheckBox;
 class QLabel;
 class QCloseEvent;
 class QPixmap;
@@ -69,11 +70,11 @@ private:
 	void loadNext(int number);
         void saveHtml(QFile * file);
         void delTmpDir();
-        void checkSpelling();
 	bool imageLoaded;
         bool hasCopy;
 	QComboBox * selectLangsBox;
 	QComboBox * selectFormatBox;
+        QCheckBox * spellCheckBox;
 	QPixmap * pixmap;
 	double scaleFactor;
 	bool singleColumn;
@@ -93,5 +94,5 @@ private:
 //	QLabel * displayLabel;
 private slots:
         void readyRead();
-        void cursorPositionChanged ();
+        void updateSP();
 };
