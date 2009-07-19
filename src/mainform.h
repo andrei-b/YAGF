@@ -30,6 +30,7 @@ class QProcess;
 class FileChannel;
 class QByteArray;
 class QFile;
+class SpellChecker;
 
 class MainForm : public QMainWindow, public Ui::MainWindow
 {
@@ -68,6 +69,7 @@ private:
 	void loadNext(int number);
         void saveHtml(QFile * file);
         void delTmpDir();
+        void checkSpelling();
 	bool imageLoaded;
         bool hasCopy;
 	QComboBox * selectLangsBox;
@@ -87,7 +89,9 @@ private:
         QProcess * scanProcess;
         FileChannel * fileChannel;
         QByteArray * ba;
+        SpellChecker * spellChecker;
 //	QLabel * displayLabel;
 private slots:
         void readyRead();
+        void cursorPositionChanged ();
 };

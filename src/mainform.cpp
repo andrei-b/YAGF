@@ -46,8 +46,10 @@
 #include "QSelectionLabel.h"
 #include "utils.h"
 #include "FileChannel.h"
+#include "spellchecker.h"
+#include <QTextCodec>
 
-const QString version = "0.6.2";
+const QString version = "0.7";
 
 MainForm::MainForm(QWidget *parent):QMainWindow(parent)
 {
@@ -109,6 +111,10 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
         fileChannel->open(QIODevice::ReadOnly);
         ba = new QByteArray();
         connect(fileChannel, SIGNAL(readyRead()), this, SLOT(readyRead()));
+
+        spellChecker = new SpellChecker(textEdit);
+
+        connect(textEdit, SIGNAL(cursorPositionChanged()), this, SLOT(cursorPositionChanged()));
 }
 
 void MainForm::loadImage()
@@ -446,16 +452,23 @@ void MainForm::recognize()
 	QFile textFile(workingDir + outputFile);
 	textFile.open(QIODevice::ReadOnly);
 	QByteArray text = textFile.readAll();
-	textFile.close();
-        QString textData = QString::fromUtf8(text.data());
+        textFile.close();
+        QString textData;
+        QTextCodec *codec = QTextCodec::codecForName("UTF-8");
+        textData = codec->toUnicode(text); //QString::fromUtf8(text.data());
+        if (outputFormat != "html")
+          textData = "<html><head><title></title><meta http-equiv=\"Content-Type\" content=\"text/html;charset=utf-8\" ></head><body>" + textData + "</body></html>";
+        bool dosp = true;
+        if (textData.contains("<img")) dosp = false;
         if(outputFormat == "html") {
             textData.replace("<img src=output_files", "[img src=" + workingDir + "output_files");
             textData.replace(".bmp\">", ".bmp\"]");
             textData.replace(".bmp>", ".bmp]");
         }
-
         textEdit->append(textData);
         textSaved = FALSE;
+        if (dosp)
+                spellChecker->spellCheck();
 	//QImage img = pix.toImage();
 }
 
@@ -589,4 +602,14 @@ void MainForm::delTmpDir()
         }
         dir.rmdir(workingDir + "output_files");
 
+}
+
+void MainForm::checkSpelling()
+{
+
+}
+
+void MainForm::cursorPositionChanged()
+{
+    spellChecker->checkWord();
 }
