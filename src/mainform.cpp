@@ -49,6 +49,8 @@
 #include "spellchecker.h"
 #include <QTextCodec>
 #include <QCheckBox>
+#include <QEvent>
+#include <QMouseEvent>
 
 const QString version = "0.7";
 
@@ -84,6 +86,8 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
 	useXSane = TRUE;
 	textSaved = TRUE;
         hasCopy = false;
+        scaleFactor = 1;
+        rotation = 0;
 
         connect(actionOpen, SIGNAL(triggered()), this, SLOT(loadImage()));
 	connect(actionQuit, SIGNAL(triggered()), this, SLOT(close()));
@@ -118,6 +122,8 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
         spellChecker = new SpellChecker(textEdit);
 
         connect(textEdit->document(), SIGNAL(cursorPositionChanged ( const QTextCursor &)), this, SLOT(updateSP()));
+
+        installEventFilter(scrollArea->widget());
 }
 
 void MainForm::loadImage()
@@ -165,8 +171,9 @@ void MainForm::rotateImage(int deg)
 {
 	if (imageLoaded) {
 		
-		QMatrix matrix;
-		matrix.rotate(deg);	 
+                rotation = deg;
+                QMatrix matrix;
+                matrix.rotate(rotation);
 		((QSelectionLabel*)(scrollArea->widget()))->resetSelection(true);
 		QPixmap pix = ((QLabel*)(scrollArea->widget()))->pixmap()->transformed(matrix);
 		//pix.transformed(matrix);
@@ -184,7 +191,7 @@ void MainForm::rotateCWButtonClicked()
 
 void MainForm::rotateCCWButtonClicked()
 {
-	rotateImage(270);
+        rotateImage(-90);
 }
 void MainForm::rotate180ButtonClicked()
 {
@@ -381,12 +388,19 @@ void MainForm::loadFile(const QString &fn)
 		displayLabel->setPixmap(*pixmap);
 		displayLabel->setSelectionMode(true);
 		displayLabel->resetSelection();
-		scaleFactor = 1;
-                if (pixmap->width() > 4000)
-                        scaleImage(0.25);
-                else
-                if (pixmap->width() > 2000)
-                        scaleImage(0.5);
+                if (scaleFactor == 1) {
+                    scaleFactor = 1;
+                    if (pixmap->width() > 4000)
+                            scaleImage(0.25);
+                    else
+                    if (pixmap->width() > 2000)
+                            scaleImage(0.5);
+                } else {
+                    double tmp = scaleFactor;
+                    scaleFactor = 1;
+                    scaleImage(tmp);
+                }
+                rotateImage(rotation);
 	}
 }
 
@@ -645,4 +659,16 @@ void MainForm::updateSP()
 {
     if (spellCheckBox->isChecked())
         spellChecker->checkWord();
+}
+
+bool MainForm::eventFilter(QObject *object, QEvent *event)
+{
+    if (object ==  scrollArea->widget())
+        if (event->type() == QEvent::MouseMove) {
+            QMouseEvent * e = (QMouseEvent *) event;
+            if (e->button() == Qt::MidButton)
+                if (e->modifiers() & (Qt::ControlModifier|Qt::AltModifier))
+                    printf("EVENT!\n");
+        }
+    return QMainWindow::eventFilter(object, event);
 }

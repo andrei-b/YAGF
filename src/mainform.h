@@ -57,6 +57,8 @@ private slots:
         void copyClipboard();
         void copyAvailable(bool yes);
         void textChanged();
+protected:
+        bool eventFilter(QObject *object, QEvent *event);
 private:
 	virtual void closeEvent(QCloseEvent * event);
 	void rotateImage(int deg);
@@ -91,6 +93,7 @@ private:
         FileChannel * fileChannel;
         QByteArray * ba;
         SpellChecker * spellChecker;
+        int rotation;
 //	QLabel * displayLabel;
 private slots:
         void readyRead();
