@@ -61,7 +61,7 @@ protected:
         bool eventFilter(QObject *object, QEvent *event);
 private:
 	virtual void closeEvent(QCloseEvent * event);
-	void rotateImage(int deg);
+        void rotateImage(int deg);
 	void scaleImage(double sf);
 	void initSettings();
 	void readSettings();

@@ -169,11 +169,10 @@ void MainForm::closeEvent(QCloseEvent *event)
 
 void MainForm::rotateImage(int deg)
 {
-	if (imageLoaded) {
-		
-                rotation = deg;
+        rotation %=360;
+        if (imageLoaded) {
                 QMatrix matrix;
-                matrix.rotate(rotation);
+                matrix.rotate(deg);
 		((QSelectionLabel*)(scrollArea->widget()))->resetSelection(true);
 		QPixmap pix = ((QLabel*)(scrollArea->widget()))->pixmap()->transformed(matrix);
 		//pix.transformed(matrix);
@@ -181,12 +180,13 @@ void MainForm::rotateImage(int deg)
 		pix = pixmap->transformed(matrix);
 		delete pixmap;
 		pixmap = new QPixmap(pix);
+                rotation += deg;
 	}
 }
 
 void MainForm::rotateCWButtonClicked()
 {
-	rotateImage(90);
+        rotateImage(90);
 }
 
 void MainForm::rotateCCWButtonClicked()
@@ -195,7 +195,7 @@ void MainForm::rotateCCWButtonClicked()
 }
 void MainForm::rotate180ButtonClicked()
 {
-	rotateImage(180);
+        rotateImage(180);
 }
 
 void MainForm::enlargeButtonClicked()
@@ -400,7 +400,9 @@ void MainForm::loadFile(const QString &fn)
                     scaleFactor = 1;
                     scaleImage(tmp);
                 }
-                rotateImage(rotation);
+                int deg = rotation;
+                rotation = 0;
+                rotateImage(deg);
 	}
 }
 
