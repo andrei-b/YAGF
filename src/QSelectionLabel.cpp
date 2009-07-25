@@ -30,6 +30,8 @@ QSelectionLabel::QSelectionLabel(QWidget *parent, Qt::WindowFlags f):QLabel(pare
 	oldCopy = 0;
 	selecting = started = selected = false;
 	this->setAlignment(Qt::AlignLeft|Qt::AlignTop);
+        setFocusPolicy(Qt::ClickFocus);
+        setPixmap(QPixmap(0, 0));
 }
 
 bool QSelectionLabel::isSelectionEmpty()
@@ -91,7 +93,9 @@ QRect QSelectionLabel::getSelectedRect()
 
 void QSelectionLabel::mousePressEvent(QMouseEvent *ev)
 {
-	if (ev->button() == Qt::LeftButton) {
+        if (pixmap()->isNull())
+            return;
+        if (ev->button() == Qt::LeftButton) {
 		if (started||selected) 
 			resetSelection(true);
 		if (pixmap()->isNull())
@@ -120,7 +124,10 @@ void QSelectionLabel::mouseMoveEvent(QMouseEvent *ev)
 
 void QSelectionLabel::mouseReleaseEvent(QMouseEvent *ev)
 {
-	if ((ev->button() == Qt::LeftButton)  && started) {
+        if (pixmap()->isNull())
+        return;
+
+        if ((ev->button() == Qt::LeftButton)  && started) {
 		selected = true;
 		started = false;
 		restoreRect();
@@ -213,4 +220,22 @@ void QSelectionLabel::restoreRect()
 QSelectionLabel::~QSelectionLabel() {
 	if (oldCopy) 
 		delete oldCopy;
+}
+
+void QSelectionLabel::keyPressEvent ( QKeyEvent * event ) {
+    if (pixmap()->isNull()) {
+        event->ignore();
+        return;
+    }
+    event->accept();
+    QLabel::keyPressEvent(event);
+}
+
+void QSelectionLabel::keyReleaseEvent ( QKeyEvent * event ) {
+      if (pixmap()->isNull()) {
+          event->ignore();
+        return;
+    }
+    event->accept();
+    QLabel::keyReleaseEvent(event);
 }

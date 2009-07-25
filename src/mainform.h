@@ -32,6 +32,7 @@ class FileChannel;
 class QByteArray;
 class QFile;
 class SpellChecker;
+class QCursor;
 
 class MainForm : public QMainWindow, public Ui::MainWindow
 {
@@ -87,6 +88,7 @@ private:
 	QString workingDir;
 	QString fileName;
 	QSettings * settings;
+        QCursor * resizeCursor;
 	bool useXSane;
 	bool textSaved;
         QProcess * scanProcess;

@@ -50,9 +50,11 @@
 #include <QTextCodec>
 #include <QCheckBox>
 #include <QEvent>
+#include <QCursor>
 #include <QWheelEvent>
+#include <QKeyEvent>
 
-const QString version = "0.7";
+const QString version = "0.7.1";
 
 MainForm::MainForm(QWidget *parent):QMainWindow(parent)
 {
@@ -124,6 +126,9 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
         connect(textEdit->document(), SIGNAL(cursorPositionChanged ( const QTextCursor &)), this, SLOT(updateSP()));
 
         displayLabel->installEventFilter(this);
+        QPixmap l_cursor;
+        l_cursor.load(":/resize.png");
+        resizeCursor = new QCursor(l_cursor);
 }
 
 void MainForm::loadImage()
@@ -403,6 +408,7 @@ void MainForm::loadFile(const QString &fn)
                 int deg = rotation;
                 rotation = 0;
                 rotateImage(deg);
+                displayLabel->setFocus();
 	}
 }
 
@@ -665,12 +671,38 @@ void MainForm::updateSP()
 
 bool MainForm::eventFilter(QObject *object, QEvent *event)
 {
-    if (object ==  scrollArea->widget())
+    if (object ==  scrollArea->widget()) {
+        if (event->type() == QEvent::KeyPress) {
+            QKeyEvent * e = (QKeyEvent *) event;
+            if (e->modifiers() & Qt::ControlModifier) {
+                scrollArea->widget()->setCursor(*resizeCursor);
+                if ((e->key() == Qt::Key_Plus)||(e->key() == Qt::Key_Equal))
+                    scaleImage(1.05);
+                else
+                if (e->key() == Qt::Key_Minus)
+                    scaleImage(0.95);
+
+            } else {
+                scrollArea->widget()->setCursor(QCursor(Qt::ArrowCursor));
+            }
+        }
+        else
+        if (event->type() == QEvent::KeyRelease) {
+                scrollArea->widget()->setCursor(QCursor(Qt::ArrowCursor));
+        }
+        else
         if (event->type() == QEvent::Wheel) {
             QWheelEvent * e = (QWheelEvent *) event;
             if (e->modifiers() & Qt::ControlModifier) {
+                scrollArea->widget()->setFocus();
+                scrollArea->widget()->setCursor(*resizeCursor);
+                if (e->delta() > 0)
+                    scaleImage(1.05);
+                else
+                    scaleImage(0.95);
                 return true;
             }
         }
+    }
     return QMainWindow::eventFilter(object, event);
 }
