@@ -50,7 +50,7 @@
 #include <QTextCodec>
 #include <QCheckBox>
 #include <QEvent>
-#include <QMouseEvent>
+#include <QWheelEvent>
 
 const QString version = "0.7";
 
@@ -123,7 +123,7 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
 
         connect(textEdit->document(), SIGNAL(cursorPositionChanged ( const QTextCursor &)), this, SLOT(updateSP()));
 
-        installEventFilter(scrollArea->widget());
+        displayLabel->installEventFilter(this);
 }
 
 void MainForm::loadImage()
@@ -666,11 +666,11 @@ void MainForm::updateSP()
 bool MainForm::eventFilter(QObject *object, QEvent *event)
 {
     if (object ==  scrollArea->widget())
-        if (event->type() == QEvent::MouseMove) {
-            QMouseEvent * e = (QMouseEvent *) event;
-            if (e->button() == Qt::MidButton)
-                if (e->modifiers() & (Qt::ControlModifier|Qt::AltModifier))
-                    printf("EVENT!\n");
+        if (event->type() == QEvent::Wheel) {
+            QWheelEvent * e = (QWheelEvent *) event;
+            if (e->modifiers() & Qt::ControlModifier) {
+                return true;
+            }
         }
     return QMainWindow::eventFilter(object, event);
 }
