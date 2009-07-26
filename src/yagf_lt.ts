@@ -13,187 +13,187 @@
         <translation>IÅ”vesties formatas</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="167"/>
+        <location filename="mainform.cpp" line="181"/>
         <source>Open Image</source>
         <translation>Atverti failÄ</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="167"/>
+        <location filename="mainform.cpp" line="181"/>
         <source>Image Files (*.png *.jpg *.jpeg *.bmp *.tiff *.tif *.gif *.pnm *.pgm *.pbm *.ppm)</source>
         <translation>Grafiniai failai  (*.png *.jpg *.jpeg *.bmp *.tiff *.tif *.gif *.pnm *.pgm *.pbm *.ppm)</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="187"/>
+        <location filename="mainform.cpp" line="201"/>
         <source>There is an unsaved text in the editor window. Do you want to save it?</source>
         <translation>RengyklÄs lange yra neiÅ”saugotas tekstas. IÅ”saugoti?</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="354"/>
+        <location filename="mainform.cpp" line="368"/>
         <source>Russian</source>
         <translation>RusÅ³</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="359"/>
+        <location filename="mainform.cpp" line="373"/>
         <source>English</source>
         <translation>AnglÅ³</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="361"/>
+        <location filename="mainform.cpp" line="375"/>
         <source>French</source>
         <translation>PrancÅ«zÅ³</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="362"/>
+        <location filename="mainform.cpp" line="376"/>
         <source>German</source>
         <translation>VokieÄiÅ³</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="355"/>
+        <location filename="mainform.cpp" line="369"/>
         <source>Russian-English</source>
         <translation>RusÅ³-anglÅ³</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="373"/>
+        <location filename="mainform.cpp" line="387"/>
         <source>Russian-French</source>
         <translation>RusÅ³-prancÅ«zÅ³</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="374"/>
+        <location filename="mainform.cpp" line="388"/>
         <source>Russian-German</source>
         <translation>RusÅ³-vokieÄiÅ³</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="375"/>
+        <location filename="mainform.cpp" line="389"/>
         <source>Russian-Spanish</source>
         <translation>RusÅ³-ispanÅ³</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="516"/>
+        <location filename="mainform.cpp" line="530"/>
         <source>Warning</source>
         <translation>PerspÄjimas</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="391"/>
+        <location filename="mainform.cpp" line="405"/>
         <source>xsane not found</source>
         <translation>nepavyko rasti xsane programos</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="512"/>
+        <location filename="mainform.cpp" line="526"/>
         <source>Error</source>
         <translation>Klaida</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="512"/>
+        <location filename="mainform.cpp" line="526"/>
         <source>No image loaded</source>
         <translation>Grafinio failo ÄÆkelti nepavyko</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="541"/>
+        <location filename="mainform.cpp" line="555"/>
         <source>Starting cuneiform failed</source>
         <translation>Nepavyko paleisti cuneiform programos</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="541"/>
+        <location filename="mainform.cpp" line="555"/>
         <source>The system said: </source>
         <translation>Sistemos atsakymas:</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="541"/>
+        <location filename="mainform.cpp" line="555"/>
         <source>program not found</source>
         <translation>programos rasti nepavyko</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="577"/>
+        <location filename="mainform.cpp" line="591"/>
         <source>Save Text</source>
         <translation>Ä®raÅ”yti tekstÄ</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="602"/>
+        <location filename="mainform.cpp" line="616"/>
         <source>About YAGF</source>
         <translation>Apie YAGF</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="516"/>
+        <location filename="mainform.cpp" line="530"/>
         <source>cuneiform not found</source>
         <translation>Nepavyko rasti programos ācuneiformā</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="615"/>
+        <location filename="mainform.cpp" line="629"/>
         <source>http://symmetrica.net/cuneiform-linux/yagf-en.html</source>
         <translation>http://symmetrica.net/cuneiform-linux/yagf-ru.html</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="602"/>
+        <location filename="mainform.cpp" line="616"/>
         <source>&lt;p align=&quot;center&quot;&gt;&lt;b&gt;YAGF - Yet Another Graphical Front-end for cuneiform&lt;/b&gt;&lt;/p&gt; &lt;p align=&quot;center&quot;&gt;Version %1&lt;/p&gt; This is a free software. Visit &lt;a href=&quot;http://symmetrica.net/cuneiform-linux/yagf-en.html&quot;&gt;http://symmetrica.net/cuneiform-linux/yagf-en.html&lt;/a&gt; for more details.</source>
         <translation>&lt;p align=&quot;center&quot;&gt;&lt;b&gt;YAGF - GrafinÄ cuneiform sÄsaja&lt;/b&gt;&lt;/p&gt; &lt;p align=&quot;center&quot;&gt;ŠŠµŃŃŠøŃ %1&lt;/p&gt; YAGF - atviro kodo programa. DetalesnÄs informacijos ieÅ”kokite programos puslapyje YAGF &lt;a href=&quot;http://symmetrica.net/cuneiform-linux/yagf-ru.html&quot;&gt;http://symmetrica.net/cuneiform-linux/yagf-ru.html&lt;/a&gt;.</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="356"/>
+        <location filename="mainform.cpp" line="370"/>
         <source>Czech</source>
         <translation>ÄekÅ³</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="357"/>
+        <location filename="mainform.cpp" line="371"/>
         <source>Danish</source>
         <translation>DanÅ³</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="358"/>
+        <location filename="mainform.cpp" line="372"/>
         <source>Dutch</source>
         <translation>OlandÅ³</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="360"/>
+        <location filename="mainform.cpp" line="374"/>
         <source>Estonian</source>
         <translation>EstÅ³</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="363"/>
+        <location filename="mainform.cpp" line="377"/>
         <source>Hungarian</source>
         <translation>VengrÅ³</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="364"/>
+        <location filename="mainform.cpp" line="378"/>
         <source>Italian</source>
         <translation>ItalÅ³</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="365"/>
+        <location filename="mainform.cpp" line="379"/>
         <source>Latvian</source>
         <translation>LatviÅ³</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="366"/>
+        <location filename="mainform.cpp" line="380"/>
         <source>Lithuanian</source>
         <translation>LietuviÅ³</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="367"/>
+        <location filename="mainform.cpp" line="381"/>
         <source>Polish</source>
         <translation>LenkÅ³</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="368"/>
+        <location filename="mainform.cpp" line="382"/>
         <source>Portugueze</source>
         <translation>PortugalÅ³</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="369"/>
+        <location filename="mainform.cpp" line="383"/>
         <source>Roman</source>
         <translation>RumunÅ³</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="370"/>
+        <location filename="mainform.cpp" line="384"/>
         <source>Spanish</source>
         <translation>IspanÅ³</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="371"/>
+        <location filename="mainform.cpp" line="385"/>
         <source>Swedish</source>
         <translation>Å vedÅ³</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="372"/>
+        <location filename="mainform.cpp" line="386"/>
         <source>Ukrainian</source>
         <translation>UkrainieÄiÅ³</translation>
     </message>
@@ -203,22 +203,22 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="409"/>
+        <location filename="mainform.cpp" line="423"/>
         <source>libxspreload.so not found</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="496"/>
+        <location filename="mainform.cpp" line="510"/>
         <source>There is an unsaved HTML text in the editor window. Do you want to save it?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="573"/>
+        <location filename="mainform.cpp" line="587"/>
         <source>Text Files (*.txt)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="575"/>
+        <location filename="mainform.cpp" line="589"/>
         <source>HTML Files (*.html)</source>
         <translation type="unfinished"></translation>
     </message>
@@ -233,23 +233,33 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="125"/>
+        <location filename="mainform.cpp" line="128"/>
         <source>Select All<byte value="x9"/>Ctrl+A</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="129"/>
+        <location filename="mainform.cpp" line="132"/>
         <source>Cut<byte value="x9"/>Ctrl+X</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="133"/>
-        <source>Larger Font<byte value="x9"/>Ctrl+[+]</source>
+        <location filename="mainform.cpp" line="147"/>
+        <source>Larger Font<byte value="x9"/>Ctrl++</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="mainform.cpp" line="150"/>
+        <source>Smaller Font<byte value="x9"/>Ctrl+-</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="mainform.cpp" line="136"/>
-        <source>Smaller Font<byte value="x9"/>Ctrl+[-]</source>
+        <source>Copy<byte value="x9"/>Ctrl+C</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="mainform.cpp" line="140"/>
+        <source>Paste<byte value="x9"/>Ctrl+V</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

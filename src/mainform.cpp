@@ -122,6 +122,9 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
         action->setShortcut(QKeySequence("Ctrl+Shift+Z"));
         connect(action, SIGNAL(triggered()), textEdit, SLOT(redo()));
         textEdit->addAction(action);
+        action = new QAction("separator", this);
+        action->setSeparator(true);
+        textEdit->addAction(action);
         action = new QAction(trUtf8("Select All\tCtrl+A"), this);
         action->setShortcut(QKeySequence("Ctrl+A"));
         connect(action, SIGNAL(triggered()), textEdit, SLOT(selectAll()));
@@ -130,10 +133,21 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
         action->setShortcut(QKeySequence("Ctrl+X"));
         connect(action, SIGNAL(triggered()), textEdit, SLOT(cut()));
         textEdit->addAction(action);
-        action = new QAction(trUtf8("Larger Font\tCtrl+[+]"), this);
+        action = new QAction(trUtf8("Copy\tCtrl+C"), this);
+        action->setShortcut(QKeySequence("Ctrl+C"));
+        connect(action, SIGNAL(triggered()), textEdit, SLOT(copy()));
+        textEdit->addAction(action);
+        action = new QAction(trUtf8("Paste\tCtrl+V"), this);
+        action->setShortcut(QKeySequence("Ctrl+V"));
+        connect(action, SIGNAL(triggered()), textEdit, SLOT(paste()));
+        textEdit->addAction(action);
+        action = new QAction("separator", this);
+        action->setSeparator(true);
+        textEdit->addAction(action);
+        action = new QAction(trUtf8("Larger Font\tCtrl++"), this);
         connect(action, SIGNAL(triggered()), this, SLOT(enlargeFont()));
         textEdit->addAction(action);
-        action = new QAction(trUtf8("Smaller Font\tCtrl+[-]"), this);
+        action = new QAction(trUtf8("Smaller Font\tCtrl+-"), this);
         connect(action, SIGNAL(triggered()), this, SLOT(decreaseFont()));
         textEdit->addAction(action);
 
