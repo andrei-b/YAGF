@@ -53,6 +53,8 @@
 #include <QCursor>
 #include <QWheelEvent>
 #include <QKeyEvent>
+#include <QFont>
+
 
 const QString version = "0.7.1";
 
@@ -111,6 +113,31 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
         connect(textEdit, SIGNAL(copyAvailable (bool)), this, SLOT(copyAvailable (bool)));
         connect(textEdit, SIGNAL(textChanged()), this, SLOT(textChanged()));
 
+        QAction * action;
+        action = new QAction(trUtf8("Undo\tCtrl+Z"), this);
+        action->setShortcut(QKeySequence("Ctrl+Z"));
+        connect(action, SIGNAL(triggered()), textEdit, SLOT(undo()));
+        textEdit->addAction(action);
+        action = new QAction(trUtf8("Redo\tCtrl+Shift+Z"), this);
+        action->setShortcut(QKeySequence("Ctrl+Shift+Z"));
+        connect(action, SIGNAL(triggered()), textEdit, SLOT(redo()));
+        textEdit->addAction(action);
+        action = new QAction(trUtf8("Select All\tCtrl+A"), this);
+        action->setShortcut(QKeySequence("Ctrl+A"));
+        connect(action, SIGNAL(triggered()), textEdit, SLOT(selectAll()));
+        textEdit->addAction(action);
+        action = new QAction(trUtf8("Cut\tCtrl+X"), this);
+        action->setShortcut(QKeySequence("Ctrl+X"));
+        connect(action, SIGNAL(triggered()), textEdit, SLOT(cut()));
+        textEdit->addAction(action);
+        action = new QAction(trUtf8("Larger Font\tCtrl+[+]"), this);
+        connect(action, SIGNAL(triggered()), this, SLOT(enlargeFont()));
+        textEdit->addAction(action);
+        action = new QAction(trUtf8("Smaller Font\tCtrl+[-]"), this);
+        connect(action, SIGNAL(triggered()), this, SLOT(decreaseFont()));
+        textEdit->addAction(action);
+
+
 	fillLanguagesBox();
 	initSettings();
 	delTmpFiles();
@@ -126,10 +153,13 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
         connect(textEdit->document(), SIGNAL(cursorPositionChanged ( const QTextCursor &)), this, SLOT(updateSP()));
 
         displayLabel->installEventFilter(this);
+        textEdit->installEventFilter(this);
         QPixmap l_cursor;
         l_cursor.load(":/resize.png");
         resizeCursor = new QCursor(l_cursor);
-}
+        textEdit->setContextMenuPolicy(Qt::ActionsContextMenu);
+
+ }
 
 void MainForm::loadImage()
 {
@@ -296,6 +326,10 @@ void MainForm::readSettings()
         if (outputFormat == "") outputFormat = "text";
         selectFormatBox->setCurrentIndex(selectFormatBox->findData(QVariant(outputFormat)));
         spellCheckBox->setChecked(settings->value("mainWindow/checkSpelling", bool(true)).toBool());
+        bool ok;
+        QFont f(textEdit->font());
+        f.setPointSize(settings->value("mainWindow/fontSize", int(12)).toInt(&ok));
+        textEdit->setFont(f);
 }
 
 void MainForm::writeSettings()
@@ -306,6 +340,7 @@ void MainForm::writeSettings()
 	settings->setValue("mainwindow/lastDir", lastDir);
         settings->setValue("mainWindow/checkSpelling", spellCheckBox->isChecked());
 	settings->setValue("mainwindow/lastOutputDir", lastOutputDir);
+        settings->setValue("mainWindow/fontSize", textEdit->font().pointSize());
 	settings->setValue("ocr/language", language);
 	settings->setValue("ocr/singleColumn", singleColumn);
 	settings->setValue("ocr/outputFormat", outputFormat);
@@ -703,6 +738,51 @@ bool MainForm::eventFilter(QObject *object, QEvent *event)
                 return true;
             }
         }
+    } else
+    if (object == textEdit) {
+        if (event->type() == QEvent::KeyPress) {
+            QKeyEvent * e = (QKeyEvent *) event;
+            if (e->modifiers() & Qt::ControlModifier) {
+                if ((e->key() == Qt::Key_Plus)||(e->key() == Qt::Key_Equal)) {
+                    enlargeFont();
+                    return true;
+                }
+                else
+                if (e->key() == Qt::Key_Minus) {
+                    decreaseFont();
+                    return true;
+                }
+            }
+        } else
+        if (event->type() == QEvent::Wheel) {
+            QWheelEvent * e = (QWheelEvent *) event;
+            if (e->modifiers() & Qt::ControlModifier) {
+                if (e->delta() > 0)
+                    enlargeFont();
+                else
+                    decreaseFont();
+                return true;
+            }
+        }
+
     }
     return QMainWindow::eventFilter(object, event);
+}
+
+void MainForm::enlargeFont()
+{
+    int fontSize = textEdit->font().pointSize();
+    fontSize++;
+    QFont f(textEdit->font());
+    f.setPointSize(fontSize);
+    textEdit->setFont(f);
+}
+
+void MainForm::decreaseFont()
+{
+    int fontSize = textEdit->font().pointSize();
+    if (fontSize > 1) fontSize--;
+    QFont f(textEdit->font());
+    f.setPointSize(fontSize);
+    textEdit->setFont(f);
 }

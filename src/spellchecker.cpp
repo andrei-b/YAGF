@@ -26,7 +26,7 @@
 #include "spellchecker.h"
 
 
-SpellChecker::SpellChecker(QTextEdit * textEdit):m_textEdit(textEdit),m_lang1("ru"), m_lang2("en")
+SpellChecker::SpellChecker(QTextEdit * textEdit):m_textEdit(textEdit)
 {
     m_regExp = new QRegExp("[^\\s]*");
     //m_cursor= new QTextCursor(m_textEdit->document());
@@ -55,29 +55,31 @@ SpellChecker::SpellChecker(QTextEdit * textEdit):m_textEdit(textEdit),m_lang1("r
     m_map->insert("spa", "es");
     m_map->insert("swe", "sv");
     m_map->insert("ukr", "uk");
+    spell_checker1 = 0;
+    spell_checker2 = 0;
+    setLanguage("ruseng");
 }
 
 void SpellChecker::setLanguage(const QString & lang)
 {
 
-       m_lang2 = "en";
-       m_lang1 = m_map->value(lang, QString("en"));
-       if (lang == "rus_fra") {
-            m_lang1 = "ru";
-            m_lang2 = "fr";
-        } else if (lang == "rus_ger") {
-            m_lang1 = "ru";
-            m_lang2 = "de";
-        } else if (lang == "rus_spa") {
-            m_lang1 = "ru";
-            m_lang2 = "es";
-        }
-    aspell_config_replace(spell_config1, "lang", m_lang1.toAscii());
-    aspell_config_replace(spell_config2, "lang", m_lang2.toAscii());
-}
+     delete_aspell_speller(spell_checker1);
+     delete_aspell_speller(spell_checker2);
 
-void SpellChecker::spellCheck()
-{
+     m_lang2 = "en";
+     m_lang1 = m_map->value(lang, QString("en"));
+     if (lang == "rus_fra") {
+          m_lang1 = "ru";
+          m_lang2 = "fr";
+     } else if (lang == "rus_ger") {
+          m_lang1 = "ru";
+          m_lang2 = "de";
+     } else if (lang == "rus_spa") {
+          m_lang1 = "ru";
+          m_lang2 = "es";
+     }
+     aspell_config_replace(spell_config1, "lang", m_lang1.toAscii());
+     aspell_config_replace(spell_config2, "lang", m_lang2.toAscii());
      AspellCanHaveError * possible_err = new_aspell_speller(spell_config1);
      spell_checker1 = 0;
      if (aspell_error_number(possible_err) == 0)
@@ -86,6 +88,11 @@ void SpellChecker::spellCheck()
      spell_checker2 = 0;
      if (aspell_error_number(possible_err) == 0)
             spell_checker2 = to_aspell_speller(possible_err);
+
+}
+
+void SpellChecker::spellCheck()
+{
      if ((spell_checker1 == 0) || (spell_checker2 == 0)) {
          QPixmap icon;
          icon.load(":/warning.png");
@@ -93,21 +100,20 @@ void SpellChecker::spellCheck()
                         QMessageBox::Ok, 0);
                 messageBox.setIconPixmap(icon);
                 messageBox.exec();
-         delete_aspell_speller(spell_checker1);
-         delete_aspell_speller(spell_checker2);
          return;
      }
      QTextCursor cursor(m_textEdit->document());
      while (!cursor.isNull()&&!cursor.atEnd()) {
         _checkWord(&cursor);
+        QTextCursor oldc = cursor;
         cursor.movePosition(QTextCursor::WordRight,
                                       QTextCursor::KeepAnchor);
         cursor = m_textEdit->document()->find(*m_regExp, cursor);
+        if (oldc == cursor)
+            break;
      }
      if (!cursor.isNull())
         _checkWord(&cursor);
-     delete_aspell_speller(spell_checker1);
-     delete_aspell_speller(spell_checker2);
 }
 
 void SpellChecker::_checkWord(QTextCursor * cursor)
@@ -137,21 +143,8 @@ void SpellChecker::_checkWord(QTextCursor * cursor)
 
 void SpellChecker::checkWord()
 {
-             AspellCanHaveError * possible_err = new_aspell_speller(spell_config1);
-     spell_checker1 = 0;
-     if (aspell_error_number(possible_err) == 0)
-       spell_checker1 = to_aspell_speller(possible_err);
-     possible_err = new_aspell_speller(spell_config2);
-     spell_checker2 = 0;
-     if (aspell_error_number(possible_err) == 0)
-            spell_checker2 = to_aspell_speller(possible_err);
-     if ((spell_checker1 == 0) || (spell_checker2 == 0)) {
-         delete_aspell_speller(spell_checker1);
-         delete_aspell_speller(spell_checker2);
+     if ((spell_checker1 == 0) || (spell_checker2 == 0))
          return;
-     }
      QTextCursor cursor = m_textEdit->textCursor();
      _checkWord(&cursor);
-     delete_aspell_speller(spell_checker1);
-     delete_aspell_speller(spell_checker2);
  }

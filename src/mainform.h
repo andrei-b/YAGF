@@ -58,6 +58,9 @@ private slots:
         void copyClipboard();
         void copyAvailable(bool yes);
         void textChanged();
+        void enlargeFont();
+        void decreaseFont();
+
 protected:
         bool eventFilter(QObject *object, QEvent *event);
 private:
