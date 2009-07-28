@@ -27,6 +27,7 @@ class QPixmap;
 
 class QSelectionLabel : public QLabel
 {
+    Q_OBJECT
 public:
 	QSelectionLabel(QWidget *parent=0, Qt::WindowFlags f=0);
 	virtual ~QSelectionLabel();
@@ -35,6 +36,9 @@ public:
 	bool getSelectionMode();
 	void resetSelection(bool redraw = false);
 	QRect getSelectedRect();
+signals:
+        void selectionResized();
+        void selectionUnresized();
 protected:
     void mousePressEvent(QMouseEvent *ev);
     void mouseMoveEvent(QMouseEvent *ev);
@@ -46,6 +50,8 @@ private:
 	bool selecting;
 	bool started;
 	bool selected;
+        bool resizing;
+        bool cursorSet;
 	QPixmap * oldCopy;
 	void drawRect();
 	void restoreRect();

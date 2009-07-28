@@ -60,7 +60,6 @@ private slots:
         void textChanged();
         void enlargeFont();
         void decreaseFont();
-
 protected:
         bool eventFilter(QObject *object, QEvent *event);
 private:
@@ -92,6 +91,7 @@ private:
 	QString fileName;
 	QSettings * settings;
         QCursor * resizeCursor;
+        QCursor * resizeBlockCursor;
 	bool useXSane;
 	bool textSaved;
         QProcess * scanProcess;
@@ -103,4 +103,6 @@ private:
 private slots:
         void readyRead();
         void updateSP();
+        void setResizingCusor();
+        void setUnresizingCusor();
 };

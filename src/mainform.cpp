@@ -112,7 +112,8 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
 	connect(selectLangsBox, SIGNAL(currentIndexChanged(int)), this, SLOT(newLanguageSelected(int)));
         connect(textEdit, SIGNAL(copyAvailable (bool)), this, SLOT(copyAvailable (bool)));
         connect(textEdit, SIGNAL(textChanged()), this, SLOT(textChanged()));
-
+        connect (displayLabel, SIGNAL(selectionResized()), this, SLOT(setResizingCusor()));
+        connect (displayLabel, SIGNAL(selectionUnresized()), this, SLOT(setUnresizingCusor()));
         QAction * action;
         action = new QAction(trUtf8("Undo\tCtrl+Z"), this);
         action->setShortcut(QKeySequence("Ctrl+Z"));
@@ -171,6 +172,8 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
         QPixmap l_cursor;
         l_cursor.load(":/resize.png");
         resizeCursor = new QCursor(l_cursor);
+        l_cursor.load(":/resize_block.png");
+        resizeBlockCursor = new QCursor(l_cursor);
         textEdit->setContextMenuPolicy(Qt::ActionsContextMenu);
 
  }
@@ -799,4 +802,14 @@ void MainForm::decreaseFont()
     QFont f(textEdit->font());
     f.setPointSize(fontSize);
     textEdit->setFont(f);
+}
+
+void MainForm::setResizingCusor()
+{
+        scrollArea->widget()->setCursor(*resizeBlockCursor);
+}
+
+void MainForm::setUnresizingCusor()
+{
+    scrollArea->widget()->setCursor(QCursor(Qt::ArrowCursor));
 }

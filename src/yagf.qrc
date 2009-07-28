@@ -21,5 +21,6 @@
         <file alias="critical.png" >images/critical.png</file>
         <file alias="info.png" >images/info.png</file>
         <file alias="resize.png" >images/resize.png</file>
+        <file alias="resize_block.png" >images/resize_block.png</file>
     </qresource>
 </RCC>
