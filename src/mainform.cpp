@@ -54,7 +54,7 @@
 #include <QWheelEvent>
 #include <QKeyEvent>
 #include <QFont>
-
+#include "FileToolBar.h"
 
 const QString version = "0.7.1";
 
@@ -175,7 +175,9 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
         l_cursor.load(":/resize_block.png");
         resizeBlockCursor = new QCursor(l_cursor);
         textEdit->setContextMenuPolicy(Qt::ActionsContextMenu);
-
+        m_toolBar = new FileToolBar(this);
+        addToolBar(Qt::LeftToolBarArea, m_toolBar);
+        m_toolBar->show();
  }
 
 void MainForm::loadImage()
@@ -437,6 +439,7 @@ void MainForm::loadFile(const QString &fn)
 {
 	imageLoaded = pixmap->load(fn);
 	fileName = fn;
+        ((FileToolBar *) m_toolBar)->addFile(*pixmap, fn);
 	setWindowTitle("YAGF - " + extractFileName(fileName));
 	QSelectionLabel * displayLabel = (QSelectionLabel *) scrollArea->widget();
 	displayLabel->setPixmap(QPixmap());

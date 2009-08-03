@@ -22,5 +22,7 @@
         <file alias="info.png" >images/info.png</file>
         <file alias="resize.png" >images/resize.png</file>
         <file alias="resize_block.png" >images/resize_block.png</file>
+        <file alias="save_all.png" >images/save_all.png</file>
+        <file alias="clear.png" >images/editclear.png</file>
     </qresource>
 </RCC>

@@ -99,6 +99,7 @@ private:
         QByteArray * ba;
         SpellChecker * spellChecker;
         int rotation;
+        QToolBar * m_toolBar;
 //	QLabel * displayLabel;
 private slots:
         void readyRead();
