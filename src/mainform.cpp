@@ -178,6 +178,7 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
         m_toolBar = new FileToolBar(this);
         addToolBar(Qt::LeftToolBarArea, m_toolBar);
         m_toolBar->show();
+        connect(m_toolBar, SIGNAL(fileSelected(const QString &)), this, SLOT(fileSelected(const QString &)));
  }
 
 void MainForm::loadImage()
@@ -439,13 +440,13 @@ void MainForm::loadFile(const QString &fn)
 {
 	imageLoaded = pixmap->load(fn);
 	fileName = fn;
-        ((FileToolBar *) m_toolBar)->addFile(*pixmap, fn);
 	setWindowTitle("YAGF - " + extractFileName(fileName));
 	QSelectionLabel * displayLabel = (QSelectionLabel *) scrollArea->widget();
 	displayLabel->setPixmap(QPixmap());
 	displayLabel->setSelectionMode(false);
 	if (imageLoaded) {
-		displayLabel->setPixmap(*pixmap);
+                ((FileToolBar *) m_toolBar)->addFile(*pixmap, fn);
+                displayLabel->setPixmap(*pixmap);
 		displayLabel->setSelectionMode(true);
 		displayLabel->resetSelection();
                 if (scaleFactor == 1) {
@@ -815,4 +816,9 @@ void MainForm::setResizingCusor()
 void MainForm::setUnresizingCusor()
 {
     scrollArea->widget()->setCursor(QCursor(Qt::ArrowCursor));
+}
+
+void MainForm::fileSelected(const QString &path)
+{
+    loadFile(path);
 }

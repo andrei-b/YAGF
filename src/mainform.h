@@ -106,4 +106,5 @@ private slots:
         void updateSP();
         void setResizingCusor();
         void setUnresizingCusor();
+        void fileSelected(const QString &path);
 };

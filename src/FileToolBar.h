@@ -8,6 +8,7 @@
 typedef QMap<QString, QString> StringMap;
 
 class QPixmap;
+class QPushButton;
 
 class FileToolBar : public QToolBar
 {
@@ -20,9 +21,12 @@ signals:
 private:
     bool buttonsAdded;
     StringMap * filesMap;
+    QPushButton * saveButton;
+    QPushButton * clearButton;
 private slots:
     void saveAll();
     void selected();
+    void clearAll();
 };
 
 
