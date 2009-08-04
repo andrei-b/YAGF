@@ -56,7 +56,7 @@
 #include <QFont>
 #include "FileToolBar.h"
 
-const QString version = "0.7.1";
+const QString version = "0.8";
 
 MainForm::MainForm(QWidget *parent):QMainWindow(parent)
 {
