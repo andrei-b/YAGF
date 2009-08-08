@@ -509,26 +509,8 @@ void MainForm::loadPreviousPage()
 
 void MainForm::recognize()
 {
-        if (outputFormat == "html") {
-            if (!textSaved) {
-                    QPixmap icon;
-                    icon.load(":/info.png");
-
-                    QMessageBox messageBox(QMessageBox::NoIcon, "YAGF", trUtf8("There is an unsaved HTML text in the editor window. Do you want to save it?"),
-                        QMessageBox::Save|QMessageBox::Discard|QMessageBox::Cancel, this);
-                    messageBox.setIconPixmap(icon);
-                    int result = messageBox.exec();
-                    if (result == QMessageBox::Save)
-                    saveText();
-                    else if (result == QMessageBox::Cancel)
-                        return;
-            }
-            textEdit->clear();
-            this->delTmpDir();
-        }
         const QString inputFile = "input.bmp";
 	const QString outputFile = "output.txt";
-        outputFormat = selectFormatBox->itemData(selectFormatBox->currentIndex()).toString();
 	if (!imageLoaded) {
 		QMessageBox::critical(this, trUtf8("Error"), trUtf8("No image loaded"));
 		return;
@@ -547,7 +529,7 @@ void MainForm::recognize()
 	sl.append("-l");
 	sl.append(language);
         sl.append("-f");
-        sl.append(outputFormat);
+        sl.append("html");
 	if (singleColumn)
 		sl.append("-c1");
         sl.append("-o");
@@ -569,18 +551,14 @@ void MainForm::recognize()
         QString textData;
         QTextCodec *codec = QTextCodec::codecForName("UTF-8");
         textData = codec->toUnicode(text); //QString::fromUtf8(text.data());
-        if (outputFormat != "html")
-          textData = "<html><head><title></title><meta http-equiv=\"Content-Type\" content=\"text/html;charset=utf-8\" ></head><body>" + textData + "</body></html>";
-        bool dosp = true;
-        if (textData.contains("<img")) dosp = false;
-        if(outputFormat == "html") {
-            textData.replace("<img src=output_files", "[img src=" + workingDir + "output_files");
-            textData.replace(".bmp\">", ".bmp\"]");
-            textData.replace(".bmp>", ".bmp]");
-        }
+        textData.replace("<img src=output_files", "");
+        textData.replace(".bmp\">", "\"--");
+        textData.replace(".bmp>", "");
+ //       textData.replace("-</p><p>", "");
+//        textData.replace("-<br>", "");
         textEdit->append(textData);
         textSaved = FALSE;
-        if (dosp&&spellCheckBox->isChecked()) {
+        if (spellCheckBox->isChecked()) {
             spellChecker->setLanguage(language);
             spellChecker->spellCheck();
         }
@@ -589,6 +567,7 @@ void MainForm::recognize()
 
 void MainForm::saveText()
 {
+        outputFormat = selectFormatBox->itemData(selectFormatBox->currentIndex()).toString();
         QString filter;
         if (outputFormat == "text")
             filter = trUtf8("Text Files (*.txt)");
@@ -696,13 +675,13 @@ void MainForm::readyRead() {
 void MainForm::saveHtml(QFile * file) {
     QString text = textEdit->document()->toHtml().toUtf8();
     QString newDir = extractFilePath(file->fileName()) + extractFileName(file->fileName()) + ".files";
-    text.replace(QRegExp("<meta.*content=.*/>", Qt::CaseInsensitive), "<meta content=\"text/html; charset=utf-8\" http-equiv=\"content-type\" />");
-    text.replace(workingDir + "output_files",  newDir);
+    text.replace("<meta name=\"qrichtext\" content=\"1\" />", "<meta content=\"text/html; charset=utf-8\" http-equiv=\"content-type\" />");
+    /*text.replace(workingDir + "output_files",  newDir);
     text.replace("[img src=", "<img src=");
     text.replace(".bmp\"]", ".bmp\">");
     text.replace(".bmp]", ".bmp>");
     QDir dir(workingDir+"output_files");
-    dir.rename(workingDir+"output_files", newDir);
+    dir.rename(workingDir+"output_files", newDir);*/
     file->write(text.toAscii());
 }
 

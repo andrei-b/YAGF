@@ -106,11 +106,16 @@ void SpellChecker::spellCheck()
      while (!cursor.isNull()&&!cursor.atEnd()) {
         _checkWord(&cursor);
         QTextCursor oldc = cursor;
-        cursor.movePosition(QTextCursor::WordRight,
-                                      QTextCursor::KeepAnchor);
-        cursor = m_textEdit->document()->find(*m_regExp, cursor);
-        if (oldc == cursor)
+        if (!cursor.movePosition(QTextCursor::NextWord,
+                                      QTextCursor::MoveAnchor))
             break;
+//cursor.movePosition(QTextCursor::EndOfWord,  QTextCursor::MoveAnchor);
+
+        //cursor = m_textEdit->document()->find(*m_regExp, cursor);
+        int oldpos = oldc.position();
+        int newpos = cursor.position();
+        if (abs(newpos -oldpos) < 3)
+            cursor.setPosition(newpos + 2);
      }
      if (!cursor.isNull())
         _checkWord(&cursor);
@@ -138,7 +143,7 @@ void SpellChecker::_checkWord(QTextCursor * cursor)
             fmt.setUnderlineStyle(QTextCharFormat::NoUnderline);
             cursor->setCharFormat(fmt);
         }
-
+        cursor->clearSelection();
 }
 
 void SpellChecker::checkWord()

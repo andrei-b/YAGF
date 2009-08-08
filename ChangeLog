@@ -1,10 +1,12 @@
-* Sub Jul 25 2009 Andrei Borovsky <anb@symmetrica.net> - 0.7.1
+* Wed Aug 5 2009  Andrei Borovsky <anb@symmetrica.net> - 0.8.0
+- text selection blocks are now resizable
+- images management bar is added
+* Sat Jul 25 2009 Andrei Borovsky <anb@symmetrica.net> - 0.7.1
 - scaling and rotation is kept between images in the series
 - images and text may be scaled by Ctrl + mouse wheel or by Ctrl + [+]/[-] keys.
 * Sun Jul 19 2009 Andrei Borovsky <anb@symmetrica.net> - 0.7.0
 - spell-checking is added
 - saving to html with images is added
-
 * Fri Jul 17 2009 Andrei Borovsky <anb@symmetrica.net> - 0.6.2
 - merged the patches with the appropriate files
 - removed unnessesary ldconfig call
