@@ -107,3 +107,14 @@ void FileToolBar::clearAll()
     buttonsAdded = false;
     filesMap->clear();
 }
+
+QStringList FileToolBar::getFileNames()
+{
+    QStringList S;
+    QMapIterator<QString, QString> i(*filesMap);
+    while (i.hasNext()) {
+        i.next();
+        S << i.value();
+    }
+    return S;
+}

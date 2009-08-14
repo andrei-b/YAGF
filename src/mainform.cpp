@@ -31,12 +31,12 @@
 #include <QFileInfo>
 #include <QList>
 #include <QProcess>
-#include <QStringList>
 #include <QFile>
 #include <QByteArray>
 #include <QRect>
 #include <QStatusBar>
 #include <QMessageBox>
+#include <QProgressDialog>
 #include <QImage>
 #include <QDesktopServices>
 #include <QUrl>
@@ -179,6 +179,8 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
         addToolBar(Qt::LeftToolBarArea, m_toolBar);
         m_toolBar->show();
         connect(m_toolBar, SIGNAL(fileSelected(const QString &)), this, SLOT(fileSelected(const QString &)));
+
+        connect(actionRecognize_All_Pages, SIGNAL(triggered()), this, SLOT(recognizeAll()));
  }
 
 void MainForm::loadImage()
@@ -800,4 +802,25 @@ void MainForm::setUnresizingCusor()
 void MainForm::fileSelected(const QString &path)
 {
     loadFile(path);
+}
+
+void MainForm::recognizeAll()
+{
+    QStringList files = ((FileToolBar *)m_toolBar)->getFileNames();
+    if (files.empty())
+        recognize();
+    else {
+            QProgressDialog progress(trUtf8("Recognizing pages..."), trUtf8("Abort"), 0, files.count(), this);
+            progress.setWindowModality(Qt::WindowModal);
+            progress.setWindowTitle("YAGF");
+            progress.show();
+            progress.setValue(0);
+            for (int i=0; i < files.count(); i++) {
+                progress.setValue(i);
+                if(progress.wasCanceled())
+                    break;
+                loadFile(files.at(i));
+                recognize();
+            }
+    }
 }

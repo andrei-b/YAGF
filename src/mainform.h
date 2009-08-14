@@ -52,6 +52,7 @@ private slots:
 	void loadNextPage();
 	void loadPreviousPage();
 	void recognize();
+        void recognizeAll();
 	void saveText();
 	void showAboutDlg();
 	void showHelp();

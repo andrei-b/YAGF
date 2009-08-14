@@ -22,6 +22,7 @@
 
 #include <QToolBar>
 #include <QString>
+#include <QStringList>
 #include <QMap>
 
 typedef QMap<QString, QString> StringMap;
@@ -35,6 +36,7 @@ Q_OBJECT
 public:
     FileToolBar(QWidget * parent);
     void addFile(const QPixmap & pixmap, const QString & name);
+    QStringList getFileNames();
 signals:
     void fileSelected(const QString & name);
 private:

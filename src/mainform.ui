@@ -333,6 +333,7 @@
     <addaction name="actionOpen"/>
     <addaction name="actionScan"/>
     <addaction name="actionRecognize"/>
+    <addaction name="actionRecognize_All_Pages"/>
     <addaction name="action_Save"/>
     <addaction name="separator"/>
     <addaction name="actionQuit"/>
@@ -384,6 +385,8 @@
    <addaction name="actionNextPage"/>
    <addaction name="separator"/>
    <addaction name="actionRecognize"/>
+   <addaction name="actionRecognize_All_Pages"/>
+   <addaction name="separator"/>
    <addaction name="action_Save"/>
    <addaction name="actionCopyToClipboard"/>
    <addaction name="separator"/>
@@ -507,6 +510,21 @@
    </property>
    <property name="toolTip">
     <string>Copy recognized text to clipboard</string>
+   </property>
+  </action>
+  <action name="actionRecognize_All_Pages">
+   <property name="icon">
+    <iconset>
+     <normaloff>:/batch.png</normaloff>:/batch.png</iconset>
+   </property>
+   <property name="text">
+    <string>Recognize &amp;All Pages</string>
+   </property>
+   <property name="toolTip">
+    <string>Recognize All Pages</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+A</string>
    </property>
   </action>
  </widget>
