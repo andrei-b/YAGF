@@ -115,7 +115,7 @@ void SpellChecker::spellCheck()
         int oldpos = oldc.position();
         int newpos = cursor.position();
         if (abs(newpos -oldpos) < 3)
-            cursor.setPosition(newpos + 2);
+            cursor.setPosition(newpos + 1);
      }
      if (!cursor.isNull())
         _checkWord(&cursor);
