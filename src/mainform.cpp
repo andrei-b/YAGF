@@ -513,6 +513,7 @@ void MainForm::recognize()
 {
         const QString inputFile = "input.bmp";
 	const QString outputFile = "output.txt";
+        outputFormat = selectFormatBox->itemData(selectFormatBox->currentIndex()).toString();
 	if (!imageLoaded) {
 		QMessageBox::critical(this, trUtf8("Error"), trUtf8("No image loaded"));
 		return;
@@ -531,6 +532,9 @@ void MainForm::recognize()
 	sl.append("-l");
 	sl.append(language);
         sl.append("-f");
+        if (outputFormat == "text")
+          sl.append("text");
+        else
         sl.append("html");
 	if (singleColumn)
 		sl.append("-c1");
@@ -553,6 +557,8 @@ void MainForm::recognize()
         QString textData;
         QTextCodec *codec = QTextCodec::codecForName("UTF-8");
         textData = codec->toUnicode(text); //QString::fromUtf8(text.data());
+        if (outputFormat == "text")
+                textData.prepend("<meta content=\"text/html; charset=utf-8\" http-equiv=\"content-type\" />");
         textData.replace("<img src=output_files", "");
         textData.replace(".bmp\">", "\"--");
         textData.replace(".bmp>", "");
