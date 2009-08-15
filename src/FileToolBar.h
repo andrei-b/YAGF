@@ -44,10 +44,13 @@ private:
     StringMap * filesMap;
     QPushButton * saveButton;
     QPushButton * clearButton;
+    QPushButton * removeButton;
+    QString currentImage;
 private slots:
     void saveAll();
     void selected();
     void clearAll();
+    void remove();
 };
 
 

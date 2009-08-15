@@ -25,5 +25,6 @@
         <file alias="save_all.png" >images/save_all.png</file>
         <file alias="clear.png" >images/editclear.png</file>
         <file alias="batch.png" >images/batch.png</file>
+        <file alias="remove.png" >images/remove.png</file>
     </qresource>
 </RCC>

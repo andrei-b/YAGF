@@ -37,11 +37,15 @@ FileToolBar::FileToolBar(QWidget * parent):QToolBar(trUtf8("Loaded Images"), par
     filesMap = new StringMap();
     saveButton = NULL;
     clearButton = NULL;
+    removeButton = NULL;
+    currentImage = "";
 }
 
 void FileToolBar::addFile(const QPixmap & pixmap, const QString & name)
 {
     QAction * action;
+    if (filesMap->values().contains(name))
+        return;
     if (!buttonsAdded) {
         clearButton = new QPushButton(QIcon(":/clear.png"), trUtf8("Clear"), this);
         clearButton->setIconSize(QSize(24,24));
@@ -51,20 +55,25 @@ void FileToolBar::addFile(const QPixmap & pixmap, const QString & name)
         saveButton->setIconSize(QSize(24,24));
         connect(saveButton, SIGNAL(clicked()), this, SLOT(saveAll()));
         insertWidget(action, saveButton);
+        removeButton = new QPushButton(QIcon(":/remove.png"), trUtf8("Remove"), this);
+        connect(removeButton, SIGNAL(clicked()), this, SLOT(remove()));
+        insertWidget(action, removeButton);
         buttonsAdded = true;
     }
     QPixmap pm = pixmap.scaledToHeight(96, Qt::FastTransformation);
     QString fn = extractFileName(name);
-    if (!filesMap->contains(fn)) {
-        filesMap->insert(fn, name);
-        action = addAction(QIcon(pm), fn);
-        connect(action, SIGNAL(triggered()), this, SLOT(selected()));
-    }
+    if (filesMap->contains(fn))
+        fn = fn.replace(".", "-1.");
+    filesMap->insert(fn, name);
+    action = addAction(QIcon(pm), fn);
+    connect(action, SIGNAL(triggered()), this, SLOT(selected()));
+    currentImage = fn;
 }
 
 void FileToolBar::selected()
 {
     QString key = ((QAction *) sender())->text();
+    currentImage = key;
     QString path = filesMap->value(key);
     emit fileSelected(path);
 }
@@ -117,4 +126,23 @@ QStringList FileToolBar::getFileNames()
         S << i.value();
     }
     return S;
+}
+
+void FileToolBar::remove()
+{
+    if (currentImage == "")
+        return;
+    for (int i = 0; i < actions().count(); i++)
+        if (actions().at(i)->text() == currentImage) {
+            this->removeAction(actions().at(i));
+            filesMap->remove(currentImage);
+            currentImage = "";
+            if (filesMap->count() > 0) {
+                currentImage = filesMap->keys().at(0);
+                QString path = filesMap->value(currentImage);
+                emit fileSelected(path);
+            }
+            break;
+        }
+
 }
