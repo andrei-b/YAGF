@@ -40,6 +40,7 @@ public:
     QStringList getFileNames();
     void setRotation(int r);
     int getRotation();
+    int getRotation(const QString &name);
 signals:
     void fileSelected(const QString & name);
 private:

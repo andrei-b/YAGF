@@ -164,3 +164,11 @@ int FileToolBar::getRotation()
         return 0;
     return rotMap->value(currentImage);
 }
+
+int FileToolBar::getRotation(const QString &name)
+{
+    if (name == "")
+        return 0;
+    QString internal = filesMap->keys(name).first();
+    return rotMap->value(internal);
+}

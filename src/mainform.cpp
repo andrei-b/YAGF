@@ -820,7 +820,7 @@ void MainForm::recognizeAll()
         recognize();
     else {
             QProgressDialog progress(trUtf8("Recognizing pages..."), trUtf8("Abort"), 0, files.count(), this);
-            progress.setWindowModality(Qt::WindowModal);
+            //progress.setWindowModality(Qt::WindowModal);
             progress.setWindowTitle("YAGF");
             progress.show();
             progress.setValue(0);
@@ -828,6 +828,7 @@ void MainForm::recognizeAll()
                 progress.setValue(i);
                 if(progress.wasCanceled())
                     break;
+                rotation = ((FileToolBar *) m_toolBar)->getRotation(files.at(i));
                 loadFile(files.at(i));
                 recognize();
             }
