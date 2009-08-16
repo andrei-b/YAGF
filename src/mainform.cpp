@@ -56,7 +56,7 @@
 #include <QFont>
 #include "FileToolBar.h"
 
-const QString version = "0.8";
+const QString version = "0.8.1";
 
 MainForm::MainForm(QWidget *parent):QMainWindow(parent)
 {
@@ -238,6 +238,7 @@ void MainForm::rotateImage(int deg)
 		delete pixmap;
 		pixmap = new QPixmap(pix);
                 rotation += deg;
+                ((FileToolBar *) m_toolBar)->setRotation(rotation);
 	}
 }
 
@@ -466,6 +467,7 @@ void MainForm::loadFile(const QString &fn)
                 int deg = rotation;
                 rotation = 0;
                 rotateImage(deg);
+                ((FileToolBar *) m_toolBar)->setRotation(rotation);
                 displayLabel->setFocus();
 	}
 }
@@ -807,6 +809,7 @@ void MainForm::setUnresizingCusor()
 
 void MainForm::fileSelected(const QString &path)
 {
+    rotation = ((FileToolBar *) m_toolBar)->getRotation();
     loadFile(path);
 }
 

@@ -26,6 +26,7 @@
 #include <QMap>
 
 typedef QMap<QString, QString> StringMap;
+typedef QMap<QString, int> IntMap;
 
 class QPixmap;
 class QPushButton;
@@ -37,11 +38,14 @@ public:
     FileToolBar(QWidget * parent);
     void addFile(const QPixmap & pixmap, const QString & name);
     QStringList getFileNames();
+    void setRotation(int r);
+    int getRotation();
 signals:
     void fileSelected(const QString & name);
 private:
     bool buttonsAdded;
     StringMap * filesMap;
+    IntMap * rotMap;
     QPushButton * saveButton;
     QPushButton * clearButton;
     QPushButton * removeButton;
