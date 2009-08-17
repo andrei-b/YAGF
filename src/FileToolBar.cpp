@@ -57,6 +57,7 @@ void FileToolBar::addFile(const QPixmap & pixmap, const QString & name)
         connect(saveButton, SIGNAL(clicked()), this, SLOT(saveAll()));
         insertWidget(action, saveButton);
         removeButton = new QPushButton(QIcon(":/remove.png"), trUtf8("Remove"), this);
+        removeButton->setIconSize(QSize(24,24));
         connect(removeButton, SIGNAL(clicked()), this, SLOT(remove()));
         insertWidget(action, removeButton);
         buttonsAdded = true;
