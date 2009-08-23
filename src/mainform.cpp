@@ -305,6 +305,7 @@ void MainForm::scaleImage(double sf)
 	if ((scaleFactor > 4) && (sf > 1))
 		return;
 	scaleFactor *= sf;
+        ((FileToolBar *) m_toolBar)->setScale(scaleFactor);
 	QPixmap pix = pixmap->scaled(QSize(pixmap->width()*scaleFactor, pixmap->height()*scaleFactor));
 	((QLabel*)(scrollArea->widget()))->setPixmap(pix);
         ((QSelectionLabel*)(scrollArea->widget()))->resetSelection();
@@ -444,6 +445,7 @@ void MainForm::loadFile(const QString &fn)
         if (((FileToolBar *) m_toolBar)->fileLoaded(fn)) {
                 ((FileToolBar *) m_toolBar)->select(fn);
                 rotation = ((FileToolBar *) m_toolBar)->getRotation();
+                scaleFactor = ((FileToolBar *) m_toolBar)->getScale();
             }
         imageLoaded = pixmap->load(fn);
 	fileName = fn;
@@ -457,7 +459,7 @@ void MainForm::loadFile(const QString &fn)
 		displayLabel->setSelectionMode(true);
 		displayLabel->resetSelection();
                 if (scaleFactor == 1) {
-                    scaleFactor = 1;
+                    //scaleFactor = 1;
                     if (pixmap->width() > 4000)
                             scaleImage(0.25);
                     else

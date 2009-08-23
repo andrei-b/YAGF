@@ -40,6 +40,8 @@ public:
     void addFile(const QPixmap & pixmap, const QString & name);
     QStringList getFileNames();
     void setRotation(int r);
+    void setScale(float s);
+    float getScale();
     int getRotation();
     int getRotation(const QString &name);
     bool fileLoaded(const QString &name);

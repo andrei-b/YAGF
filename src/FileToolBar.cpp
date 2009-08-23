@@ -37,6 +37,7 @@ FileToolBar::FileToolBar(QWidget * parent):QToolBar(trUtf8("Loaded Images"), par
     this->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
     filesMap = new StringMap();
     rotMap = new IntMap();
+    scaleMap = new FloatMap();
     saveButton = NULL;
     clearButton = NULL;
     removeButton = NULL;
@@ -134,6 +135,7 @@ void FileToolBar::clearAll()
     buttonsAdded = false;
     filesMap->clear();
     rotMap->clear();
+    scaleMap->clear();
 }
 
 QStringList FileToolBar::getFileNames()
@@ -156,6 +158,7 @@ void FileToolBar::remove()
             this->removeAction(actions().at(i));
             filesMap->remove(currentImage);
             rotMap->remove(currentImage);
+            scaleMap->remove(currentImage);
             currentImage = "";
             if (filesMap->count() > 0) {
                 currentImage = filesMap->keys().at(0);
@@ -174,11 +177,26 @@ void FileToolBar::setRotation(int r)
     }
 }
 
+void FileToolBar::setScale(float s)
+{
+    if (currentImage != "") {
+        scaleMap->remove(currentImage);
+        scaleMap->insert(currentImage, s);
+    }
+}
+
 int FileToolBar::getRotation()
 {
     if (currentImage == "")
         return 0;
     return rotMap->value(currentImage);
+}
+
+float FileToolBar::getScale()
+{
+    if (currentImage == "")
+        return 0;
+    return scaleMap->value(currentImage, float(0));
 }
 
 int FileToolBar::getRotation(const QString &name)
