@@ -27,6 +27,7 @@
 
 typedef QMap<QString, QString> StringMap;
 typedef QMap<QString, int> IntMap;
+typedef QMap<QString, float> FloatMap;
 
 class QPixmap;
 class QPushButton;
@@ -41,12 +42,15 @@ public:
     void setRotation(int r);
     int getRotation();
     int getRotation(const QString &name);
+    bool fileLoaded(const QString &name);
+    void select(const QString &name);
 signals:
     void fileSelected(const QString & name);
 private:
     bool buttonsAdded;
     StringMap * filesMap;
     IntMap * rotMap;
+    FloatMap * scaleMap;
     QPushButton * saveButton;
     QPushButton * clearButton;
     QPushButton * removeButton;

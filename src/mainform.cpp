@@ -441,7 +441,11 @@ void MainForm::scanImage()
 
 void MainForm::loadFile(const QString &fn)
 {
-	imageLoaded = pixmap->load(fn);
+        if (((FileToolBar *) m_toolBar)->fileLoaded(fn)) {
+                ((FileToolBar *) m_toolBar)->select(fn);
+                rotation = ((FileToolBar *) m_toolBar)->getRotation();
+            }
+        imageLoaded = pixmap->load(fn);
 	fileName = fn;
 	setWindowTitle("YAGF - " + extractFileName(fileName));
 	QSelectionLabel * displayLabel = (QSelectionLabel *) scrollArea->widget();
@@ -809,7 +813,6 @@ void MainForm::setUnresizingCusor()
 
 void MainForm::fileSelected(const QString &path)
 {
-    rotation = ((FileToolBar *) m_toolBar)->getRotation();
     loadFile(path);
 }
 

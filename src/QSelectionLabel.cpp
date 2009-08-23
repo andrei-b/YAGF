@@ -35,6 +35,7 @@ QSelectionLabel::QSelectionLabel(QWidget *parent, Qt::WindowFlags f):QLabel(pare
         resizing = false;
         cursorSet = false;
         setMouseTracking(true);
+        rectList = new RectList();
 }
 
 bool QSelectionLabel::isSelectionEmpty()

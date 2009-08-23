@@ -20,10 +20,14 @@
 #define _QSELECTIONLABEL_H_
 
 #include <QLabel>
+#include <QList>
+#include <QRect>
 
 class QRect;
 class QMouseEvent;
 class QPixmap;
+
+typedef QList<QRect> RectList;
 
 class QSelectionLabel : public QLabel
 {
@@ -46,6 +50,7 @@ protected:
     void keyPressEvent ( QKeyEvent * event );
     void keyReleaseEvent ( QKeyEvent * event );
 private:
+        RectList * rectList;
 	int x0, y0, x1, y1; 
 	bool selecting;
 	bool started;

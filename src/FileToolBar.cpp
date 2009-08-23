@@ -27,6 +27,7 @@
 #include <QDir>
 #include <QFile>
 #include <QMessageBox>
+#include <QMatrix>
 #include "utils.h"
 
 FileToolBar::FileToolBar(QWidget * parent):QToolBar(trUtf8("Loaded Images"), parent)
@@ -85,12 +86,23 @@ void FileToolBar::saveAll()
 {
     QFileDialog fd(this, trUtf8("Select a directory"), QDir::home().path());
     fd.setFileMode(QFileDialog::DirectoryOnly);
+    int rot = 0;
+    QPixmap pm;
     if (fd.exec()) {
         QFile file;
         QMapIterator<QString, QString> i(*filesMap);
         while (i.hasNext()) {
              i.next();
              file.setFileName(i.value());
+             rot = getRotation(i.value());
+             if (rot) {
+                pm.load(i.value());
+                if (!pm.isNull()) {
+                    QMatrix matrix;
+                    matrix.rotate(rot);
+                    pm = pm.transformed(matrix, Qt::SmoothTransformation);
+                }
+             }
              QString newName = fd.selectedFiles().at(0) + '/' + extractFileName(i.value());
              if (file.exists(newName)) {
                     QPixmap icon;
@@ -104,7 +116,10 @@ void FileToolBar::saveAll()
                     else
                         file.remove(newName);
              }
-             file.copy(newName);
+             if (rot && (!pm.isNull()))
+                 pm.save(newName);
+             else
+                file.copy(newName);
          }
 
     }
@@ -155,7 +170,7 @@ void FileToolBar::setRotation(int r)
 {
     if (currentImage != "") {
         rotMap->remove(currentImage);
-        rotMap->insert(currentImage, r);
+        rotMap->insert(currentImage, r % 360);
     }
 }
 
@@ -172,4 +187,14 @@ int FileToolBar::getRotation(const QString &name)
         return 0;
     QString internal = filesMap->keys(name).first();
     return rotMap->value(internal);
+}
+
+bool FileToolBar::fileLoaded(const QString &name)
+{
+    return filesMap->values().contains(name);
+}
+
+void FileToolBar::select(const QString &name)
+{
+    currentImage = filesMap->keys(name).first();
 }
