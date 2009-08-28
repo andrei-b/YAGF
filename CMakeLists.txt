@@ -1,7 +1,7 @@
 project(yagf C CXX)
 cmake_minimum_required(VERSION 2.6.0)
 set (CMAKE_IN_SOURCE_BUILD TRUE)
-set(SOURCES src/main.cpp src/mainform.cpp src/QSelectionLabel.cpp src/utils.cpp src/FileChannel.cpp src/spellchecker.cpp src/FileToolBar.cpp)
+set(SOURCES src/main.cpp src/mainform.cpp src/QSelectionLabel.cpp src/utils.cpp src/FileChannel.cpp src/spellchecker.cpp src/FileToolBar.cpp src/BlockAnalysis.cpp)
 set(INT_SOURCES src/preload.c)
 set(UIS src/mainform.ui)
 set(MOC_HEADERS src/mainform.h src/FileChannel.h src/QSelectionLabel.h src/FileToolBar.h)

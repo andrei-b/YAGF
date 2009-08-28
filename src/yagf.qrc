@@ -26,5 +26,7 @@
         <file alias="clear.png" >images/editclear.png</file>
         <file alias="batch.png" >images/batch.png</file>
         <file alias="remove.png" >images/remove.png</file>
+        <file alias="align.png" >images/align.png</file>
+        <file alias="undo.png" >images/undo.png</file>
     </qresource>
 </RCC>

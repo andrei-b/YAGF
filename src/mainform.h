@@ -61,6 +61,8 @@ private slots:
         void textChanged();
         void enlargeFont();
         void decreaseFont();
+        void alignButtonClicked();
+        void unalignButtonClicked();
 protected:
         bool eventFilter(QObject *object, QEvent *event);
 private:

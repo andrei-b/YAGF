@@ -55,6 +55,7 @@
 #include <QKeyEvent>
 #include <QFont>
 #include "FileToolBar.h"
+#include "BlockAnalysis.h"
 
 const QString version = "0.8.1";
 
@@ -181,6 +182,14 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
         connect(m_toolBar, SIGNAL(fileSelected(const QString &)), this, SLOT(fileSelected(const QString &)));
 
         connect(actionRecognize_All_Pages, SIGNAL(triggered()), this, SLOT(recognizeAll()));
+
+        QPixmap pm;
+        pm.load(":/align.png");
+        alignButton->setIcon(pm);
+        connect(alignButton, SIGNAL(clicked()), this, SLOT(alignButtonClicked()));
+        pm.load(":/undo.png");
+        unalignButton->setIcon(pm);
+        connect(unalignButton, SIGNAL(clicked()), this, SLOT(unalignButtonClicked()));
  }
 
 void MainForm::loadImage()
@@ -234,7 +243,7 @@ void MainForm::rotateImage(int deg)
 		QPixmap pix = ((QLabel*)(scrollArea->widget()))->pixmap()->transformed(matrix);
 		//pix.transformed(matrix);
 		((QLabel*)(scrollArea->widget()))->setPixmap(pix);
-		pix = pixmap->transformed(matrix);
+                pix = pixmap->transformed(matrix, Qt::SmoothTransformation);
 		delete pixmap;
 		pixmap = new QPixmap(pix);
                 rotation += deg;
@@ -838,4 +847,27 @@ void MainForm::recognizeAll()
                 recognize();
             }
     }
+}
+
+void MainForm::alignButtonClicked()
+{
+    QRect rect = ((QSelectionLabel *) scrollArea->widget())->getSelectedRect();
+    QPixmap pix = pixmap->copy(rect.x()/scaleFactor, rect.y()/scaleFactor, rect.width()/scaleFactor, rect.height()/scaleFactor);
+    QPixmapCache::clear();
+    BlockAnalysis * blockAnalysis = new BlockAnalysis(&pix);
+    int rot = blockAnalysis->getSkew();
+    int tmpr = rotation;
+     rotateImage(rot);
+    if (rot)
+        scaleImage(1.01);
+    rotation = tmpr;
+    delete blockAnalysis;
+}
+
+void MainForm::unalignButtonClicked()
+{
+    int rot = ((FileToolBar *) m_toolBar)->getRotation();
+    int rrot = ((rot + 45)/90);
+    rrot *=90;
+    rotateImage(rrot - rot);
 }
