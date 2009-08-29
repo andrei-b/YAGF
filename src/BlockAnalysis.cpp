@@ -108,20 +108,90 @@ void BlockAnalysis::countLinesInImg(int factor, int d)
     longestCount[2] = longestCount[1];
     longestCount[1] = longestCount[0];
     longestCount[0] = 0;
-    meidumLength[2] = meidumLength[1];
-    meidumLength[1] = meidumLength[0];
-    meidumLength[0] = 0;
     for (int i = m_coords->top(); i < m_coords->height(); i++) {
         if (longestLine[0] - linesInfo[i] < 5)
             longestCount[0]++;
-        meidumLength[0] += linesInfo[i];
     }
 
 #ifdef DEBUG
   QImage im = m_image->copy(*m_coords);
   im.save("/home/andrei/ttt.jpg", "JPEG");
 #endif
-    meidumLength[0] = (meidumLength[0]*100)/(m_coords->height() - m_coords->top());
+
+}
+
+int BlockAnalysis::getSkew1()
+{
+   createLinesInfo();
+   preScan1();
+   int ll, lc;
+   int ll1, lc1, div1, dir1;
+   int ll2, lc2, div2, dir2;
+
+   if (m_coords->width() > 1024)
+       m_coords->setWidth(1024);
+   if (m_coords->height() > m_coords->width()/2)
+    m_coords->setHeight(m_coords->width()/2);
+   countLinesInImg(m_coords->width(), 0);
+   ll = longestLine[0];
+   lc = longestCount[0];
+   int div = 2;
+   int direction = 1;
+   countLinesInImg(m_coords->width()/div, direction);
+   int safe = 0;
+   while ((longestLine[0] >= longestLine[1])&&(longestCount[0] >= longestCount[1])&&(safe < 512)) {
+       div++;
+       countLinesInImg(m_coords->width()/div, direction);
+       safe++;
+   }
+   ll1 = longestLine[0];
+   lc1 = longestCount[0];
+   div1 = div;
+   dir1 = direction;
+   longestLine[0] = ll;
+   longestCount[0] = lc;
+   div = 2;
+   direction = - direction;
+   countLinesInImg(m_coords->width()/div, direction);
+   safe = 0;
+   while ((longestLine[0] >= longestLine[1])&&(longestCount[0] >= longestCount[1])&&(safe < 512)) {
+       div++;
+       countLinesInImg(m_coords->width()/div, direction);
+       safe++;
+   }
+   ll2 = longestLine[0];
+   lc2 = longestCount[0];
+   div2 = div;
+   dir2 = direction;
+   int rdir;
+   int rdiv;
+   if ((ll1 > ll2)&&(lc1 > lc2)) {
+       rdir = dir1;
+       rdiv = div1;
+   } else {
+       rdir = dir2;
+       rdiv = div2;
+   }
+   float result= atan(((float)(rdiv -1))/((float)m_coords->width())*rdir)/M_2_PI*360;
+   QMatrix m;
+   m.rotate(result);
+   QImage * tmp = m_image;
+   m_image = new QImage(tmp->transformed(m, Qt::SmoothTransformation).convertToFormat(QImage::Format_RGB32));
+   *m_coords = m_image->rect();
+   delete linesInfo;
+   delete lines;
+   delete tmp;
+   createLinesInfo();
+   preScan1();
+   countLinesInImg(m_coords->width(), 0);
+   if ((ll > longestLine[0])&&(lc > longestCount[0]))
+       result = 0;
+   if (((float)longestLine[0])/((float)m_coords->width()) < 0.8)
+       result = 0;
+
+   delete linesInfo;
+   delete lines;
+   return result;
 }
 
 int BlockAnalysis::getSkew()
@@ -129,8 +199,8 @@ int BlockAnalysis::getSkew()
    createLinesInfo();
    preScan1();
    int ll, lc;
-   if (m_coords->width() > 1024)
-       m_coords->setWidth(1024);
+   if (m_coords->width() > 1536)
+       m_coords->setWidth(1536);
    if (m_coords->height() > m_coords->width()/2)
     m_coords->setHeight(m_coords->width()/2);
    countLinesInImg(m_coords->width(), 0);
@@ -153,7 +223,7 @@ int BlockAnalysis::getSkew()
    int div = 4;
    countLinesInImg(m_coords->width()/div, direction);
    int safe = 0;
-   while ((longestLine[0] >= longestLine[1])&&(longestCount[0] >= longestCount[1])&&(safe < 60)) {
+   while ((longestLine[0] >= longestLine[1])&&(longestCount[0] >= longestCount[1])&&(safe < 512)) {
        div++;
        countLinesInImg(m_coords->width()/div, direction);
        direction = - direction;

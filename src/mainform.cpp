@@ -484,6 +484,8 @@ void MainForm::loadFile(const QString &fn)
                 rotateImage(deg);
                 ((FileToolBar *) m_toolBar)->setRotation(rotation);
                 displayLabel->setFocus();
+                rotation = (rotation + 45)/90;
+                rotation *=90;
 	}
 }
 
@@ -857,9 +859,10 @@ void MainForm::alignButtonClicked()
     BlockAnalysis * blockAnalysis = new BlockAnalysis(&pix);
     int rot = blockAnalysis->getSkew();
     int tmpr = rotation;
-     rotateImage(rot);
-    if (rot)
+    if (rot) {
+        rotateImage(rot);
         scaleImage(1.01);
+    }
     rotation = tmpr;
     delete blockAnalysis;
 }

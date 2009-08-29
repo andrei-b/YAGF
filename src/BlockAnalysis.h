@@ -30,6 +30,7 @@ class BlockAnalysis {
     BlockAnalysis(QPixmap * pixmap);
     ~BlockAnalysis();
     int getSkew();
+    int getSkew1();
     QRect getCoords();
     QPixmap getPixmap();
 private:
@@ -37,7 +38,6 @@ private:
     char ** m_blockMap;
     int longestLine[3];
     int longestCount[3];
-    int meidumLength[3];
     QRect * m_coords;
     qint64 mtreshold;
     quint16 * linesInfo;
