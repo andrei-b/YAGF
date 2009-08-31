@@ -853,11 +853,13 @@ void MainForm::recognizeAll()
 
 void MainForm::alignButtonClicked()
 {
+    if (((QSelectionLabel *) scrollArea->widget())->pixmap()->isNull())
+        return;
     QRect rect = ((QSelectionLabel *) scrollArea->widget())->getSelectedRect();
     QPixmap pix = pixmap->copy(rect.x()/scaleFactor, rect.y()/scaleFactor, rect.width()/scaleFactor, rect.height()/scaleFactor);
     QPixmapCache::clear();
     BlockAnalysis * blockAnalysis = new BlockAnalysis(&pix);
-    int rot = blockAnalysis->getSkew();
+    int rot = blockAnalysis->getSkew1();
     int tmpr = rotation;
     if (rot) {
         rotateImage(rot);
@@ -869,6 +871,8 @@ void MainForm::alignButtonClicked()
 
 void MainForm::unalignButtonClicked()
 {
+    if (((QSelectionLabel *) scrollArea->widget())->pixmap()->isNull())
+        return;
     int rot = ((FileToolBar *) m_toolBar)->getRotation();
     int rrot = ((rot + 45)/90);
     rrot *=90;

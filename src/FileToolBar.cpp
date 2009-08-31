@@ -28,7 +28,10 @@
 #include <QFile>
 #include <QMessageBox>
 #include <QMatrix>
+#include <QMultiMap>
+#include <QRect>
 #include "utils.h"
+
 
 FileToolBar::FileToolBar(QWidget * parent):QToolBar(trUtf8("Loaded Images"), parent)
 {
@@ -38,6 +41,7 @@ FileToolBar::FileToolBar(QWidget * parent):QToolBar(trUtf8("Loaded Images"), par
     filesMap = new StringMap();
     rotMap = new IntMap();
     scaleMap = new FloatMap();
+    blocksMap = new BlocksMap();
     saveButton = NULL;
     clearButton = NULL;
     removeButton = NULL;
@@ -136,6 +140,7 @@ void FileToolBar::clearAll()
     filesMap->clear();
     rotMap->clear();
     scaleMap->clear();
+    blocksMap->clear();
 }
 
 QStringList FileToolBar::getFileNames()
@@ -158,6 +163,7 @@ void FileToolBar::remove()
             this->removeAction(actions().at(i));
             filesMap->remove(currentImage);
             rotMap->remove(currentImage);
+            blocksMap->remove(currentImage);
             scaleMap->remove(currentImage);
             currentImage = "";
             if (filesMap->count() > 0) {
@@ -215,4 +221,21 @@ bool FileToolBar::fileLoaded(const QString &name)
 void FileToolBar::select(const QString &name)
 {
     currentImage = filesMap->keys(name).first();
+}
+
+void FileToolBar::addBlock(const QRect &rect)
+{
+    if (currentImage == "")
+        return;
+    blocksMap->insert(currentImage, rect);
+}
+
+RectList FileToolBar::getBlocks()
+{
+    return blocksMap->values(currentImage);
+}
+
+void FileToolBar::clearBlocks()
+{
+    blocksMap->remove(currentImage);
 }

@@ -31,6 +31,11 @@ typedef QMap<QString, float> FloatMap;
 
 class QPixmap;
 class QPushButton;
+class QRect;
+
+typedef QList<QRect> RectList;
+typedef class QMultiMap<QString, QRect> BlocksMap;
+
 
 class FileToolBar : public QToolBar
 {
@@ -43,6 +48,9 @@ public:
     void setScale(float s);
     float getScale();
     int getRotation();
+    void addBlock(const QRect &rect);
+    RectList getBlocks();
+    void clearBlocks();
     int getRotation(const QString &name);
     bool fileLoaded(const QString &name);
     void select(const QString &name);
@@ -53,6 +61,7 @@ private:
     StringMap * filesMap;
     IntMap * rotMap;
     FloatMap * scaleMap;
+    BlocksMap * blocksMap;
     QPushButton * saveButton;
     QPushButton * clearButton;
     QPushButton * removeButton;
