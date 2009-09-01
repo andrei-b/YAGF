@@ -120,6 +120,87 @@ void BlockAnalysis::countLinesInImg(int factor, int d)
 
 }
 
+void BlockAnalysis::countLinesInImg(QImage * _image)
+{
+     mtreshold = 0;
+    linesInfo = new quint16[_image->rect().height() + _image->rect().top()];
+    for (int i = 0; i < _image->rect().height() + _image->rect().top(); i++)
+        linesInfo[i] = 0;
+    lines = new QRgb * [_image->rect().height() + _image->rect().top()];
+
+    for (int i = _image->rect().top()+_image->rect().height()/8; i < _image->rect().height()-_image->rect().height()/8; i++) {
+        QRgb * line = (QRgb *) (m_image->scanLine(i));
+        lines[i] = line;
+        for (int j = _image->rect().left()+_image->rect().width()/8; j < _image->rect().width()-_image->rect().width()/8; j++) {
+            mtreshold = mtreshold + qRed(line[j]) + qGreen(line[j]) + qBlue(line[j]);
+        }
+    }
+    int div = (_image->rect().height()-_image->rect().top())*(_image->rect().width()-_image->rect().left());
+    mtreshold = mtreshold /div;
+
+
+    if (_image->isNull())
+        return;
+    for (int i = _image->rect().top()+_image->rect().height()/8; i < _image->rect().height()-_image->rect().height()/8; i++) {
+        for (int j = _image->rect().left()+_image->rect().width()/8; j < _image->rect().width()-_image->rect().width()/8; j++) {
+            int k = qRed(lines[i][j]) + qGreen(lines[i][j]) + qBlue(lines[i][j]);
+            if ( k >= mtreshold-1) {
+                linesInfo[i]++;
+#ifdef DEBUG
+                if (d != 0)
+                    m_image->setPixel(j, l, (1 <<32) + 1);
+#endif
+
+            }
+            else
+                break;
+        }
+    }
+    longestLine[2] = longestLine[1];
+    longestLine[1] = longestLine[0];
+    longestLine[0] = linesInfo[0];
+    for (int i = _image->rect().top(); i < _image->rect().height() ; i++)
+        if (linesInfo[i] > longestLine[0])
+            longestLine[0] = linesInfo[i];
+    longestCount[2] = longestCount[1];
+    longestCount[1] = longestCount[0];
+    longestCount[0] = 0;
+    for (int i = _image->rect().top(); i < _image->rect().height(); i++) {
+        if (longestLine[0] - linesInfo[i] < 5)
+            longestCount[0]++;
+    }
+
+#ifdef DEBUG
+  QImage im = m_image->copy(*m_coords);
+  im.save("/home/andrei/ttt.jpg", "JPEG");
+#endif
+delete lines;
+delete linesInfo;
+}
+
+
+int BlockAnalysis::getSkew2()
+{
+    int ll[7], lc[7];
+    for (int i = 0; i < 7; i++) {
+        QMatrix m;
+        m.rotate((i-3)*2);
+        QImage img = m_image->transformed(m, Qt::SmoothTransformation).convertToFormat(QImage::Format_RGB32);
+        img = img.copy(img.rect());
+        countLinesInImg(&img);
+        ll[i] = longestLine[0];
+        lc[i] = longestCount[0];
+    }
+    int imax = 0;
+    for (int i = 0; i < 7; i++) {
+        if ((ll[i] > ll[imax])&&(lc[i] > lc[imax])) {
+            imax = i;
+        }
+    }
+    int result = (imax - 3)*2;
+    return result;
+}
+
 int BlockAnalysis::getSkew1()
 {
    createLinesInfo();
@@ -177,17 +258,21 @@ int BlockAnalysis::getSkew1()
    m.rotate(result);
    QImage * tmp = m_image;
    m_image = new QImage(tmp->transformed(m, Qt::SmoothTransformation).convertToFormat(QImage::Format_RGB32));
+   delete tmp;
+   tmp = m_image;
+   m_image = new QImage(tmp->scaled(QSize(tmp->width(), tmp->height())*1.1).convertToFormat(QImage::Format_RGB32));
+   delete tmp;
    *m_coords = m_image->rect();
    delete linesInfo;
    delete lines;
-   delete tmp;
    createLinesInfo();
    preScan1();
    countLinesInImg(m_coords->width(), 0);
-   if ((ll > longestLine[0])&&(lc > longestCount[0]))
-       result = 0;
-   if (((float)longestLine[0])/((float)m_coords->width()) < 0.8)
-       result = 0;
+   if ((ll > longestLine[0])&&(lc > longestCount[0])) {
+     result = 0;
+ }
+//   if (((float)longestLine[0])/((float)m_coords->width()) < 0.8)
+//      result = 0;
 
    delete linesInfo;
    delete lines;

@@ -31,6 +31,7 @@ class BlockAnalysis {
     ~BlockAnalysis();
     int getSkew();
     int getSkew1();
+    int getSkew2();
     QRect getCoords();
     QPixmap getPixmap();
 private:
@@ -46,6 +47,7 @@ private:
     void newBlock();
     void deleteBlock();
     void countLinesInImg(int factor, int d);
+    void countLinesInImg(QImage * _image);
     void preScan1();
     void deleteLines();
     bool badImage;

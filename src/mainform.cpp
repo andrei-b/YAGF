@@ -859,7 +859,7 @@ void MainForm::alignButtonClicked()
     QPixmap pix = pixmap->copy(rect.x()/scaleFactor, rect.y()/scaleFactor, rect.width()/scaleFactor, rect.height()/scaleFactor);
     QPixmapCache::clear();
     BlockAnalysis * blockAnalysis = new BlockAnalysis(&pix);
-    int rot = blockAnalysis->getSkew1();
+    int rot = blockAnalysis->getSkew();
     int tmpr = rotation;
     if (rot) {
         rotateImage(rot);
@@ -877,4 +877,5 @@ void MainForm::unalignButtonClicked()
     int rrot = ((rot + 45)/90);
     rrot *=90;
     rotateImage(rrot - rot);
+    rotation = rrot;
 }

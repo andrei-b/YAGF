@@ -130,8 +130,10 @@ void SpellChecker::_checkWord(QTextCursor * cursor)
             return;
         //selText.remove("«");
         //selText.remove("»");
-        //selText.remove("\"");
-        QByteArray ba = cursor->selectedText().toUtf8();
+        selText.remove("\"");
+        selText.remove("(");
+        selText.remove(")");
+        QByteArray ba = selText.toUtf8();
         if ((aspell_speller_check(spell_checker1, ba.data(), ba.size())== 0) &&
             (aspell_speller_check(spell_checker2, ba.data(), ba.size())== 0)) {
             QTextCharFormat fmt = cursor->charFormat();
