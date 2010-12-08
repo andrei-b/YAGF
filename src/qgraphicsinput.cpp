@@ -12,6 +12,7 @@ QGraphicsInput::QGraphicsInput(const QRectF & sceneRect, QGraphicsView * view) :
     selecting  = NoSelect;
     hasImage = false;
     m_LastSelected = 0;
+    m_scale = 1;
 }
 
 bool QGraphicsInput::loadImage(const QPixmap &image)
@@ -48,11 +49,17 @@ void QGraphicsInput::mousePressEvent ( QGraphicsSceneMouseEvent * event )
         return;
     if (event->buttons() == Qt::LeftButton) {
         if (selecting == NoSelect) {
-            selecting = StartSelect;
-            blockRect.setLeft(event->lastScenePos().x());
-            blockRect.setTop(event->lastScenePos().y());
-            blockRect.setWidth(10);
-            blockRect.setHeight(10);
+            if (this->nearActiveBorder(event->scenePos().x(), event->scenePos().y())) {
+                m_CurrentBlockRect = m_LastSelected;
+                selecting = Selecting;
+                blockRect = m_CurrentBlockRect->rect();
+            } else {
+                selecting = StartSelect;
+                blockRect.setLeft(event->lastScenePos().x());
+                blockRect.setTop(event->lastScenePos().y());
+                blockRect.setWidth(10);
+                blockRect.setHeight(10);
+            }
         } else {
         //TODO!!!
         }
@@ -64,6 +71,8 @@ void QGraphicsInput::mouseReleaseEvent(QGraphicsSceneMouseEvent *mouseEvent)
     if (selecting == Selecting) {
         selecting = NoSelect;
         if ((blockRect.width() < 12)||(blockRect.height() < 12)) {
+            if (m_CurrentBlockRect == m_LastSelected)
+                m_LastSelected = 0;
             this->removeItem(m_CurrentBlockRect);
             //clik!!!
             leftMouseRelease(mouseEvent->scenePos().x(), mouseEvent->scenePos().y());
@@ -89,6 +98,7 @@ void QGraphicsInput::mouseMoveEvent(QGraphicsSceneMouseEvent *mouseEvent)
         p.setWidth(2);
         p.setColor(QColor(0,0, 255));
         m_CurrentBlockRect = this->addRect(blockRect, p, b);
+        m_CurrentBlockRect->setAcceptHoverEvents(true);
         m_CurrentBlockRect->setZValue(1);
         m_CurrentBlockRect->setData(1, "block");
         m_CurrentBlockRect->setData(2, "no");
@@ -113,6 +123,12 @@ void QGraphicsInput::mouseMoveEvent(QGraphicsSceneMouseEvent *mouseEvent)
              }
         blockRect = newRect;
         return;
+    }
+    if (mouseEvent->buttons() == Qt::NoButton) {
+        if (this->nearActiveBorder(mouseEvent->scenePos().x(), mouseEvent->scenePos().y()))
+            m_view->setCursor(Qt::SizeAllCursor);
+        else
+            m_view->setCursor(Qt::ArrowCursor);
     }
 }
 
@@ -146,5 +162,55 @@ void QGraphicsInput::leftMouseRelease(qreal x, qreal y)
             r->setBrush(b);
         }
     }
+
+}
+
+bool QGraphicsInput::nearActiveBorder(qreal x, qreal y)
+{
+    if (m_LastSelected) {
+        qreal xcenter = m_LastSelected->rect().center().x();
+        qreal ycenter = m_LastSelected->rect().center().y();
+        qreal xd = abs(x-xcenter);
+        qreal yd = abs(y-ycenter);
+        if ((abs(abs(m_LastSelected->rect().left() - xcenter) - xd) <= 4) &&
+                    (abs(abs(m_LastSelected->rect().top() - ycenter) - yd) <= abs(m_LastSelected->rect().top() - ycenter)))
+            return true;
+        if ((abs(abs(m_LastSelected->rect().left() - xcenter) - xd) <= abs(m_LastSelected->rect().left() - xcenter)) &&
+                    (abs(abs(m_LastSelected->rect().top() - ycenter) - yd) <= 4))
+            return true;
+
+    }
+    return false;
+}
+
+QPixmap QGraphicsInput::getActiveBlock()
+{
+    return extractPixmap(m_LastSelected);
+}
+
+QPixmap QGraphicsInput::extractPixmap(QGraphicsRectItem *item)
+{
+    if ((item == 0) || (!hasImage)) {
+        return 0;
+    }
+//    QMessageBox::critical(0,QString::number(m_LastSelected->rect().right()), QString::number(m_LastSelected->rect().bottom()));
+    int imgl, imgt, imgr, imgb;
+ //   imgl = item->mapToItem(m_image, item->rect().left(), item->rect().top()).x();
+ //   imgt = item->mapToItem(m_image, item->rect().left(), item->rect().top()).y();
+ //   imgr = item->mapToItem(m_image, item->rect().right(), item->rect().bottom()).x();
+ //   imgb = item->mapToItem(m_image, item->rect().right(), item->rect().bottom()).y();
+       imgl = item->rect().left();
+       imgt = item->rect().top();
+       imgr = item->rect().right();
+       imgb = item->rect().bottom();
+    return m_image->pixmap().copy(imgl, imgt,imgr-imgl,imgb-imgt);
+}
+
+void QGraphicsInput::setScale(qreal scale)
+{
+    if (scale == 0)
+        return;
+    m_scale = scale/m_scale;
+    this->m_view->scale(m_scale,  m_scale);
 
 }

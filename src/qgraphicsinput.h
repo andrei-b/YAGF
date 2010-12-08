@@ -24,6 +24,8 @@ public:
     explicit QGraphicsInput(const QRectF & sceneRect, QGraphicsView * view = 0);
     bool loadImage(const QPixmap &image);
     void setView(QGraphicsView * view);
+    QPixmap getActiveBlock();
+    void setScale(qreal scale);
 protected:
     virtual void mousePressEvent ( QGraphicsSceneMouseEvent * event );
     virtual void mouseMoveEvent ( QGraphicsSceneMouseEvent * mouseEvent );
@@ -34,6 +36,8 @@ signals:
 public slots:
 private:
     void leftMouseRelease(qreal x, qreal y);
+    bool nearActiveBorder(qreal x, qreal y);
+    QPixmap extractPixmap(QGraphicsRectItem * item);
     QGraphicsView * m_view;
     QGraphicsPixmapItem * m_image;
     QGraphicsRectItem * m_CurrentBlockRect;
@@ -41,6 +45,7 @@ private:
     SelectStates selecting;
     QRectF blockRect;
     bool hasImage;
+    qreal  m_scale;
 };
 
 #endif // QGRAPHICSINPUT_H
