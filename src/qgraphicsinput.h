@@ -10,6 +10,13 @@ class QGraphicsRectItem;
 class QPixmap;
 
 
+enum SelectStates {
+    NoSelect = 0,
+    StartSelect,
+    Selecting
+};
+
+
 class QGraphicsInput : public QGraphicsScene
 {
     Q_OBJECT
@@ -22,13 +29,16 @@ protected:
     virtual void mouseMoveEvent ( QGraphicsSceneMouseEvent * mouseEvent );
     virtual void mouseReleaseEvent ( QGraphicsSceneMouseEvent * mouseEvent);
 signals:
-
+    void leftMouseClicked(int x, int y, bool blockSelected);
+    void rightMouseClicked(int x, int y, bool inTheBlock);
 public slots:
 private:
+    void leftMouseRelease(qreal x, qreal y);
     QGraphicsView * m_view;
     QGraphicsPixmapItem * m_image;
     QGraphicsRectItem * m_CurrentBlockRect;
-    bool selecting;
+    QGraphicsRectItem * m_LastSelected;
+    SelectStates selecting;
     QRectF blockRect;
     bool hasImage;
 };

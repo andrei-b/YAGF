@@ -9,8 +9,9 @@ QGraphicsInput::QGraphicsInput(const QRectF & sceneRect, QGraphicsView * view) :
 {
     setView(view);
     m_image = 0;
-    selecting  = false;
+    selecting  = NoSelect;
     hasImage = false;
+    m_LastSelected = 0;
 }
 
 bool QGraphicsInput::loadImage(const QPixmap &image)
@@ -46,20 +47,12 @@ void QGraphicsInput::mousePressEvent ( QGraphicsSceneMouseEvent * event )
     if (!hasImage)
         return;
     if (event->buttons() == Qt::LeftButton) {
-        if (!selecting) {
-            selecting = true;
+        if (selecting == NoSelect) {
+            selecting = StartSelect;
             blockRect.setLeft(event->lastScenePos().x());
             blockRect.setTop(event->lastScenePos().y());
             blockRect.setWidth(10);
             blockRect.setHeight(10);
-            QPen p(Qt::SolidLine);
-            QBrush b(Qt::SolidPattern);
-            b.setColor(QColor(0,0,127,127));
-            p.setWidth(2);
-            p.setColor(QColor(0,0, 255));
-            m_CurrentBlockRect = this->addRect(blockRect, p, b);
-            m_CurrentBlockRect->setZValue(1);
-            m_CurrentBlockRect->setData(1, "block");
         } else {
         //TODO!!!
         }
@@ -68,13 +61,41 @@ void QGraphicsInput::mousePressEvent ( QGraphicsSceneMouseEvent * event )
 
 void QGraphicsInput::mouseReleaseEvent(QGraphicsSceneMouseEvent *mouseEvent)
 {
-    selecting = false;
+    if (selecting == Selecting) {
+        selecting = NoSelect;
+        if ((blockRect.width() < 12)||(blockRect.height() < 12)) {
+            this->removeItem(m_CurrentBlockRect);
+            //clik!!!
+            leftMouseRelease(mouseEvent->scenePos().x(), mouseEvent->scenePos().y());
+        }
+        m_CurrentBlockRect = 0;
+    }
+    if (selecting == StartSelect) {
+        selecting = NoSelect;
+        m_CurrentBlockRect = 0;
+        leftMouseRelease(mouseEvent->scenePos().x(), mouseEvent->scenePos().y());
+    }
+
 }
 
 
 void QGraphicsInput::mouseMoveEvent(QGraphicsSceneMouseEvent *mouseEvent)
 {
-    if (selecting) {
+    if (selecting == StartSelect) {
+        selecting = Selecting;
+        QPen p(Qt::SolidLine);
+        QBrush b(Qt::SolidPattern);
+        b.setColor(QColor(0,0,127,127));
+        p.setWidth(2);
+        p.setColor(QColor(0,0, 255));
+        m_CurrentBlockRect = this->addRect(blockRect, p, b);
+        m_CurrentBlockRect->setZValue(1);
+        m_CurrentBlockRect->setData(1, "block");
+        m_CurrentBlockRect->setData(2, "no");
+    }
+    if (selecting == Selecting)
+    {
+
         QRectF newRect = blockRect;
         if (newRect.left() < mouseEvent->lastScenePos().x())
             newRect.setRight(mouseEvent->lastScenePos().x());
@@ -93,4 +114,37 @@ void QGraphicsInput::mouseMoveEvent(QGraphicsSceneMouseEvent *mouseEvent)
         blockRect = newRect;
         return;
     }
+}
+
+void QGraphicsInput::leftMouseRelease(qreal x, qreal y)
+{
+    QGraphicsItem * it = this->itemAt(x, y);
+    if (it) {
+        if (it->data(1).toString() == "block") {
+            QGraphicsRectItem * r = (QGraphicsRectItem*) it;
+            QPen p(Qt::SolidLine);
+            QBrush b(Qt::SolidPattern);
+            b.setColor(QColor(0,0,127,127));
+            p.setColor(QColor(0, 0, 255));
+            p.setWidth(2);
+            if (r->data(2).toString() == "no") {
+                //select block!!!!
+                if (m_LastSelected) {
+                    m_LastSelected->setPen(p);
+                    m_LastSelected->setBrush(b);
+                    m_LastSelected->setData(2, "no");
+                }
+                b.setColor(QColor(127,0,0,127));
+                p.setColor(QColor(255,0,0));
+                r->setData(2, "yes");
+                m_LastSelected = r;
+            } else {
+                m_LastSelected = 0;
+                r->setData(2, "no");
+            }
+            r->setPen(p);
+            r->setBrush(b);
+        }
+    }
+
 }
