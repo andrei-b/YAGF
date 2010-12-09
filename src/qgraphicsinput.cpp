@@ -13,6 +13,8 @@ QGraphicsInput::QGraphicsInput(const QRectF & sceneRect, QGraphicsView * view) :
     hasImage = false;
     m_LastSelected = 0;
     m_scale = 1;
+    real_scale = 1;
+    buttonPressed = Qt::NoButton;
 }
 
 bool QGraphicsInput::loadImage(const QPixmap &image)
@@ -48,6 +50,7 @@ void QGraphicsInput::mousePressEvent ( QGraphicsSceneMouseEvent * event )
     if (!hasImage)
         return;
     if (event->buttons() == Qt::LeftButton) {
+        buttonPressed = Qt::LeftButton;
         if (selecting == NoSelect) {
             if (this->nearActiveBorder(event->scenePos().x(), event->scenePos().y())) {
                 m_CurrentBlockRect = m_LastSelected;
@@ -63,28 +66,45 @@ void QGraphicsInput::mousePressEvent ( QGraphicsSceneMouseEvent * event )
         } else {
         //TODO!!!
         }
-    }
+    } else
+        buttonPressed = Qt::RightButton;
+}
+
+void QGraphicsInput::deleteBlockRect(QGraphicsRectItem *item)
+{
+    if (item == 0)
+        return;
+    if (item == m_CurrentBlockRect)
+        m_CurrentBlockRect = 0;
+    if (item == m_LastSelected)
+        m_LastSelected = 0;
+    removeItem(item);
 }
 
 void QGraphicsInput::mouseReleaseEvent(QGraphicsSceneMouseEvent *mouseEvent)
 {
-    if (selecting == Selecting) {
-        selecting = NoSelect;
-        if ((blockRect.width() < 12)||(blockRect.height() < 12)) {
-            if (m_CurrentBlockRect == m_LastSelected)
-                m_LastSelected = 0;
-            this->removeItem(m_CurrentBlockRect);
-            //clik!!!
+    if (buttonPressed == Qt::LeftButton) {
+        if (selecting == Selecting) {
+            selecting = NoSelect;
+            if ((blockRect.width() < 12)||(blockRect.height() < 12)) {
+                if (m_CurrentBlockRect == m_LastSelected)
+                    m_LastSelected = 0;
+                    deleteBlockRect(m_CurrentBlockRect);
+                //clik!!!
+                leftMouseRelease(mouseEvent->scenePos().x(), mouseEvent->scenePos().y());
+            }
+            m_CurrentBlockRect = 0;
+        }
+        if (selecting == StartSelect) {
+            selecting = NoSelect;
+            m_CurrentBlockRect = 0;
             leftMouseRelease(mouseEvent->scenePos().x(), mouseEvent->scenePos().y());
         }
-        m_CurrentBlockRect = 0;
     }
-    if (selecting == StartSelect) {
-        selecting = NoSelect;
-        m_CurrentBlockRect = 0;
-        leftMouseRelease(mouseEvent->scenePos().x(), mouseEvent->scenePos().y());
+    if (buttonPressed == Qt::RightButton) {
+        this->rightMouseRelease(mouseEvent->scenePos().x(), mouseEvent->scenePos().y());
     }
-
+    buttonPressed = Qt::NoButton;
 }
 
 
@@ -160,10 +180,26 @@ void QGraphicsInput::leftMouseRelease(qreal x, qreal y)
             }
             r->setPen(p);
             r->setBrush(b);
+   //         m_CurrentBlockRect = r;
         }
-    }
-
+    } else
+        m_CurrentBlockRect = 0;
+    emit leftMouseClicked(x, y, m_CurrentBlockRect != 0);
 }
+
+
+void QGraphicsInput::rightMouseRelease(qreal x, qreal y)
+{
+    QGraphicsItem * it = this->itemAt(x, y);
+    if (it) {
+        if (it->data(1).toString() == "block") {
+            m_CurrentBlockRect = (QGraphicsRectItem*) it;
+        }
+    } else
+        m_CurrentBlockRect = 0;
+    emit rightMouseClicked(x, y, m_CurrentBlockRect != 0);
+}
+
 
 bool QGraphicsInput::nearActiveBorder(qreal x, qreal y)
 {
@@ -188,6 +224,12 @@ QPixmap QGraphicsInput::getActiveBlock()
     return extractPixmap(m_LastSelected);
 }
 
+QPixmap QGraphicsInput::getCurrentBlock()
+{
+    return extractPixmap(m_CurrentBlockRect);
+}
+
+
 QPixmap QGraphicsInput::extractPixmap(QGraphicsRectItem *item)
 {
     if ((item == 0) || (!hasImage)) {
@@ -206,11 +248,63 @@ QPixmap QGraphicsInput::extractPixmap(QGraphicsRectItem *item)
     return m_image->pixmap().copy(imgl, imgt,imgr-imgl,imgb-imgt);
 }
 
-void QGraphicsInput::setScale(qreal scale)
+void QGraphicsInput::setViewScale(qreal scale)
 {
     if (scale == 0)
         return;
+    real_scale = scale * m_scale;
     m_scale = scale/m_scale;
     this->m_view->scale(m_scale,  m_scale);
 
+}
+
+int QGraphicsInput::blocksCount()
+{
+    int res = 0;
+    for (int i = 0; i < items().count(); i++)
+        if (items().at(i)->data(1) == "block")
+            res++;
+    return res;
+}
+
+void QGraphicsInput::deleteBlock(int index)
+{
+    int count = 0;
+    for (int i = 0; i < items().count(); i++) {
+        if (items().at(i)->data(1) == "block") {
+            if (index == count) {
+                deleteBlockRect((QGraphicsRectItem *)items().at(i));
+                return;
+           }
+           count++;
+        }
+    }
+}
+
+QPixmap QGraphicsInput::getBlockByIndex(int index)
+{
+    int count = 0;
+    for (int i = 0; i < items().count(); i++) {
+        if (items().at(i)->data(1) == "block") {
+            if (index == count) {
+                return extractPixmap((QGraphicsRectItem *)items().at(i));
+           }
+           count++;
+        }
+    }
+    return 0;
+}
+
+void QGraphicsInput::clearBlocks()
+{
+    for (int i = items().count() - 1; i >= 0; i--) {
+        if (items().at(i)->data(1) == "block") {
+                deleteBlockRect((QGraphicsRectItem *)items().at(i));
+           }
+    }
+}
+
+qreal QGraphicsInput::getRealScale()
+{
+    return real_scale;
 }

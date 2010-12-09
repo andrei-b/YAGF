@@ -25,7 +25,14 @@ public:
     bool loadImage(const QPixmap &image);
     void setView(QGraphicsView * view);
     QPixmap getActiveBlock();
-    void setScale(qreal scale);
+    QPixmap getCurrentBlock();
+    void setViewScale(qreal scale);
+    void rotateImage();
+    int blocksCount();
+    void deleteBlock(int index);
+    QPixmap getBlockByIndex(int index);
+    void clearBlocks();
+    qreal getRealScale();
 protected:
     virtual void mousePressEvent ( QGraphicsSceneMouseEvent * event );
     virtual void mouseMoveEvent ( QGraphicsSceneMouseEvent * mouseEvent );
@@ -36,8 +43,10 @@ signals:
 public slots:
 private:
     void leftMouseRelease(qreal x, qreal y);
+    void rightMouseRelease(qreal x, qreal y);
     bool nearActiveBorder(qreal x, qreal y);
     QPixmap extractPixmap(QGraphicsRectItem * item);
+    void deleteBlockRect(QGraphicsRectItem * item);
     QGraphicsView * m_view;
     QGraphicsPixmapItem * m_image;
     QGraphicsRectItem * m_CurrentBlockRect;
@@ -46,6 +55,9 @@ private:
     QRectF blockRect;
     bool hasImage;
     qreal  m_scale;
+    qreal real_scale;
+    qreal real_rotate;
+    Qt::MouseButton buttonPressed;
 };
 
 #endif // QGRAPHICSINPUT_H
