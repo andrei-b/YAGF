@@ -22,17 +22,20 @@ class QGraphicsInput : public QGraphicsScene
     Q_OBJECT
 public:
     explicit QGraphicsInput(const QRectF & sceneRect, QGraphicsView * view = 0);
-    bool loadImage(const QPixmap &image);
+    bool loadImage(const QPixmap &image, bool clearBlocks = true);
     void setView(QGraphicsView * view);
     QPixmap getActiveBlock();
     QPixmap getCurrentBlock();
     void setViewScale(qreal scale);
-    void rotateImage();
+    void rotateImage(qreal angle, qreal x, qreal y);
     int blocksCount();
     void deleteBlock(int index);
     QPixmap getBlockByIndex(int index);
     void clearBlocks();
     qreal getRealScale();
+    qreal getRealAngle();
+    QPixmap getImage();
+    void cropImage();
 protected:
     virtual void mousePressEvent ( QGraphicsSceneMouseEvent * event );
     virtual void mouseMoveEvent ( QGraphicsSceneMouseEvent * mouseEvent );
@@ -56,6 +59,7 @@ private:
     bool hasImage;
     qreal  m_scale;
     qreal real_scale;
+    qreal m_rotate;
     qreal real_rotate;
     Qt::MouseButton buttonPressed;
 };

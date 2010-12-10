@@ -14,13 +14,20 @@ QGraphicsInput::QGraphicsInput(const QRectF & sceneRect, QGraphicsView * view) :
     m_LastSelected = 0;
     m_scale = 1;
     real_scale = 1;
+    real_rotate = 0;
     buttonPressed = Qt::NoButton;
 }
 
-bool QGraphicsInput::loadImage(const QPixmap &image)
+bool QGraphicsInput::loadImage(const QPixmap &image, bool clearBlocks)
 {
-    this->clear();
-    this->items().clear();
+    if (clearBlocks || (!hasImage)) {
+        this->clear();
+        this->items().clear();
+        m_LastSelected = 0;
+        m_CurrentBlockRect = 0;
+    }
+    if ((!clearBlocks) && hasImage)
+        this->removeItem(m_image);
     this->setSceneRect(image.rect());
     m_image = this->addPixmap(image);
     this->setFocus();
@@ -233,7 +240,7 @@ QPixmap QGraphicsInput::getCurrentBlock()
 QPixmap QGraphicsInput::extractPixmap(QGraphicsRectItem *item)
 {
     if ((item == 0) || (!hasImage)) {
-        return 0;
+        return QPixmap(0,0);
     }
 //    QMessageBox::critical(0,QString::number(m_LastSelected->rect().right()), QString::number(m_LastSelected->rect().bottom()));
     int imgl, imgt, imgr, imgb;
@@ -252,10 +259,21 @@ void QGraphicsInput::setViewScale(qreal scale)
 {
     if (scale == 0)
         return;
-    real_scale = scale * m_scale;
     m_scale = scale/m_scale;
+    real_scale *= m_scale;
     this->m_view->scale(m_scale,  m_scale);
 
+}
+
+void QGraphicsInput::rotateImage(qreal angle, qreal x, qreal y)
+{
+    m_rotate = angle;
+    real_rotate += angle;
+    //real_rotate = real_rotate % 360;
+
+    QPixmap pm = m_image->pixmap().transformed(QTransform().translate(-x, -y).rotate(angle).translate(x, y));
+    loadImage(pm, false);
+    //m_image->setPixmap(pm);
 }
 
 int QGraphicsInput::blocksCount()
@@ -307,4 +325,24 @@ void QGraphicsInput::clearBlocks()
 qreal QGraphicsInput::getRealScale()
 {
     return real_scale;
+}
+
+qreal QGraphicsInput::getRealAngle()
+{
+    return real_rotate;
+}
+
+QPixmap QGraphicsInput::getImage()
+{
+    return hasImage ? m_image->pixmap() : 0;
+}
+
+void QGraphicsInput::cropImage()
+{
+    if (!hasImage)
+        return;
+    if (m_LastSelected) {
+        //QPixmap pm = extractPixmap(m_LastSelected);
+        loadImage(extractPixmap(m_LastSelected));
+    }
 }
