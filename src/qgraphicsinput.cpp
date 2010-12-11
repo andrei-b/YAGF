@@ -1,8 +1,27 @@
+/*
+    YAGF - cuneiform OCR graphical front-end
+    Copyright (C) 2009-2010 Andrei Borovsky <anb@symmetrica.net>
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
 #include "qgraphicsinput.h"
 #include <QPixmap>
 #include <QGraphicsPixmapItem>
 #include <QMessageBox>
 #include <QGraphicsSceneMouseEvent>
+#include <QKeyEvent>
 
 QGraphicsInput::QGraphicsInput(const QRectF & sceneRect, QGraphicsView * view) :
     QGraphicsScene(sceneRect)
@@ -26,10 +45,13 @@ bool QGraphicsInput::loadImage(const QPixmap &image, bool clearBlocks)
         m_LastSelected = 0;
         m_CurrentBlockRect = 0;
     }
-    if ((!clearBlocks) && hasImage)
+    if ((!clearBlocks) && hasImage) {
         this->removeItem(m_image);
+        real_scale = 1;
+    }
     this->setSceneRect(image.rect());
     m_image = this->addPixmap(image);
+    old_pixmap = image;
     this->setFocus();
     m_image->setFocus();
     m_image->setAcceptedMouseButtons(Qt::LeftButton|Qt::RightButton|Qt::MidButton);
@@ -257,12 +279,12 @@ QPixmap QGraphicsInput::extractPixmap(QGraphicsRectItem *item)
 
 void QGraphicsInput::setViewScale(qreal scale)
 {
-    if (scale == 0)
+    if (!hasImage) return;
+    if ((scale == 0)||((real_scale *= scale) == 0))
         return;
     m_scale = scale/m_scale;
-    real_scale *= m_scale;
-    this->m_view->scale(m_scale,  m_scale);
-
+    real_scale *= scale;
+    m_view->scale(scale,  scale);
 }
 
 void QGraphicsInput::rotateImage(qreal angle, qreal x, qreal y)
@@ -310,7 +332,7 @@ QPixmap QGraphicsInput::getBlockByIndex(int index)
            count++;
         }
     }
-    return 0;
+    return QPixmap(0,0);
 }
 
 void QGraphicsInput::clearBlocks()
@@ -344,5 +366,55 @@ void QGraphicsInput::cropImage()
     if (m_LastSelected) {
         //QPixmap pm = extractPixmap(m_LastSelected);
         loadImage(extractPixmap(m_LastSelected));
+        clearTransform();
     }
+}
+
+void QGraphicsInput::undo()
+{
+    if (hasImage)
+        loadImage(old_pixmap);
+        clearTransform();
+}
+
+void QGraphicsInput::wheelEvent(QGraphicsSceneWheelEvent *wheelEvent)
+{
+    if (wheelEvent->modifiers() == Qt::ControlModifier) {
+            int delta = wheelEvent->delta();
+            qreal coeff = delta < 0 ? 1/(1-delta/(360.)) : 1 + delta/(240.);
+            this->setViewScale(coeff);
+            wheelEvent->accept();
+            m_view->setCursor(Qt::CrossCursor);
+     } else
+         QGraphicsScene::wheelEvent(wheelEvent);
+}
+
+void QGraphicsInput::keyReleaseEvent(QKeyEvent *keyEvent)
+{
+    if (keyEvent->key() == Qt::Key_Control)
+        m_view->setCursor(Qt::ArrowCursor);
+    if (keyEvent->key() > Qt::Key_F1) {
+        emit keyPressed((int)keyEvent->key());
+    }
+}
+
+void QGraphicsInput::clearTransform()
+{
+    if (m_view) {
+        QTransform tr = m_view->transform();
+        tr.reset();
+        m_view->setTransform(tr);
+    }
+}
+
+bool QGraphicsInput::loadNewImage(const QPixmap &image)
+{
+    clearTransform();
+    return loadImage(image);
+}
+
+void QGraphicsInput::keyPressEvent ( QKeyEvent * keyEvent )
+{
+     if (keyEvent->key() == Qt::Key_Control)
+         m_view->setCursor(Qt::CrossCursor);
 }
