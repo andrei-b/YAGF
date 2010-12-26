@@ -5,7 +5,7 @@ Recognized text is displayed in a editor window where it can be corrected, saved
 YAGF also provides some facilities for a multi-page recognition (see the online help for more details).
 
 Building YAGF requires:
-  qt4 development tools version > 4.2
+  qt4 development tools version > 4.32
   libaspell development package
 Running YAGF requires:
   Qt 4.2 or later, aspell
