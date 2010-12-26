@@ -58,7 +58,7 @@
 #include "FileToolBar.h"
 #include "BlockAnalysis.h"
 
-const QString version = "0.8.1";
+const QString version = "0.8.2";
 
 MainForm::MainForm(QWidget *parent):QMainWindow(parent)
 {
@@ -191,6 +191,8 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
         pm.load(":/undo.png");
         unalignButton->setIcon(pm);
         connect(unalignButton, SIGNAL(clicked()), this, SLOT(unalignButtonClicked()));
+
+        clearBlocksButton->setDefaultAction(ActionClearAllBlocks);
  }
 
 void MainForm::loadImage()
@@ -541,71 +543,76 @@ void MainForm::loadPreviousPage()
 
 // TODO: think on blocks/page recognition
 
+void MainForm::recognizeInternal(const QPixmap &pix)
+{
+    const QString inputFile = "input.bmp";
+    const QString outputFile = "output.txt";
+    outputFormat = selectFormatBox->itemData(selectFormatBox->currentIndex()).toString();
+    QPixmapCache::clear();
+    pix.save(workingDir + inputFile, "BMP");
+    QProcess proc;
+    proc.setWorkingDirectory(workingDir);
+    QStringList sl;
+    sl.append("-l");
+    sl.append(language);
+    sl.append("-f");
+    if (outputFormat == "text")
+      sl.append("text");
+    else
+    sl.append("html");
+    if (singleColumn)
+            sl.append("-c1");
+    sl.append("-o");
+    sl.append(workingDir + outputFile);
+    sl.append(workingDir + inputFile);
+    proc.start("cuneiform", sl);
+    proc.waitForFinished(-1);
+    if (proc.exitCode()) {
+            QByteArray stdout = proc.readAllStandardOutput();
+            QByteArray stderr = proc.readAllStandardError();
+            QString output = QString(stdout) + QString(stderr);
+            QMessageBox::critical(this, trUtf8("Starting cuneiform failed"), trUtf8("The system said: ") + (output != "" ? output : trUtf8("program not found")));
+            return;
+    }
+    QFile textFile(workingDir + outputFile);
+    textFile.open(QIODevice::ReadOnly);
+    QByteArray text = textFile.readAll();
+    textFile.close();
+    QString textData;
+    QTextCodec *codec = QTextCodec::codecForName("UTF-8");
+    textData = codec->toUnicode(text); //QString::fromUtf8(text.data());
+    if (outputFormat == "text")
+            textData.prepend("<meta content=\"text/html; charset=utf-8\" http-equiv=\"content-type\" />");
+    textData.replace("<img src=output_files", "");
+    textData.replace(".bmp\">", "\"--");
+    textData.replace(".bmp>", "");
+//       textData.replace("-</p><p>", "");
+//        textData.replace("-<br>", "");
+    textEdit->append(textData);
+    textSaved = FALSE;
+    if (spellCheckBox->isChecked()) {
+        spellChecker->setLanguage(language);
+        spellChecker->spellCheck();
+    }
+
+}
+
 void MainForm::recognize()
 {
-        const QString inputFile = "input.bmp";
-	const QString outputFile = "output.txt";
-        outputFormat = selectFormatBox->itemData(selectFormatBox->currentIndex()).toString();
-	if (!imageLoaded) {
-		QMessageBox::critical(this, trUtf8("Error"), trUtf8("No image loaded"));
-		return;
-	}
-	if (!findProgram("cuneiform")) {
-		QMessageBox::warning(this, trUtf8("Warning"), trUtf8("cuneiform not found"));
-		return;
-	}
-        if (graphicsInput->getActiveBlock().isNull() && graphicsInput->getCurrentBlock().isNull())
+    if (!imageLoaded) {
+            QMessageBox::critical(this, trUtf8("Error"), trUtf8("No image loaded"));
             return;
-        QPixmap pix = graphicsInput->getActiveBlock().isNull() ? graphicsInput->getCurrentBlock() : graphicsInput->getActiveBlock();
-        if (pix.isNull())
+    }
+    if (!findProgram("cuneiform")) {
+            QMessageBox::warning(this, trUtf8("Warning"), trUtf8("cuneiform not found"));
             return;
-        QPixmapCache::clear();
-	pix.save(workingDir + inputFile, "BMP");
-	QProcess proc;
-	proc.setWorkingDirectory(workingDir);
-	QStringList sl;	
-	sl.append("-l");
-	sl.append(language);
-        sl.append("-f");
-        if (outputFormat == "text")
-          sl.append("text");
-        else
-        sl.append("html");
-	if (singleColumn)
-		sl.append("-c1");
-        sl.append("-o");
-        sl.append(workingDir + outputFile);
-	sl.append(workingDir + inputFile);
-	proc.start("cuneiform", sl);
-	proc.waitForFinished(-1);
-	if (proc.exitCode()) {
-		QByteArray stdout = proc.readAllStandardOutput();
-		QByteArray stderr = proc.readAllStandardError();
-		QString output = QString(stdout) + QString(stderr);
-		QMessageBox::critical(this, trUtf8("Starting cuneiform failed"), trUtf8("The system said: ") + (output != "" ? output : trUtf8("program not found")));
-		return;
-	}
-	QFile textFile(workingDir + outputFile);
-	textFile.open(QIODevice::ReadOnly);
-	QByteArray text = textFile.readAll();
-        textFile.close();
-        QString textData;
-        QTextCodec *codec = QTextCodec::codecForName("UTF-8");
-        textData = codec->toUnicode(text); //QString::fromUtf8(text.data());
-        if (outputFormat == "text")
-                textData.prepend("<meta content=\"text/html; charset=utf-8\" http-equiv=\"content-type\" />");
-        textData.replace("<img src=output_files", "");
-        textData.replace(".bmp\">", "\"--");
-        textData.replace(".bmp>", "");
- //       textData.replace("-</p><p>", "");
-//        textData.replace("-<br>", "");
-        textEdit->append(textData);
-        textSaved = FALSE;
-        if (spellCheckBox->isChecked()) {
-            spellChecker->setLanguage(language);
-            spellChecker->spellCheck();
-        }
-	//QImage img = pix.toImage();
+    }
+    if (graphicsInput->blocksCount() > 0) {
+        for (int i = graphicsInput->blocksCount(); i >= 0; i--)
+            recognizeInternal(graphicsInput->getBlockByIndex(i));
+    } else {
+        recognizeInternal(graphicsInput->getImage());
+    }
 }
 
 void MainForm::saveText()
@@ -905,8 +912,10 @@ void MainForm::rightMouseClicked(int x, int y, bool inTheBlock)
 {
     m_menu->clear();
     m_menu->addAction(ActionClearAllBlocks);
-    if (inTheBlock)
+    if (inTheBlock) {
         m_menu->addAction(ActionDeleteBlock);
+        m_menu->addAction(actionRecognize_block);
+    }
     QPoint p = graphicsView->mapToGlobal(QPoint(x,y));
     m_menu->move(p);
     m_menu->show();
@@ -915,4 +924,11 @@ void MainForm::rightMouseClicked(int x, int y, bool inTheBlock)
 void MainForm::on_ActionDeleteBlock_activated()
 {
     graphicsInput->deleteCurrentBlock();
+}
+
+void MainForm::on_actionRecognize_block_activated()
+{
+    if (graphicsInput->getCurrentBlock().isNull())
+        return;
+    recognizeInternal(graphicsInput->getCurrentBlock());
 }

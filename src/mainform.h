@@ -42,6 +42,7 @@ class MainForm : public QMainWindow, public Ui::MainWindow
 public:
 	MainForm(QWidget *parent = 0);
 private slots:
+        void on_actionRecognize_block_activated();
         void on_ActionDeleteBlock_activated();
         void on_ActionClearAllBlocks_activated();
  void loadImage();
@@ -82,6 +83,7 @@ private:
 	void loadNext(int number);
         void saveHtml(QFile * file);
         void delTmpDir();
+        void recognizeInternal(const QPixmap &pix);
 	bool imageLoaded;
         bool hasCopy;
 	QComboBox * selectLangsBox;
