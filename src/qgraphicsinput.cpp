@@ -198,6 +198,7 @@ void QGraphicsInput::mouseMoveEvent(QGraphicsSceneMouseEvent *mouseEvent)
         blockRect = newRect;
         return;
     }
+    if ((mouseEvent->modifiers() & Qt::ControlModifier) == 0)
     if (mouseEvent->buttons() == Qt::NoButton) {
         if (this->nearActiveBorder(mouseEvent->scenePos().x(), mouseEvent->scenePos().y()))
             m_view->setCursor(Qt::SizeAllCursor);
@@ -395,6 +396,11 @@ void QGraphicsInput::cropImage()
     }
 }
 
+void QGraphicsInput::setMagnifierCursor(QCursor *cursor)
+{
+    magnifierCursor = cursor;
+}
+
 void QGraphicsInput::undo()
 {
     if (hasImage)
@@ -409,7 +415,7 @@ void QGraphicsInput::wheelEvent(QGraphicsSceneWheelEvent *wheelEvent)
             qreal coeff = delta < 0 ? 1/(1-delta/(360.)) : 1 + delta/(240.);
             this->setViewScale(coeff);
             wheelEvent->accept();
-            m_view->setCursor(Qt::CrossCursor);
+            m_view->setCursor(*magnifierCursor);
      } else
          QGraphicsScene::wheelEvent(wheelEvent);
 }
@@ -441,5 +447,5 @@ bool QGraphicsInput::loadNewImage(const QPixmap &image)
 void QGraphicsInput::keyPressEvent ( QKeyEvent * keyEvent )
 {
      if (keyEvent->key() == Qt::Key_Control)
-         m_view->setCursor(Qt::CrossCursor);
+         m_view->setCursor(*magnifierCursor);
 }

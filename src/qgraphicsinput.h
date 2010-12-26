@@ -28,6 +28,7 @@ class QGraphicsRectItem;
 class QPixmap;
 class QCursor;
 class QRectF;
+class QCursor;
 
 enum SelectStates {
     NoSelect = 0,
@@ -58,6 +59,7 @@ public:
     bool addBlock(const QRectF &rect, bool removeObstacles = true);
     void cropImage();
     void undo();
+    void setMagnifierCursor(QCursor * cursor);
     //setMagnifierCursor(QCursor * cursor = );
 protected:
     virtual void mousePressEvent ( QGraphicsSceneMouseEvent * event );
@@ -92,6 +94,7 @@ private:
     qreal m_rotate;
     qreal real_rotate;
     Qt::MouseButton buttonPressed;
+    QCursor * magnifierCursor;
 };
 
 #endif // QGRAPHICSINPUT_H

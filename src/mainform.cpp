@@ -80,7 +80,7 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
 	toolBar->addWidget(label1);
 	toolBar->addWidget(selectFormatBox);
         toolBar->addWidget(spellCheckBox);
-	pixmap = new QPixmap();
+//	pixmap = new QPixmap();
         graphicsInput = new QGraphicsInput(QRectF(0,0,2000, 2000), graphicsView) ;
 	statusBar()->show();
 	imageLoaded = false;
@@ -171,6 +171,7 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
         QPixmap l_cursor;
         l_cursor.load(":/resize.png");
         resizeCursor = new QCursor(l_cursor);
+        graphicsInput->setMagnifierCursor(resizeCursor);
         l_cursor.load(":/resize_block.png");
         resizeBlockCursor = new QCursor(l_cursor);
         textEdit->setContextMenuPolicy(Qt::ActionsContextMenu);
@@ -267,6 +268,8 @@ void MainForm::rotate180ButtonClicked()
 
 void MainForm::enlargeButtonClicked()
 {
+       this->graphicsInput->setViewScale(1.5);
+       return;
         if (scaleFactor < 0.25 )
             scaleImage(0.25/scaleFactor);
         else
@@ -315,7 +318,8 @@ void MainForm::scaleImage(double sf)
 		return;
 	scaleFactor *= sf;
         ((FileToolBar *) m_toolBar)->setScale(scaleFactor);
-	QPixmap pix = pixmap->scaled(QSize(pixmap->width()*scaleFactor, pixmap->height()*scaleFactor));
+        this->graphicsInput->setViewScale(scaleFactor);
+//	QPixmap pix = pixmap->scaled(QSize(pixmap->width()*scaleFactor, pixmap->height()*scaleFactor));
 //	((QLabel*)(scrollArea->widget()))->setPixmap(pix);
 //        ((QSelectionLabel*)(scrollArea->widget()))->resetSelection();
 }
@@ -456,24 +460,28 @@ void MainForm::loadFile(const QString &fn)
                 rotation = ((FileToolBar *) m_toolBar)->getRotation();
                 scaleFactor = ((FileToolBar *) m_toolBar)->getScale();
             }
-        imageLoaded = pixmap->load(fn);
-	fileName = fn;
-	setWindowTitle("YAGF - " + extractFileName(fileName));
-        //QSelectionLabel * displayLabel = (QSelectionLabel *) scrollArea->widget();
-        graphicsInput->loadImage(*pixmap);
-        //displayLabel->setPixmap(QPixmap());
-        //displayLabel->setSelectionMode(false);
+        QPixmap pixmap;
+        if (imageLoaded = pixmap.load(fn)) {
+            fileName = fn;
+            setWindowTitle("YAGF - " + extractFileName(fileName));
+            graphicsInput->loadImage(pixmap);
+            //scaleFactor = 1.1;
+            QTransform tr;
+            tr.reset();
+            graphicsView->setTransform(tr);
+            graphicsInput->setViewScale(1.0/scaleFactor);
+        }
 	if (imageLoaded) {
-                ((FileToolBar *) m_toolBar)->addFile(*pixmap, fn);
+                ((FileToolBar *) m_toolBar)->addFile(pixmap, fn);
                 //displayLabel->setPixmap(*pixmap);
                 //displayLabel->setSelectionMode(true);
                 //displayLabel->resetSelection();
                 if (scaleFactor == 1) {
                     //scaleFactor = 1;
-                    if (pixmap->width() > 4000)
+                    if (pixmap.width() > 4000)
                             scaleImage(0.25);
                     else
-                    if (pixmap->width() > 2000)
+                    if (pixmap.width() > 2000)
                             scaleImage(0.5);
                 } else {
                     double tmp = scaleFactor;
@@ -528,6 +536,8 @@ void MainForm::loadPreviousPage()
 {
 	loadNext(-1);
 }
+
+// TODO: think on blocks/page recognition
 
 void MainForm::recognize()
 {

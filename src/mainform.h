@@ -84,7 +84,7 @@ private:
 	QComboBox * selectLangsBox;
 	QComboBox * selectFormatBox;
         QCheckBox * spellCheckBox;
-	QPixmap * pixmap;
+//	QPixmap * pixmap;
         QGraphicsInput * graphicsInput;
 	double scaleFactor;
 	bool singleColumn;
