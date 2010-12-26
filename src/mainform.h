@@ -34,6 +34,7 @@ class QFile;
 class SpellChecker;
 class QCursor;
 class QGraphicsInput;
+class QMenu;
 
 class MainForm : public QMainWindow, public Ui::MainWindow
 {
@@ -41,7 +42,9 @@ class MainForm : public QMainWindow, public Ui::MainWindow
 public:
 	MainForm(QWidget *parent = 0);
 private slots:
-	void loadImage();
+        void on_ActionDeleteBlock_activated();
+        void on_ActionClearAllBlocks_activated();
+ void loadImage();
 	void rotateCWButtonClicked();
 	void rotateCCWButtonClicked();
 	void rotate180ButtonClicked();
@@ -105,6 +108,7 @@ private:
         SpellChecker * spellChecker;
         int rotation;
         QToolBar * m_toolBar;
+        QMenu * m_menu;
 //	QLabel * displayLabel;
 private slots:
         void readyRead();
@@ -112,4 +116,5 @@ private slots:
         void setResizingCusor();
         void setUnresizingCusor();
         void fileSelected(const QString &path);
+        void rightMouseClicked(int x, int y, bool inTheBlock);
 };

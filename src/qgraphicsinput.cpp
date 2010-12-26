@@ -239,7 +239,7 @@ void QGraphicsInput::leftMouseRelease(qreal x, qreal y)
         }
     } else
         m_CurrentBlockRect = 0;
-    emit leftMouseClicked(x, y, m_CurrentBlockRect != 0);
+    emit leftMouseClicked(m_view->mapFromScene(x, y).x(), m_view->mapFromScene(x, y).y(), m_CurrentBlockRect != 0);
 }
 
 
@@ -252,7 +252,7 @@ void QGraphicsInput::rightMouseRelease(qreal x, qreal y)
         }
     } else
         m_CurrentBlockRect = 0;
-    emit rightMouseClicked(x, y, m_CurrentBlockRect != 0);
+    emit rightMouseClicked(m_view->mapFromScene(x, y).x(), m_view->mapFromScene(x, y).y(), m_CurrentBlockRect != 0);
 }
 
 
@@ -331,6 +331,12 @@ int QGraphicsInput::blocksCount()
         if (items().at(i)->data(1) == "block")
             res++;
     return res;
+}
+
+void QGraphicsInput::deleteCurrentBlock()
+{
+    if (m_CurrentBlockRect != 0)
+        deleteBlockRect(m_CurrentBlockRect);
 }
 
 void QGraphicsInput::deleteBlock(int index)

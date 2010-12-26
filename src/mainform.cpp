@@ -91,6 +91,7 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
         hasCopy = false;
         scaleFactor = 1;
         rotation = 0;
+        m_menu = new QMenu(graphicsView);
 
         connect(actionOpen, SIGNAL(triggered()), this, SLOT(loadImage()));
 	connect(actionQuit, SIGNAL(triggered()), this, SLOT(close()));
@@ -111,6 +112,7 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
 	connect(selectLangsBox, SIGNAL(currentIndexChanged(int)), this, SLOT(newLanguageSelected(int)));
         connect(textEdit, SIGNAL(copyAvailable (bool)), this, SLOT(copyAvailable (bool)));
         connect(textEdit, SIGNAL(textChanged()), this, SLOT(textChanged()));
+        connect(graphicsInput, SIGNAL(rightMouseClicked(int, int, bool)), this, SLOT(rightMouseClicked(int, int, bool)));
         //connect (graphicsView, SIGNAL(selectionResized()), this, SLOT(setResizingCusor()));
         //connect (displayLabel, SIGNAL(selectionUnresized()), this, SLOT(setUnresizingCusor()));
         QAction * action;
@@ -892,4 +894,25 @@ void MainForm::unalignButtonClicked()
     rrot *=90;
     rotateImage(rrot - rot);
     rotation = rrot;*/
+}
+
+void MainForm::on_ActionClearAllBlocks_activated()
+{
+    graphicsInput->clearBlocks();
+}
+
+void MainForm::rightMouseClicked(int x, int y, bool inTheBlock)
+{
+    m_menu->clear();
+    m_menu->addAction(ActionClearAllBlocks);
+    if (inTheBlock)
+        m_menu->addAction(ActionDeleteBlock);
+    QPoint p = graphicsView->mapToGlobal(QPoint(x,y));
+    m_menu->move(p);
+    m_menu->show();
+}
+
+void MainForm::on_ActionDeleteBlock_activated()
+{
+    graphicsInput->deleteCurrentBlock();
 }

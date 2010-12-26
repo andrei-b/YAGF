@@ -1,5 +1,5 @@
 <RCC>
-    <qresource prefix="/" >
+    <qresource prefix="/">
         <file>images/rcw.png</file>
         <file>images/rccw.png</file>
         <file>images/revert.png</file>
@@ -7,7 +7,7 @@
         <file>images/smaller.png</file>
         <file>images/larger.png</file>
         <file>images/singlecolumn.png</file>
-        <file alias="yagf.png" >images/yagf.png</file>
+        <file alias="yagf.png">images/yagf.png</file>
         <file>images/back.png</file>
         <file>images/document_open.png</file>
         <file>images/document_save_as.png</file>
@@ -17,16 +17,20 @@
         <file>images/filesaveas.png</file>
         <file>images/forward.png</file>
         <file>images/scanner.png</file>
-        <file alias="warning.png" >images/warning.png</file>
-        <file alias="critical.png" >images/critical.png</file>
-        <file alias="info.png" >images/info.png</file>
-        <file alias="resize.png" >images/resize.png</file>
-        <file alias="resize_block.png" >images/resize_block.png</file>
-        <file alias="save_all.png" >images/save_all.png</file>
-        <file alias="clear.png" >images/editclear.png</file>
-        <file alias="batch.png" >images/batch.png</file>
-        <file alias="remove.png" >images/remove.png</file>
-        <file alias="align.png" >images/align.png</file>
-        <file alias="undo.png" >images/undo.png</file>
+        <file alias="warning.png">images/warning.png</file>
+        <file alias="critical.png">images/critical.png</file>
+        <file alias="info.png">images/info.png</file>
+        <file alias="resize.png">images/resize.png</file>
+        <file alias="resize_block.png">images/resize_block.png</file>
+        <file alias="save_all.png">images/save_all.png</file>
+        <file alias="clear.png">images/editclear.png</file>
+        <file alias="batch.png">images/batch.png</file>
+        <file alias="remove.png">images/remove.png</file>
+        <file alias="align.png">images/align.png</file>
+        <file alias="undo.png">images/undo.png</file>
+        <file>images/scanner_s2.png</file>
+        <file>images/recblocks.png</file>
+        <file>images/trashcan1s.png</file>
+        <file>images/trashcan2-s.png</file>
     </qresource>
 </RCC>

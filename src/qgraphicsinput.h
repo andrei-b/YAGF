@@ -51,6 +51,7 @@ public:
     void rotateImage(qreal angle, qreal x, qreal y);
     int blocksCount();
     void deleteBlock(int index);
+    void deleteCurrentBlock();
     QPixmap getBlockByIndex(int index);
     void clearBlocks();
     qreal getRealScale();
