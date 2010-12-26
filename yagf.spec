@@ -1,5 +1,5 @@
 #
-# spec file for package yagf (Version 0.6.1)
+# spec file for package yagf (Version 0.8.2)
 #
 # Copyright (c) 2009 Kyrill Detinov
 # This file and all modifications and additions to the pristine
@@ -9,7 +9,7 @@
 # norootforbuild
 
 Name:		yagf
-Version:	0.6.2
+Version:	0.8.2
 Release:	1
 URL:		http://symmetrica.net/cuneiform-linux/yagf-ru.html
 License:	GPLv3+
@@ -18,14 +18,14 @@ Group:		Productivity/Graphics/Other
 Summary:	Graphical frontend for Cuneiform OCR tool
 BuildRoot:      %{_tmppath}/%{name}-%{version}-build
 BuildRequires:  libqt4-devel cmake update-desktop-files fdupes
-Requires:	libqt4 > 4.2
+Requires:	libqt4 > 4.3
 
 %description
 YAGF is a graphical front-end for Cuneiform OCR tool.
 With YAGF you can open already scanned image files or obtain new images via
 XSane (scanning results are automatically passed to YAGF).
 Once you have a scanned image you can prepare it for recognition, select
-particular image areas for recognition, set the recognition language and so no.
+particular image areas for recognition, set the recognition language and so on.
 Recognized text is displayed in a editor window where it can be corrected, saved
 to disk or copied to clipboard.
 YAGF also provides some facilities for a multi-page recognition (see the online
@@ -72,6 +72,8 @@ cmake ./
 %{_datadir}/applications/YAGF.desktop
 
 %changelog
+* Sun Dec 26 2010 Andrei Borovsky - 0.8.2
+- multiple selection blocks are allowed.
 * Fri Jul 17 2009 Andrei Borovsky <anb@symmetrica.net> - 0.6.2
 - merged the patches with the appropriate files
 - removed unnessesary ldconfig call
