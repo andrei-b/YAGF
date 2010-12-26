@@ -430,6 +430,17 @@ void QGraphicsInput::keyReleaseEvent(QKeyEvent *keyEvent)
 {
     if (keyEvent->key() == Qt::Key_Control)
         m_view->setCursor(Qt::ArrowCursor);
+    if (keyEvent->modifiers() & Qt::ControlModifier) {
+        if ((keyEvent->key() == Qt::Key_Plus)||(keyEvent->key() == Qt::Key_Equal)) {
+            this->setViewScale(1.5);
+            return;
+        }
+        if ((keyEvent->key() == Qt::Key_Minus)||(keyEvent->key() == Qt::Key_Underscore)) {
+            this->setViewScale(0.75);
+            return;
+        }
+
+    }
     if (keyEvent->key() > Qt::Key_F1) {
         emit keyPressed((int)keyEvent->key());
     }
