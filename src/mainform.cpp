@@ -34,6 +34,7 @@
 #include <QFile>
 #include <QByteArray>
 #include <QRect>
+#include <QRectF>
 #include <QStatusBar>
 #include <QMessageBox>
 #include <QProgressDialog>
@@ -43,7 +44,7 @@
 #include <QRegExp>
 #include <QClipboard>
 #include "mainform.h"
-#include "QSelectionLabel.h"
+#include "qgraphicsinput.h"
 #include "utils.h"
 #include "FileChannel.h"
 #include "spellchecker.h"
@@ -80,10 +81,7 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
 	toolBar->addWidget(selectFormatBox);
         toolBar->addWidget(spellCheckBox);
 	pixmap = new QPixmap();
-	QSelectionLabel * displayLabel = new QSelectionLabel();
-	scrollArea->setWidget(displayLabel);
-	scrollArea->ensureVisible(0, 0);
-
+        graphicsInput = new QGraphicsInput(QRectF(0,0,2000, 2000), graphicsView) ;
 	statusBar()->show();
 	imageLoaded = false;
 	lastDir = QDir::homePath();
@@ -113,8 +111,8 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
 	connect(selectLangsBox, SIGNAL(currentIndexChanged(int)), this, SLOT(newLanguageSelected(int)));
         connect(textEdit, SIGNAL(copyAvailable (bool)), this, SLOT(copyAvailable (bool)));
         connect(textEdit, SIGNAL(textChanged()), this, SLOT(textChanged()));
-        connect (displayLabel, SIGNAL(selectionResized()), this, SLOT(setResizingCusor()));
-        connect (displayLabel, SIGNAL(selectionUnresized()), this, SLOT(setUnresizingCusor()));
+        //connect (graphicsView, SIGNAL(selectionResized()), this, SLOT(setResizingCusor()));
+        //connect (displayLabel, SIGNAL(selectionUnresized()), this, SLOT(setUnresizingCusor()));
         QAction * action;
         action = new QAction(trUtf8("Undo\tCtrl+Z"), this);
         action->setShortcut(QKeySequence("Ctrl+Z"));
@@ -168,7 +166,7 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
 
         connect(textEdit->document(), SIGNAL(cursorPositionChanged ( const QTextCursor &)), this, SLOT(updateSP()));
 
-        displayLabel->installEventFilter(this);
+        //displayLabel->installEventFilter(this);
         textEdit->installEventFilter(this);
         QPixmap l_cursor;
         l_cursor.load(":/resize.png");
@@ -237,15 +235,17 @@ void MainForm::rotateImage(int deg)
 {
         rotation %=360;
         if (imageLoaded) {
-                QMatrix matrix;
-                matrix.rotate(deg);
-		((QSelectionLabel*)(scrollArea->widget()))->resetSelection(true);
-		QPixmap pix = ((QLabel*)(scrollArea->widget()))->pixmap()->transformed(matrix);
+                //QMatrix matrix;
+                //matrix.rotate(deg);
+                graphicsInput->clearBlocks();
+                graphicsInput->rotateImage(deg,  graphicsView->width()/2, graphicsView->height()/2);
+                //((QSelectionLabel*)(scrollArea->widget()))->resetSelection(true);
+                //QPixmap pix = ((QLabel*)(scrollArea->widget()))->pixmap()->transformed(matrix);
 		//pix.transformed(matrix);
-		((QLabel*)(scrollArea->widget()))->setPixmap(pix);
-                pix = pixmap->transformed(matrix, Qt::SmoothTransformation);
-		delete pixmap;
-		pixmap = new QPixmap(pix);
+                //((QLabel*)(scrollArea->widget()))->setPixmap(pix);
+                //pix = pixmap->transformed(matrix, Qt::SmoothTransformation);
+                //delete pixmap;
+                //pixmap = new QPixmap(pix);
                 rotation += deg;
                 ((FileToolBar *) m_toolBar)->setRotation(rotation);
 	}
@@ -316,8 +316,8 @@ void MainForm::scaleImage(double sf)
 	scaleFactor *= sf;
         ((FileToolBar *) m_toolBar)->setScale(scaleFactor);
 	QPixmap pix = pixmap->scaled(QSize(pixmap->width()*scaleFactor, pixmap->height()*scaleFactor));
-	((QLabel*)(scrollArea->widget()))->setPixmap(pix);
-        ((QSelectionLabel*)(scrollArea->widget()))->resetSelection();
+//	((QLabel*)(scrollArea->widget()))->setPixmap(pix);
+//        ((QSelectionLabel*)(scrollArea->widget()))->resetSelection();
 }
 
 void MainForm::initSettings()
@@ -459,14 +459,15 @@ void MainForm::loadFile(const QString &fn)
         imageLoaded = pixmap->load(fn);
 	fileName = fn;
 	setWindowTitle("YAGF - " + extractFileName(fileName));
-	QSelectionLabel * displayLabel = (QSelectionLabel *) scrollArea->widget();
-	displayLabel->setPixmap(QPixmap());
-	displayLabel->setSelectionMode(false);
+        //QSelectionLabel * displayLabel = (QSelectionLabel *) scrollArea->widget();
+        graphicsInput->loadImage(*pixmap);
+        //displayLabel->setPixmap(QPixmap());
+        //displayLabel->setSelectionMode(false);
 	if (imageLoaded) {
                 ((FileToolBar *) m_toolBar)->addFile(*pixmap, fn);
-                displayLabel->setPixmap(*pixmap);
-		displayLabel->setSelectionMode(true);
-		displayLabel->resetSelection();
+                //displayLabel->setPixmap(*pixmap);
+                //displayLabel->setSelectionMode(true);
+                //displayLabel->resetSelection();
                 if (scaleFactor == 1) {
                     //scaleFactor = 1;
                     if (pixmap->width() > 4000)
@@ -483,7 +484,7 @@ void MainForm::loadFile(const QString &fn)
                 rotation = 0;
                 rotateImage(deg);
                 ((FileToolBar *) m_toolBar)->setRotation(rotation);
-                displayLabel->setFocus();
+                graphicsInput->setFocus();
                 rotation = (rotation + 45)/90;
                 rotation *=90;
 	}
@@ -541,9 +542,12 @@ void MainForm::recognize()
 		QMessageBox::warning(this, trUtf8("Warning"), trUtf8("cuneiform not found"));
 		return;
 	}
-	QRect rect = ((QSelectionLabel *) scrollArea->widget())->getSelectedRect();
-	QPixmap pix = pixmap->copy(rect.x()/scaleFactor, rect.y()/scaleFactor, rect.width()/scaleFactor, rect.height()/scaleFactor);
-	QPixmapCache::clear();
+        if (graphicsInput->getActiveBlock().isNull() && graphicsInput->getCurrentBlock().isNull())
+            return;
+        QPixmap pix = graphicsInput->getActiveBlock().isNull() ? graphicsInput->getCurrentBlock() : graphicsInput->getActiveBlock();
+        if (pix.isNull())
+            return;
+        QPixmapCache::clear();
 	pix.save(workingDir + inputFile, "BMP");
 	QProcess proc;
 	proc.setWorkingDirectory(workingDir);
@@ -733,7 +737,7 @@ void MainForm::updateSP()
 
 bool MainForm::eventFilter(QObject *object, QEvent *event)
 {
-    if (object ==  scrollArea->widget()) {
+    /*if (object ==  scrollArea->widget()) {
         if (event->type() == QEvent::KeyPress) {
             QKeyEvent * e = (QKeyEvent *) event;
             if (e->modifiers() & Qt::ControlModifier) {
@@ -765,7 +769,7 @@ bool MainForm::eventFilter(QObject *object, QEvent *event)
                 return true;
             }
         }
-    } else
+    } else */
     if (object == textEdit) {
         if (event->type() == QEvent::KeyPress) {
             QKeyEvent * e = (QKeyEvent *) event;
@@ -816,12 +820,12 @@ void MainForm::decreaseFont()
 
 void MainForm::setResizingCusor()
 {
-        scrollArea->widget()->setCursor(*resizeBlockCursor);
+        //scrollArea->widget()->setCursor(*resizeBlockCursor);
 }
 
 void MainForm::setUnresizingCusor()
 {
-    scrollArea->widget()->setCursor(QCursor(Qt::ArrowCursor));
+    //scrollArea->widget()->setCursor(QCursor(Qt::ArrowCursor));
 }
 
 void MainForm::fileSelected(const QString &path)
@@ -853,7 +857,7 @@ void MainForm::recognizeAll()
 
 void MainForm::alignButtonClicked()
 {
-    if (((QSelectionLabel *) scrollArea->widget())->pixmap()->isNull())
+    /*if (((QSelectionLabel *) scrollArea->widget())->pixmap()->isNull())
         return;
     QRect rect = ((QSelectionLabel *) scrollArea->widget())->getSelectedRect();
     QPixmap pix = pixmap->copy(rect.x()/scaleFactor, rect.y()/scaleFactor, rect.width()/scaleFactor, rect.height()/scaleFactor);
@@ -866,16 +870,16 @@ void MainForm::alignButtonClicked()
         scaleImage(1.01);
     }
     rotation = tmpr;
-    delete blockAnalysis;
+    delete blockAnalysis;*/
 }
 
 void MainForm::unalignButtonClicked()
 {
-    if (((QSelectionLabel *) scrollArea->widget())->pixmap()->isNull())
+    /*if (((QSelectionLabel *) scrollArea->widget())->pixmap()->isNull())
         return;
     int rot = ((FileToolBar *) m_toolBar)->getRotation();
     int rrot = ((rot + 45)/90);
     rrot *=90;
     rotateImage(rrot - rot);
-    rotation = rrot;
+    rotation = rrot;*/
 }

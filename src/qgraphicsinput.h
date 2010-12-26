@@ -27,6 +27,7 @@ class QGraphicsPixmapItem;
 class QGraphicsRectItem;
 class QPixmap;
 class QCursor;
+class QRectF;
 
 enum SelectStates {
     NoSelect = 0,
@@ -54,6 +55,7 @@ public:
     qreal getRealScale();
     qreal getRealAngle();
     QPixmap getImage();
+    bool addBlock(const QRectF &rect, bool removeObstacles = true);
     void cropImage();
     void undo();
     //setMagnifierCursor(QCursor * cursor = );
@@ -76,6 +78,7 @@ private:
     void clearTransform();
     QPixmap extractPixmap(QGraphicsRectItem * item);
     void deleteBlockRect(QGraphicsRectItem * item);
+    QGraphicsRectItem * newBlock(const QRectF &rect);
     QGraphicsView * m_view;
     QGraphicsPixmapItem * m_image;
     QPixmap old_pixmap;

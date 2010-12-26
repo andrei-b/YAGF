@@ -137,20 +137,45 @@ void QGraphicsInput::mouseReleaseEvent(QGraphicsSceneMouseEvent *mouseEvent)
 }
 
 
+QGraphicsRectItem * QGraphicsInput::newBlock(const QRectF &rect)
+{
+    QPen p(Qt::SolidLine);
+    QBrush b(Qt::SolidPattern);
+    b.setColor(QColor(0,0,127,127));
+    p.setWidth(2);
+    p.setColor(QColor(0,0, 255));
+    QGraphicsRectItem * res;
+    res = this->addRect(rect, p, b);
+    res->setAcceptHoverEvents(true);
+    res->setZValue(1);
+    res->setData(1, "block");
+    res->setData(2, "no");
+    return res;
+}
+
+bool QGraphicsInput::addBlock(const QRectF &rect, bool removeObstacles)
+{
+    QGraphicsRectItem * block = newBlock(rect);
+    if (!removeObstacles) {
+        if (block->collidingItems().size() > 0) {
+            deleteBlockRect(block);
+            return false;
+        }
+    } else {
+        for (int i = block->collidingItems().size() - 1; i >= 0; i--) {
+           if (block->collidingItems().at(i)->data(1) == "block")
+             deleteBlockRect((QGraphicsRectItem *) block->collidingItems().at(i));
+        }
+    }
+    m_CurrentBlockRect = block;
+    return true;
+}
+
 void QGraphicsInput::mouseMoveEvent(QGraphicsSceneMouseEvent *mouseEvent)
 {
     if (selecting == StartSelect) {
         selecting = Selecting;
-        QPen p(Qt::SolidLine);
-        QBrush b(Qt::SolidPattern);
-        b.setColor(QColor(0,0,127,127));
-        p.setWidth(2);
-        p.setColor(QColor(0,0, 255));
-        m_CurrentBlockRect = this->addRect(blockRect, p, b);
-        m_CurrentBlockRect->setAcceptHoverEvents(true);
-        m_CurrentBlockRect->setZValue(1);
-        m_CurrentBlockRect->setData(1, "block");
-        m_CurrentBlockRect->setData(2, "no");
+        m_CurrentBlockRect = newBlock(blockRect);
     }
     if (selecting == Selecting)
     {

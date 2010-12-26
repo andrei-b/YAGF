@@ -33,6 +33,7 @@ class QByteArray;
 class QFile;
 class SpellChecker;
 class QCursor;
+class QGraphicsInput;
 
 class MainForm : public QMainWindow, public Ui::MainWindow
 {
@@ -84,6 +85,7 @@ private:
 	QComboBox * selectFormatBox;
         QCheckBox * spellCheckBox;
 	QPixmap * pixmap;
+        QGraphicsInput * graphicsInput;
 	double scaleFactor;
 	bool singleColumn;
 	QString language;
