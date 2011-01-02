@@ -232,13 +232,13 @@ void QGraphicsInput::mouseMoveEvent(QGraphicsSceneMouseEvent *mouseEvent)
             break;
         }
         m_CurrentBlockRect = m_LastSelected;
+        m_CurrentBlockRect->setRect(newRect);
         for (int i = 0; i < m_CurrentBlockRect->collidingItems().size(); ++i)
             if (m_CurrentBlockRect->collidingItems().at(i)->data(1) == "block") {
                  m_CurrentBlockRect->setRect(selBlockRect);
                  return;
              }
-        blockRect = newRect;
-        m_CurrentBlockRect->setRect(blockRect);
+        selBlockRect = newRect;
         return;
     }
     if (selecting == Selecting)
