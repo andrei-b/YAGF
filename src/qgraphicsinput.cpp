@@ -36,6 +36,7 @@ QGraphicsInput::QGraphicsInput(const QRectF & sceneRect, QGraphicsView * view) :
     real_rotate = 0;
     m_rotate = 0;
     buttonPressed = Qt::NoButton;
+    near_res = 0;
 }
 
 bool QGraphicsInput::loadImage(const QPixmap &image, bool clearBlocks)
@@ -89,16 +90,17 @@ void QGraphicsInput::mousePressEvent ( QGraphicsSceneMouseEvent * event )
     if (event->buttons() == Qt::LeftButton) {
         buttonPressed = Qt::LeftButton;
         if (selecting == NoSelect) {
-            if (this->nearActiveBorder(event->scenePos().x(), event->scenePos().y())) {
+            if((near_res = nearActiveBorder(event->scenePos().x(), event->scenePos().y())) != 0)
+            {
                 m_CurrentBlockRect = m_LastSelected;
                 selecting = Selecting;
                 blockRect = m_CurrentBlockRect->rect();
-            } else {
-                selecting = StartSelect;
-                blockRect.setLeft(event->lastScenePos().x());
-                blockRect.setTop(event->lastScenePos().y());
-                blockRect.setWidth(10);
-                blockRect.setHeight(10);
+            }  else {
+                   selecting = StartSelect;
+                   blockRect.setLeft(event->lastScenePos().x());
+                   blockRect.setTop(event->lastScenePos().y());
+                   blockRect.setWidth(10);
+                   blockRect.setHeight(10);
             }
         } else {
         //TODO!!!
@@ -185,10 +187,63 @@ void QGraphicsInput::mouseMoveEvent(QGraphicsSceneMouseEvent *mouseEvent)
         selecting = Selecting;
         m_CurrentBlockRect = newBlock(blockRect);
     }
+
+    if ((mouseEvent->modifiers() & Qt::ControlModifier) == 0)
+    if (mouseEvent->buttons() == Qt::NoButton) {
+        near_res = nearActiveBorder(mouseEvent->scenePos().x(), mouseEvent->scenePos().y());
+            switch (near_res) {
+            case 0:
+                m_view->setCursor(Qt::ArrowCursor);
+                break;
+            case 1:
+                m_view->setCursor(Qt::SplitHCursor);
+                break;
+            case 2:
+                m_view->setCursor(Qt::SplitVCursor);
+                break;
+            case 3:
+                m_view->setCursor(Qt::SplitHCursor);
+                break;
+            case 4:
+                m_view->setCursor(Qt::SplitVCursor);
+                break;
+            default:
+                break;
+            }
+
+    }
+    QRectF newRect;
+    if (near_res && (mouseEvent->buttons()&Qt::LeftButton)) {
+        QRectF newRect = m_LastSelected->rect();
+        switch (near_res) {
+        case 1:
+            newRect.setLeft(mouseEvent->lastScenePos().x());
+            break;
+        case 2:
+            newRect.setTop(mouseEvent->lastScenePos().y());
+            break;
+        case 3:
+            newRect.setRight(mouseEvent->lastScenePos().x());
+            break;
+        case 4:
+            newRect.setBottom(mouseEvent->lastScenePos().y());
+            break;
+        default:
+            break;
+        }
+        m_CurrentBlockRect = m_LastSelected;
+        for (int i = 0; i < m_CurrentBlockRect->collidingItems().size(); ++i)
+            if (m_CurrentBlockRect->collidingItems().at(i)->data(1) == "block") {
+                 m_CurrentBlockRect->setRect(selBlockRect);
+                 return;
+             }
+        blockRect = newRect;
+        m_CurrentBlockRect->setRect(blockRect);
+        return;
+    }
     if (selecting == Selecting)
     {
-
-        QRectF newRect = blockRect;
+        newRect = blockRect;
         if (newRect.left() < mouseEvent->lastScenePos().x())
             newRect.setRight(mouseEvent->lastScenePos().x());
         else
@@ -205,13 +260,6 @@ void QGraphicsInput::mouseMoveEvent(QGraphicsSceneMouseEvent *mouseEvent)
              }
         blockRect = newRect;
         return;
-    }
-    if ((mouseEvent->modifiers() & Qt::ControlModifier) == 0)
-    if (mouseEvent->buttons() == Qt::NoButton) {
-        if (this->nearActiveBorder(mouseEvent->scenePos().x(), mouseEvent->scenePos().y()))
-            m_view->setCursor(Qt::SizeAllCursor);
-        else
-            m_view->setCursor(Qt::ArrowCursor);
     }
 }
 
@@ -237,6 +285,7 @@ void QGraphicsInput::leftMouseRelease(qreal x, qreal y)
                 p.setColor(QColor(255,0,0));
                 r->setData(2, "yes");
                 m_LastSelected = r;
+                selBlockRect = m_LastSelected->rect();
             } else {
                 m_LastSelected = 0;
                 r->setData(2, "no");
@@ -264,22 +313,39 @@ void QGraphicsInput::rightMouseRelease(qreal x, qreal y)
 }
 
 
-bool QGraphicsInput::nearActiveBorder(qreal x, qreal y)
+int QGraphicsInput::nearActiveBorder(qreal x, qreal y)
 {
-    if (m_LastSelected) {
+    if (m_LastSelected == 0)
+        return 0;
         qreal xcenter = m_LastSelected->rect().center().x();
         qreal ycenter = m_LastSelected->rect().center().y();
-        qreal xd = abs(x-xcenter);
-        qreal yd = abs(y-ycenter);
-        if ((abs(abs(m_LastSelected->rect().left() - xcenter) - xd) <= 4) &&
-                    (abs(abs(m_LastSelected->rect().top() - ycenter) - yd) <= abs(m_LastSelected->rect().top() - ycenter)))
-            return true;
-        if ((abs(abs(m_LastSelected->rect().left() - xcenter) - xd) <= abs(m_LastSelected->rect().left() - xcenter)) &&
-                    (abs(abs(m_LastSelected->rect().top() - ycenter) - yd) <= 4))
-            return true;
-
-    }
-    return false;
+        qreal xcd = abs(m_LastSelected->rect().right() - xcenter) + 8;
+        qreal ycd = abs(m_LastSelected->rect().bottom() - ycenter) + 8;
+        if ((abs(x - m_LastSelected->rect().left()) <= 4)) {
+            if (abs(y - ycenter) < ycd)
+                return 1;
+            else
+                return 0;
+        }
+        if ((abs(m_LastSelected->rect().top() - y) <= 4)) {
+            if (abs(x - xcenter) < xcd)
+                return 2;
+            else
+                return 0;
+        }
+        if ((abs(x - m_LastSelected->rect().right()) <= 4)) {
+            if (abs(y - ycenter) < ycd)
+                return 3;
+            else
+                return 0;
+        }
+        if ((abs(m_LastSelected->rect().bottom() - y) <= 4)) {
+            if (abs(x - xcenter) < xcd)
+                return 4;
+            else
+                return 0;
+        }
+        return 0;
 }
 
 QPixmap QGraphicsInput::getActiveBlock()

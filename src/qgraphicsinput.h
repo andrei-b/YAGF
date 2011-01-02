@@ -77,7 +77,7 @@ public slots:
 private:
     void leftMouseRelease(qreal x, qreal y);
     void rightMouseRelease(qreal x, qreal y);
-    bool nearActiveBorder(qreal x, qreal y);
+    int nearActiveBorder(qreal x, qreal y);
     void clearTransform();
     QPixmap extractPixmap(QGraphicsRectItem * item);
     void deleteBlockRect(QGraphicsRectItem * item);
@@ -94,6 +94,7 @@ private:
     QGraphicsRectItem * m_LastSelected;
     SelectStates selecting;
     QRectF blockRect;
+    QRectF selBlockRect;
     bool hasImage;
     qreal  m_scale;
     qreal real_scale;
@@ -101,6 +102,7 @@ private:
     qreal real_rotate;
     Qt::MouseButton buttonPressed;
     QCursor * magnifierCursor;
+    int near_res;
 };
 
 #endif // QGRAPHICSINPUT_H
