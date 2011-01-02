@@ -125,6 +125,7 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
         connect(action, SIGNAL(triggered()), textEdit, SLOT(redo()));
         textEdit->addAction(action);
         action = new QAction("separator", this);
+        action->setText("");
         action->setSeparator(true);
         textEdit->addAction(action);
         action = new QAction(trUtf8("Select All\tCtrl+A"), this);
@@ -144,6 +145,7 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
         connect(action, SIGNAL(triggered()), textEdit, SLOT(paste()));
         textEdit->addAction(action);
         action = new QAction("separator", this);
+        action->setText("");
         action->setSeparator(true);
         textEdit->addAction(action);
         action = new QAction(trUtf8("Larger Font\tCtrl++"), this);
