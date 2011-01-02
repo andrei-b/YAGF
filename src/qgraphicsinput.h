@@ -47,7 +47,7 @@ public:
     void setView(QGraphicsView * view);
     QPixmap getActiveBlock();
     QPixmap getCurrentBlock();
-    void setViewScale(qreal scale);
+    void setViewScale(qreal scale, qreal angle);
     void rotateImage(qreal angle, qreal x, qreal y);
     int blocksCount();
     void deleteBlock(int index);
@@ -84,7 +84,12 @@ private:
     QGraphicsRectItem * newBlock(const QRectF &rect);
     QGraphicsView * m_view;
     QGraphicsPixmapItem * m_image;
+    QGraphicsPixmapItem * m_realImage;
     QPixmap old_pixmap;
+    QPixmap pm2;
+    QPixmap pm4;
+    QPixmap pm8;
+    QPixmap pm16;
     QGraphicsRectItem * m_CurrentBlockRect;
     QGraphicsRectItem * m_LastSelected;
     SelectStates selecting;

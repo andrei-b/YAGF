@@ -272,7 +272,8 @@ void MainForm::rotate180ButtonClicked()
 
 void MainForm::enlargeButtonClicked()
 {
-       this->graphicsInput->setViewScale(1.5);
+       if (graphicsInput->getRealScale() < 1)
+           graphicsInput->setViewScale(2, 0);
        return;
         if (scaleFactor < 0.25 )
             scaleImage(0.25/scaleFactor);
@@ -294,9 +295,10 @@ void MainForm::enlargeButtonClicked()
 
 void MainForm::decreaseButtonClicked() 
 {
-        if (scaleFactor > 1 )
+        //if (scaleFactor > 1 )
             scaleImage(0.5);
-        else
+          return;
+        //else
         if (scaleFactor > 0.75 )
             scaleImage(0.75/scaleFactor);
         else
@@ -316,13 +318,7 @@ void MainForm::scaleImage(double sf)
 {
 	if (!imageLoaded)
 		return;
-	if ((scaleFactor < 0.2) && (sf < 1))
-		return;
-	if ((scaleFactor > 4) && (sf > 1))
-		return;
-	scaleFactor *= sf;
-        ((FileToolBar *) m_toolBar)->setScale(scaleFactor);
-        this->graphicsInput->setViewScale(scaleFactor);
+        graphicsInput->setViewScale(sf, 0);
 //	QPixmap pix = pixmap->scaled(QSize(pixmap->width()*scaleFactor, pixmap->height()*scaleFactor));
 //	((QLabel*)(scrollArea->widget()))->setPixmap(pix);
 //        ((QSelectionLabel*)(scrollArea->widget()))->resetSelection();
@@ -473,7 +469,7 @@ void MainForm::loadFile(const QString &fn)
             QTransform tr;
             tr.reset();
             graphicsView->setTransform(tr);
-            graphicsInput->setViewScale(1.0/scaleFactor);
+            graphicsInput->setViewScale(1.0/scaleFactor, 0);
         }
 	if (imageLoaded) {
                 ((FileToolBar *) m_toolBar)->addFile(pixmap, fn);
@@ -599,6 +595,7 @@ void MainForm::recognizeInternal(const QPixmap &pix)
 
 void MainForm::recognize()
 {
+    QFile::remove(workingDir + "input*.bmp");
     if (!imageLoaded) {
             QMessageBox::critical(this, trUtf8("Error"), trUtf8("No image loaded"));
             return;
@@ -609,7 +606,8 @@ void MainForm::recognize()
     }
     if (graphicsInput->blocksCount() > 0) {
         for (int i = graphicsInput->blocksCount(); i >= 0; i--)
-            recognizeInternal(graphicsInput->getBlockByIndex(i));
+            if (!graphicsInput->getBlockByIndex(i).isNull())
+                recognizeInternal(graphicsInput->getBlockByIndex(i));
     } else {
         recognizeInternal(graphicsInput->getImage());
     }
@@ -932,3 +930,8 @@ void MainForm::on_actionRecognize_block_activated()
         return;
     recognizeInternal(graphicsInput->getCurrentBlock());
 }
+
+/*void MainForm::on_actionRecognize_activated()
+{
+
+}*/

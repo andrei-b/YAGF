@@ -34,6 +34,7 @@ QGraphicsInput::QGraphicsInput(const QRectF & sceneRect, QGraphicsView * view) :
     m_scale = 1;
     real_scale = 1;
     real_rotate = 0;
+    m_rotate = 0;
     buttonPressed = Qt::NoButton;
 }
 
@@ -49,9 +50,16 @@ bool QGraphicsInput::loadImage(const QPixmap &image, bool clearBlocks)
         this->removeItem(m_image);
         real_scale = 1;
     }
+    old_pixmap = image;
+    pm2 = image.scaledToWidth(image.width()/2);
+    pm4 = pm2.scaledToWidth(pm2.width()/2);
+    pm8 = pm4.scaledToWidth(pm4.width()/2);
+    pm16 = pm8.scaledToWidth(pm8.width()/2);
     this->setSceneRect(image.rect());
     m_image = this->addPixmap(image);
-    old_pixmap = image;
+    m_realImage = this->addPixmap(image);
+    m_realImage->setData(1, "image");
+    m_realImage->hide();
     this->setFocus();
     m_image->setFocus();
     m_image->setAcceptedMouseButtons(Qt::LeftButton|Qt::RightButton|Qt::MidButton);
@@ -296,31 +304,62 @@ QPixmap QGraphicsInput::extractPixmap(QGraphicsRectItem *item)
  //   imgt = item->mapToItem(m_image, item->rect().left(), item->rect().top()).y();
  //   imgr = item->mapToItem(m_image, item->rect().right(), item->rect().bottom()).x();
  //   imgb = item->mapToItem(m_image, item->rect().right(), item->rect().bottom()).y();
-       imgl = item->rect().left();
-       imgt = item->rect().top();
-       imgr = item->rect().right();
-       imgb = item->rect().bottom();
-    return m_image->pixmap().copy(imgl, imgt,imgr-imgl,imgb-imgt);
+       imgl = item->rect().left()/real_scale;
+       imgt = item->rect().top()/real_scale;
+       imgr = item->rect().right()/real_scale;
+       imgb = item->rect().bottom()/real_scale;
+      //m_image->setPixmap(m_realImage->pixmap().copy(imgl, imgt,imgr-imgl,imgb-imgt));
+    return m_realImage->pixmap().copy(imgl, imgt,imgr-imgl,imgb-imgt);
 }
 
-void QGraphicsInput::setViewScale(qreal scale)
+void QGraphicsInput::setViewScale(qreal scale, qreal angle)
 {
     if (!hasImage) return;
-    if ((scale == 0)||((real_scale *= scale) == 0))
+    if ((scale == 0)||((real_scale*scale) < 0.0625)||(real_scale*scale) > 1)
         return;
-    m_scale = scale/m_scale;
+    m_scale = scale;
+//    m_view->scale(scale,  scale);
+    this->removeItem(m_image);
+    for (int i = 0; i < this->items().size(); i++)
+        if (items().at(i)->data(1) != "image")
+            items().at(i)->scale(scale, scale);
     real_scale *= scale;
-    m_view->scale(scale,  scale);
+
+    if (real_scale == 1)
+            m_image = this->addPixmap(old_pixmap);
+    else
+    if (real_scale == 0.5)
+       m_image = this->addPixmap(pm2);
+    else
+    if (real_scale == 0.25)
+       m_image = this->addPixmap(pm4);
+    else
+    if (real_scale == 0.125)
+      m_image = this->addPixmap(pm8);
+    else
+    if (real_scale == 0.0625)
+        m_image = this->addPixmap(pm16);
+    m_image->setFocus();
+    m_image->setAcceptedMouseButtons(Qt::LeftButton|Qt::RightButton|Qt::MidButton);
+    m_image->setAcceptHoverEvents(true);
+    m_image->setData(1, "image");
+    qreal x = width()/2;
+    qreal y = height()/2;
+    real_rotate += angle;
+    m_image->setPixmap(m_image->pixmap().transformed(QTransform().translate(-x, -y).rotate(real_rotate).translate(x, y)));
+    m_realImage->setPixmap(m_realImage->pixmap().transformed(QTransform().translate(-x, -y).rotate(angle).translate(x, y)));
+    m_rotate = angle;
+    m_image->show();
+
 }
 
 void QGraphicsInput::rotateImage(qreal angle, qreal x, qreal y)
 {
     m_rotate = angle;
-    real_rotate += angle;
     //real_rotate = real_rotate % 360;
-
-    QPixmap pm = m_image->pixmap().transformed(QTransform().translate(-x, -y).rotate(angle).translate(x, y));
-    loadImage(pm, false);
+     setViewScale(1, angle);
+    //QPixmap pm = m_image->pixmap().transformed(QTransform().translate(-x, -y).rotate(angle).translate(x, y));
+   // loadImage(pm, false);
     //m_image->setPixmap(pm);
 }
 
@@ -419,7 +458,11 @@ void QGraphicsInput::wheelEvent(QGraphicsSceneWheelEvent *wheelEvent)
     if (wheelEvent->modifiers() == Qt::ControlModifier) {
             int delta = wheelEvent->delta();
             qreal coeff = delta < 0 ? 1/(1-delta/(360.)) : 1 + delta/(240.);
-            this->setViewScale(coeff);
+            if (coeff >= 1)
+                coeff = 2;
+            else
+                coeff = 0.5;
+            this->setViewScale(coeff, 0);
             wheelEvent->accept();
             m_view->setCursor(*magnifierCursor);
      } else
@@ -432,11 +475,11 @@ void QGraphicsInput::keyReleaseEvent(QKeyEvent *keyEvent)
         m_view->setCursor(Qt::ArrowCursor);
     if (keyEvent->modifiers() & Qt::ControlModifier) {
         if ((keyEvent->key() == Qt::Key_Plus)||(keyEvent->key() == Qt::Key_Equal)) {
-            this->setViewScale(1.5);
+            this->setViewScale(2, 0);
             return;
         }
         if ((keyEvent->key() == Qt::Key_Minus)||(keyEvent->key() == Qt::Key_Underscore)) {
-            this->setViewScale(0.75);
+            this->setViewScale(0.5, 0);
             return;
         }
 
