@@ -62,7 +62,13 @@ const QString version = "0.8.2";
 
 MainForm::MainForm(QWidget *parent):QMainWindow(parent)
 {
-	setupUi(this);
+        setupUi(this);
+
+        ///!!!!!
+        alignButton->hide();
+        unalignButton->hide();
+
+
 	setWindowTitle("YAGF");
 	selectLangsBox = new QComboBox();
 	QLabel * label = new QLabel();
