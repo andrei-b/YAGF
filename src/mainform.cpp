@@ -1,6 +1,6 @@
 /*
     YAGF - cuneiform OCR graphical front-end 
-    Copyright (C) 2009 Andrei Borovsky <anb@symmetrica.net>
+    Copyright (C) 2009-2010 Andrei Borovsky <anb@symmetrica.net>
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -58,7 +58,7 @@
 #include "FileToolBar.h"
 #include "BlockAnalysis.h"
 
-const QString version = "0.8.2";
+const QString version = "0.8.3";
 
 MainForm::MainForm(QWidget *parent):QMainWindow(parent)
 {
@@ -655,7 +655,7 @@ void MainForm::showAboutDlg()
 {
 	QPixmap icon;
 	icon.load(":/yagf.png");
-        QMessageBox aboutBox(QMessageBox::NoIcon, trUtf8("About YAGF"), trUtf8("<p align=\"center\"><b>YAGF - Yet Another Graphical Front-end for cuneiform</b></p> <p align=\"center\">Version %1</p> This is a free software. Visit <a href=\"http://symmetrica.net/cuneiform-linux/yagf-en.html\">http://symmetrica.net/cuneiform-linux/yagf-en.html</a> for more details.").arg(version), QMessageBox::Ok);
+        QMessageBox aboutBox(QMessageBox::NoIcon, trUtf8("About YAGF"), trUtf8("<p align=\"center\"><b>YAGF - Yet Another Graphical Front-end for cuneiform</b></p><p align=\"center\">Version %1</p> <p align=\"center\">Ⓒ 2009-2010 Andrei Borovsky</p> This is a free software distributed under GPL v3. Visit <a href=\"http://symmetrica.net/cuneiform-linux/yagf-en.html\">http://symmetrica.net/cuneiform-linux/yagf-en.html</a> for more details.").arg(version), QMessageBox::Ok);
 	aboutBox.setIconPixmap(icon);
         QList<QLabel *> labels = aboutBox.findChildren<QLabel*>();
         for (int i = 0; i < labels.count(); i++) {
