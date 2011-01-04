@@ -366,18 +366,8 @@ QPixmap QGraphicsInput::extractPixmap(QGraphicsRectItem *item)
     if ((item == 0) || (!hasImage)) {
         return QPixmap(0,0);
     }
-//    QMessageBox::critical(0,QString::number(m_LastSelected->rect().right()), QString::number(m_LastSelected->rect().bottom()));
-    int imgl, imgt, imgr, imgb;
- //   imgl = item->mapToItem(m_image, item->rect().left(), item->rect().top()).x();
- //   imgt = item->mapToItem(m_image, item->rect().left(), item->rect().top()).y();
- //   imgr = item->mapToItem(m_image, item->rect().right(), item->rect().bottom()).x();
- //   imgb = item->mapToItem(m_image, item->rect().right(), item->rect().bottom()).y();
-       imgl = item->rect().left()/real_scale;
-       imgt = item->rect().top()/real_scale;
-       imgr = item->rect().right()/real_scale;
-       imgb = item->rect().bottom()/real_scale;
-      //m_image->setPixmap(m_realImage->pixmap().copy(imgl, imgt,imgr-imgl,imgb-imgt));
-    return m_realImage->pixmap().copy(imgl, imgt,imgr-imgl,imgb-imgt);
+    QRectF rect = item->mapRectToScene(item->rect());
+    return m_realImage->pixmap().copy(rect.left()/real_scale, rect.top()/real_scale,(rect.right()-rect.left())/real_scale,(rect.bottom()-rect.top())/real_scale);
 }
 
 void QGraphicsInput::setViewScale(qreal scale, qreal angle)
