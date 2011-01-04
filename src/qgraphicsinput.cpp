@@ -214,7 +214,7 @@ void QGraphicsInput::mouseMoveEvent(QGraphicsSceneMouseEvent *mouseEvent)
     }
     QRectF newRect;
     if (near_res && (mouseEvent->buttons()&Qt::LeftButton)) {
-        QRectF newRect = m_LastSelected->rect();
+        QRectF newRect = m_LastSelected->mapRectToScene(m_LastSelected->rect());
         switch (near_res) {
         case 1:
             newRect.setLeft(mouseEvent->lastScenePos().x());
@@ -232,10 +232,10 @@ void QGraphicsInput::mouseMoveEvent(QGraphicsSceneMouseEvent *mouseEvent)
             break;
         }
         m_CurrentBlockRect = m_LastSelected;
-        m_CurrentBlockRect->setRect(newRect);
+        m_CurrentBlockRect->setRect(m_LastSelected->mapRectFromScene(newRect));
         for (int i = 0; i < m_CurrentBlockRect->collidingItems().size(); ++i)
             if (m_CurrentBlockRect->collidingItems().at(i)->data(1) == "block") {
-                 m_CurrentBlockRect->setRect(selBlockRect);
+                 m_CurrentBlockRect->setRect(m_LastSelected->mapRectFromScene(selBlockRect));
                  return;
              }
         selBlockRect = newRect;
@@ -317,6 +317,8 @@ int QGraphicsInput::nearActiveBorder(qreal x, qreal y)
 {
     if (m_LastSelected == 0)
         return 0;
+        x = m_LastSelected->mapFromScene(x, y).x();
+        y = m_LastSelected->mapFromScene(x, y).y();
         qreal xcenter = m_LastSelected->rect().center().x();
         qreal ycenter = m_LastSelected->rect().center().y();
         qreal xcd = abs(m_LastSelected->rect().right() - xcenter) + 8;
@@ -388,7 +390,7 @@ void QGraphicsInput::setViewScale(qreal scale, qreal angle)
     this->removeItem(m_image);
     for (int i = 0; i < this->items().size(); i++)
         if (items().at(i)->data(1) != "image")
-            items().at(i)->scale(scale, scale);
+            items().at(i)->scale(scale, scale); // Silly as this line seems it is the only way to scale rectangles correctly.
     real_scale *= scale;
 
     if (real_scale == 1)
