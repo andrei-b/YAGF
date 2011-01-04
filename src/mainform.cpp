@@ -398,6 +398,7 @@ void MainForm::fillLanguagesBox()
 	  language = "rus";
 	  selectLangsBox->addItem(trUtf8("Russian"), QVariant("rus"));
           selectLangsBox->addItem(trUtf8("Russian-English"), QVariant("ruseng"));
+          selectLangsBox->addItem(trUtf8("Croatian"), QVariant("hrv"));
           selectLangsBox->addItem(trUtf8("Czech"), QVariant("cze"));
           selectLangsBox->addItem(trUtf8("Danish"), QVariant("dan"));
           selectLangsBox->addItem(trUtf8("Dutch"), QVariant("dut"));
@@ -414,6 +415,8 @@ void MainForm::fillLanguagesBox()
           selectLangsBox->addItem(trUtf8("Roman"), QVariant("rum"));
           selectLangsBox->addItem(trUtf8("Spanish"), QVariant("spa"));
           selectLangsBox->addItem(trUtf8("Swedish"), QVariant("swe"));
+          selectLangsBox->addItem(trUtf8("Serbian"), QVariant("srp"));
+          selectLangsBox->addItem(trUtf8("Slovenian"), QVariant("slo"));
           selectLangsBox->addItem(trUtf8("Ukrainian"), QVariant("ukr"));
 	  selectLangsBox->addItem(trUtf8("Russian-French"), QVariant("rus_fra"));
 	  selectLangsBox->addItem(trUtf8("Russian-German"), QVariant("rus_ger"));
