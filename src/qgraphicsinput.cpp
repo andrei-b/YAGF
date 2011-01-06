@@ -37,6 +37,7 @@ QGraphicsInput::QGraphicsInput(const QRectF & sceneRect, QGraphicsView * view) :
     m_rotate = 0;
     buttonPressed = Qt::NoButton;
     near_res = 0;
+    magnifierCursor = new QCursor(Qt::SizeAllCursor);
 }
 
 bool QGraphicsInput::loadImage(const QPixmap &image, bool clearBlocks)
@@ -408,7 +409,7 @@ void QGraphicsInput::setViewScale(qreal scale, qreal angle)
     m_realImage->setPixmap(m_realImage->pixmap().transformed(QTransform().translate(-x, -y).rotate(angle).translate(x, y)));
     m_rotate = angle;
     m_image->show();
-
+    m_view->centerOn(0,0);
 }
 
 void QGraphicsInput::rotateImage(qreal angle, qreal x, qreal y)
@@ -501,7 +502,8 @@ void QGraphicsInput::cropImage()
 
 void QGraphicsInput::setMagnifierCursor(QCursor *cursor)
 {
-    magnifierCursor = cursor;
+    delete magnifierCursor;
+    magnifierCursor = new QCursor(cursor->pixmap());
 }
 
 void QGraphicsInput::undo()
