@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
-<TS version="2.0" language="ru">
+<TS version="2.0" language="de">
 <context>
     <name>FileToolBar</name>
     <message>
@@ -11,7 +11,7 @@
     <message>
         <location filename="FileToolBar.cpp" line="57"/>
         <source>Clear</source>
-        <translation>Löschen</translation>
+        <translation>Leiste schließen</translation>
     </message>
     <message>
         <location filename="FileToolBar.cpp" line="61"/>
@@ -21,7 +21,7 @@
     <message>
         <location filename="FileToolBar.cpp" line="65"/>
         <source>Remove</source>
-        <translation>Entfernen</translation>
+        <translation>Aus Leiste entfernen</translation>
     </message>
     <message>
         <location filename="FileToolBar.cpp" line="92"/>
@@ -59,7 +59,7 @@
     <message>
         <location filename="mainform.cpp" line="229"/>
         <source>There is an unsaved text in the editor window. Do you want to save it?</source>
-        <translation>Nicht gespeicherter Text im Bearbeitungsfenster. Wollen Sie ihn speichern?</translation>
+        <translation>Nicht gespeicherter Text im Bearbeitungsfenster. Jetzt speichern?</translation>
     </message>
     <message>
         <location filename="mainform.cpp" line="399"/>
@@ -159,17 +159,9 @@
         <translation>Text speichern</translation>
     </message>
     <message>
-        <source>Text files (*.txt *.html)</source>
-        <translation>Textdateien (*.txt *.html)</translation>
-    </message>
-    <message>
         <location filename="mainform.cpp" line="658"/>
         <source>About YAGF</source>
         <translation>Über YAGF</translation>
-    </message>
-    <message>
-        <source>&lt;p align=&quot;center&quot;&gt;&lt;b&gt;YAGF - Yet Another Graphical Front-end for cuneiform&lt;/b&gt;&lt;/p&gt; &lt;p align=&quot;center&quot;&gt;Version 0.5&lt;/p&gt; This is a free software. Visit &lt;a href=&quot;http://symmetrica.net/cuneiform-linux/&quot;&gt;symmetrica.net/cuneiform-linux/&lt;/a&gt; for more details.</source>
-        <translation>&lt;p align=&quot;center&quot;&gt;&lt;b&gt;YAGF - eine grafische Benutzeroberfläche&lt;br&gt;für die Texterkennungs-Software «Cuneiform»&lt;/b&gt;&lt;/p&gt;&lt;p align=&quot;center&quot;&gt;Version %1&lt;/p&gt;&lt;p align=&quot;center&quot;&gt;YAGF ist freie Software. Besuchen Sie&lt;br&gt;&lt;a href=&quot;http://symmetrica.net/cuneiform-linux/yagf-en.html&quot;&gt;http://symmetrica.net/cuneiform-linux/yagf-en.html&lt;/a&gt;&lt;br&gt;für weitere Informationen.&lt;/p&gt;</translation>
     </message>
     <message>
         <location filename="mainform.cpp" line="612"/>
@@ -180,10 +172,6 @@
         <location filename="mainform.cpp" line="671"/>
         <source>http://symmetrica.net/cuneiform-linux/yagf-en.html</source>
         <translation>http://symmetrica.net/cuneiform-linux/yagf-en.html</translation>
-    </message>
-    <message>
-        <source>&lt;p align=&quot;center&quot;&gt;&lt;b&gt;YAGF - Yet Another Graphical Front-end for cuneiform&lt;/b&gt;&lt;/p&gt; &lt;p align=&quot;center&quot;&gt;Version %1&lt;/p&gt; This is a free software. Visit &lt;a href=&quot;http://symmetrica.net/cuneiform-linux/yagf-en.html&quot;&gt;http://symmetrica.net/cuneiform-linux/yagf-en.html&lt;/a&gt; for more details.</source>
-        <translation>&lt;p align=&quot;center&quot;&gt;&lt;b&gt;YAGF - eine grafische Benutzeroberfläche&lt;br&gt;für die Texterkennungs-Software «Cuneiform»&lt;/b&gt;&lt;/p&gt;&lt;p align=&quot;center&quot;&gt;Version %1&lt;/p&gt;&lt;p align=&quot;center&quot;&gt;YAGF ist freie Software. Besuchen Sie&lt;br&gt;&lt;a href=&quot;http://symmetrica.net/cuneiform-linux/yagf-en.html&quot;&gt;http://symmetrica.net/cuneiform-linux/yagf-en.html&lt;/a&gt;&lt;br&gt;für weitere Informationen.&lt;/p&gt;</translation>
     </message>
     <message>
         <location filename="mainform.cpp" line="80"/>
@@ -346,7 +334,7 @@
     <message>
         <location filename="mainform.ui" line="528"/>
         <source>&amp;Recognize</source>
-        <translation>E&amp;rkennung aktueller Seite</translation>
+        <translation>Texte&amp;rkennung: aktuelle Seite</translation>
     </message>
     <message>
         <location filename="mainform.ui" line="531"/>
@@ -397,12 +385,12 @@
     <message>
         <location filename="mainform.ui" line="607"/>
         <source>Recognize &amp;All Pages</source>
-        <translation>Erkennung &amp;aller Seiten</translation>
+        <translation>Texterkennung: &amp;alle Seiten</translation>
     </message>
     <message>
         <location filename="mainform.ui" line="610"/>
         <source>Recognize All Pages</source>
-        <translation>Erkennung aller Seiten</translation>
+        <translation>Texterkennung: alle Seiten</translation>
     </message>
     <message>
         <location filename="mainform.ui" line="613"/>
@@ -424,7 +412,7 @@
     <message>
         <location filename="mainform.ui" line="646"/>
         <source>Recognize block</source>
-        <translation>Markierung erkennung</translation>
+        <translation>Texterkennung: aktuelle Markierung</translation>
     </message>
     <message>
         <location filename="mainform.ui" line="649"/>
