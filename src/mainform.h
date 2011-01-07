@@ -85,6 +85,7 @@ private:
         void saveHtml(QFile * file);
         void delTmpDir();
         void recognizeInternal(const QPixmap &pix);
+        void loadFromCommandLine();
 	bool imageLoaded;
         bool hasCopy;
 	QComboBox * selectLangsBox;

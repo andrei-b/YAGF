@@ -201,7 +201,20 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
         connect(unalignButton, SIGNAL(clicked()), this, SLOT(unalignButtonClicked()));
 
         clearBlocksButton->setDefaultAction(ActionClearAllBlocks);
+        loadFromCommandLine();
  }
+
+void MainForm::loadFromCommandLine()
+{
+    QStringList sl = QApplication::arguments();
+    if (sl.count() > 1) {
+        loadFile(sl.at(1));
+        for (int i = 2; i < sl.count(); i++)
+            loadFile(sl.at(i), false);
+        ((FileToolBar *) m_toolBar)->select(sl.at(1));
+
+    }
+}
 
 void MainForm::loadImage()
 {
