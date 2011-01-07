@@ -206,12 +206,14 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
 void MainForm::loadImage()
 {
 	QFileDialog dialog(this,
-     trUtf8("Open Image"), lastDir, trUtf8("Image Files (*.png *.jpg *.jpeg *.bmp *.tiff *.tif *.gif *.pnm *.pgm *.pbm *.ppm)"));
+                    trUtf8("Open Image"), lastDir, trUtf8("Image Files (*.png *.jpg *.jpeg *.bmp *.tiff *.tif *.gif *.pnm *.pgm *.pbm *.ppm)"));
+        dialog.setFileMode(QFileDialog::ExistingFiles);
 	if (dialog.exec()) {
 		QStringList fileNames;
 		fileNames = dialog.selectedFiles();
 		lastDir = dialog.directory().path();
-		loadFile(fileNames.at(0));
+                for (int i = 0; i < fileNames.count(); i++)
+                loadFile(fileNames.at(i));
 	}
 }
 
