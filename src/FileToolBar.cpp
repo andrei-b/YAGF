@@ -46,7 +46,8 @@ FileToolBar::FileToolBar(QWidget * parent):QToolBar(trUtf8("Loaded Images"), par
     clearButton = NULL;
     removeButton = NULL;
     currentImage = "";
-}
+    setStyleSheet(" FileToolBar { color: white; background-color: #444036 } \r QToolButton {color : white; background-color: #444036}");
+ }
 
 void FileToolBar::addFile(const QPixmap & pixmap, const QString & name)
 {
@@ -66,6 +67,7 @@ void FileToolBar::addFile(const QPixmap & pixmap, const QString & name)
         removeButton->setIconSize(QSize(24,24));
         connect(removeButton, SIGNAL(clicked()), this, SLOT(remove()));
         insertWidget(action, removeButton);
+        this->insertSeparator(0);
         buttonsAdded = true;
     }
     QPixmap pm = pixmap.scaledToHeight(96, Qt::FastTransformation);
