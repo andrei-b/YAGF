@@ -79,7 +79,7 @@ private:
 	void readSettings();
 	void writeSettings();
 	void fillLanguagesBox();
-	void loadFile(const QString &fn);
+        void loadFile(const QString &fn, bool loadIntoView = true);
 	void delTmpFiles();
 	void loadNext(int number);
         void saveHtml(QFile * file);
@@ -109,7 +109,7 @@ private:
         FileChannel * fileChannel;
         QByteArray * ba;
         SpellChecker * spellChecker;
-        int rotation;
+//        int rotation;
         QToolBar * m_toolBar;
         QMenu * m_menu;
 //	QLabel * displayLabel;

@@ -96,7 +96,7 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
 	textSaved = TRUE;
         hasCopy = false;
         scaleFactor = 1;
-        rotation = 0;
+        //rotation = 0;
         m_menu = new QMenu(graphicsView);
 
         connect(actionOpen, SIGNAL(triggered()), this, SLOT(loadImage()));
@@ -212,8 +212,12 @@ void MainForm::loadImage()
 		QStringList fileNames;
 		fileNames = dialog.selectedFiles();
 		lastDir = dialog.directory().path();
-                for (int i = 0; i < fileNames.count(); i++)
-                loadFile(fileNames.at(i));
+                if (fileNames.count() > 0)
+                    loadFile(fileNames.at(0));
+                for (int i = 1; i < fileNames.count(); i++)
+                    loadFile(fileNames.at(i), false);
+                if (fileNames.count() > 0)
+                    ((FileToolBar *) m_toolBar)->select(fileNames.at(0));
 	}
 }
 
@@ -248,21 +252,10 @@ void MainForm::closeEvent(QCloseEvent *event)
 
 void MainForm::rotateImage(int deg)
 {
-        rotation %=360;
         if (imageLoaded) {
-                //QMatrix matrix;
-                //matrix.rotate(deg);
                 graphicsInput->clearBlocks();
-                graphicsInput->rotateImage(deg,  graphicsView->width()/2, graphicsView->height()/2);
-                //((QSelectionLabel*)(scrollArea->widget()))->resetSelection(true);
-                //QPixmap pix = ((QLabel*)(scrollArea->widget()))->pixmap()->transformed(matrix);
-		//pix.transformed(matrix);
-                //((QLabel*)(scrollArea->widget()))->setPixmap(pix);
-                //pix = pixmap->transformed(matrix, Qt::SmoothTransformation);
-                //delete pixmap;
-                //pixmap = new QPixmap(pix);
-                rotation += deg;
-                ((FileToolBar *) m_toolBar)->setRotation(rotation);
+                graphicsInput->setViewScale(1, deg); //rotateImage(deg,  graphicsView->width()/2, graphicsView->height()/2);
+                ((FileToolBar *) m_toolBar)->setRotation(graphicsInput->getRealAngle());
 	}
 }
 
@@ -282,56 +275,23 @@ void MainForm::rotate180ButtonClicked()
 
 void MainForm::enlargeButtonClicked()
 {
-       if (graphicsInput->getRealScale() < 1)
-           graphicsInput->setViewScale(2, 0);
-       return;
-        if (scaleFactor < 0.25 )
-            scaleImage(0.25/scaleFactor);
-        else
-        if (scaleFactor < 0.33 )
-            scaleImage(0.33/scaleFactor);
-        else
-        if (scaleFactor < 0.5 )
-            scaleImage(0.5/scaleFactor);
-        else
-        if (scaleFactor < 0.75 )
-            scaleImage(0.75/scaleFactor);
-        else
-        if (scaleFactor < 1)
-            scaleImage(1/scaleFactor);
-        else
-            scaleImage(2);
+        scaleImage(2.0);
 }
 
 void MainForm::decreaseButtonClicked() 
 {
-        //if (scaleFactor > 1 )
-            scaleImage(0.5);
-          return;
-        //else
-        if (scaleFactor > 0.75 )
-            scaleImage(0.75/scaleFactor);
-        else
-        if (scaleFactor > 0.5 )
-            scaleImage(0.5/scaleFactor);
-        else
-        if (scaleFactor > 0.33 )
-            scaleImage(0.33/scaleFactor);
-        else
-        if (scaleFactor > 0.25 )
-            scaleImage(0.25/scaleFactor);
-        else
-            scaleImage(0.2/scaleFactor);
+        scaleImage(0.5);
 }
 
 void MainForm::scaleImage(double sf) 
 {
 	if (!imageLoaded)
 		return;
+        if (graphicsInput->getRealScale()*sf > 1)
+            return;
         graphicsInput->setViewScale(sf, 0);
-//	QPixmap pix = pixmap->scaled(QSize(pixmap->width()*scaleFactor, pixmap->height()*scaleFactor));
-//	((QLabel*)(scrollArea->widget()))->setPixmap(pix);
-//        ((QSelectionLabel*)(scrollArea->widget()))->resetSelection();
+        scaleFactor = graphicsInput->getRealScale();
+        ((FileToolBar *) m_toolBar)->setScale(scaleFactor);
 }
 
 void MainForm::initSettings()
@@ -466,49 +426,46 @@ void MainForm::scanImage()
 	}
 }
 
-void MainForm::loadFile(const QString &fn)
+void MainForm::loadFile(const QString &fn, bool loadIntoView)
 {
+        qreal xrotation = 0;
         if (((FileToolBar *) m_toolBar)->fileLoaded(fn)) {
                 ((FileToolBar *) m_toolBar)->select(fn);
-                rotation = ((FileToolBar *) m_toolBar)->getRotation();
-                scaleFactor = ((FileToolBar *) m_toolBar)->getScale();
-            }
+                xrotation = ((FileToolBar *) m_toolBar)->getRotation(fn);
+                scaleFactor = ((FileToolBar *) m_toolBar)->getScale(fn);
+        } else {
+            xrotation = ((FileToolBar *) m_toolBar)->getRotation();
+            scaleFactor = ((FileToolBar *) m_toolBar)->getScale();
+        }
+
         QPixmap pixmap;
         if (imageLoaded = pixmap.load(fn)) {
-            fileName = fn;
-            setWindowTitle("YAGF - " + extractFileName(fileName));
-            graphicsInput->loadImage(pixmap);
-            //scaleFactor = 1.1;
-            QTransform tr;
-            tr.reset();
-            graphicsView->setTransform(tr);
-            graphicsInput->setViewScale(1.0/scaleFactor, 0);
+            ((FileToolBar *) m_toolBar)->addFile(pixmap, fn);
         }
-	if (imageLoaded) {
-                ((FileToolBar *) m_toolBar)->addFile(pixmap, fn);
-                //displayLabel->setPixmap(*pixmap);
-                //displayLabel->setSelectionMode(true);
-                //displayLabel->resetSelection();
+        if (!loadIntoView)
+            return;
+        if (imageLoaded) {
+                fileName = fn;
+                setWindowTitle("YAGF - " + extractFileName(fileName));
+                graphicsInput->loadImage(pixmap);
+                QTransform tr;
+                tr.reset();
+                graphicsView->setTransform(tr);
                 if (scaleFactor == 1) {
-                    //scaleFactor = 1;
                     if (pixmap.width() > 4000)
                             scaleImage(0.25);
                     else
                     if (pixmap.width() > 2000)
                             scaleImage(0.5);
-                } else {
-                    double tmp = scaleFactor;
-                    scaleFactor = 1;
-                    scaleImage(tmp);
                 }
-                int deg = rotation;
-                rotation = 0;
-                rotateImage(deg);
-                ((FileToolBar *) m_toolBar)->setRotation(rotation);
+                if (scaleFactor == 0)
+                    scaleFactor = 1;
+                graphicsInput->setViewScale(scaleFactor, xrotation);
+               // ((FileToolBar *) m_toolBar)->setRotation(xrotation);
+              //  ((FileToolBar *) m_toolBar)->setScale(graphicsInput->getRealScale());
                 graphicsInput->setFocus();
-                rotation = (rotation + 45)/90;
-                rotation *=90;
 	}
+        scaleFactor = 1;
 }
 
 void MainForm::delTmpFiles()
@@ -878,7 +835,7 @@ void MainForm::recognizeAll()
                 progress.setValue(i);
                 if(progress.wasCanceled())
                     break;
-                rotation = ((FileToolBar *) m_toolBar)->getRotation(files.at(i));
+                //rotation = ((FileToolBar *) m_toolBar)->getRotation(files.at(i));
                 loadFile(files.at(i));
                 recognize();
             }
@@ -896,7 +853,7 @@ void MainForm::alignButtonClicked()
     int rot = blockAnalysis->getSkew();
     int tmpr = rotation;
     if (rot) {
-        rotateImage(rot);
+Image(rot);
         scaleImage(1.01);
     }
     rotation = tmpr;

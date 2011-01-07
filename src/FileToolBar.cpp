@@ -175,6 +175,15 @@ void FileToolBar::remove()
         }
 }
 
+void FileToolBar::setRotation(const QString &name, int r)
+{
+    if (name != "") {
+        rotMap->remove(name);
+        rotMap->insert(name, r % 360);
+    }
+
+}
+
 void FileToolBar::setRotation(int r)
 {
     if (currentImage != "") {
@@ -204,6 +213,15 @@ float FileToolBar::getScale()
         return 0;
     return scaleMap->value(currentImage, float(0));
 }
+
+float FileToolBar::getScale(const QString &name)
+{
+    if (name == "")
+        return 0;
+    QString internal = filesMap->keys(name).first();
+    return scaleMap->value(internal, float(0));
+}
+
 
 int FileToolBar::getRotation(const QString &name)
 {

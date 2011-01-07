@@ -45,8 +45,10 @@ public:
     void addFile(const QPixmap & pixmap, const QString & name);
     QStringList getFileNames();
     void setRotation(int r);
+    void setRotation(const QString &name, int r);
     void setScale(float s);
     float getScale();
+    float getScale(const QString &name);
     int getRotation();
     void addBlock(const QRect &rect);
     RectList getBlocks();

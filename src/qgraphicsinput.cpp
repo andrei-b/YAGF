@@ -43,6 +43,8 @@ QGraphicsInput::QGraphicsInput(const QRectF & sceneRect, QGraphicsView * view) :
 bool QGraphicsInput::loadImage(const QPixmap &image, bool clearBlocks)
 {
     if (clearBlocks || (!hasImage)) {
+        real_rotate = 0;
+        real_scale = 1;
         this->clear();
         this->items().clear();
         m_LastSelected = 0;
