@@ -23,11 +23,13 @@
 #include <QToolBar>
 #include <QString>
 #include <QStringList>
+#include <QRectF>
 #include <QMap>
 
 typedef QMap<QString, QString> StringMap;
 typedef QMap<QString, int> IntMap;
 typedef QMap<QString, float> FloatMap;
+typedef QMap<QString, QRectF> RectMap;
 
 class QPixmap;
 class QPushButton;
@@ -36,8 +38,8 @@ class QDragEnterEvent;
 class QDropEvent;
 class QDragLeaveEvent;
 
-typedef QList<QRect> RectList;
-typedef class QMultiMap<QString, QRect> BlocksMap;
+//typedef QList<QRect> RectList;
+//typedef class QMultiMap<QString, QRect> BlocksMap;
 
 
 class FileToolBar : public QToolBar
@@ -50,13 +52,18 @@ public:
     QStringList getFileNames();
     void setRotation(int r);
     void setRotation(const QString &name, int r);
+    void setBlock(const QRectF &block);
+    void setBlock(const QString &name, const QRectF &block);
+    int getBlocksCount();
+    void removeBlock(const QRectF &block);
     void setScale(float s);
     float getScale();
     float getScale(const QString &name);
     int getRotation();
     void addBlock(const QRect &rect);
-    RectList getBlocks();
+   // RectList getBlocks();
     void clearBlocks();
+    QRectF getBlock(int index);
     int getRotation(const QString &name);
     bool fileLoaded(const QString &name);
     void select(const QString &name);
@@ -71,7 +78,7 @@ private:
     StringMap * filesMap;
     IntMap * rotMap;
     FloatMap * scaleMap;
-    BlocksMap * blocksMap;
+    RectMap * blocksMap;
     QPushButton * saveButton;
     QPushButton * clearButton;
     QPushButton * removeButton;

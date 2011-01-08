@@ -46,12 +46,14 @@ FileToolBar::FileToolBar(QWidget * parent):QToolBar(trUtf8("Loaded Images"), par
     filesMap = new StringMap();
     rotMap = new IntMap();
     scaleMap = new FloatMap();
-    blocksMap = new BlocksMap();
+    blocksMap = new RectMap();
+    blocksMap = new RectMap();
     saveButton = NULL;
     clearButton = NULL;
     removeButton = NULL;
     currentImage = "";
     setAcceptDrops(true);
+    this->setToolTip(trUtf8("Drop graphic files here"));
     setStyleSheet(" FileToolBar { color: white; background-color: #444036 } \r QToolButton {color : white; background-color: #444036}");
  }
 
@@ -71,14 +73,17 @@ void FileToolBar::addFile(const QPixmap & pixmap, const QString & name)
     if (!buttonsAdded) {
         clearButton = new QPushButton(QIcon(":/clear.png"), trUtf8("Clear"), this);
         clearButton->setIconSize(QSize(24,24));
+        clearButton->setToolTip(trUtf8("Clear the panel"));
         connect(clearButton, SIGNAL(clicked()), this, SLOT(clearAll()));
         action = insertWidget(0, clearButton);
         saveButton = new QPushButton(QIcon(":/save_all.png"), trUtf8("Save..."), this);
         saveButton->setIconSize(QSize(24,24));
+        saveButton->setToolTip(trUtf8("Save all the files"));
         connect(saveButton, SIGNAL(clicked()), this, SLOT(saveAll()));
         insertWidget(action, saveButton);
         removeButton = new QPushButton(QIcon(":/remove.png"), trUtf8("Remove"), this);
         removeButton->setIconSize(QSize(24,24));
+        removeButton->setToolTip(trUtf8("Remove the current file"));
         connect(removeButton, SIGNAL(clicked()), this, SLOT(remove()));
         insertWidget(action, removeButton);
         this->insertSeparator(0);
@@ -227,6 +232,46 @@ void FileToolBar::setRotation(const QString &name, int r)
 
 }
 
+
+void FileToolBar::setBlock(const QRectF &block)
+{
+    if (currentImage != "")
+        blocksMap->insertMulti(currentImage, block);
+}
+
+void FileToolBar::setBlock(const QString &name, const QRectF &block)
+{
+    if (currentImage != "")
+        blocksMap->insertMulti(name, block);
+}
+
+void FileToolBar::removeBlock(const QRectF &block)
+{
+    if (currentImage != "")  {
+        RectMap::iterator i;
+        for (i = blocksMap->begin(); i != blocksMap->end(); i++) {
+            QRectF rect = *i;
+            if (rect == block) {
+                blocksMap->values(currentImage).removeOne(block);
+                return;
+            }
+        }
+    }
+}
+
+QRectF FileToolBar::getBlock(int index)
+{
+    if (currentImage != "")
+        return blocksMap->values(currentImage).value(index, QRectF(0,0,0,0));
+}
+
+int FileToolBar::getBlocksCount()
+{
+    if (currentImage != "")
+        return blocksMap->values(currentImage).count();
+    return 0;
+}
+
 void FileToolBar::setRotation(int r)
 {
     if (currentImage != "") {
@@ -291,10 +336,10 @@ void FileToolBar::addBlock(const QRect &rect)
     blocksMap->insert(currentImage, rect);
 }
 
-RectList FileToolBar::getBlocks()
+/*RectList FileToolBar::getBlocks()
 {
     return blocksMap->values(currentImage);
-}
+}*/
 
 void FileToolBar::clearBlocks()
 {
