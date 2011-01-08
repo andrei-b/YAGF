@@ -32,6 +32,9 @@ typedef QMap<QString, float> FloatMap;
 class QPixmap;
 class QPushButton;
 class QRect;
+class QDragEnterEvent;
+class QDropEvent;
+class QDragLeaveEvent;
 
 typedef QList<QRect> RectList;
 typedef class QMultiMap<QString, QRect> BlocksMap;
@@ -43,6 +46,7 @@ Q_OBJECT
 public:
     FileToolBar(QWidget * parent);
     void addFile(const QPixmap & pixmap, const QString & name);
+    void addFile(const QString & name);
     QStringList getFileNames();
     void setRotation(int r);
     void setRotation(const QString &name, int r);
@@ -58,6 +62,10 @@ public:
     void select(const QString &name);
 signals:
     void fileSelected(const QString & name);
+protected:
+    void dragEnterEvent (QDragEnterEvent * event);
+    void dragLeaveEvent ( QDragLeaveEvent * event );
+    void dropEvent (QDropEvent * event);
 private:
     bool buttonsAdded;
     StringMap * filesMap;

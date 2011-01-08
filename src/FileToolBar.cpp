@@ -30,6 +30,11 @@
 #include <QMatrix>
 #include <QMultiMap>
 #include <QRect>
+#include <QDragEnterEvent>
+#include <QDragLeaveEvent>
+#include <QDropEvent>
+#include <QMimeData>
+#include <QUrl>
 #include "utils.h"
 
 
@@ -46,8 +51,17 @@ FileToolBar::FileToolBar(QWidget * parent):QToolBar(trUtf8("Loaded Images"), par
     clearButton = NULL;
     removeButton = NULL;
     currentImage = "";
+    setAcceptDrops(true);
     setStyleSheet(" FileToolBar { color: white; background-color: #444036 } \r QToolButton {color : white; background-color: #444036}");
  }
+
+void FileToolBar::addFile(const QString &name)
+{
+    QPixmap pm;
+    if (pm.load(name)) {
+        addFile(pm, name);
+    }
+}
 
 void FileToolBar::addFile(const QPixmap & pixmap, const QString & name)
 {
@@ -175,6 +189,33 @@ void FileToolBar::remove()
             }
             break;
         }
+}
+
+void FileToolBar::dragEnterEvent(QDragEnterEvent *event)
+{
+    if (!event->mimeData()->hasUrls())
+        setCursor(Qt::ForbiddenCursor);
+    event->accept();
+}
+
+void FileToolBar::dragLeaveEvent(QDragLeaveEvent *event)
+{
+    setCursor(Qt::ArrowCursor);
+    event->accept();
+}
+
+void FileToolBar::dropEvent(QDropEvent *event)
+{
+    if (event->mimeData()->hasUrls()) {
+        QList<QUrl> ul = event->mimeData()->urls();
+        QList<QUrl>::Iterator i;
+        for(i = ul.begin(); i != ul.end(); i++) {
+           QUrl url = *i;
+           this->addFile(url.toLocalFile());
+        }
+    }
+    setCursor(Qt::ArrowCursor);
+    event->accept();
 }
 
 void FileToolBar::setRotation(const QString &name, int r)
