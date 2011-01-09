@@ -53,6 +53,7 @@ public:
     void deleteBlock(int index);
     void deleteCurrentBlock();
     QPixmap getBlockByIndex(int index);
+    QRectF getBlockRectByIndex(int index);
     void clearBlocks();
     qreal getRealScale();
     qreal getRealAngle();

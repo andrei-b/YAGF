@@ -467,6 +467,21 @@ QPixmap QGraphicsInput::getBlockByIndex(int index)
     return QPixmap(0,0);
 }
 
+QRectF QGraphicsInput::getBlockRectByIndex(int index)
+{
+    int count = 0;
+    for (int i = 0; i < items().count(); i++) {
+        if (items().at(i)->data(1) == "block") {
+            if (index == count) {
+                QRectF rect = items().at(i)->mapRectToScene(((QGraphicsRectItem *) items().at(i))->rect());
+                return QRectF(rect.left()/real_scale, rect.top()/real_scale,(rect.right()-rect.left())/real_scale,(rect.bottom()-rect.top())/real_scale);
+           }
+           count++;
+        }
+    }
+    return QRectF(0,0,0,0);
+}
+
 void QGraphicsInput::clearBlocks()
 {
     for (int i = items().count() - 1; i >= 0; i--) {
