@@ -441,6 +441,12 @@ void MainForm::scanImage()
 
 void MainForm::loadFile(const QString &fn, bool loadIntoView)
 {
+    if (fileName != "") {
+        ((FileToolBar *) m_toolBar)->select(fileName);
+        ((FileToolBar *) m_toolBar)->clearBlocks();
+        for (int i=0; i < graphicsInput->blocksCount(); i++)
+            ((FileToolBar *) m_toolBar)->setBlock(graphicsInput->getBlockRectByIndex(i));
+    }
         qreal xrotation = 0;
         if (((FileToolBar *) m_toolBar)->fileLoaded(fn)) {
                 ((FileToolBar *) m_toolBar)->select(fn);
@@ -473,7 +479,10 @@ void MainForm::loadFile(const QString &fn, bool loadIntoView)
                 }
                 if (scaleFactor == 0)
                     scaleFactor = 1;
-                graphicsInput->setViewScale(scaleFactor, xrotation);
+                graphicsInput->setViewScale(1, xrotation);
+                for (int i =0; i < ((FileToolBar *) m_toolBar)->getBlocksCount(); i++)
+                    graphicsInput->addBlock(((FileToolBar *) m_toolBar)->getBlock(i));
+                graphicsInput->setViewScale(scaleFactor, 0);
                // ((FileToolBar *) m_toolBar)->setRotation(xrotation);
               //  ((FileToolBar *) m_toolBar)->setScale(graphicsInput->getRealScale());
                 graphicsInput->setFocus();
