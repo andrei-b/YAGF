@@ -58,7 +58,7 @@
 #include "FileToolBar.h"
 #include "BlockAnalysis.h"
 
-const QString version = "0.8.3";
+const QString version = "0.8.4";
 
 MainForm::MainForm(QWidget *parent):QMainWindow(parent)
 {

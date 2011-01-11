@@ -2,6 +2,7 @@
 - Serbian, Croatian, and Slovenian languages are added (at last!)
 - Ability to open several files at ones is added
 - Ability to drag and drop files on the sidebar is added
+- Sidebar now remembers blocks selected on all the pages
 * Sun Dec 26 2010 Andrei Borovsky <anb@symmetrica.net> - 0.8.2
 - multiple blocks in image are now supported
 * Sun Aug 16 2009 Andrei Borovsky <anb@symmetrica.net> - 0.8.1
