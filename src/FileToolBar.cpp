@@ -329,6 +329,12 @@ void FileToolBar::select(const QString &name)
     currentImage = filesMap->keys(name).first();
 }
 
+void FileToolBar::selectFirstFile()
+{
+    if (filesMap->values().count() > 0)
+        currentImage = filesMap->values().at(0);
+}
+
 void FileToolBar::addBlock(const QRect &rect)
 {
     if (currentImage == "")

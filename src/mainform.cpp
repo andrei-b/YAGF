@@ -208,10 +208,13 @@ void MainForm::loadFromCommandLine()
 {
     QStringList sl = QApplication::arguments();
     if (sl.count() > 1) {
-        loadFile(sl.at(1));
+        if (QFile::exists(sl.at(1)))
+            loadFile(sl.at(1));
         for (int i = 2; i < sl.count(); i++)
-            loadFile(sl.at(i), false);
-        ((FileToolBar *) m_toolBar)->select(sl.at(1));
+            if (QFile::exists(sl.at(i)))
+                loadFile(sl.at(i), false);
+        if (QFile::exists(sl.at(1)))
+            ((FileToolBar *) m_toolBar)->select(sl.at(1));
 
     }
 }
@@ -467,16 +470,6 @@ void MainForm::loadFile(const QString &fn, bool loadIntoView)
                 fileName = fn;
                 setWindowTitle("YAGF - " + extractFileName(fileName));
                 graphicsInput->loadImage(pixmap);
-                QTransform tr;
-                tr.reset();
-                graphicsView->setTransform(tr);
-                if (scaleFactor == 1) {
-                    if (pixmap.width() > 4000)
-                            scaleImage(0.25);
-                    else
-                    if (pixmap.width() > 2000)
-                            scaleImage(0.5);
-                }
                 if (scaleFactor == 0)
                     scaleFactor = 1;
                 graphicsInput->setViewScale(1, xrotation);
@@ -485,7 +478,14 @@ void MainForm::loadFile(const QString &fn, bool loadIntoView)
                 graphicsInput->setViewScale(scaleFactor, 0);
                // ((FileToolBar *) m_toolBar)->setRotation(xrotation);
               //  ((FileToolBar *) m_toolBar)->setScale(graphicsInput->getRealScale());
-                graphicsInput->setFocus();
+              if (scaleFactor == 1) {
+                  if (pixmap.width() > 4000)
+                          scaleImage(0.25);
+                  else
+                  if (pixmap.width() > 2000)
+                          scaleImage(0.5);
+              }
+              graphicsInput->setFocus();
 	}
         scaleFactor = 1;
 }

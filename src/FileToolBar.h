@@ -67,6 +67,7 @@ public:
     int getRotation(const QString &name);
     bool fileLoaded(const QString &name);
     void select(const QString &name);
+    void selectFirstFile();
 signals:
     void fileSelected(const QString & name);
 protected:
