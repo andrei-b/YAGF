@@ -9,47 +9,47 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="FileToolBar.cpp" line="56"/>
+        <location filename="FileToolBar.cpp" line="55"/>
         <source>Drop graphic files here</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="FileToolBar.cpp" line="74"/>
+        <location filename="FileToolBar.cpp" line="73"/>
         <source>Clear</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="FileToolBar.cpp" line="76"/>
+        <location filename="FileToolBar.cpp" line="75"/>
         <source>Clear the panel</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="FileToolBar.cpp" line="79"/>
+        <location filename="FileToolBar.cpp" line="78"/>
         <source>Save...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="FileToolBar.cpp" line="81"/>
+        <location filename="FileToolBar.cpp" line="80"/>
         <source>Save all the files</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="FileToolBar.cpp" line="84"/>
+        <location filename="FileToolBar.cpp" line="83"/>
         <source>Remove</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="FileToolBar.cpp" line="86"/>
+        <location filename="FileToolBar.cpp" line="85"/>
         <source>Remove the current file</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="FileToolBar.cpp" line="113"/>
+        <location filename="FileToolBar.cpp" line="112"/>
         <source>Select a directory</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="FileToolBar.cpp" line="136"/>
+        <location filename="FileToolBar.cpp" line="135"/>
         <source>File %1 already exists. Do you want to replace it?</source>
         <translation type="unfinished"></translation>
     </message>
@@ -290,8 +290,9 @@
     </message>
     <message>
         <location filename="mainform.cpp" line="392"/>
-        <source>Portugueze</source>
-        <translation>Portugalų</translation>
+        <source>Portuguese</source>
+        <oldsource>Portugueze</oldsource>
+        <translation type="unfinished">Portugalų</translation>
     </message>
     <message>
         <location filename="mainform.cpp" line="393"/>

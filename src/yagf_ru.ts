@@ -9,47 +9,47 @@
         <translation>Загруженные изображения</translation>
     </message>
     <message>
-        <location filename="FileToolBar.cpp" line="56"/>
+        <location filename="FileToolBar.cpp" line="55"/>
         <source>Drop graphic files here</source>
         <translation>Вы можете перетащить графические файлы сюда</translation>
     </message>
     <message>
-        <location filename="FileToolBar.cpp" line="74"/>
+        <location filename="FileToolBar.cpp" line="73"/>
         <source>Clear</source>
         <translation>Очистить</translation>
     </message>
     <message>
-        <location filename="FileToolBar.cpp" line="76"/>
+        <location filename="FileToolBar.cpp" line="75"/>
         <source>Clear the panel</source>
         <translation>Очистить панель</translation>
     </message>
     <message>
-        <location filename="FileToolBar.cpp" line="79"/>
+        <location filename="FileToolBar.cpp" line="78"/>
         <source>Save...</source>
         <translation>Сохранить...</translation>
     </message>
     <message>
-        <location filename="FileToolBar.cpp" line="81"/>
+        <location filename="FileToolBar.cpp" line="80"/>
         <source>Save all the files</source>
         <translation>Сохранить все файлы</translation>
     </message>
     <message>
-        <location filename="FileToolBar.cpp" line="86"/>
+        <location filename="FileToolBar.cpp" line="85"/>
         <source>Remove the current file</source>
         <translation>Удалить выбранный файл</translation>
     </message>
     <message>
-        <location filename="FileToolBar.cpp" line="113"/>
+        <location filename="FileToolBar.cpp" line="112"/>
         <source>Select a directory</source>
-        <translation>Выберите диркторию</translation>
+        <translation type="unfinished">Выберите директорию</translation>
     </message>
     <message>
-        <location filename="FileToolBar.cpp" line="136"/>
+        <location filename="FileToolBar.cpp" line="135"/>
         <source>File %1 already exists. Do you want to replace it?</source>
         <translation>Файл %1 уже существует. Заменить?</translation>
     </message>
     <message>
-        <location filename="FileToolBar.cpp" line="84"/>
+        <location filename="FileToolBar.cpp" line="83"/>
         <source>Remove</source>
         <translation>Убрать</translation>
     </message>
@@ -89,7 +89,7 @@
     <message>
         <location filename="mainform.cpp" line="379"/>
         <source>Croatian</source>
-        <translation>Ховатский</translation>
+        <translation>Хорватский</translation>
     </message>
     <message>
         <location filename="mainform.cpp" line="383"/>
@@ -206,7 +206,7 @@
     <message>
         <location filename="mainform.cpp" line="387"/>
         <source>Hungarian</source>
-        <translation>Вернгерский</translation>
+        <translation>Венгерский</translation>
     </message>
     <message>
         <location filename="mainform.cpp" line="388"/>
@@ -230,7 +230,8 @@
     </message>
     <message>
         <location filename="mainform.cpp" line="392"/>
-        <source>Portugueze</source>
+        <source>Portuguese</source>
+        <oldsource>Portugueze</oldsource>
         <translation>Португальский</translation>
     </message>
     <message>

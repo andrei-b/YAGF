@@ -47,7 +47,6 @@ FileToolBar::FileToolBar(QWidget * parent):QToolBar(trUtf8("Loaded Images"), par
     rotMap = new IntMap();
     scaleMap = new FloatMap();
     blocksMap = new RectMap();
-    blocksMap = new RectMap();
     saveButton = NULL;
     clearButton = NULL;
     removeButton = NULL;

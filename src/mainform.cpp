@@ -389,7 +389,7 @@ void MainForm::fillLanguagesBox()
           selectLangsBox->addItem(trUtf8("Latvian"), QVariant("lav"));
           selectLangsBox->addItem(trUtf8("Lithuanian"), QVariant("lit"));
           selectLangsBox->addItem(trUtf8("Polish"), QVariant("pol"));
-          selectLangsBox->addItem(trUtf8("Portugueze"), QVariant("por"));
+          selectLangsBox->addItem(trUtf8("Portuguese"), QVariant("por"));
           selectLangsBox->addItem(trUtf8("Roman"), QVariant("rum"));
           selectLangsBox->addItem(trUtf8("Spanish"), QVariant("spa"));
           selectLangsBox->addItem(trUtf8("Swedish"), QVariant("swe"));
