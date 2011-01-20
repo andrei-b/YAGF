@@ -461,7 +461,7 @@ void MainForm::loadFile(const QString &fn, bool loadIntoView)
         }
 
         QPixmap pixmap;
-        if (imageLoaded = pixmap.load(fn)) {
+        if ((imageLoaded = pixmap.load(fn))) {
             ((FileToolBar *) m_toolBar)->addFile(pixmap, fn);
         }
         if (!loadIntoView)

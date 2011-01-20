@@ -263,6 +263,7 @@ QRectF FileToolBar::getBlock(int index)
 {
     if (currentImage != "")
         return blocksMap->values(currentImage).value(index, QRectF(0,0,0,0));
+    return QRectF(0,0,0,0);
 }
 
 int FileToolBar::getBlocksCount()
