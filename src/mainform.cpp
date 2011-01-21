@@ -100,7 +100,8 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
         m_menu = new QMenu(graphicsView);
 
         connect(actionOpen, SIGNAL(triggered()), this, SLOT(loadImage()));
-	connect(actionQuit, SIGNAL(triggered()), this, SLOT(close()));
+        connect(actionQuit, SIGNAL(triggered()), this, SLOT(quitApp()));
+        connect(this, SIGNAL(destroyed(QObject *)), this, SLOT(quitApp()));
 	connect(actionScan, SIGNAL(triggered()), this, SLOT(scanImage()));
 	connect(actionPreviousPage, SIGNAL(triggered()), this, SLOT(loadPreviousPage()));
 	connect(actionNextPage, SIGNAL(triggered()), this, SLOT(loadNextPage()));
@@ -262,6 +263,9 @@ void MainForm::closeEvent(QCloseEvent *event)
 	}	
         scanProcess->terminate();
         writeSettings();
+        fileChannel->flush();
+        QByteArray ba;
+        ba = fileChannel->readAll();
 	delTmpFiles();
 	event->accept();
 }
@@ -331,6 +335,8 @@ void MainForm::initSettings()
 	li.append(1);
 	li.append(1);
 	splitter->setSizes(li);
+       // QFile::remove(workingDir + "input.bmp");
+       // QFile::remove(workingDir + "output.txt");
 }
 
 void MainForm::readSettings()
@@ -493,10 +499,10 @@ void MainForm::loadFile(const QString &fn, bool loadIntoView)
 void MainForm::delTmpFiles()
 {
 	
-	QDir dir(workingDir);
+        QDir dir(workingDir);
 	dir.setFilter(QDir::Files | QDir::NoSymLinks);
 	for (uint i = 0; i < dir.count(); i++) {
-		if (dir[i].endsWith("jpg") || dir[i].endsWith("bmp"))
+                if (dir[i].endsWith("jpg") || dir[i].endsWith("bmp")||dir[i].endsWith("txt"))
 			dir.remove(dir[i]);
 	}
         delTmpDir();
@@ -504,8 +510,19 @@ void MainForm::delTmpFiles()
 
 void MainForm::loadNext(int number)
 {
-	QString name = extractFileName(fileName);
-	QString path = extractFilePath(fileName);
+
+        QStringList files = ((FileToolBar *)m_toolBar)->getFileNames();
+        QString name = fileName;
+        if (number > 0) {
+            if (files.indexOf(name) < files.count()-1)
+                name = files.at(files.indexOf(name) + 1);
+        } else if (number < 0) {
+            if (files.indexOf(name) > 0)
+                name = files.at(files.indexOf(name) -1);
+        }
+        ((FileToolBar *)m_toolBar)->select(name);
+        //QString path = extractFilePath(name);
+                       /*QString path = extractFilePath(fileName);
 	QString digits = extractDigits(name);
 	bool result; 
 	int d = digits.toInt(&result);
@@ -515,8 +532,8 @@ void MainForm::loadNext(int number)
 	QString newDigits = QString::number(d);
 	while (newDigits.size() < digits.size())
 	    newDigits = '0' + newDigits;
-	name = name.replace(digits, newDigits);
-	loadFile(path + name);
+        name = name.replace(digits, newDigits);*/
+        loadFile(name);
 }
 
 void MainForm::loadNextPage()
@@ -927,3 +944,4 @@ void MainForm::on_actionRecognize_block_activated()
 {
 
 }*/
+
