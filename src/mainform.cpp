@@ -100,8 +100,8 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
         m_menu = new QMenu(graphicsView);
 
         connect(actionOpen, SIGNAL(triggered()), this, SLOT(loadImage()));
-        connect(actionQuit, SIGNAL(triggered()), this, SLOT(quitApp()));
-        connect(this, SIGNAL(destroyed(QObject *)), this, SLOT(quitApp()));
+        connect(actionQuit, SIGNAL(triggered()), this, SLOT(close()));
+        //connect(this, SIGNAL(destroyed(QObject *)), this, SLOT(quitApp()));
 	connect(actionScan, SIGNAL(triggered()), this, SLOT(scanImage()));
 	connect(actionPreviousPage, SIGNAL(triggered()), this, SLOT(loadPreviousPage()));
 	connect(actionNextPage, SIGNAL(triggered()), this, SLOT(loadNextPage()));

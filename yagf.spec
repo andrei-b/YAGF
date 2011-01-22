@@ -18,7 +18,7 @@ Group:		Productivity/Graphics/Other
 Summary:	Graphical frontend for Cuneiform OCR tool
 BuildRoot:      %{_tmppath}/%{name}-%{version}-build
 BuildRequires:  libqt4-devel cmake update-desktop-files fdupes
-Requires:	libqt4 > 4.5
+Requires:	libqt4 >= 4.5
 
 %description
 YAGF is a graphical front-end for Cuneiform OCR tool.
