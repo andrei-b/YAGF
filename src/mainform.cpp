@@ -77,7 +77,7 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
         QLabel * label1 = new QLabel();
 	label1->setMargin(4);
 	label1->setText(trUtf8("Output format"));
-        spellCheckBox = new QCheckBox(trUtf8("Check spelling"), 0);
+        //spellCheckBox = new QCheckBox(trUtf8("Check spelling"), 0);
 	frame->show();
 	selectFormatBox = new QComboBox();
 	toolBar->addWidget(label);
@@ -85,7 +85,7 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
 	toolBar->addWidget(selectLangsBox);
 	toolBar->addWidget(label1);
 	toolBar->addWidget(selectFormatBox);
-        toolBar->addWidget(spellCheckBox);
+        //toolBar->addWidget(spellCheckBox);
 //	pixmap = new QPixmap();
         graphicsInput = new QGraphicsInput(QRectF(0,0,2000, 2000), graphicsView) ;
 	statusBar()->show();
@@ -166,6 +166,8 @@ MainForm::MainForm(QWidget *parent):QMainWindow(parent)
 	fillLanguagesBox();
 	initSettings();
 	delTmpFiles();
+
+        actionCheck_spelling->setChecked(checkSpelling);
 
         scanProcess = new QProcess(this);
         fileChannel = new FileChannel("/var/tmp/yagf.fifo");
@@ -354,7 +356,7 @@ void MainForm::readSettings()
         outputFormat = settings->value("ocr/outputFormat", QString("text")).toString();
         if (outputFormat == "") outputFormat = "text";
         selectFormatBox->setCurrentIndex(selectFormatBox->findData(QVariant(outputFormat)));
-        spellCheckBox->setChecked(settings->value("mainWindow/checkSpelling", bool(true)).toBool());
+        checkSpelling = settings->value("mainWindow/checkSpelling", bool(true)).toBool();
         bool ok;
         QFont f(textEdit->font());
         f.setPointSize(settings->value("mainWindow/fontSize", int(12)).toInt(&ok));
@@ -367,7 +369,7 @@ void MainForm::writeSettings()
 	settings->setValue("mainwindow/pos", pos());
 	settings->setValue("mainwindow/fullScreen", isFullScreen());
 	settings->setValue("mainwindow/lastDir", lastDir);
-        settings->setValue("mainWindow/checkSpelling", spellCheckBox->isChecked());
+        settings->setValue("mainWindow/checkSpelling", checkSpelling);
 	settings->setValue("mainwindow/lastOutputDir", lastOutputDir);
         settings->setValue("mainWindow/fontSize", textEdit->font().pointSize());
 	settings->setValue("ocr/language", language);
@@ -595,7 +597,7 @@ void MainForm::recognizeInternal(const QPixmap &pix)
 //        textData.replace("-<br>", "");
     textEdit->append(textData);
     textSaved = FALSE;
-    if (spellCheckBox->isChecked()) {
+    if (checkSpelling) {
         spellChecker->setLanguage(language);
         spellChecker->spellCheck();
     }
@@ -757,7 +759,7 @@ void MainForm::delTmpDir()
 
 void MainForm::updateSP()
 {
-    if (spellCheckBox->isChecked())
+    if (checkSpelling)
         spellChecker->checkWord();
 }
 
@@ -945,3 +947,13 @@ void MainForm::on_actionRecognize_block_activated()
 
 }*/
 
+
+void MainForm::on_actionCheck_spelling_triggered()
+{
+    checkSpelling = !checkSpelling;
+    if (checkSpelling) {
+        spellChecker->setLanguage(language);
+        spellChecker->spellCheck();
+    } else
+        spellChecker->unSpellCheck();
+}

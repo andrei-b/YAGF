@@ -34,6 +34,7 @@ class SpellChecker
 {
     public:
     SpellChecker(QTextEdit * textEdit);
+    void unSpellCheck();
     void setLanguage(const QString & lang);
     void spellCheck();
     void checkWord();

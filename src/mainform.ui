@@ -475,6 +475,7 @@
    <addaction name="separator"/>
    <addaction name="action_Save"/>
    <addaction name="actionCopyToClipboard"/>
+   <addaction name="actionCheck_spelling"/>
    <addaction name="separator"/>
   </widget>
   <action name="actionScan">
@@ -655,6 +656,18 @@
    </property>
    <property name="toolTip">
     <string>Crear block numbering</string>
+   </property>
+  </action>
+  <action name="actionCheck_spelling">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="icon">
+    <iconset resource="yagf.qrc">
+     <normaloff>:/images/check_spelling.png</normaloff>:/images/check_spelling.png</iconset>
+   </property>
+   <property name="text">
+    <string>Check spelling</string>
    </property>
   </action>
  </widget>

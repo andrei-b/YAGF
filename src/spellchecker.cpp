@@ -121,6 +121,16 @@ void SpellChecker::spellCheck()
         _checkWord(&cursor);
 }
 
+void SpellChecker::unSpellCheck()
+{
+    QTextCursor cursor(m_textEdit->document());
+    QTextCharFormat fmt = cursor.charFormat();
+    fmt.setUnderlineStyle(QTextCharFormat::NoUnderline);
+    cursor.select(QTextCursor::Document);
+    cursor.setCharFormat(fmt);
+    cursor.clearSelection();
+}
+
 void SpellChecker::_checkWord(QTextCursor * cursor)
 {
         cursor->select(QTextCursor::WordUnderCursor);

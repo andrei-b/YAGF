@@ -43,6 +43,7 @@ public:
 	MainForm(QWidget *parent = 0);
 private slots:
         //void on_actionRecognize_activated();
+        void on_actionCheck_spelling_triggered();
         void on_actionRecognize_block_activated();
         void on_ActionDeleteBlock_activated();
         void on_ActionClearAllBlocks_activated();
@@ -90,7 +91,7 @@ private:
         bool hasCopy;
 	QComboBox * selectLangsBox;
 	QComboBox * selectFormatBox;
-        QCheckBox * spellCheckBox;
+        //QCheckBox * spellCheckBox;
 //	QPixmap * pixmap;
         QGraphicsInput * graphicsInput;
 	double scaleFactor;
@@ -106,6 +107,7 @@ private:
         QCursor * resizeBlockCursor;
 	bool useXSane;
 	bool textSaved;
+        bool checkSpelling;
         QProcess * scanProcess;
         FileChannel * fileChannel;
         QByteArray * ba;
