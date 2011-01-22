@@ -481,7 +481,7 @@
   <action name="actionScan">
    <property name="icon">
     <iconset resource="yagf.qrc">
-     <normaloff>:/images/scanner_s2.png</normaloff>:/images/scanner_s2.png</iconset>
+     <normaloff>:/images/scanner48.png</normaloff>:/images/scanner48.png</iconset>
    </property>
    <property name="text">
     <string>S&amp;can...</string>
