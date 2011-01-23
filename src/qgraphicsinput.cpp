@@ -523,8 +523,14 @@ QPixmap QGraphicsInput::getAdaptedImage()
         return pm2;
     }
     return m_realImage->pixmap();*/
-    if (m_realImage->pixmap().width()/stdwidth >= 0.75)
-           return m_realImage->pixmap().scaledToWidth(stdwidth);
+    if (m_realImage->pixmap().width() < m_realImage->pixmap().height()) {
+        if (m_realImage->pixmap().width()/stdwidth >= 0.75)
+               return m_realImage->pixmap().scaledToWidth(stdwidth);
+    } else {
+        if (m_realImage->pixmap().height()/stdwidth >= 0.75)
+               return m_realImage->pixmap().scaledToHeight(stdwidth);
+    }
+
     return m_realImage->pixmap();
 }
 
