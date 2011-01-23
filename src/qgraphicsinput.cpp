@@ -511,17 +511,14 @@ QPixmap QGraphicsInput::getAdaptedImage()
     if (!hasImage)
         return QPixmap(0,0);
     if (m_realImage->pixmap().width() > 8000) {
-            QPixmap pm = pm2.scaledToWidth(m_realImage->pixmap().width()/2);
-            return pm;
+            return pm8;
         }
     if (m_realImage->pixmap().width() > 4000) {
-        QPixmap pm = m_realImage->pixmap().scaledToWidth(m_realImage->pixmap().width()/2);
-        return pm;
+        return pm4;
     }
-    /*if (m_realImage->pixmap().width() > 2000) {
-        QPixmap pm = m_realImage->pixmap().scaledToWidth(m_realImage->pixmap().width()/2);
-        return pm;
-    }*/
+    if (m_realImage->pixmap().width() > 2000) {
+        return pm2;
+    }
     return m_realImage->pixmap();
 }
 
