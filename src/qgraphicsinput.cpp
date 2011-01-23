@@ -511,10 +511,12 @@ QPixmap QGraphicsInput::getAdaptedImage()
     if (!hasImage)
         return QPixmap(0,0);
     if (m_realImage->pixmap().width() > 8000)
-            return this->pm4;
+            return this->pm8;
     if (m_realImage->pixmap().width() > 4000)
+            return this->pm4;
+    if (m_realImage->pixmap().width() > 2000)
             return this->pm2;
-
+    return m_realImage->pixmap();
 }
 
 
