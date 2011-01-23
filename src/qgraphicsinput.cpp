@@ -506,7 +506,7 @@ QPixmap QGraphicsInput::getImage()
     return hasImage ? m_realImage->pixmap() : 0;
 }
 
-const int stdwidth = 2550.;
+const float stdwidth = 2550.;
 
 QPixmap QGraphicsInput::getAdaptedImage()
 {
