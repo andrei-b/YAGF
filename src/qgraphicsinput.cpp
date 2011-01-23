@@ -521,7 +521,7 @@ QPixmap QGraphicsInput::getAdaptedImage()
         return pm2;
     }
     return m_realImage->pixmap();*/
-    return m_realImage->pixmap().scaledToWidth(2550);
+    return m_realImage->pixmap().scaledToWidth(2480);
 }
 
 
