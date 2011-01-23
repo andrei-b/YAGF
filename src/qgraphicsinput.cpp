@@ -506,6 +506,18 @@ QPixmap QGraphicsInput::getImage()
     return hasImage ? m_realImage->pixmap() : 0;
 }
 
+QPixmap QGraphicsInput::getAdaptedImage()
+{
+    if (!hasImage)
+        return QPixmap(0,0);
+    if (m_realImage->pixmap().width() > 8000)
+            return this->pm4;
+    if (m_realImage->pixmap().width() > 4000)
+            return this->pm2;
+
+}
+
+
 void QGraphicsInput::cropImage()
 {
     if (!hasImage)

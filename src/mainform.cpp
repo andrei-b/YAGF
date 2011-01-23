@@ -620,7 +620,7 @@ void MainForm::recognize()
             if (!graphicsInput->getBlockByIndex(i).isNull())
                 recognizeInternal(graphicsInput->getBlockByIndex(i));
     } else {
-        recognizeInternal(graphicsInput->getImage());
+        recognizeInternal(graphicsInput->getAdaptedImage());
     }
 }
 
