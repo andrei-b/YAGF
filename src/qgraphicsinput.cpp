@@ -506,6 +506,8 @@ QPixmap QGraphicsInput::getImage()
     return hasImage ? m_realImage->pixmap() : 0;
 }
 
+const int stdwidth = 2550.;
+
 QPixmap QGraphicsInput::getAdaptedImage()
 {
 
@@ -521,7 +523,16 @@ QPixmap QGraphicsInput::getAdaptedImage()
         return pm2;
     }
     return m_realImage->pixmap();*/
-    return m_realImage->pixmap().scaledToWidth(2480);
+    bool scaleWidth = false;
+    if(abs(m_realImage->pixmap().width()-stdwidth) < abs(m_realImage->pixmap().height()-stdwidth))
+            scaleWidth = true;
+    if (scaleWidth) {
+        if (m_realImage->pixmap().width()/stdwidth >= 1.25)
+           return m_realImage->pixmap().scaledToWidth(stdwidth);
+    }
+    if (m_realImage->pixmap().height()/stdwidth >= 1.25)
+       return m_realImage->pixmap().scaledToHeight(stdwidth);
+    return m_realImage->pixmap();
 }
 
 
