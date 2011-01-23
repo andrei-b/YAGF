@@ -503,7 +503,7 @@ qreal QGraphicsInput::getRealAngle()
 
 QPixmap QGraphicsInput::getImage()
 {
-    return hasImage ? m_image->pixmap() : 0;
+    return hasImage ? m_realImage->pixmap() : 0;
 }
 
 void QGraphicsInput::cropImage()
