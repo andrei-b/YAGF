@@ -56,6 +56,7 @@ bool QGraphicsInput::loadImage(const QPixmap &image, bool clearBlocks)
     }
     old_pixmap = image;
     pm2 = image.scaledToWidth(image.width()/2);
+    pm3 = pm2.scaledToWidth(pm2.width()/1.5);
     pm4 = pm2.scaledToWidth(pm2.width()/2);
     pm8 = pm4.scaledToWidth(pm4.width()/2);
     pm16 = pm8.scaledToWidth(pm8.width()/2);
@@ -515,7 +516,7 @@ QPixmap QGraphicsInput::getAdaptedImage()
     if (m_realImage->pixmap().width() > 4000)
             return this->pm4;
     if (m_realImage->pixmap().width() > 2000)
-            return this->pm2;
+            return this->pm3;
     return m_realImage->pixmap();
 }
 
