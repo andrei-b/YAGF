@@ -422,6 +422,8 @@
     <addaction name="actionRecognize_All_Pages"/>
     <addaction name="action_Save"/>
     <addaction name="separator"/>
+    <addaction name="actionSave_current_image"/>
+    <addaction name="separator"/>
     <addaction name="actionQuit"/>
    </widget>
    <widget class="QMenu" name="menu_Help">
@@ -668,6 +670,18 @@
    </property>
    <property name="text">
     <string>Check spelling</string>
+   </property>
+  </action>
+  <action name="actionSave_current_image">
+   <property name="icon">
+    <iconset resource="yagf.qrc">
+     <normaloff>:/images/savpicas.png</normaloff>:/images/savpicas.png</iconset>
+   </property>
+   <property name="text">
+    <string>Save current image...</string>
+   </property>
+   <property name="toolTip">
+    <string>Save currently opened image in its real size</string>
    </property>
   </action>
  </widget>

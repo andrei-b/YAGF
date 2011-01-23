@@ -43,6 +43,7 @@ public:
 	MainForm(QWidget *parent = 0);
 private slots:
         //void on_actionRecognize_activated();
+        void on_actionSave_current_image_activated();
         void on_actionCheck_spelling_triggered();
         void on_actionRecognize_block_activated();
         void on_ActionDeleteBlock_activated();

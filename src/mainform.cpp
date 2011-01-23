@@ -957,3 +957,31 @@ void MainForm::on_actionCheck_spelling_triggered()
     } else
         spellChecker->unSpellCheck();
 }
+
+void MainForm::on_actionSave_current_image_activated()
+{
+    QStringList filters;
+    QString format = "";
+    QString jpegFilter = trUtf8("JPEG Files (*.jpg)");
+    QString pngFilter = trUtf8("PNG Files (*.png)");
+    filters << jpegFilter << pngFilter;
+    QFileDialog dialog(this,
+            trUtf8("Save Image"), lastOutputDir);
+    dialog.setFilters(filters);
+    dialog.setAcceptMode(QFileDialog::AcceptSave);
+    if (dialog.exec()) {
+        if (dialog.selectedNameFilter() == jpegFilter) {
+            format = "JPEG";
+            dialog.setDefaultSuffix("jpeg");
+        } else
+            if (dialog.selectedNameFilter() == pngFilter) {
+                format = "PNG";
+                dialog.setDefaultSuffix("png");
+        }
+        QStringList fileNames;
+        fileNames = dialog.selectedFiles();
+        lastOutputDir = dialog.directory().path();
+        graphicsInput->getImage().save(fileNames.at(0), format.toAscii().data(), 100);
+    }
+
+}
