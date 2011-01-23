@@ -89,7 +89,6 @@ private:
     QGraphicsPixmapItem * m_realImage;
     QPixmap old_pixmap;
     QPixmap pm2;
-    QPixmap pm3;
     QPixmap pm4;
     QPixmap pm8;
     QPixmap pm16;
