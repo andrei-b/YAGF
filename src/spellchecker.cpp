@@ -39,6 +39,7 @@ SpellChecker::SpellChecker(QTextEdit * textEdit):m_textEdit(textEdit)
     m_map = new StringMap();
     m_map->insert("ruseng", "ru");
     m_map->insert("rus", "ru");
+    m_map->insert("bul", "bg");
     m_map->insert("cze", "cs");
     m_map->insert("dan", "da");
     m_map->insert("dut", "nl");
@@ -46,13 +47,17 @@ SpellChecker::SpellChecker(QTextEdit * textEdit):m_textEdit(textEdit)
     m_map->insert("est", "et");
     m_map->insert("fra", "fr");
     m_map->insert("ger", "de");
+    m_map->insert("hrv", "hr");
     m_map->insert("hun", "hu");
     m_map->insert("ita", "it");
     m_map->insert("lav", "lv");
     m_map->insert("lit", "lt");
     m_map->insert("pol", "pl");
     m_map->insert("por", "pt_PT");
+    m_map->insert("rum", "ro");
+    m_map->insert("slo", "sl");
     m_map->insert("spa", "es");
+    m_map->insert("srp", "sr");
     m_map->insert("swe", "sv");
     m_map->insert("ukr", "uk");
     spell_checker1 = 0;
@@ -138,11 +143,11 @@ void SpellChecker::_checkWord(QTextCursor * cursor)
         static const QRegExp nonDigits("\\D");
         if (!selText.contains(nonDigits))
             return;
-        //selText.remove("«");
-        //selText.remove("»");
-        selText.remove("\"");
-        selText.remove("(");
-        selText.remove(")");
+        selText = selText.remove(QString::fromUtf8("«"));
+        selText = selText.remove(QString::fromUtf8("»"));
+        //selText = selText.remove("\"");
+        //selText = selText.remove("(");
+        //selText = selText.remove(")");
         QByteArray ba = selText.toUtf8();
         if ((aspell_speller_check(spell_checker1, ba.data(), ba.size())== 0) &&
             (aspell_speller_check(spell_checker2, ba.data(), ba.size())== 0)) {

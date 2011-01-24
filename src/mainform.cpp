@@ -384,6 +384,7 @@ void MainForm::fillLanguagesBox()
 	  language = "rus";
 	  selectLangsBox->addItem(trUtf8("Russian"), QVariant("rus"));
           selectLangsBox->addItem(trUtf8("Russian-English"), QVariant("ruseng"));
+          selectLangsBox->addItem(trUtf8("Bulgarian"), QVariant("bul"));
           selectLangsBox->addItem(trUtf8("Croatian"), QVariant("hrv"));
           selectLangsBox->addItem(trUtf8("Czech"), QVariant("cze"));
           selectLangsBox->addItem(trUtf8("Danish"), QVariant("dan"));
