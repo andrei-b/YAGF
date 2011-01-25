@@ -973,7 +973,7 @@ void MainForm::on_actionSave_current_image_activated()
     if (dialog.exec()) {
         if (dialog.selectedNameFilter() == jpegFilter) {
             format = "JPEG";
-            dialog.setDefaultSuffix("jpeg");
+            dialog.setDefaultSuffix("jpg");
         } else
             if (dialog.selectedNameFilter() == pngFilter) {
                 format = "PNG";
@@ -985,4 +985,15 @@ void MainForm::on_actionSave_current_image_activated()
         graphicsInput->getImage().save(fileNames.at(0), format.toAscii().data(), 100);
     }
 
+}
+
+MainForm::~MainForm()
+{
+    delete resizeBlockCursor;
+    delete resizeCursor;
+    delete spellChecker;
+    delete fileChannel;
+    delete settings;
+    delete graphicsInput;
+    delete ba;
 }

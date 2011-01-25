@@ -65,6 +65,18 @@ SpellChecker::SpellChecker(QTextEdit * textEdit):m_textEdit(textEdit)
     setLanguage("ruseng");
 }
 
+SpellChecker::~SpellChecker()
+{
+    delete m_regExp;
+    delete m_map;
+
+      delete_aspell_speller(spell_checker1);
+      delete_aspell_speller(spell_checker2);
+
+    delete_aspell_config(spell_config1);
+    delete_aspell_config(spell_config2);
+}
+
 void SpellChecker::setLanguage(const QString & lang)
 {
 
@@ -89,12 +101,15 @@ void SpellChecker::setLanguage(const QString & lang)
      spell_checker1 = 0;
      if (aspell_error_number(possible_err) == 0)
        spell_checker1 = to_aspell_speller(possible_err);
+     else
+       delete_aspell_can_have_error(possible_err);
      possible_err = new_aspell_speller(spell_config2);
      spell_checker2 = 0;
      if (aspell_error_number(possible_err) == 0)
             spell_checker2 = to_aspell_speller(possible_err);
-
-}
+     else
+       delete_aspell_can_have_error(possible_err);
+ }
 
 void SpellChecker::spellCheck()
 {

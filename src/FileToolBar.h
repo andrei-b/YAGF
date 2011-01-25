@@ -47,6 +47,7 @@ class FileToolBar : public QToolBar
 Q_OBJECT
 public:
     FileToolBar(QWidget * parent);
+    ~FileToolBar();
     void addFile(const QPixmap & pixmap, const QString & name);
     void addFile(const QString & name);
     QStringList getFileNames();

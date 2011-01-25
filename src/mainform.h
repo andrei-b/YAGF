@@ -41,6 +41,7 @@ class MainForm : public QMainWindow, public Ui::MainWindow
     Q_OBJECT
 public:
 	MainForm(QWidget *parent = 0);
+        ~MainForm();
 private slots:
         //void on_actionRecognize_activated();
         void on_actionSave_current_image_activated();

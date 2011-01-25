@@ -42,6 +42,7 @@ class QGraphicsInput : public QGraphicsScene
     Q_OBJECT
 public:
     explicit QGraphicsInput(const QRectF & sceneRect, QGraphicsView * view = 0);
+    ~QGraphicsInput();
     bool loadImage(const QPixmap &image, bool clearBlocks = true);
     bool loadNewImage(const QPixmap &image);
     void setView(QGraphicsView * view);

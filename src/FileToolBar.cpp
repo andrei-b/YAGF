@@ -56,6 +56,14 @@ FileToolBar::FileToolBar(QWidget * parent):QToolBar(trUtf8("Loaded Images"), par
     setStyleSheet(" FileToolBar { color: white; background-color: #444036 } \r QToolButton {color : white; background-color: #444036}");
  }
 
+FileToolBar::~FileToolBar()
+{
+        delete filesMap;
+        delete rotMap;
+        delete scaleMap;
+        delete blocksMap;
+}
+
 void FileToolBar::addFile(const QString &name)
 {
     QPixmap pm;

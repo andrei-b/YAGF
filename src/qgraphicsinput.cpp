@@ -40,6 +40,11 @@ QGraphicsInput::QGraphicsInput(const QRectF & sceneRect, QGraphicsView * view) :
     magnifierCursor = new QCursor(Qt::SizeAllCursor);
 }
 
+QGraphicsInput::~QGraphicsInput()
+{
+    delete magnifierCursor;
+}
+
 bool QGraphicsInput::loadImage(const QPixmap &image, bool clearBlocks)
 {
     if (clearBlocks || (!hasImage)) {

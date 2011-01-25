@@ -31,7 +31,7 @@ int main(int argc, char *argv[])
         QTranslator translator2;
         translator2.load("qt_" + QLocale::system().name(), "/usr/share/qt4/translations");
         app.installTranslator(&translator2);
-	MainForm * window = new MainForm;
-	window->show();
+        MainForm window;
+        window.show();
 	return app.exec();
 }
