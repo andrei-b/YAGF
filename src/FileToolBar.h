@@ -44,12 +44,12 @@ class QDragLeaveEvent;
 
 class FileToolBar : public QToolBar
 {
-Q_OBJECT
+    Q_OBJECT
 public:
-    FileToolBar(QWidget * parent);
+    FileToolBar(QWidget *parent);
     ~FileToolBar();
-    void addFile(const QPixmap & pixmap, const QString & name);
-    void addFile(const QString & name);
+    void addFile(const QPixmap &pixmap, const QString &name);
+    void addFile(const QString &name);
     QStringList getFileNames();
     void setRotation(int r);
     void setRotation(const QString &name, int r);
@@ -62,7 +62,7 @@ public:
     float getScale(const QString &name);
     int getRotation();
     void addBlock(const QRect &rect);
-   // RectList getBlocks();
+    // RectList getBlocks();
     void clearBlocks();
     QRectF getBlock(int index);
     int getRotation(const QString &name);
@@ -70,20 +70,20 @@ public:
     void select(const QString &name);
     void selectFirstFile();
 signals:
-    void fileSelected(const QString & name);
+    void fileSelected(const QString &name);
 protected:
-    void dragEnterEvent (QDragEnterEvent * event);
-    void dragLeaveEvent ( QDragLeaveEvent * event );
-    void dropEvent (QDropEvent * event);
+    void dragEnterEvent(QDragEnterEvent *event);
+    void dragLeaveEvent(QDragLeaveEvent *event);
+    void dropEvent(QDropEvent *event);
 private:
     bool buttonsAdded;
-    StringMap * filesMap;
-    IntMap * rotMap;
-    FloatMap * scaleMap;
-    RectMap * blocksMap;
-    QPushButton * saveButton;
-    QPushButton * clearButton;
-    QPushButton * removeButton;
+    StringMap *filesMap;
+    IntMap *rotMap;
+    FloatMap *scaleMap;
+    RectMap *blocksMap;
+    QPushButton *saveButton;
+    QPushButton *clearButton;
+    QPushButton *removeButton;
     QString currentImage;
 private slots:
     void saveAll();

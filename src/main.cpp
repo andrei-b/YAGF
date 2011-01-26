@@ -1,5 +1,5 @@
 /*
-    YAGF - cuneiform OCR graphical front-end 
+    YAGF - cuneiform OCR graphical front-end
     Copyright (C) 2009-2010 Andrei Borovsky <anb@symmetrica.net>
 
     This program is free software: you can redistribute it and/or modify
@@ -23,15 +23,15 @@
 
 int main(int argc, char *argv[])
 {
-	QApplication app(argc, argv);
-	QTranslator translator;
-        if (!translator.load("yagf_" + QLocale::system().name(), "/usr/local/share/yagf/translations"))
-	  translator.load("yagf_" + QLocale::system().name(), "/usr/share/yagf/translations");
-	app.installTranslator(&translator);
-        QTranslator translator2;
-        translator2.load("qt_" + QLocale::system().name(), "/usr/share/qt4/translations");
-        app.installTranslator(&translator2);
-        MainForm window;
-        window.show();
-	return app.exec();
+    QApplication app(argc, argv);
+    QTranslator translator;
+    if (!translator.load("yagf_" + QLocale::system().name(), "/usr/local/share/yagf/translations"))
+        translator.load("yagf_" + QLocale::system().name(), "/usr/share/yagf/translations");
+    app.installTranslator(&translator);
+    QTranslator translator2;
+    translator2.load("qt_" + QLocale::system().name(), "/usr/share/qt4/translations");
+    app.installTranslator(&translator2);
+    MainForm window;
+    window.show();
+    return app.exec();
 }

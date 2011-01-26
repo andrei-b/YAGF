@@ -35,5 +35,6 @@
         <file>images/check_spelling.png</file>
         <file>images/scanner48.png</file>
         <file>images/savpicas.png</file>
+        <file>images/saveblock.png</file>
     </qresource>
 </RCC>

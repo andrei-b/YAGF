@@ -41,11 +41,11 @@ class QGraphicsInput : public QGraphicsScene
 {
     Q_OBJECT
 public:
-    explicit QGraphicsInput(const QRectF & sceneRect, QGraphicsView * view = 0);
+    explicit QGraphicsInput(const QRectF &sceneRect, QGraphicsView *view = 0);
     ~QGraphicsInput();
     bool loadImage(const QPixmap &image, bool clearBlocks = true);
     bool loadNewImage(const QPixmap &image);
-    void setView(QGraphicsView * view);
+    void setView(QGraphicsView *view);
     QPixmap getActiveBlock();
     QPixmap getCurrentBlock();
     void setViewScale(qreal scale, qreal angle);
@@ -63,15 +63,15 @@ public:
     bool addBlock(const QRectF &rect, bool removeObstacles = true);
     void cropImage();
     void undo();
-    void setMagnifierCursor(QCursor * cursor);
+    void setMagnifierCursor(QCursor *cursor);
     //setMagnifierCursor(QCursor * cursor = );
 protected:
-    virtual void mousePressEvent ( QGraphicsSceneMouseEvent * event );
-    virtual void mouseMoveEvent ( QGraphicsSceneMouseEvent * mouseEvent );
-    virtual void mouseReleaseEvent ( QGraphicsSceneMouseEvent * mouseEvent);
-    virtual void wheelEvent ( QGraphicsSceneWheelEvent * wheelEvent );
-    virtual void keyReleaseEvent ( QKeyEvent * keyEvent );
-    virtual void keyPressEvent ( QKeyEvent * keyEvent );
+    virtual void mousePressEvent(QGraphicsSceneMouseEvent *event);
+    virtual void mouseMoveEvent(QGraphicsSceneMouseEvent *mouseEvent);
+    virtual void mouseReleaseEvent(QGraphicsSceneMouseEvent *mouseEvent);
+    virtual void wheelEvent(QGraphicsSceneWheelEvent *wheelEvent);
+    virtual void keyReleaseEvent(QKeyEvent *keyEvent);
+    virtual void keyPressEvent(QKeyEvent *keyEvent);
 signals:
     void leftMouseClicked(int x, int y, bool blockSelected);
     void rightMouseClicked(int x, int y, bool inTheBlock);
@@ -82,19 +82,19 @@ private:
     void rightMouseRelease(qreal x, qreal y);
     int nearActiveBorder(qreal x, qreal y);
     void clearTransform();
-    QPixmap extractPixmap(QGraphicsRectItem * item);
-    void deleteBlockRect(QGraphicsRectItem * item);
-    QGraphicsRectItem * newBlock(const QRectF &rect);
-    QGraphicsView * m_view;
-    QGraphicsPixmapItem * m_image;
-    QGraphicsPixmapItem * m_realImage;
+    QPixmap extractPixmap(QGraphicsRectItem *item);
+    void deleteBlockRect(QGraphicsRectItem *item);
+    QGraphicsRectItem *newBlock(const QRectF &rect);
+    QGraphicsView *m_view;
+    QGraphicsPixmapItem *m_image;
+    QGraphicsPixmapItem *m_realImage;
     QPixmap old_pixmap;
     QPixmap pm2;
     QPixmap pm4;
     QPixmap pm8;
     QPixmap pm16;
-    QGraphicsRectItem * m_CurrentBlockRect;
-    QGraphicsRectItem * m_LastSelected;
+    QGraphicsRectItem *m_CurrentBlockRect;
+    QGraphicsRectItem *m_LastSelected;
     SelectStates selecting;
     QRectF blockRect;
     QRectF selBlockRect;
@@ -104,7 +104,7 @@ private:
     qreal m_rotate;
     qreal real_rotate;
     Qt::MouseButton buttonPressed;
-    QCursor * magnifierCursor;
+    QCursor *magnifierCursor;
     int near_res;
 };
 

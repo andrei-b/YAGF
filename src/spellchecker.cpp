@@ -26,7 +26,7 @@
 #include "spellchecker.h"
 
 
-SpellChecker::SpellChecker(QTextEdit * textEdit):m_textEdit(textEdit)
+SpellChecker::SpellChecker(QTextEdit *textEdit): m_textEdit(textEdit)
 {
     m_regExp = new QRegExp("[^\\s]*");
     //m_cursor= new QTextCursor(m_textEdit->document());
@@ -70,74 +70,74 @@ SpellChecker::~SpellChecker()
     delete m_regExp;
     delete m_map;
 
-      delete_aspell_speller(spell_checker1);
-      delete_aspell_speller(spell_checker2);
+    delete_aspell_speller(spell_checker1);
+    delete_aspell_speller(spell_checker2);
 
     delete_aspell_config(spell_config1);
     delete_aspell_config(spell_config2);
 }
 
-void SpellChecker::setLanguage(const QString & lang)
+void SpellChecker::setLanguage(const QString &lang)
 {
 
-     delete_aspell_speller(spell_checker1);
-     delete_aspell_speller(spell_checker2);
+    delete_aspell_speller(spell_checker1);
+    delete_aspell_speller(spell_checker2);
 
-     m_lang2 = "en";
-     m_lang1 = m_map->value(lang, QString("en"));
-     if (lang == "rus_fra") {
-          m_lang1 = "ru";
-          m_lang2 = "fr";
-     } else if (lang == "rus_ger") {
-          m_lang1 = "ru";
-          m_lang2 = "de";
-     } else if (lang == "rus_spa") {
-          m_lang1 = "ru";
-          m_lang2 = "es";
-     }
-     aspell_config_replace(spell_config1, "lang", m_lang1.toAscii());
-     aspell_config_replace(spell_config2, "lang", m_lang2.toAscii());
-     AspellCanHaveError * possible_err = new_aspell_speller(spell_config1);
-     spell_checker1 = 0;
-     if (aspell_error_number(possible_err) == 0)
-       spell_checker1 = to_aspell_speller(possible_err);
-     else
-       delete_aspell_can_have_error(possible_err);
-     possible_err = new_aspell_speller(spell_config2);
-     spell_checker2 = 0;
-     if (aspell_error_number(possible_err) == 0)
-            spell_checker2 = to_aspell_speller(possible_err);
-     else
-       delete_aspell_can_have_error(possible_err);
- }
+    m_lang2 = "en";
+    m_lang1 = m_map->value(lang, QString("en"));
+    if (lang == "rus_fra") {
+        m_lang1 = "ru";
+        m_lang2 = "fr";
+    } else if (lang == "rus_ger") {
+        m_lang1 = "ru";
+        m_lang2 = "de";
+    } else if (lang == "rus_spa") {
+        m_lang1 = "ru";
+        m_lang2 = "es";
+    }
+    aspell_config_replace(spell_config1, "lang", m_lang1.toAscii());
+    aspell_config_replace(spell_config2, "lang", m_lang2.toAscii());
+    AspellCanHaveError *possible_err = new_aspell_speller(spell_config1);
+    spell_checker1 = 0;
+    if (aspell_error_number(possible_err) == 0)
+        spell_checker1 = to_aspell_speller(possible_err);
+    else
+        delete_aspell_can_have_error(possible_err);
+    possible_err = new_aspell_speller(spell_config2);
+    spell_checker2 = 0;
+    if (aspell_error_number(possible_err) == 0)
+        spell_checker2 = to_aspell_speller(possible_err);
+    else
+        delete_aspell_can_have_error(possible_err);
+}
 
 void SpellChecker::spellCheck()
 {
-     if ((spell_checker1 == 0) || (spell_checker2 == 0)) {
-         QPixmap icon;
-         icon.load(":/warning.png");
-         QMessageBox messageBox(QMessageBox::NoIcon, "YAGF", QObject::trUtf8("Required spelling dictionary is not found. Spell-checking is disabled."),
-                        QMessageBox::Ok, 0);
-                messageBox.setIconPixmap(icon);
-                messageBox.exec();
-         return;
-     }
-     QTextCursor cursor(m_textEdit->document());
-     while (!cursor.isNull()&&!cursor.atEnd()) {
+    if ((spell_checker1 == 0) || (spell_checker2 == 0)) {
+        QPixmap icon;
+        icon.load(":/warning.png");
+        QMessageBox messageBox(QMessageBox::NoIcon, "YAGF", QObject::trUtf8("Required spelling dictionary is not found. Spell-checking is disabled."),
+                               QMessageBox::Ok, 0);
+        messageBox.setIconPixmap(icon);
+        messageBox.exec();
+        return;
+    }
+    QTextCursor cursor(m_textEdit->document());
+    while (!cursor.isNull() && !cursor.atEnd()) {
         _checkWord(&cursor);
         QTextCursor oldc = cursor;
         if (!cursor.movePosition(QTextCursor::NextWord,
-                                      QTextCursor::MoveAnchor))
+                                 QTextCursor::MoveAnchor))
             break;
 //cursor.movePosition(QTextCursor::EndOfWord,  QTextCursor::MoveAnchor);
 
         //cursor = m_textEdit->document()->find(*m_regExp, cursor);
         int oldpos = oldc.position();
         int newpos = cursor.position();
-        if (abs(newpos -oldpos) < 3)
+        if (abs(newpos - oldpos) < 3)
             cursor.setPosition(newpos + 1);
-     }
-     if (!cursor.isNull())
+    }
+    if (!cursor.isNull())
         _checkWord(&cursor);
 }
 
@@ -151,37 +151,37 @@ void SpellChecker::unSpellCheck()
     cursor.clearSelection();
 }
 
-void SpellChecker::_checkWord(QTextCursor * cursor)
+void SpellChecker::_checkWord(QTextCursor *cursor)
 {
-        cursor->select(QTextCursor::WordUnderCursor);
-        QString selText = cursor->selectedText();
-        static const QRegExp nonDigits("\\D");
-        if (!selText.contains(nonDigits))
-            return;
-        selText = selText.remove(QString::fromUtf8("«"));
-        selText = selText.remove(QString::fromUtf8("»"));
-        //selText = selText.remove("\"");
-        //selText = selText.remove("(");
-        //selText = selText.remove(")");
-        QByteArray ba = selText.toUtf8();
-        if ((aspell_speller_check(spell_checker1, ba.data(), ba.size())== 0) &&
-            (aspell_speller_check(spell_checker2, ba.data(), ba.size())== 0)) {
-            QTextCharFormat fmt = cursor->charFormat();
-            fmt.setUnderlineColor(QColor(Qt::red));
-            fmt.setUnderlineStyle(QTextCharFormat::SpellCheckUnderline);
-            cursor->setCharFormat(fmt);
-        } else {
-            QTextCharFormat fmt = cursor->charFormat();
-            fmt.setUnderlineStyle(QTextCharFormat::NoUnderline);
-            cursor->setCharFormat(fmt);
-        }
-        cursor->clearSelection();
+    cursor->select(QTextCursor::WordUnderCursor);
+    QString selText = cursor->selectedText();
+    static const QRegExp nonDigits("\\D");
+    if (!selText.contains(nonDigits))
+        return;
+    selText = selText.remove(QString::fromUtf8("«"));
+    selText = selText.remove(QString::fromUtf8("»"));
+    //selText = selText.remove("\"");
+    //selText = selText.remove("(");
+    //selText = selText.remove(")");
+    QByteArray ba = selText.toUtf8();
+    if ((aspell_speller_check(spell_checker1, ba.data(), ba.size()) == 0) &&
+            (aspell_speller_check(spell_checker2, ba.data(), ba.size()) == 0)) {
+        QTextCharFormat fmt = cursor->charFormat();
+        fmt.setUnderlineColor(QColor(Qt::red));
+        fmt.setUnderlineStyle(QTextCharFormat::SpellCheckUnderline);
+        cursor->setCharFormat(fmt);
+    } else {
+        QTextCharFormat fmt = cursor->charFormat();
+        fmt.setUnderlineStyle(QTextCharFormat::NoUnderline);
+        cursor->setCharFormat(fmt);
+    }
+    cursor->clearSelection();
 }
 
 void SpellChecker::checkWord()
 {
-     if ((spell_checker1 == 0) || (spell_checker2 == 0))
-         return;
-     QTextCursor cursor = m_textEdit->textCursor();
-     _checkWord(&cursor);
- }
+    if ((spell_checker1 == 0) || (spell_checker2 == 0))
+        return;
+    QTextCursor cursor = m_textEdit->textCursor();
+    _checkWord(&cursor);
+}

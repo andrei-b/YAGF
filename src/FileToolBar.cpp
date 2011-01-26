@@ -38,7 +38,7 @@
 #include "utils.h"
 
 
-FileToolBar::FileToolBar(QWidget * parent):QToolBar(trUtf8("Loaded Images"), parent)
+FileToolBar::FileToolBar(QWidget *parent): QToolBar(trUtf8("Loaded Images"), parent)
 {
     buttonsAdded = false;
     this->setIconSize(QSize(64, 96));
@@ -54,14 +54,14 @@ FileToolBar::FileToolBar(QWidget * parent):QToolBar(trUtf8("Loaded Images"), par
     setAcceptDrops(true);
     this->setToolTip(trUtf8("Drop graphic files here"));
     setStyleSheet(" FileToolBar { color: white; background-color: #444036 } \r QToolButton {color : white; background-color: #444036}");
- }
+}
 
 FileToolBar::~FileToolBar()
 {
-        delete filesMap;
-        delete rotMap;
-        delete scaleMap;
-        delete blocksMap;
+    delete filesMap;
+    delete rotMap;
+    delete scaleMap;
+    delete blocksMap;
 }
 
 void FileToolBar::addFile(const QString &name)
@@ -72,24 +72,24 @@ void FileToolBar::addFile(const QString &name)
     }
 }
 
-void FileToolBar::addFile(const QPixmap & pixmap, const QString & name)
+void FileToolBar::addFile(const QPixmap &pixmap, const QString &name)
 {
-    QAction * action;
+    QAction *action;
     if (filesMap->values().contains(name))
         return;
     if (!buttonsAdded) {
         clearButton = new QPushButton(QIcon(":/clear.png"), trUtf8("Clear"), this);
-        clearButton->setIconSize(QSize(24,24));
+        clearButton->setIconSize(QSize(24, 24));
         clearButton->setToolTip(trUtf8("Clear the panel"));
         connect(clearButton, SIGNAL(clicked()), this, SLOT(clearAll()));
         action = insertWidget(0, clearButton);
         saveButton = new QPushButton(QIcon(":/save_all.png"), trUtf8("Save..."), this);
-        saveButton->setIconSize(QSize(24,24));
+        saveButton->setIconSize(QSize(24, 24));
         saveButton->setToolTip(trUtf8("Save all the files"));
         connect(saveButton, SIGNAL(clicked()), this, SLOT(saveAll()));
         insertWidget(action, saveButton);
         removeButton = new QPushButton(QIcon(":/remove.png"), trUtf8("Remove"), this);
-        removeButton->setIconSize(QSize(24,24));
+        removeButton->setIconSize(QSize(24, 24));
         removeButton->setToolTip(trUtf8("Remove the current file"));
         connect(removeButton, SIGNAL(clicked()), this, SLOT(remove()));
         insertWidget(action, removeButton);
@@ -125,35 +125,35 @@ void FileToolBar::saveAll()
         QFile file;
         QMapIterator<QString, QString> i(*filesMap);
         while (i.hasNext()) {
-             i.next();
-             file.setFileName(i.value());
-             rot = getRotation(i.value());
-             if (rot) {
+            i.next();
+            file.setFileName(i.value());
+            rot = getRotation(i.value());
+            if (rot) {
                 pm.load(i.value());
                 if (!pm.isNull()) {
                     QMatrix matrix;
                     matrix.rotate(rot);
                     pm = pm.transformed(matrix, Qt::SmoothTransformation);
                 }
-             }
-             QString newName = fd.selectedFiles().at(0) + '/' + extractFileName(i.value());
-             if (file.exists(newName)) {
-                    QPixmap icon;
-                    icon.load(":/warning.png");
-                    QMessageBox messageBox(QMessageBox::NoIcon, "YAGF", trUtf8("File %1 already exists. Do you want to replace it?").arg(newName),
-                        QMessageBox::Yes|QMessageBox::No, this);
-                    messageBox.setIconPixmap(icon);
-                    int result = messageBox.exec();
-                    if (result == QMessageBox::No)
-                        continue;
-                    else
-                        file.remove(newName);
-             }
-             if (rot && (!pm.isNull()))
-                 pm.save(newName);
-             else
+            }
+            QString newName = fd.selectedFiles().at(0) + '/' + extractFileName(i.value());
+            if (file.exists(newName)) {
+                QPixmap icon;
+                icon.load(":/warning.png");
+                QMessageBox messageBox(QMessageBox::NoIcon, "YAGF", trUtf8("File %1 already exists. Do you want to replace it?").arg(newName),
+                                       QMessageBox::Yes | QMessageBox::No, this);
+                messageBox.setIconPixmap(icon);
+                int result = messageBox.exec();
+                if (result == QMessageBox::No)
+                    continue;
+                else
+                    file.remove(newName);
+            }
+            if (rot && (!pm.isNull()))
+                pm.save(newName);
+            else
                 file.copy(newName);
-         }
+        }
 
     }
 
@@ -221,9 +221,9 @@ void FileToolBar::dropEvent(QDropEvent *event)
     if (event->mimeData()->hasUrls()) {
         QList<QUrl> ul = event->mimeData()->urls();
         QList<QUrl>::Iterator i;
-        for(i = ul.begin(); i != ul.end(); i++) {
-           QUrl url = *i;
-           this->addFile(url.toLocalFile());
+        for (i = ul.begin(); i != ul.end(); i++) {
+            QUrl url = *i;
+            this->addFile(url.toLocalFile());
         }
     }
     setCursor(Qt::ArrowCursor);
@@ -269,8 +269,8 @@ void FileToolBar::removeBlock(const QRectF &block)
 QRectF FileToolBar::getBlock(int index)
 {
     if (currentImage != "")
-        return blocksMap->values(currentImage).value(index, QRectF(0,0,0,0));
-    return QRectF(0,0,0,0);
+        return blocksMap->values(currentImage).value(index, QRectF(0, 0, 0, 0));
+    return QRectF(0, 0, 0, 0);
 }
 
 int FileToolBar::getBlocksCount()

@@ -1,3 +1,8 @@
+* Tue Jan 25 2011 Andrei Borovsky <anb@symmetrica.net> - 0.8.5
+- Many bug fixes thanks to Skip
+- Spellchecker improved
+- Bulgarian language added (at last!;)
+- Blocks and entire image may be saved to a file
 * Sat Jan 08 2011 Andrei Borovsky <anb@symmetrica.net> - 0.8.4
 - Serbian, Croatian, and Slovenian languages are added (at last!)
 - Ability to open several files at ones is added

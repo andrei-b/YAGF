@@ -25,9 +25,10 @@ class QPixmap;
 class QImage;
 class QRect;
 
-class BlockAnalysis {
- public:
-    BlockAnalysis(QPixmap * pixmap);
+class BlockAnalysis
+{
+public:
+    BlockAnalysis(QPixmap *pixmap);
     ~BlockAnalysis();
     int getSkew();
     int getSkew1();
@@ -35,19 +36,19 @@ class BlockAnalysis {
     QRect getCoords();
     QPixmap getPixmap();
 private:
-    QImage * m_image;
-    char ** m_blockMap;
+    QImage *m_image;
+    char **m_blockMap;
     int longestLine[3];
     int longestCount[3];
-    QRect * m_coords;
+    QRect *m_coords;
     qint64 mtreshold;
-    quint16 * linesInfo;
+    quint16 *linesInfo;
     QRgb * * lines;
 
     void newBlock();
     void deleteBlock();
     void countLinesInImg(int factor, int d);
-    void countLinesInImg(QImage * _image);
+    void countLinesInImg(QImage *_image);
     void preScan1();
     void deleteLines();
     bool badImage;

@@ -1,5 +1,5 @@
-/* 
-    YAGF - cuneiform OCR graphical front-end 
+/*
+    YAGF - cuneiform OCR graphical front-end
     Copyright (C) 2009 Andrei Borovsky <anb@symmetrica.net>
 
     This program is free software: you can redistribute it and/or modify
@@ -26,41 +26,41 @@
 
 QString extractFileName(const QString &path)
 {
-	QFileInfo fi(path);
-	return fi.fileName();
+    QFileInfo fi(path);
+    return fi.fileName();
 }
 
 QString extractFilePath(const QString &path)
 {
-	QFileInfo fi(path);
-	QString s = fi.dir().path();
-	if (!s.endsWith("/"))
-		s += '/';
-	return s;
+    QFileInfo fi(path);
+    QString s = fi.dir().path();
+    if (!s.endsWith("/"))
+        s += '/';
+    return s;
 }
 
 QString extractDigits(const QString &fn)
 {
-	bool extracting = FALSE;
-	QString result = "";
-	for (int i = 0; i < fn.size(); i++)
-		if ((fn.at(i) >= '0') && (fn.at(i) <= '9')) {
-			extracting = TRUE;
-			result += fn.at(i);
-		} else {
-			if (extracting) break;
-		}
-		return result;
+    bool extracting = FALSE;
+    QString result = "";
+    for (int i = 0; i < fn.size(); i++)
+        if ((fn.at(i) >= '0') && (fn.at(i) <= '9')) {
+            extracting = TRUE;
+            result += fn.at(i);
+        } else {
+            if (extracting) break;
+        }
+    return result;
 }
 
 bool findProgram(const QString &name)
 {
-	QStringList sl = QString(getenv("PATH")).split(":");
-	QFileInfo fi;
-	for (int i = 0; i < sl.count(); i++) {
-		fi.setFile(sl.at(i), name);
-		if (fi.exists())
-			return true;  
-	}
-	return false;  
+    QStringList sl = QString(getenv("PATH")).split(":");
+    QFileInfo fi;
+    for (int i = 0; i < sl.count(); i++) {
+        fi.setFile(sl.at(i), name);
+        if (fi.exists())
+            return true;
+    }
+    return false;
 }

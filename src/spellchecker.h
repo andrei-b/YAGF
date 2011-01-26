@@ -1,5 +1,5 @@
 /*
-    YAGF - cuneiform OCR graphical front-end 
+    YAGF - cuneiform OCR graphical front-end
     Copyright (C) 2009 Andrei Borovsky <anb@symmetrica.net>
 
     This program is free software: you can redistribute it and/or modify
@@ -32,24 +32,24 @@ class QTextCursor;
 
 class SpellChecker
 {
-    public:
-    SpellChecker(QTextEdit * textEdit);
+public:
+    SpellChecker(QTextEdit *textEdit);
     ~SpellChecker();
     void unSpellCheck();
-    void setLanguage(const QString & lang);
+    void setLanguage(const QString &lang);
     void spellCheck();
     void checkWord();
-    private:
-    void _checkWord(QTextCursor * cursor);
-    QTextEdit * m_textEdit;
-    QRegExp * m_regExp;
+private:
+    void _checkWord(QTextCursor *cursor);
+    QTextEdit *m_textEdit;
+    QRegExp *m_regExp;
     QString m_lang1;
     QString m_lang2;
-    StringMap * m_map;
-    AspellConfig * spell_config1;
-    AspellConfig * spell_config2;
-    AspellSpeller * spell_checker1;
-    AspellSpeller * spell_checker2;
+    StringMap *m_map;
+    AspellConfig *spell_config1;
+    AspellConfig *spell_config2;
+    AspellSpeller *spell_checker1;
+    AspellSpeller *spell_checker2;
 
 };
 

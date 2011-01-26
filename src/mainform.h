@@ -1,5 +1,5 @@
 /*
-    YAGF - cuneiform OCR graphical front-end 
+    YAGF - cuneiform OCR graphical front-end
     Copyright (C) 2009-2010 Andrei Borovsky <anb@symmetrica.net>
 
     This program is free software: you can redistribute it and/or modify
@@ -19,7 +19,7 @@
 
 #include <QMainWindow>
 #include <QString>
-#include "ui_mainform.h" 
+#include "ui_mainform.h"
 
 class QComboBox;
 class QCheckBox;
@@ -36,93 +36,96 @@ class QCursor;
 class QGraphicsInput;
 class QMenu;
 
+
 class MainForm : public QMainWindow, public Ui::MainWindow
 {
     Q_OBJECT
 public:
-	MainForm(QWidget *parent = 0);
-        ~MainForm();
+    MainForm(QWidget *parent = 0);
+    ~MainForm();
 private slots:
-        //void on_actionRecognize_activated();
-        void on_actionSave_current_image_activated();
-        void on_actionCheck_spelling_triggered();
-        void on_actionRecognize_block_activated();
-        void on_ActionDeleteBlock_activated();
-        void on_ActionClearAllBlocks_activated();
- void loadImage();
-	void rotateCWButtonClicked();
-	void rotateCCWButtonClicked();
-	void rotate180ButtonClicked();
-	void enlargeButtonClicked();
-	void decreaseButtonClicked();
-	void singleColumnButtonClicked();
-	void newLanguageSelected(int index);
-	void scanImage();
-	void loadNextPage();
-	void loadPreviousPage();
-	void recognize();
-        void recognizeAll();
-	void saveText();
-	void showAboutDlg();
-	void showHelp();
-        void copyClipboard();
-        void copyAvailable(bool yes);
-        void textChanged();
-        void enlargeFont();
-        void decreaseFont();
-        void alignButtonClicked();
-        void unalignButtonClicked();
+    //void on_actionRecognize_activated();
+    void on_actionSave_block_activated();
+    void on_actionSave_current_image_activated();
+    void on_actionCheck_spelling_triggered();
+    void on_actionRecognize_block_activated();
+    void on_ActionDeleteBlock_activated();
+    void on_ActionClearAllBlocks_activated();
+    void loadImage();
+    void rotateCWButtonClicked();
+    void rotateCCWButtonClicked();
+    void rotate180ButtonClicked();
+    void enlargeButtonClicked();
+    void decreaseButtonClicked();
+    void singleColumnButtonClicked();
+    void newLanguageSelected(int index);
+    void scanImage();
+    void loadNextPage();
+    void loadPreviousPage();
+    void recognize();
+    void recognizeAll();
+    void saveText();
+    void showAboutDlg();
+    void showHelp();
+    void copyClipboard();
+    void copyAvailable(bool yes);
+    void textChanged();
+    void enlargeFont();
+    void decreaseFont();
+    void alignButtonClicked();
+    void unalignButtonClicked();
 protected:
-        bool eventFilter(QObject *object, QEvent *event);
+    bool eventFilter(QObject *object, QEvent *event);
 private:
-	virtual void closeEvent(QCloseEvent * event);
-        void rotateImage(int deg);
-	void scaleImage(double sf);
-	void initSettings();
-	void readSettings();
-	void writeSettings();
-	void fillLanguagesBox();
-        void loadFile(const QString &fn, bool loadIntoView = true);
-	void delTmpFiles();
-	void loadNext(int number);
-        void saveHtml(QFile * file);
-        void delTmpDir();
-        void recognizeInternal(const QPixmap &pix);
-        void loadFromCommandLine();
-	bool imageLoaded;
-        bool hasCopy;
-	QComboBox * selectLangsBox;
-	QComboBox * selectFormatBox;
-        //QCheckBox * spellCheckBox;
-//	QPixmap * pixmap;
-        QGraphicsInput * graphicsInput;
-	double scaleFactor;
-	bool singleColumn;
-	QString language;
-	QString outputFormat;
-	QString lastDir;
-	QString lastOutputDir;
-	QString workingDir;
-	QString fileName;
-	QSettings * settings;
-        QCursor * resizeCursor;
-        QCursor * resizeBlockCursor;
-	bool useXSane;
-	bool textSaved;
-        bool checkSpelling;
-        QProcess * scanProcess;
-        FileChannel * fileChannel;
-        QByteArray * ba;
-        SpellChecker * spellChecker;
+    virtual void closeEvent(QCloseEvent *event);
+    void rotateImage(int deg);
+    void scaleImage(double sf);
+    void initSettings();
+    void readSettings();
+    void writeSettings();
+    void fillLanguagesBox();
+    void loadFile(const QString &fn, bool loadIntoView = true);
+    void delTmpFiles();
+    void loadNext(int number);
+    void saveHtml(QFile *file);
+    void delTmpDir();
+    void recognizeInternal(const QPixmap &pix);
+    void saveImageInternal(const QPixmap &pix);
+    void loadFromCommandLine();
+    bool imageLoaded;
+    bool hasCopy;
+    QComboBox *selectLangsBox;
+    QComboBox *selectFormatBox;
+    //QCheckBox * spellCheckBox;
+//  QPixmap * pixmap;
+    QGraphicsInput *graphicsInput;
+    double scaleFactor;
+    bool singleColumn;
+    QString language;
+    QString outputFormat;
+    QString lastDir;
+    QString lastOutputDir;
+    QString workingDir;
+    QString fileName;
+    QSettings *settings;
+    QCursor *resizeCursor;
+    QCursor *resizeBlockCursor;
+    bool useXSane;
+    bool textSaved;
+    bool checkSpelling;
+    QProcess *scanProcess;
+    FileChannel *fileChannel;
+    QByteArray *ba;
+    SpellChecker *spellChecker;
 //        int rotation;
-        QToolBar * m_toolBar;
-        QMenu * m_menu;
-//	QLabel * displayLabel;
+    QToolBar *m_toolBar;
+    QMenu *m_menu;
+//  QLabel * displayLabel;
 private slots:
-        void readyRead();
-        void updateSP();
-        void setResizingCusor();
-        void setUnresizingCusor();
-        void fileSelected(const QString &path);
-        void rightMouseClicked(int x, int y, bool inTheBlock);
+    void readyRead();
+    void updateSP();
+    void setResizingCusor();
+    void setUnresizingCusor();
+    void fileSelected(const QString &path);
+    void rightMouseClicked(int x, int y, bool inTheBlock);
 };
