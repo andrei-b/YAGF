@@ -193,12 +193,11 @@ void FileToolBar::remove()
             rotMap->remove(currentImage);
             blocksMap->remove(currentImage);
             scaleMap->remove(currentImage);
-            currentImage = "";
             if (filesMap->count() > 0) {
-                currentImage = filesMap->keys().at(0);
-                QString path = filesMap->value(currentImage);
-                emit fileSelected(path);
-            }
+                       currentImage = filesMap->keys().at(i%filesMap->count());
+                       QString path = filesMap->value(currentImage);
+                        emit fileSelected(path);
+            } else emit fileSelected("");
             break;
         }
 }

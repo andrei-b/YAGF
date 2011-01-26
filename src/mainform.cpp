@@ -464,7 +464,7 @@ void MainForm::loadFile(const QString &fn, bool loadIntoView)
 {
     QCursor oldCursor = cursor();
     setCursor(Qt::WaitCursor);
-    if (fileName != "") {
+    if ((fileName != "")&&((FileToolBar *) m_toolBar)->getFileNames().contains(fileName)) {
         ((FileToolBar *) m_toolBar)->select(fileName);
         ((FileToolBar *) m_toolBar)->clearBlocks();
         for (int i = 0; i < graphicsInput->blocksCount(); i++)
@@ -872,6 +872,11 @@ void MainForm::setUnresizingCusor()
 
 void MainForm::fileSelected(const QString &path)
 {
+    if (path == "") {
+        graphicsInput->loadImage(QPixmap(0,0));
+        this->setWindowTitle("YAGF");
+        return;
+    }
     loadFile(path);
 }
 
