@@ -283,16 +283,25 @@ void MainForm::rotateImage(int deg)
 
 void MainForm::rotateCWButtonClicked()
 {
+    QCursor oldCursor = cursor();
+    setCursor(Qt::WaitCursor);
     rotateImage(90);
+    setCursor(oldCursor);
 }
 
 void MainForm::rotateCCWButtonClicked()
 {
+    QCursor oldCursor = cursor();
+    setCursor(Qt::WaitCursor);
     rotateImage(-90);
+    setCursor(oldCursor);
 }
 void MainForm::rotate180ButtonClicked()
 {
+    QCursor oldCursor = cursor();
+    setCursor(Qt::WaitCursor);
     rotateImage(180);
+    setCursor(oldCursor);
 }
 
 void MainForm::enlargeButtonClicked()
@@ -971,8 +980,6 @@ void MainForm::on_actionSave_current_image_activated()
 
 void MainForm::saveImageInternal(const QPixmap &pix)
 {
-    QCursor oldCursor = cursor();
-    setCursor(Qt::WaitCursor);
     QString jpegFilter = QObject::trUtf8("JPEG Files (*.jpg)");
     QString pngFilter = QObject::trUtf8("PNG Files (*.png)");
     QString imageSaveFailed = QObject::trUtf8("Failed to save the image");
@@ -983,7 +990,9 @@ void MainForm::saveImageInternal(const QPixmap &pix)
                        trUtf8("Save Image"), lastOutputDir);
     dialog.setFilters(filters);
     dialog.setAcceptMode(QFileDialog::AcceptSave);
+    QCursor oldCursor = cursor();
     if (dialog.exec()) {
+        setCursor(Qt::WaitCursor);
         if (dialog.selectedNameFilter() == jpegFilter) {
             format = "JPEG";
             dialog.setDefaultSuffix("jpg");

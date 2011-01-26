@@ -474,7 +474,7 @@
     <message>
         <location filename="mainform.ui" line="693"/>
         <source>Save block</source>
-        <translation>Сохранить блое</translation>
+        <translation>Сохранить блок</translation>
     </message>
     <message>
         <location filename="mainform.ui" line="696"/>
