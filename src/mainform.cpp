@@ -208,8 +208,8 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
 
 void MainForm::onShowWindow()
 {
-    spellChecker->setLanguage(language);
-    spellChecker->spellCheck();
+//    spellChecker->setLanguage(language);
+//    spellChecker->spellCheck();
 }
 
 void MainForm::loadFromCommandLine()
