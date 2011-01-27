@@ -70,6 +70,7 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
 
 
     setWindowTitle("YAGF");
+    spellChecker = new SpellChecker(textEdit);
     selectLangsBox = new QComboBox();
     QLabel *label = new QLabel();
     label->setMargin(4);
@@ -172,8 +173,6 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
     fileChannel->open(QIODevice::ReadOnly);
     ba = new QByteArray();
     connect(fileChannel, SIGNAL(readyRead()), this, SLOT(readyRead()));
-
-    spellChecker = new SpellChecker(textEdit);
 
     connect(textEdit->document(), SIGNAL(cursorPositionChanged(const QTextCursor &)), this, SLOT(updateSP()));
 

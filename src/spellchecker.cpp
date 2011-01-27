@@ -80,10 +80,8 @@ SpellChecker::~SpellChecker()
 void SpellChecker::setLanguage(const QString &lang)
 {
 
-    if (spell_checker1)
-        delete_aspell_speller(spell_checker1);
-    if (spell_checker2)
-        delete_aspell_speller(spell_checker2);
+    delete_aspell_speller(spell_checker1);
+    delete_aspell_speller(spell_checker2);
 
     m_lang2 = "en";
     m_lang1 = m_map->value(lang, QString("en"));
