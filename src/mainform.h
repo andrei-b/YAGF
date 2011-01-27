@@ -43,6 +43,8 @@ class MainForm : public QMainWindow, public Ui::MainWindow
 public:
     MainForm(QWidget *parent = 0);
     ~MainForm();
+signals:
+    void windowShown();
 private slots:
     //void on_actionRecognize_activated();
     void on_actionSave_block_activated();
@@ -128,4 +130,5 @@ private slots:
     void setUnresizingCusor();
     void fileSelected(const QString &path);
     void rightMouseClicked(int x, int y, bool inTheBlock);
+    void onShowWindow();
 };

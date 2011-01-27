@@ -101,7 +101,7 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
 
     connect(actionOpen, SIGNAL(triggered()), this, SLOT(loadImage()));
     connect(actionQuit, SIGNAL(triggered()), this, SLOT(close()));
-    //connect(this, SIGNAL(destroyed(QObject *)), this, SLOT(quitApp()));
+    connect(this, SIGNAL(windowShown()), this, SLOT(onShowWindow()), Qt::QueuedConnection);
     connect(actionScan, SIGNAL(triggered()), this, SLOT(scanImage()));
     connect(actionPreviousPage, SIGNAL(triggered()), this, SLOT(loadPreviousPage()));
     connect(actionNextPage, SIGNAL(triggered()), this, SLOT(loadNextPage()));
@@ -120,8 +120,6 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
     connect(textEdit, SIGNAL(copyAvailable(bool)), this, SLOT(copyAvailable(bool)));
     connect(textEdit, SIGNAL(textChanged()), this, SLOT(textChanged()));
     connect(graphicsInput, SIGNAL(rightMouseClicked(int, int, bool)), this, SLOT(rightMouseClicked(int, int, bool)));
-    //connect (graphicsView, SIGNAL(selectionResized()), this, SLOT(setResizingCusor()));
-    //connect (displayLabel, SIGNAL(selectionUnresized()), this, SLOT(setUnresizingCusor()));
     QAction *action;
     action = new QAction(trUtf8("Undo\tCtrl+Z"), this);
     action->setShortcut(QKeySequence("Ctrl+Z"));
@@ -205,6 +203,13 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
 
     clearBlocksButton->setDefaultAction(ActionClearAllBlocks);
     loadFromCommandLine();
+    emit windowShown();
+}
+
+void MainForm::onShowWindow()
+{
+    spellChecker->setLanguage(language);
+    spellChecker->spellCheck();
 }
 
 void MainForm::loadFromCommandLine()
@@ -424,6 +429,11 @@ void MainForm::fillLanguagesBox()
 void MainForm::newLanguageSelected(int index)
 {
     language = selectLangsBox->itemData(index).toString();
+    if (checkSpelling) {
+        spellChecker->setLanguage(language);
+        spellChecker->spellCheck();
+    }
+
 }
 
 void MainForm::scanImage()
@@ -528,6 +538,8 @@ void MainForm::loadNext(int number)
 {
 
     QStringList files = ((FileToolBar *)m_toolBar)->getFileNames();
+    if (files.count() == 0)
+        return;
     QString name = fileName;
     if (imageLoaded) {
         if (number > 0) {
@@ -989,12 +1001,13 @@ void MainForm::saveImageInternal(const QPixmap &pix)
     QString pngFilter = QObject::trUtf8("PNG Files (*.png)");
     QString imageSaveFailed = QObject::trUtf8("Failed to save the image");
     QStringList filters;
-    QString format = "";
+    QString format = "JPEG";
     filters << jpegFilter << pngFilter;
     QFileDialog dialog(this,
                        trUtf8("Save Image"), lastOutputDir);
     dialog.setFilters(filters);
     dialog.setAcceptMode(QFileDialog::AcceptSave);
+    dialog.setDefaultSuffix("jpg");
     QCursor oldCursor = cursor();
     if (dialog.exec()) {
         setCursor(Qt::WaitCursor);
