@@ -423,6 +423,69 @@ void MainForm::fillLanguagesBox()
     selectLangsBox->addItem(trUtf8("Russian-Spanish"), QVariant("rus_spa"));
     selectFormatBox->addItem("TEXT", QVariant("text"));
     selectFormatBox->addItem("HTML", QVariant("html"));
+    QLocale loc = QLocale::system ();
+    int index = 0;
+    switch (loc.language()) {
+    case QLocale::Bulgarian:
+        index = 2;
+        break;
+    case QLocale::Czech:
+        index = 4;
+        break;
+    case QLocale::Danish:
+        index = 5;
+        break;
+    case QLocale::German:
+        index = 10;
+        break;
+    case QLocale::Dutch:
+        index = 6;
+        break;
+    case QLocale::English:
+        index = 7;
+        break;
+    case QLocale::Spanish:
+        index = 18;
+        break;
+    case QLocale::French:
+        index = 9;
+        break;
+    case QLocale::Hungarian:
+        index = 11;
+        break;
+    case QLocale::Italian:
+        index = 12;
+        break;
+    case QLocale::Latvian:
+        index = 13;
+        break;
+    case QLocale::Lithuanian:
+        index = 14;
+        break;
+    case QLocale::Polish:
+        index = 15;
+        break;
+    case QLocale::Portuguese:
+        index = 16;
+        break;
+    case QLocale::Romanian:
+        index = 17;
+        break;
+    case QLocale::Swedish:
+        index = 19;
+        break;
+    case QLocale::Serbian:
+        index = 20;
+        break;
+    case QLocale::Slovenian:
+        index = 21;
+        break;
+    case QLocale::Ukrainian:
+        index = 22;
+    default:
+        index = 0;
+    }
+    selectFormatBox->setCurrentIndex(index);
 }
 
 void MainForm::newLanguageSelected(int index)
