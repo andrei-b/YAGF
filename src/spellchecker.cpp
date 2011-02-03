@@ -111,7 +111,7 @@ void SpellChecker::setLanguage(const QString &lang)
         delete_aspell_can_have_error(possible_err);
 }
 
-void SpellChecker::spellCheck()
+bool SpellChecker::spellCheck()
 {
     if ((spell_checker1 == 0) || (spell_checker2 == 0)) {
         QPixmap icon;
@@ -120,7 +120,7 @@ void SpellChecker::spellCheck()
                                QMessageBox::Ok, 0);
         messageBox.setIconPixmap(icon);
         messageBox.exec();
-        return;
+        return false;
     }
     QTextCursor cursor(m_textEdit->document());
     while (!cursor.isNull() && !cursor.atEnd()) {
@@ -139,6 +139,7 @@ void SpellChecker::spellCheck()
     }
     if (!cursor.isNull())
         _checkWord(&cursor);
+    return true;
 }
 
 void SpellChecker::unSpellCheck()

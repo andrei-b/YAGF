@@ -37,7 +37,7 @@ public:
     ~SpellChecker();
     void unSpellCheck();
     void setLanguage(const QString &lang);
-    void spellCheck();
+    bool spellCheck();  //Returns false only if the dictionary not found. Otherwise always true.
     void checkWord();
 private:
     void _checkWord(QTextCursor *cursor);

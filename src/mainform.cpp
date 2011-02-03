@@ -208,7 +208,7 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
 void MainForm::onShowWindow()
 {
     spellChecker->setLanguage(language);
-    spellChecker->spellCheck();
+    actionCheck_spelling->setEnabled(spellChecker->spellCheck());
 }
 
 void MainForm::loadFromCommandLine()
@@ -430,7 +430,7 @@ void MainForm::newLanguageSelected(int index)
     language = selectLangsBox->itemData(index).toString();
     if (checkSpelling) {
         spellChecker->setLanguage(language);
-        spellChecker->spellCheck();
+        actionCheck_spelling->setEnabled(spellChecker->spellCheck());
     }
 
 }
@@ -626,7 +626,7 @@ void MainForm::recognizeInternal(const QPixmap &pix)
     textSaved = FALSE;
     if (checkSpelling) {
         spellChecker->setLanguage(language);
-        spellChecker->spellCheck();
+        actionCheck_spelling->setEnabled(spellChecker->spellCheck());
     }
 
 }
@@ -984,7 +984,7 @@ void MainForm::on_actionCheck_spelling_triggered()
     checkSpelling = !checkSpelling;
     if (checkSpelling) {
         spellChecker->setLanguage(language);
-        spellChecker->spellCheck();
+        actionCheck_spelling->setEnabled(spellChecker->spellCheck());
     } else
         spellChecker->unSpellCheck();
 }
