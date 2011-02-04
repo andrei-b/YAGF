@@ -350,6 +350,7 @@ void MainForm::initSettings()
     li.append(1);
     li.append(1);
     splitter->setSizes(li);
+
     // QFile::remove(workingDir + "input.bmp");
     // QFile::remove(workingDir + "output.txt");
 }
@@ -364,7 +365,7 @@ void MainForm::readSettings()
     singleColumnButton->setChecked(singleColumn);
     lastDir = settings->value("mainwindow/lastDir").toString();
     lastOutputDir = settings->value("mainwindow/lastOutputDir", lastOutputDir).toString();
-    language = settings->value("ocr/language", QString("rus")).toString();
+    language = settings->value("ocr/language",  selectDefaultLanguageName()).toString();
     selectLangsBox->setCurrentIndex(selectLangsBox->findData(QVariant(language)));
     outputFormat = settings->value("ocr/outputFormat", QString("text")).toString();
     if (outputFormat == "") outputFormat = "text";
@@ -394,98 +395,102 @@ void MainForm::writeSettings()
 
 void MainForm::fillLanguagesBox()
 {
-    language = "rus";
+    language = selectDefaultLanguageName();
     selectLangsBox->addItem(trUtf8("Russian"), QVariant("rus"));
-    selectLangsBox->addItem(trUtf8("Russian-English"), QVariant("ruseng"));
-    selectLangsBox->addItem(trUtf8("Bulgarian"), QVariant("bul"));
-    selectLangsBox->addItem(trUtf8("Croatian"), QVariant("hrv"));
-    selectLangsBox->addItem(trUtf8("Czech"), QVariant("cze"));
-    selectLangsBox->addItem(trUtf8("Danish"), QVariant("dan"));
-    selectLangsBox->addItem(trUtf8("Dutch"), QVariant("dut"));
-    selectLangsBox->addItem(trUtf8("English"), QVariant("eng"));
-    selectLangsBox->addItem(trUtf8("Estonian"), QVariant("est"));
-    selectLangsBox->addItem(trUtf8("French"), QVariant("fra"));
-    selectLangsBox->addItem(trUtf8("German"), QVariant("ger"));
-    selectLangsBox->addItem(trUtf8("Hungarian"), QVariant("hun"));
-    selectLangsBox->addItem(trUtf8("Italian"), QVariant("ita"));
-    selectLangsBox->addItem(trUtf8("Latvian"), QVariant("lav"));
-    selectLangsBox->addItem(trUtf8("Lithuanian"), QVariant("lit"));
-    selectLangsBox->addItem(trUtf8("Polish"), QVariant("pol"));
-    selectLangsBox->addItem(trUtf8("Portuguese"), QVariant("por"));
-    selectLangsBox->addItem(trUtf8("Roman"), QVariant("rum"));
-    selectLangsBox->addItem(trUtf8("Spanish"), QVariant("spa"));
-    selectLangsBox->addItem(trUtf8("Swedish"), QVariant("swe"));
-    selectLangsBox->addItem(trUtf8("Serbian"), QVariant("srp"));
-    selectLangsBox->addItem(trUtf8("Slovenian"), QVariant("slo"));
-    selectLangsBox->addItem(trUtf8("Ukrainian"), QVariant("ukr"));
-    selectLangsBox->addItem(trUtf8("Russian-French"), QVariant("rus_fra"));
-    selectLangsBox->addItem(trUtf8("Russian-German"), QVariant("rus_ger"));
-    selectLangsBox->addItem(trUtf8("Russian-Spanish"), QVariant("rus_spa"));
+     selectLangsBox->addItem(trUtf8("Russian-English"), QVariant("ruseng"));
+     selectLangsBox->addItem(trUtf8("Bulgarian"), QVariant("bul"));
+     selectLangsBox->addItem(trUtf8("Croatian"), QVariant("hrv"));
+     selectLangsBox->addItem(trUtf8("Czech"), QVariant("cze"));
+     selectLangsBox->addItem(trUtf8("Danish"), QVariant("dan"));
+     selectLangsBox->addItem(trUtf8("Dutch"), QVariant("dut"));
+     selectLangsBox->addItem(trUtf8("English"), QVariant("eng"));
+     selectLangsBox->addItem(trUtf8("Estonian"), QVariant("est"));
+     selectLangsBox->addItem(trUtf8("French"), QVariant("fra"));
+     selectLangsBox->addItem(trUtf8("German"), QVariant("ger"));
+     selectLangsBox->addItem(trUtf8("Hungarian"), QVariant("hun"));
+     selectLangsBox->addItem(trUtf8("Italian"), QVariant("ita"));
+     selectLangsBox->addItem(trUtf8("Latvian"), QVariant("lav"));
+     selectLangsBox->addItem(trUtf8("Lithuanian"), QVariant("lit"));
+     selectLangsBox->addItem(trUtf8("Polish"), QVariant("pol"));
+     selectLangsBox->addItem(trUtf8("Portuguese"), QVariant("por"));
+     selectLangsBox->addItem(trUtf8("Roman"), QVariant("rum"));
+     selectLangsBox->addItem(trUtf8("Spanish"), QVariant("spa"));
+     selectLangsBox->addItem(trUtf8("Swedish"), QVariant("swe"));
+     selectLangsBox->addItem(trUtf8("Serbian"), QVariant("srp"));
+     selectLangsBox->addItem(trUtf8("Slovenian"), QVariant("slo"));
+     selectLangsBox->addItem(trUtf8("Ukrainian"), QVariant("ukr"));
+     selectLangsBox->addItem(trUtf8("Russian-French"), QVariant("rus_fra"));
+     selectLangsBox->addItem(trUtf8("Russian-German"), QVariant("rus_ger"));
+     selectLangsBox->addItem(trUtf8("Russian-Spanish"), QVariant("rus_spa"));
     selectFormatBox->addItem("TEXT", QVariant("text"));
     selectFormatBox->addItem("HTML", QVariant("html"));
+ }
+
+QString MainForm::selectDefaultLanguageName()
+{
     QLocale loc = QLocale::system ();
-    int index = 0;
+    QString name = "rus";
     switch (loc.language()) {
     case QLocale::Bulgarian:
-        index = 2;
+        name = "bul";
         break;
     case QLocale::Czech:
-        index = 4;
+        name = "cze";
         break;
     case QLocale::Danish:
-        index = 5;
+        name = "dan";
         break;
     case QLocale::German:
-        index = 10;
+        name = "ger";
         break;
     case QLocale::Dutch:
-        index = 6;
+        name = "dut";
         break;
     case QLocale::English:
-        index = 7;
+        name = "eng";
         break;
     case QLocale::Spanish:
-        index = 18;
+        name = "spa";
         break;
     case QLocale::French:
-        index = 9;
+        name = "fra";
         break;
     case QLocale::Hungarian:
-        index = 11;
+        name = "hun";
         break;
     case QLocale::Italian:
-        index = 12;
+        name = "ita";
         break;
     case QLocale::Latvian:
-        index = 13;
+        name = "lav";
         break;
     case QLocale::Lithuanian:
-        index = 14;
+        name = "lit";
         break;
     case QLocale::Polish:
-        index = 15;
+        name = "pol";
         break;
     case QLocale::Portuguese:
-        index = 16;
+        name = "por";
         break;
     case QLocale::Romanian:
-        index = 17;
+        name = "rum";
         break;
     case QLocale::Swedish:
-        index = 19;
+        name = "swe";
         break;
     case QLocale::Serbian:
-        index = 20;
+        name = "srp";
         break;
     case QLocale::Slovenian:
-        index = 21;
+        name = "slo";
         break;
     case QLocale::Ukrainian:
-        index = 22;
+        name = "ukr";
     default:
-        index = 0;
+        name = "rus";
     }
-    selectFormatBox->setCurrentIndex(index);
+    return name;
 }
 
 void MainForm::newLanguageSelected(int index)

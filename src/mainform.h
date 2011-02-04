@@ -131,4 +131,5 @@ private slots:
     void fileSelected(const QString &path);
     void rightMouseClicked(int x, int y, bool inTheBlock);
     void onShowWindow();
+    QString selectDefaultLanguageName();
 };

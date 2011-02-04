@@ -57,292 +57,292 @@
 <context>
     <name>MainForm</name>
     <message>
-        <location filename="mainform.cpp" line="76"/>
+        <location filename="mainform.cpp" line="77"/>
         <source>Recognition language</source>
         <translation>Мова розпізнавання</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="79"/>
+        <location filename="mainform.cpp" line="80"/>
         <source>Output format</source>
         <translation>Вихідний формат</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="228"/>
+        <location filename="mainform.cpp" line="232"/>
         <source>Open Image</source>
         <translation>Відкрити зображення</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="228"/>
+        <location filename="mainform.cpp" line="232"/>
         <source>Image Files (*.png *.jpg *.jpeg *.bmp *.tiff *.tif *.gif *.pnm *.pgm *.pbm *.ppm)</source>
         <translation>Файли зображення (*.png *.jpg *.jpeg *.bmp *.tiff *.tif *.gif *.pnm *.pgm *.pbm *.ppm)</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="254"/>
+        <location filename="mainform.cpp" line="258"/>
         <source>There is an unsaved text in the editor window. Do you want to save it?</source>
         <translation>У вікні редактора незбережений текст. Зберегти?</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="385"/>
+        <location filename="mainform.cpp" line="399"/>
         <source>Russian</source>
         <translation>Російська</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="388"/>
+        <location filename="mainform.cpp" line="402"/>
         <source>Croatian</source>
         <translation>Хорватська</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="392"/>
+        <location filename="mainform.cpp" line="406"/>
         <source>English</source>
         <translation>Англійська</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="394"/>
+        <location filename="mainform.cpp" line="408"/>
         <source>French</source>
         <translation>Французька</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="395"/>
+        <location filename="mainform.cpp" line="409"/>
         <source>German</source>
         <translation>Німецька</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="386"/>
+        <location filename="mainform.cpp" line="400"/>
         <source>Russian-English</source>
         <translation>Російсько-англійська</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="408"/>
+        <location filename="mainform.cpp" line="422"/>
         <source>Russian-French</source>
         <translation>Російсько-французька</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="409"/>
+        <location filename="mainform.cpp" line="423"/>
         <source>Russian-German</source>
         <translation>Російсько-німецька</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="410"/>
+        <location filename="mainform.cpp" line="424"/>
         <source>Russian-Spanish</source>
         <translation>Російсько-іспанська</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="426"/>
-        <location filename="mainform.cpp" line="622"/>
+        <location filename="mainform.cpp" line="512"/>
+        <location filename="mainform.cpp" line="710"/>
         <source>Warning</source>
         <translation>Попередження</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="426"/>
+        <location filename="mainform.cpp" line="512"/>
         <source>xsane not found</source>
         <translation>xsane не знайдено</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="444"/>
-        <location filename="mainform.cpp" line="618"/>
-        <location filename="mainform.cpp" line="998"/>
+        <location filename="mainform.cpp" line="530"/>
+        <location filename="mainform.cpp" line="706"/>
+        <location filename="mainform.cpp" line="1092"/>
         <source>Error</source>
         <translation>Помилка</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="618"/>
+        <location filename="mainform.cpp" line="706"/>
         <source>No image loaded</source>
         <translation>Нема завантажених зображень</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="588"/>
+        <location filename="mainform.cpp" line="676"/>
         <source>Starting cuneiform failed</source>
         <translation>Не вдалось запустити cuneiform</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="588"/>
+        <location filename="mainform.cpp" line="676"/>
         <source>The system said: </source>
         <translation>Система пише: </translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="588"/>
+        <location filename="mainform.cpp" line="676"/>
         <source>program not found</source>
         <translation>програму не знайдено</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="643"/>
+        <location filename="mainform.cpp" line="731"/>
         <source>Save Text</source>
         <translation>Зберегти текст</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="668"/>
+        <location filename="mainform.cpp" line="756"/>
         <source>About YAGF</source>
         <translation>Про програму</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="622"/>
+        <location filename="mainform.cpp" line="710"/>
         <source>cuneiform not found</source>
         <translation>cuneiform не знайдено</translation>
     </message>
     <message utf8="true">
-        <location filename="mainform.cpp" line="668"/>
+        <location filename="mainform.cpp" line="756"/>
         <source>&lt;p align=&quot;center&quot;&gt;&lt;b&gt;YAGF - Yet Another Graphical Front-end for cuneiform&lt;/b&gt;&lt;/p&gt;&lt;p align=&quot;center&quot;&gt;Version %1&lt;/p&gt; &lt;p align=&quot;center&quot;&gt;Ⓒ 2009-2011 Andrei Borovsky&lt;/p&gt; This is a free software distributed under GPL v3. Visit &lt;a href=&quot;http://symmetrica.net/cuneiform-linux/yagf-en.html&quot;&gt;http://symmetrica.net/cuneiform-linux/yagf-en.html&lt;/a&gt; for more details.</source>
         <translation>&lt;p align=&quot;center&quot;&gt;&lt;b&gt;YAGF — чергова графічна обгортка для cuneiform&lt;/b&gt;&lt;/p&gt;&lt;p align=&quot;center&quot;&gt;Версія %1&lt;/p&gt; &lt;p align=&quot;center&quot;&gt;© 2009–2011 Andrei Borovsky&lt;/p&gt; YAGF — вільний програмний засіб, поширюється на умовах GPL v3. Відвідайте &lt;a href=&quot;http://symmetrica.net/cuneiform-linux/yagf-ru.html&quot;&gt;http://symmetrica.net/cuneiform-linux/yagf-ru.html&lt;/a&gt;, щоб дізнатись подробиці.</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="681"/>
+        <location filename="mainform.cpp" line="769"/>
         <source>http://symmetrica.net/cuneiform-linux/yagf-en.html</source>
         <translation>http://symmetrica.net/cuneiform-linux/yagf-en.html</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="389"/>
+        <location filename="mainform.cpp" line="403"/>
         <source>Czech</source>
         <translation>Чеська
 </translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="387"/>
+        <location filename="mainform.cpp" line="401"/>
         <source>Bulgarian</source>
         <translation>Болгарська</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="390"/>
+        <location filename="mainform.cpp" line="404"/>
         <source>Danish</source>
         <translation>Датська</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="391"/>
+        <location filename="mainform.cpp" line="405"/>
         <source>Dutch</source>
         <translation>Голандська</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="393"/>
+        <location filename="mainform.cpp" line="407"/>
         <source>Estonian</source>
         <translation>Естонська</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="396"/>
+        <location filename="mainform.cpp" line="410"/>
         <source>Hungarian</source>
         <translation>Угорська</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="397"/>
+        <location filename="mainform.cpp" line="411"/>
         <source>Italian</source>
         <translation>Італійська</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="398"/>
+        <location filename="mainform.cpp" line="412"/>
         <source>Latvian</source>
         <translation>Латвійська</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="399"/>
+        <location filename="mainform.cpp" line="413"/>
         <source>Lithuanian</source>
         <translation>Литовська</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="400"/>
+        <location filename="mainform.cpp" line="414"/>
         <source>Polish</source>
         <translation>Польська</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="401"/>
+        <location filename="mainform.cpp" line="415"/>
         <source>Portuguese</source>
         <oldsource>Portugueze</oldsource>
         <translation>Португальска</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="402"/>
+        <location filename="mainform.cpp" line="416"/>
         <source>Roman</source>
         <translation>Румунська</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="403"/>
+        <location filename="mainform.cpp" line="417"/>
         <source>Spanish</source>
         <translation>Іспанська</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="404"/>
+        <location filename="mainform.cpp" line="418"/>
         <source>Swedish</source>
         <translation>Шведська</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="405"/>
+        <location filename="mainform.cpp" line="419"/>
         <source>Serbian</source>
         <translation>Сербська</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="406"/>
+        <location filename="mainform.cpp" line="420"/>
         <source>Slovenian</source>
         <translation>Словенська</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="407"/>
+        <location filename="mainform.cpp" line="421"/>
         <source>Ukrainian</source>
         <translation>Українська</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="444"/>
+        <location filename="mainform.cpp" line="530"/>
         <source>libxspreload.so not found</source>
         <translation>libxspreload.so не знайдено</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="639"/>
+        <location filename="mainform.cpp" line="727"/>
         <source>Text Files (*.txt)</source>
         <translation>Текстові файли (*.txt)</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="641"/>
+        <location filename="mainform.cpp" line="729"/>
         <source>HTML Files (*.html)</source>
         <translation>Файли HTML (*.html)</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="983"/>
+        <location filename="mainform.cpp" line="1074"/>
         <source>Save Image</source>
         <translation>Зберегти зображення</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="126"/>
+        <location filename="mainform.cpp" line="125"/>
         <source>Undo	Ctrl+Z</source>
         <translation>Повернути	Ctrl+Z</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="130"/>
+        <location filename="mainform.cpp" line="129"/>
         <source>Redo	Ctrl+Shift+Z</source>
         <translation>Повторити	Ctrl+Shift+Z</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="138"/>
+        <location filename="mainform.cpp" line="137"/>
         <source>Select All	Ctrl+A</source>
         <translation>Виділити все	Ctrl+A</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="142"/>
+        <location filename="mainform.cpp" line="141"/>
         <source>Cut	Ctrl+X</source>
         <translation>Вирізати	Ctrl+X</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="158"/>
+        <location filename="mainform.cpp" line="157"/>
         <source>Larger Font	Ctrl++</source>
         <translation>Збільшити шрифт	Ctrl++</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="161"/>
+        <location filename="mainform.cpp" line="160"/>
         <source>Smaller Font	Ctrl+-</source>
         <translation>Зменшити шрифт	Ctrl+-</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="146"/>
+        <location filename="mainform.cpp" line="145"/>
         <source>Copy	Ctrl+C</source>
         <translation>Копіювати	Ctrl+C</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="150"/>
+        <location filename="mainform.cpp" line="149"/>
         <source>Paste	Ctrl+V</source>
         <translation>Вставити	Ctrl+V</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="875"/>
+        <location filename="mainform.cpp" line="968"/>
         <source>Recognizing pages...</source>
         <translation>Розпізнавання сторінки…</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="875"/>
+        <location filename="mainform.cpp" line="968"/>
         <source>Abort</source>
         <translation>Скасувати</translation>
     </message>
@@ -621,17 +621,17 @@
         <translation>Потрібний орфографічний словник не знайдено. Перевірку орфографії вимкнено.</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="976"/>
+        <location filename="mainform.cpp" line="1067"/>
         <source>JPEG Files (*.jpg)</source>
         <translation>Файли JPEG (*.jpg)</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="977"/>
+        <location filename="mainform.cpp" line="1068"/>
         <source>PNG Files (*.png)</source>
         <translation>Файли PNG (*.png)</translation>
     </message>
     <message>
-        <location filename="mainform.cpp" line="978"/>
+        <location filename="mainform.cpp" line="1069"/>
         <source>Failed to save the image</source>
         <translation>Не вдалось зберегти зображення</translation>
     </message>
