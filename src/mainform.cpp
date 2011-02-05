@@ -117,7 +117,6 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
     connect(enlargeButton, SIGNAL(clicked()), this, SLOT(enlargeButtonClicked()));
     connect(decreaseButton, SIGNAL(clicked()), this, SLOT(decreaseButtonClicked()));
     connect(singleColumnButton, SIGNAL(clicked()), this, SLOT(singleColumnButtonClicked()));
-    connect(selectLangsBox, SIGNAL(currentIndexChanged(int)), this, SLOT(newLanguageSelected(int)));
     connect(textEdit, SIGNAL(copyAvailable(bool)), this, SLOT(copyAvailable(bool)));
     connect(textEdit, SIGNAL(textChanged()), this, SLOT(textChanged()));
     connect(graphicsInput, SIGNAL(rightMouseClicked(int, int, bool)), this, SLOT(rightMouseClicked(int, int, bool)));
@@ -207,8 +206,10 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
 
 void MainForm::onShowWindow()
 {
-    spellChecker->setLanguage(language);
-    actionCheck_spelling->setEnabled(spellChecker->spellCheck());
+    connect(selectLangsBox, SIGNAL(currentIndexChanged(int)), this, SLOT(newLanguageSelected(int)));
+    selectLangsBox->setCurrentIndex(selectLangsBox->findData(QVariant(language)));
+    //spellChecker->setLanguage(language);
+    //actionCheck_spelling->setEnabled(spellChecker->spellCheck());
 }
 
 void MainForm::loadFromCommandLine()
@@ -344,6 +345,7 @@ void MainForm::initSettings()
     if (iniFileInfo.exists())
         readSettings();
     else {
+        language = selectDefaultLanguageName();
         writeSettings();
     }
     QList<int> li;
@@ -366,7 +368,7 @@ void MainForm::readSettings()
     lastDir = settings->value("mainwindow/lastDir").toString();
     lastOutputDir = settings->value("mainwindow/lastOutputDir", lastOutputDir).toString();
     language = settings->value("ocr/language",  selectDefaultLanguageName()).toString();
-    selectLangsBox->setCurrentIndex(selectLangsBox->findData(QVariant(language)));
+    //selectLangsBox->setCurrentIndex(selectLangsBox->findData(QVariant(language)));
     outputFormat = settings->value("ocr/outputFormat", QString("text")).toString();
     if (outputFormat == "") outputFormat = "text";
     selectFormatBox->setCurrentIndex(selectFormatBox->findData(QVariant(outputFormat)));
@@ -390,13 +392,14 @@ void MainForm::writeSettings()
     settings->setValue("ocr/singleColumn", singleColumn);
     settings->setValue("ocr/outputFormat", outputFormat);
     settings->sync();
+    language = settings->value("ocr/language").toString();
+    //selectLangsBox->setCurrentIndex(selectLangsBox->findData(QVariant(language)));
 }
 
 
 void MainForm::fillLanguagesBox()
 {
-    language = selectDefaultLanguageName();
-    selectLangsBox->addItem(trUtf8("Russian"), QVariant("rus"));
+     selectLangsBox->addItem(trUtf8("Russian"), QVariant("rus"));
      selectLangsBox->addItem(trUtf8("Russian-English"), QVariant("ruseng"));
      selectLangsBox->addItem(trUtf8("Bulgarian"), QVariant("bul"));
      selectLangsBox->addItem(trUtf8("Croatian"), QVariant("hrv"));
