@@ -392,106 +392,104 @@ void MainForm::writeSettings()
     settings->setValue("ocr/singleColumn", singleColumn);
     settings->setValue("ocr/outputFormat", outputFormat);
     settings->sync();
-    language = settings->value("ocr/language").toString();
-    //selectLangsBox->setCurrentIndex(selectLangsBox->findData(QVariant(language)));
 }
 
 
 void MainForm::fillLanguagesBox()
 {
-     selectLangsBox->addItem(trUtf8("Russian"), QVariant("rus"));
-     selectLangsBox->addItem(trUtf8("Russian-English"), QVariant("ruseng"));
-     selectLangsBox->addItem(trUtf8("Bulgarian"), QVariant("bul"));
-     selectLangsBox->addItem(trUtf8("Croatian"), QVariant("hrv"));
-     selectLangsBox->addItem(trUtf8("Czech"), QVariant("cze"));
-     selectLangsBox->addItem(trUtf8("Danish"), QVariant("dan"));
-     selectLangsBox->addItem(trUtf8("Dutch"), QVariant("dut"));
-     selectLangsBox->addItem(trUtf8("English"), QVariant("eng"));
-     selectLangsBox->addItem(trUtf8("Estonian"), QVariant("est"));
-     selectLangsBox->addItem(trUtf8("French"), QVariant("fra"));
-     selectLangsBox->addItem(trUtf8("German"), QVariant("ger"));
-     selectLangsBox->addItem(trUtf8("Hungarian"), QVariant("hun"));
-     selectLangsBox->addItem(trUtf8("Italian"), QVariant("ita"));
-     selectLangsBox->addItem(trUtf8("Latvian"), QVariant("lav"));
-     selectLangsBox->addItem(trUtf8("Lithuanian"), QVariant("lit"));
-     selectLangsBox->addItem(trUtf8("Polish"), QVariant("pol"));
-     selectLangsBox->addItem(trUtf8("Portuguese"), QVariant("por"));
-     selectLangsBox->addItem(trUtf8("Roman"), QVariant("rum"));
-     selectLangsBox->addItem(trUtf8("Spanish"), QVariant("spa"));
-     selectLangsBox->addItem(trUtf8("Swedish"), QVariant("swe"));
-     selectLangsBox->addItem(trUtf8("Serbian"), QVariant("srp"));
-     selectLangsBox->addItem(trUtf8("Slovenian"), QVariant("slo"));
-     selectLangsBox->addItem(trUtf8("Ukrainian"), QVariant("ukr"));
-     selectLangsBox->addItem(trUtf8("Russian-French"), QVariant("rus_fra"));
-     selectLangsBox->addItem(trUtf8("Russian-German"), QVariant("rus_ger"));
-     selectLangsBox->addItem(trUtf8("Russian-Spanish"), QVariant("rus_spa"));
+    selectLangsBox->addItem(trUtf8("Russian"), QVariant("rus"));
+    selectLangsBox->addItem(trUtf8("Russian-English"), QVariant("ruseng"));
+    selectLangsBox->addItem(trUtf8("Bulgarian"), QVariant("bul"));
+    selectLangsBox->addItem(trUtf8("Croatian"), QVariant("hrv"));
+    selectLangsBox->addItem(trUtf8("Czech"), QVariant("cze"));
+    selectLangsBox->addItem(trUtf8("Danish"), QVariant("dan"));
+    selectLangsBox->addItem(trUtf8("Dutch"), QVariant("dut"));
+    selectLangsBox->addItem(trUtf8("English"), QVariant("eng"));
+    selectLangsBox->addItem(trUtf8("Estonian"), QVariant("est"));
+    selectLangsBox->addItem(trUtf8("French"), QVariant("fra"));
+    selectLangsBox->addItem(trUtf8("German"), QVariant("ger"));
+    selectLangsBox->addItem(trUtf8("Hungarian"), QVariant("hun"));
+    selectLangsBox->addItem(trUtf8("Italian"), QVariant("ita"));
+    selectLangsBox->addItem(trUtf8("Latvian"), QVariant("lav"));
+    selectLangsBox->addItem(trUtf8("Lithuanian"), QVariant("lit"));
+    selectLangsBox->addItem(trUtf8("Polish"), QVariant("pol"));
+    selectLangsBox->addItem(trUtf8("Portuguese"), QVariant("por"));
+    selectLangsBox->addItem(trUtf8("Roman"), QVariant("rum"));
+    selectLangsBox->addItem(trUtf8("Spanish"), QVariant("spa"));
+    selectLangsBox->addItem(trUtf8("Swedish"), QVariant("swe"));
+    selectLangsBox->addItem(trUtf8("Serbian"), QVariant("srp"));
+    selectLangsBox->addItem(trUtf8("Slovenian"), QVariant("slo"));
+    selectLangsBox->addItem(trUtf8("Ukrainian"), QVariant("ukr"));
+    selectLangsBox->addItem(trUtf8("Russian-French"), QVariant("rus_fra"));
+    selectLangsBox->addItem(trUtf8("Russian-German"), QVariant("rus_ger"));
+    selectLangsBox->addItem(trUtf8("Russian-Spanish"), QVariant("rus_spa"));
     selectFormatBox->addItem("TEXT", QVariant("text"));
     selectFormatBox->addItem("HTML", QVariant("html"));
- }
+}
 
 QString MainForm::selectDefaultLanguageName()
 {
-    QLocale loc = QLocale::system ();
+    QLocale loc = QLocale::system();
     QString name = "rus";
     switch (loc.language()) {
-    case QLocale::Bulgarian:
-        name = "bul";
-        break;
-    case QLocale::Czech:
-        name = "cze";
-        break;
-    case QLocale::Danish:
-        name = "dan";
-        break;
-    case QLocale::German:
-        name = "ger";
-        break;
-    case QLocale::Dutch:
-        name = "dut";
-        break;
-    case QLocale::English:
-        name = "eng";
-        break;
-    case QLocale::Spanish:
-        name = "spa";
-        break;
-    case QLocale::French:
-        name = "fra";
-        break;
-    case QLocale::Hungarian:
-        name = "hun";
-        break;
-    case QLocale::Italian:
-        name = "ita";
-        break;
-    case QLocale::Latvian:
-        name = "lav";
-        break;
-    case QLocale::Lithuanian:
-        name = "lit";
-        break;
-    case QLocale::Polish:
-        name = "pol";
-        break;
-    case QLocale::Portuguese:
-        name = "por";
-        break;
-    case QLocale::Romanian:
-        name = "rum";
-        break;
-    case QLocale::Swedish:
-        name = "swe";
-        break;
-    case QLocale::Serbian:
-        name = "srp";
-        break;
-    case QLocale::Slovenian:
-        name = "slo";
-        break;
-    case QLocale::Ukrainian:
-        name = "ukr";
-    default:
-        name = "rus";
+        case QLocale::Bulgarian:
+            name = "bul";
+            break;
+        case QLocale::Czech:
+            name = "cze";
+            break;
+        case QLocale::Danish:
+            name = "dan";
+            break;
+        case QLocale::German:
+            name = "ger";
+            break;
+        case QLocale::Dutch:
+            name = "dut";
+            break;
+        case QLocale::English:
+            name = "eng";
+            break;
+        case QLocale::Spanish:
+            name = "spa";
+            break;
+        case QLocale::French:
+            name = "fra";
+            break;
+        case QLocale::Hungarian:
+            name = "hun";
+            break;
+        case QLocale::Italian:
+            name = "ita";
+            break;
+        case QLocale::Latvian:
+            name = "lav";
+            break;
+        case QLocale::Lithuanian:
+            name = "lit";
+            break;
+        case QLocale::Polish:
+            name = "pol";
+            break;
+        case QLocale::Portuguese:
+            name = "por";
+            break;
+        case QLocale::Romanian:
+            name = "rum";
+            break;
+        case QLocale::Swedish:
+            name = "swe";
+            break;
+        case QLocale::Serbian:
+            name = "srp";
+            break;
+        case QLocale::Slovenian:
+            name = "slo";
+            break;
+        case QLocale::Ukrainian:
+            name = "ukr";
+        default:
+            name = "rus";
     }
     return name;
 }
@@ -544,7 +542,7 @@ void MainForm::loadFile(const QString &fn, bool loadIntoView)
 {
     QCursor oldCursor = cursor();
     setCursor(Qt::WaitCursor);
-    if ((fileName != "")&&((FileToolBar *) m_toolBar)->getFileNames().contains(fileName)) {
+    if ((fileName != "") && ((FileToolBar *) m_toolBar)->getFileNames().contains(fileName)) {
         ((FileToolBar *) m_toolBar)->select(fileName);
         ((FileToolBar *) m_toolBar)->clearBlocks();
         for (int i = 0; i < graphicsInput->blocksCount(); i++)
@@ -955,7 +953,7 @@ void MainForm::setUnresizingCusor()
 void MainForm::fileSelected(const QString &path)
 {
     if (path == "") {
-        graphicsInput->loadImage(QPixmap(0,0));
+        graphicsInput->loadImage(QPixmap(0, 0));
         this->setWindowTitle("YAGF");
         return;
     }

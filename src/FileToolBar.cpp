@@ -194,9 +194,9 @@ void FileToolBar::remove()
             blocksMap->remove(currentImage);
             scaleMap->remove(currentImage);
             if (filesMap->count() > 0) {
-                       currentImage = filesMap->keys().at(i%filesMap->count());
-                       QString path = filesMap->value(currentImage);
-                        emit fileSelected(path);
+                currentImage = filesMap->keys().at(i % filesMap->count());
+                QString path = filesMap->value(currentImage);
+                emit fileSelected(path);
             } else emit fileSelected("");
             break;
         }
