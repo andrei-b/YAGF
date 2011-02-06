@@ -29,6 +29,7 @@ typedef QMap<QString, QString> StringMap;
 class QTextEdit;
 class QRegExp;
 class QTextCursor;
+class QStringList;
 
 class SpellChecker
 {
@@ -39,6 +40,8 @@ public:
     void setLanguage(const QString &lang);
     bool spellCheck();  //Returns false only if the dictionary not found. Otherwise always true.
     void checkWord();
+    void enumerateDicts();
+    bool hasDict(const QString &shname);
 private:
     void _checkWord(QTextCursor *cursor);
     QTextEdit *m_textEdit;
@@ -50,7 +53,7 @@ private:
     AspellConfig *spell_config2;
     AspellSpeller *spell_checker1;
     AspellSpeller *spell_checker2;
-
+    QStringList *dictList;
 };
 
 #endif // SPELLCHECKER_H

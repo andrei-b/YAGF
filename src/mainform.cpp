@@ -71,6 +71,7 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
 
     setWindowTitle("YAGF");
     spellChecker = new SpellChecker(textEdit);
+    spellChecker->enumerateDicts();
     selectLangsBox = new QComboBox();
     QLabel *label = new QLabel();
     label->setMargin(4);
@@ -206,6 +207,7 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
 
 void MainForm::onShowWindow()
 {
+    // actionCheck_spelling->setCheckable(true);
     connect(selectLangsBox, SIGNAL(currentIndexChanged(int)), this, SLOT(newLanguageSelected(int)));
     selectLangsBox->setCurrentIndex(selectLangsBox->findData(QVariant(language)));
     //spellChecker->setLanguage(language);
@@ -497,9 +499,12 @@ QString MainForm::selectDefaultLanguageName()
 void MainForm::newLanguageSelected(int index)
 {
     language = selectLangsBox->itemData(index).toString();
+    actionCheck_spelling->setEnabled(spellChecker->hasDict(language));
     if (checkSpelling) {
         spellChecker->setLanguage(language);
-        actionCheck_spelling->setEnabled(spellChecker->spellCheck());
+        checkSpelling = spellChecker->spellCheck();
+        //actionCheck_spelling->setEnabled(checkSpelling);
+        actionCheck_spelling->setChecked(checkSpelling);
     }
 
 }
@@ -695,7 +700,8 @@ void MainForm::recognizeInternal(const QPixmap &pix)
     textSaved = FALSE;
     if (checkSpelling) {
         spellChecker->setLanguage(language);
-        actionCheck_spelling->setEnabled(spellChecker->spellCheck());
+        //actionCheck_spelling->setEnabled(spellChecker->spellCheck());
+        actionCheck_spelling->setChecked(spellChecker->spellCheck());
     }
 
 }
@@ -1050,12 +1056,7 @@ void MainForm::on_actionRecognize_block_activated()
 
 void MainForm::on_actionCheck_spelling_triggered()
 {
-    checkSpelling = !checkSpelling;
-    if (checkSpelling) {
-        spellChecker->setLanguage(language);
-        actionCheck_spelling->setEnabled(spellChecker->spellCheck());
-    } else
-        spellChecker->unSpellCheck();
+
 }
 
 void MainForm::on_actionSave_current_image_activated()
@@ -1109,4 +1110,14 @@ MainForm::~MainForm()
 void MainForm::on_actionSave_block_activated()
 {
     saveImageInternal(graphicsInput->getCurrentBlock());
+}
+
+void MainForm::on_actionCheck_spelling_activated()
+{
+    checkSpelling = actionCheck_spelling->isChecked();
+    if (checkSpelling) {
+        spellChecker->setLanguage(language);
+        actionCheck_spelling->setChecked(spellChecker->spellCheck());
+    } else
+        spellChecker->unSpellCheck();
 }

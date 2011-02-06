@@ -47,6 +47,7 @@ signals:
     void windowShown();
 private slots:
     //void on_actionRecognize_activated();
+    void on_actionCheck_spelling_activated();
     void on_actionSave_block_activated();
     void on_actionSave_current_image_activated();
     void on_actionCheck_spelling_triggered();

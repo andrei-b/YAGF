@@ -23,6 +23,7 @@
 #include <QTextCharFormat>
 #include <QMap>
 #include <QMessageBox>
+#include <QStringList>
 #include "spellchecker.h"
 
 
@@ -63,6 +64,38 @@ SpellChecker::SpellChecker(QTextEdit *textEdit): m_textEdit(textEdit)
     spell_checker1 = 0;
     spell_checker2 = 0;
     setLanguage("ruseng");
+    dictList = new QStringList();
+}
+
+
+void SpellChecker::enumerateDicts()
+{
+    AspellConfig *config;
+    AspellDictInfoList *dlist;
+    AspellDictInfoEnumeration *dels;
+    const AspellDictInfo *entry;
+
+    config = new_aspell_config();
+
+    /* the returned pointer should _not_ need to be deleted */
+    dlist = get_aspell_dict_info_list(config);
+
+    /* config is no longer needed */
+    delete_aspell_config(config);
+
+    dels = aspell_dict_info_list_elements(dlist);
+
+    while ((entry = aspell_dict_info_enumeration_next(dels)) != 0) {
+        dictList->append(entry->code);
+    }
+
+    delete_aspell_dict_info_enumeration(dels);
+
+}
+
+bool SpellChecker::hasDict(const QString &shname)
+{
+    return dictList->contains(m_map->value(shname));
 }
 
 SpellChecker::~SpellChecker()
@@ -75,6 +108,7 @@ SpellChecker::~SpellChecker()
 
     delete_aspell_config(spell_config1);
     delete_aspell_config(spell_config2);
+    delete dictList;
 }
 
 void SpellChecker::setLanguage(const QString &lang)
@@ -116,7 +150,7 @@ bool SpellChecker::spellCheck()
     if ((spell_checker1 == 0) || (spell_checker2 == 0)) {
         QPixmap icon;
         icon.load(":/warning.png");
-        QMessageBox messageBox(QMessageBox::NoIcon, "YAGF", QObject::trUtf8("Required spelling dictionary is not found. Spell-checking is disabled."),
+        QMessageBox messageBox(QMessageBox::NoIcon, "YAGF", QObject::trUtf8("Required spelling dictionary is not found. Spell-checking is disabled.\n Try to install an appropriate aspell dictionary."),
                                QMessageBox::Ok, 0);
         messageBox.setIconPixmap(icon);
         messageBox.exec();
