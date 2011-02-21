@@ -62,6 +62,8 @@ public:
     QPixmap getAdaptedImage();
     bool addBlock(const QRectF &rect, bool removeObstacles = true);
     void cropImage();
+    void cropImage(const QRect &rect);
+    void cropWhiteFrame();
     void undo();
     void setMagnifierCursor(QCursor *cursor);
     //setMagnifierCursor(QCursor * cursor = );

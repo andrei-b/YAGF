@@ -1,3 +1,8 @@
+* Sun Feb 20 2011 Andrei Borovsky <anb@symmetrica.net> - 0.8.6
+- Some bugs fixed
+- The default recognition language is now set according to the user's locale
+- Spellchecker buton now indicates if the dictioanry for the selected language is available
+- Skew correction feature (beta stage) is added
 * Tue Jan 25 2011 Andrei Borovsky <anb@symmetrica.net> - 0.8.5
 - Many bug fixes thanks to Skip
 - Spellchecker improved

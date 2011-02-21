@@ -472,12 +472,15 @@
    <addaction name="actionPreviousPage"/>
    <addaction name="actionNextPage"/>
    <addaction name="separator"/>
+   <addaction name="actionDeskew"/>
    <addaction name="actionRecognize"/>
    <addaction name="actionRecognize_All_Pages"/>
    <addaction name="separator"/>
    <addaction name="action_Save"/>
    <addaction name="actionCopyToClipboard"/>
    <addaction name="actionCheck_spelling"/>
+   <addaction name="separator"/>
+   <addaction name="actionSelect_HTML_format"/>
    <addaction name="separator"/>
   </widget>
   <action name="actionScan">
@@ -694,6 +697,33 @@
    </property>
    <property name="toolTip">
     <string>Save the current block to the image file</string>
+   </property>
+  </action>
+  <action name="actionDeskew">
+   <property name="icon">
+    <iconset resource="yagf.qrc">
+     <normaloff>:/images/deskew2.png</normaloff>:/images/deskew2.png</iconset>
+   </property>
+   <property name="text">
+    <string>Remove page skew</string>
+   </property>
+   <property name="toolTip">
+    <string>Tries to correct the page skew (this is an experimental feature)</string>
+   </property>
+  </action>
+  <action name="actionSelect_HTML_format">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="icon">
+    <iconset resource="yagf.qrc">
+     <normaloff>:/images/stock_new_html.png</normaloff>:/images/stock_new_html.png</iconset>
+   </property>
+   <property name="text">
+    <string>Select HTML format</string>
+   </property>
+   <property name="toolTip">
+    <string>Select HTML format as recognition output</string>
    </property>
   </action>
  </widget>

@@ -43,11 +43,13 @@
 #include <QUrl>
 #include <QRegExp>
 #include <QClipboard>
+#include <QTransform>
 #include "mainform.h"
 #include "qgraphicsinput.h"
 #include "utils.h"
 #include "FileChannel.h"
 #include "spellchecker.h"
+#include "PageAnalysis.h"
 #include <QTextCodec>
 #include <QCheckBox>
 #include <QEvent>
@@ -57,8 +59,9 @@
 #include <QFont>
 #include "FileToolBar.h"
 #include "BlockAnalysis.h"
+#include "SkewAnalysis.h"
 
-const QString version = "0.8.5";
+const QString version = "0.8.6";
 
 MainForm::MainForm(QWidget *parent): QMainWindow(parent)
 {
@@ -76,17 +79,17 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
     QLabel *label = new QLabel();
     label->setMargin(4);
     label->setText(trUtf8("Recognition language"));
-    QLabel *label1 = new QLabel();
-    label1->setMargin(4);
-    label1->setText(trUtf8("Output format"));
+    //QLabel *label1 = new QLabel();
+    //label1->setMargin(4);
+    //label1->setText(trUtf8("Output format"));
     //spellCheckBox = new QCheckBox(trUtf8("Check spelling"), 0);
     frame->show();
-    selectFormatBox = new QComboBox();
+    //selectFormatBox = new QComboBox();
     toolBar->addWidget(label);
     selectLangsBox->setFrame(true);
     toolBar->addWidget(selectLangsBox);
-    toolBar->addWidget(label1);
-    toolBar->addWidget(selectFormatBox);
+    //toolBar->addWidget(label1);
+    //toolBar->addWidget(selectFormatBox);
     //toolBar->addWidget(spellCheckBox);
 //  pixmap = new QPixmap();
     graphicsInput = new QGraphicsInput(QRectF(0, 0, 2000, 2000), graphicsView) ;
@@ -195,7 +198,6 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
     QPixmap pm;
     pm.load(":/align.png");
     alignButton->setIcon(pm);
-    connect(alignButton, SIGNAL(clicked()), this, SLOT(alignButtonClicked()));
     pm.load(":/undo.png");
     unalignButton->setIcon(pm);
     connect(unalignButton, SIGNAL(clicked()), this, SLOT(unalignButtonClicked()));
@@ -239,9 +241,12 @@ void MainForm::loadImage()
         fileNames = dialog.selectedFiles();
         lastDir = dialog.directory().path();
         if (fileNames.count() > 0)
-            loadFile(fileNames.at(0));
-        for (int i = 1; i < fileNames.count(); i++)
+         loadFile(fileNames.at(0));
+        if (!imageLoaded)
+            return;
+        for (int i = 1; i < fileNames.count(); i++) {
             loadFile(fileNames.at(i), false);
+        }
         if (fileNames.count() > 0)
             ((FileToolBar *) m_toolBar)->select(fileNames.at(0));
     }
@@ -373,7 +378,7 @@ void MainForm::readSettings()
     //selectLangsBox->setCurrentIndex(selectLangsBox->findData(QVariant(language)));
     outputFormat = settings->value("ocr/outputFormat", QString("text")).toString();
     if (outputFormat == "") outputFormat = "text";
-    selectFormatBox->setCurrentIndex(selectFormatBox->findData(QVariant(outputFormat)));
+    actionSelect_HTML_format->setChecked(outputFormat != "text"); // =  selectFormatBox->setCurrentIndex(selectFormatBox->findData(QVariant(outputFormat)));
     checkSpelling = settings->value("mainWindow/checkSpelling", bool(true)).toBool();
     bool ok;
     QFont f(textEdit->font());
@@ -416,7 +421,7 @@ void MainForm::fillLanguagesBox()
     selectLangsBox->addItem(trUtf8("Lithuanian"), QVariant("lit"));
     selectLangsBox->addItem(trUtf8("Polish"), QVariant("pol"));
     selectLangsBox->addItem(trUtf8("Portuguese"), QVariant("por"));
-    selectLangsBox->addItem(trUtf8("Roman"), QVariant("rum"));
+    selectLangsBox->addItem(trUtf8("Romanian"), QVariant("rum"));
     selectLangsBox->addItem(trUtf8("Spanish"), QVariant("spa"));
     selectLangsBox->addItem(trUtf8("Swedish"), QVariant("swe"));
     selectLangsBox->addItem(trUtf8("Serbian"), QVariant("srp"));
@@ -425,8 +430,8 @@ void MainForm::fillLanguagesBox()
     selectLangsBox->addItem(trUtf8("Russian-French"), QVariant("rus_fra"));
     selectLangsBox->addItem(trUtf8("Russian-German"), QVariant("rus_ger"));
     selectLangsBox->addItem(trUtf8("Russian-Spanish"), QVariant("rus_spa"));
-    selectFormatBox->addItem("TEXT", QVariant("text"));
-    selectFormatBox->addItem("HTML", QVariant("html"));
+    //selectFormatBox->addItem("TEXT", QVariant("text"));
+    //selectFormatBox->addItem("HTML", QVariant("html"));
 }
 
 QString MainForm::selectDefaultLanguageName()
@@ -566,7 +571,12 @@ void MainForm::loadFile(const QString &fn, bool loadIntoView)
     QPixmap pixmap;
     if ((imageLoaded = pixmap.load(fn))) {
         ((FileToolBar *) m_toolBar)->addFile(pixmap, fn);
+    } else {
+        setCursor(oldCursor);
+        QMessageBox::critical(this, trUtf8("Image loading error"), trUtf8("Image %1 could not be loaded").arg(fn));
+        return;
     }
+
     if (!loadIntoView) {
         setCursor(oldCursor);
         return;
@@ -601,7 +611,7 @@ void MainForm::delTmpFiles()
     QDir dir(workingDir);
     dir.setFilter(QDir::Files | QDir::NoSymLinks);
     for (uint i = 0; i < dir.count(); i++) {
-        if (dir[i].endsWith("jpg") || dir[i].endsWith("bmp") || dir[i].endsWith("txt"))
+        if (dir[i].endsWith("jpg") || dir[i].endsWith("bmp") || dir[i].endsWith("png") || dir[i].endsWith("txt"))
             dir.remove(dir[i]);
     }
     delTmpDir();
@@ -655,7 +665,7 @@ void MainForm::recognizeInternal(const QPixmap &pix)
 {
     const QString inputFile = "input.bmp";
     const QString outputFile = "output.txt";
-    outputFormat = selectFormatBox->itemData(selectFormatBox->currentIndex()).toString();
+    //outputFormat = selectFormatBox->itemData(selectFormatBox->currentIndex()).toString();
     QPixmapCache::clear();
     pix.save(workingDir + inputFile, "BMP");
     QProcess proc;
@@ -728,7 +738,10 @@ void MainForm::recognize()
 
 void MainForm::saveText()
 {
-    outputFormat = selectFormatBox->itemData(selectFormatBox->currentIndex()).toString();
+    if (actionSelect_HTML_format->isChecked())
+    outputFormat = "html";
+    else
+    outputFormat = "text";
     QString filter;
     if (outputFormat == "text")
         filter = trUtf8("Text Files (*.txt)");
@@ -988,24 +1001,6 @@ void MainForm::recognizeAll()
     }
 }
 
-void MainForm::alignButtonClicked()
-{
-    /*if (((QSelectionLabel *) scrollArea->widget())->pixmap()->isNull())
-        return;
-    QRect rect = ((QSelectionLabel *) scrollArea->widget())->getSelectedRect();
-    QPixmap pix = pixmap->copy(rect.x()/scaleFactor, rect.y()/scaleFactor, rect.width()/scaleFactor, rect.height()/scaleFactor);
-    QPixmapCache::clear();
-    BlockAnalysis * blockAnalysis = new BlockAnalysis(&pix);
-    int rot = blockAnalysis->getSkew();
-    int tmpr = rotation;
-    if (rot) {
-    Image(rot);
-        scaleImage(1.01);
-    }
-    rotation = tmpr;
-    delete blockAnalysis;*/
-}
-
 void MainForm::unalignButtonClicked()
 {
     /*if (((QSelectionLabel *) scrollArea->widget())->pixmap()->isNull())
@@ -1120,4 +1115,87 @@ void MainForm::on_actionCheck_spelling_activated()
         actionCheck_spelling->setChecked(spellChecker->spellCheck());
     } else
         spellChecker->unSpellCheck();
+}
+
+void MainForm::on_alignButton_clicked()
+{
+    this->AnalizePage();
+}
+
+void MainForm::AnalizePage()
+{
+
+    QPixmap pm = graphicsInput->getAdaptedImage();
+    PageAnalysis * pa = new PageAnalysis(&pm);
+    pa->setWhiteDeviance(200);
+    pa->setBlackDeviance(150);
+    pa->setBlack(qRgb(0, 0, 0));
+    if (!pa->Process()) {
+          delete pa;
+          return;
+    }
+
+    SkewAnalysis * sa = new SkewAnalysis(pa->getPoints(), pm.width(), pm.height());
+    //pm =pa->getPixmap();
+    //pm.
+    graphicsInput->loadImage(pa->getPixmap());
+    QRect rec = pa->getCoords();
+    int r = sa->getSkew();
+    long signed int tan2 = graphicsInput->getImage().width()*tan(sa->getPhi())/2;
+
+    if (abs(tan2) > 800) {
+        tan2 = 1;
+        r = 0;
+    }
+
+    if (abs(r) > 45)
+        r = 0;
+
+    //QTransform tm = QTransform().translate(-rec.width()/2, -rec.height()/2).rotate(r).translate(rec.width()/2, rec.height()/2); //, rec.width(), rec.height());
+    //QPoint newPoint = tm.map(QPoint(rec.left(), rec.top()));
+
+
+    //DEBUG!!!
+    // pm = sa->drawTriangle(pm);
+    // graphicsInput->loadImage(pm);
+    //return;
+
+    graphicsInput->setViewScale(1, r);
+    //int dy = 0;
+    //    dy = abs(tan2) + pa->getCoords().top()/3;
+    graphicsInput->cropImage(QRect(rec.x(), rec.y(), pm.width(), pm.height() + rec.y()));
+
+    /*if (sa->getSkew() < 0)
+        graphicsInput->cropImage(QRect(pa->getCoords().left(), pa->getCoords().top(), pm.width()-pa->getCoords().left(), pm.height() - pa->getCoords().top()));
+    if (sa->getSkew() > 0) {
+        int dy = pm.width()*tan(sa->getPhi())/2 + pa->getCoords().top();
+        graphicsInput->cropImage(QRect(pa->getCoords().left(), dy, pm.width()-pa->getCoords().left(), pm.height() + dy));
+    }*/
+
+    QString fn;
+    if (fileName != "") {
+        fn = fileName.replace(".", "-c.");
+    } else {
+        fn = "corrected.png";
+    }
+    QFileInfo fi(fn);
+    fn = fn.replace("."+fi.completeSuffix(), ".png");
+    fn = workingDir + fi.fileName();
+    graphicsInput->getImage().save(fn, "PNG");
+    loadFile(fn);
+    delete pa;
+    delete sa;
+}
+
+void MainForm::on_actionDeskew_activated()
+{
+    AnalizePage();
+}
+
+void MainForm::on_actionSelect_HTML_format_activated()
+{
+        if (actionSelect_HTML_format->isChecked())
+            outputFormat = "html";
+        else
+            outputFormat = "text";
 }

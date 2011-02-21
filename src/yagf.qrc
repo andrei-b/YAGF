@@ -36,5 +36,7 @@
         <file>images/scanner48.png</file>
         <file>images/savpicas.png</file>
         <file>images/saveblock.png</file>
+        <file>images/deskew2.png</file>
+        <file>images/stock_new_html.png</file>
     </qresource>
 </RCC>

@@ -523,6 +523,8 @@ QPixmap QGraphicsInput::getAdaptedImage()
         return pm2;
     }
     return m_realImage->pixmap();*/
+    if (m_realImage == NULL)
+        return QPixmap(0,0);
     if (m_realImage->pixmap().width() < m_realImage->pixmap().height()) {
         if (m_realImage->pixmap().width() / stdwidth >= 0.75)
             return m_realImage->pixmap().scaledToWidth(stdwidth);
@@ -544,6 +546,11 @@ void QGraphicsInput::cropImage()
         loadImage(extractPixmap(m_LastSelected));
         clearTransform();
     }
+}
+
+void QGraphicsInput::cropImage(const QRect &rect)
+{
+    this->loadImage(m_realImage->pixmap().copy(rect));
 }
 
 void QGraphicsInput::setMagnifierCursor(QCursor *cursor)

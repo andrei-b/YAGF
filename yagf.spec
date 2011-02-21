@@ -9,7 +9,7 @@
 # norootforbuild
 
 Name:		yagf
-Version:	0.8.2
+Version:	0.8.6
 Release:	1
 URL:		http://symmetrica.net/cuneiform-linux/yagf-ru.html
 License:	GPLv3+
