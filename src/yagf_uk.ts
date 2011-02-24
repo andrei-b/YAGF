@@ -245,7 +245,7 @@
         <location filename="mainform.cpp" line="424"/>
         <source>Romanian</source>
         <oldsource>Roman</oldsource>
-        <translation type="unfinished">Румунська</translation>
+        <translation>Румунська</translation>
     </message>
     <message>
         <location filename="mainform.cpp" line="425"/>
@@ -280,12 +280,12 @@
     <message>
         <location filename="mainform.cpp" line="576"/>
         <source>Image loading error</source>
-        <translation type="unfinished"></translation>
+        <translation>Помилка завантаження зображення</translation>
     </message>
     <message>
         <location filename="mainform.cpp" line="576"/>
         <source>Image %1 could not be loaded</source>
-        <translation type="unfinished"></translation>
+        <translation>Неможливо завантажити зображення %1</translation>
     </message>
     <message>
         <location filename="mainform.cpp" line="747"/>
@@ -491,22 +491,22 @@
     <message>
         <location filename="mainform.ui" line="708"/>
         <source>Remove page skew</source>
-        <translation type="unfinished"></translation>
+        <translation>Вилучити перекошення сторінки</translation>
     </message>
     <message>
         <location filename="mainform.ui" line="711"/>
         <source>Tries to correct the page skew (this is an experimental feature)</source>
-        <translation type="unfinished"></translation>
+        <translation>Спроба виправти нахил сторінки (це експерементальна можливість)</translation>
     </message>
     <message>
         <location filename="mainform.ui" line="723"/>
         <source>Select HTML format</source>
-        <translation type="unfinished"></translation>
+        <translation>Виділити формат HTML</translation>
     </message>
     <message>
         <location filename="mainform.ui" line="726"/>
         <source>Select HTML format as recognition output</source>
-        <translation type="unfinished"></translation>
+        <translation>Виділити формат HTML як результат розпізнавання</translation>
     </message>
     <message>
         <location filename="mainform.ui" line="83"/>
@@ -660,7 +660,8 @@
         <location filename="spellchecker.cpp" line="153"/>
         <source>Required spelling dictionary is not found. Spell-checking is disabled.
  Try to install an appropriate aspell dictionary.</source>
-        <translation type="unfinished"></translation>
+        <translation>Потрібні словники орфографії не знайдено. Перевірку орфографії вимкнено.
+ Спробуйте встановити відповідний словник aspell.</translation>
     </message>
 </context>
 </TS>
