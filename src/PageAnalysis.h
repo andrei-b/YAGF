@@ -24,11 +24,13 @@
 #include <QColor>
 #include <QList>
 #include <QPoint>
+#include "ycommon.h"
+
 class QPixmap;
 class QImage;
 class QRect;
 
-typedef QList<QPoint> QPointList;
+
 
 class PageAnalysis
 {

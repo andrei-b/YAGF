@@ -103,7 +103,7 @@ signed int SkewAnalysis::getSkew()
     res = (phi/(2*M_PI))*360+1;
     if (res > 45) return 90 - res;
     if (res < 45) return -(90 + res);
-    //return -res;
+    return -res;
 }
 
 double SkewAnalysis::getPhi()

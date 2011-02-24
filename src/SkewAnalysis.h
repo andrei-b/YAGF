@@ -20,9 +20,7 @@
 #ifndef SKEWANALYSIS_H
 #define SKEWANALYSIS_H
 
-#include <QList>
-#include <QPoint>
-#include "PageAnalysis.h"
+#include "ycommon.h"
 
 
 class QPixmap;
