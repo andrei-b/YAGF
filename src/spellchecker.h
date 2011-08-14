@@ -54,6 +54,7 @@ private:
     AspellSpeller *spell_checker1;
     AspellSpeller *spell_checker2;
     QStringList *dictList;
+	QString bad_language;
 };
 
 #endif // SPELLCHECKER_H

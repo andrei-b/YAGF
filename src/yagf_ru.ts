@@ -656,10 +656,12 @@
         <translation>Не удалось сохранить файл</translation>
     </message>
     <message>
-        <location filename="spellchecker.cpp" line="153"/>
-        <source>Required spelling dictionary is not found. Spell-checking is disabled.
- Try to install an appropriate aspell dictionary.</source>
-        <translation>Требуемый орфогррафический словарь не найден. Проверка орфографии будет отключена.
+        <location filename="spellchecker.cpp" line="161"/>
+        <source>Required spelling dictionary (%1) is not found.
+Spell-checking is disabled.
+Try to install an appropriate aspell dictionary.</source>
+	<translation>Требуемый орфографический словарь (%1) не найден.
+Проверка орфографии будет отключена.
 Попробуйте установить соответствующий словарь aspell.</translation>
     </message>
 </context>

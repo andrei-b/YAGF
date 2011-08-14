@@ -656,9 +656,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="spellchecker.cpp" line="153"/>
-        <source>Required spelling dictionary is not found. Spell-checking is disabled.
- Try to install an appropriate aspell dictionary.</source>
+        <location filename="spellchecker.cpp" line="161"/>
+        <source>Required spelling dictionary (%1) is not found.
+Spell-checking is disabled.
+Try to install an appropriate aspell dictionary.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

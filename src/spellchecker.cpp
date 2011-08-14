@@ -116,6 +116,7 @@ void SpellChecker::setLanguage(const QString &lang)
 
     delete_aspell_speller(spell_checker1);
     delete_aspell_speller(spell_checker2);
+	bad_language.clear();
 
     m_lang2 = "en";
     m_lang1 = m_map->value(lang, QString("en"));
@@ -143,6 +144,13 @@ void SpellChecker::setLanguage(const QString &lang)
         spell_checker2 = to_aspell_speller(possible_err);
     else
         delete_aspell_can_have_error(possible_err);
+
+	// Check absent dictionary
+	if (spell_checker1 == 0)
+		bad_language = m_lang1;
+	if (spell_checker2 == 0)
+		bad_language = m_lang2;
+
 }
 
 bool SpellChecker::spellCheck()
@@ -150,7 +158,7 @@ bool SpellChecker::spellCheck()
     if ((spell_checker1 == 0) || (spell_checker2 == 0)) {
         QPixmap icon;
         icon.load(":/warning.png");
-        QMessageBox messageBox(QMessageBox::NoIcon, "YAGF", QObject::trUtf8("Required spelling dictionary is not found. Spell-checking is disabled.\n Try to install an appropriate aspell dictionary."),
+		QMessageBox messageBox(QMessageBox::NoIcon, "YAGF", QObject::trUtf8("Required spelling dictionary (%1) is not found.\nSpell-checking is disabled.\nTry to install an appropriate aspell dictionary.").arg(bad_language),
                                QMessageBox::Ok, 0);
         messageBox.setIconPixmap(icon);
         messageBox.exec();
