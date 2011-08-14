@@ -57,7 +57,7 @@ SkewAnalysis::SkewAnalysis(QPointList *pointList, int width, int height)
             tmpsum =0;
         }
     }
-  /*  FILE * f = fopen("/home/andrei/hough.txt", "w");
+    FILE * f = fopen("/home/andrei/hough.txt", "w");
     for (int i = 0; i < 360; i++) {
         for (int j = 0; j < 1000; j++)
         fprintf(f, "%i:, %i, ", i, bin[i][j]);

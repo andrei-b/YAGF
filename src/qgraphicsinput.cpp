@@ -1,6 +1,6 @@
 /*
     YAGF - cuneiform OCR graphical front-end
-    Copyright (C) 2009-2010 Andrei Borovsky <anb@symmetrica.net>
+    Copyright (C) 2009-2011 Andrei Borovsky <anb@symmetrica.net>
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,11 +17,14 @@
 */
 
 #include "qgraphicsinput.h"
+#include "qxtgraphicsview.h"
+#include "qxtgraphicsproxywidget.h"
 #include <QPixmap>
 #include <QGraphicsPixmapItem>
 #include <QMessageBox>
 #include <QGraphicsSceneMouseEvent>
 #include <QKeyEvent>
+#include <QToolBar>
 
 QGraphicsInput::QGraphicsInput(const QRectF &sceneRect, QGraphicsView *view) :
     QGraphicsScene(sceneRect)
@@ -38,11 +41,29 @@ QGraphicsInput::QGraphicsInput(const QRectF &sceneRect, QGraphicsView *view) :
     buttonPressed = Qt::NoButton;
     near_res = 0;
     magnifierCursor = new QCursor(Qt::SizeAllCursor);
-}
+    toolbar = 0;
+ }
 
 QGraphicsInput::~QGraphicsInput()
 {
     delete magnifierCursor;
+}
+
+void QGraphicsInput::addToolBar()
+{
+    toolbar = new QToolBar();
+    toolbar->setWindowOpacity(0.75);
+    toolbar->setMinimumWidth(270);
+    QXtGraphicsProxyWidget * pw = new QXtGraphicsProxyWidget();
+    pw->setWidget(toolbar);
+    pw->setZValue(100);
+    this->addItem(pw);
+    pw->setView((QXtGraphicsView *) views().at(0));
+    toolbar->show();
+    foreach (QAction * action, actionList) {
+        toolbar->addAction(action);
+    }
+    views().at(0)->scroll(1,1);
 }
 
 bool QGraphicsInput::loadImage(const QPixmap &image, bool clearBlocks)
@@ -51,7 +72,7 @@ bool QGraphicsInput::loadImage(const QPixmap &image, bool clearBlocks)
         real_rotate = 0;
         real_scale = 1;
         this->clear();
-        this->items().clear();
+        items().clear();
         m_LastSelected = 0;
         m_CurrentBlockRect = 0;
     }
@@ -74,6 +95,8 @@ bool QGraphicsInput::loadImage(const QPixmap &image, bool clearBlocks)
     m_image->setAcceptedMouseButtons(Qt::LeftButton | Qt::RightButton | Qt::MidButton);
     m_image->setAcceptHoverEvents(true);
     m_image->setData(1, "image");
+    this->setSceneRect(0,0,2000,2000);
+    addToolBar();
     if (m_view) {
         m_view->centerOn(0, 0);
         m_view->show();
@@ -93,9 +116,11 @@ void QGraphicsInput::setView(QGraphicsView *view)
 
 void QGraphicsInput::mousePressEvent(QGraphicsSceneMouseEvent *event)
 {
+    QGraphicsScene::mousePressEvent(event);
     // QMessageBox::critical(0, "MOUS111", "MOUSE");
     if (!hasImage)
         return;
+
     if (event->buttons() == Qt::LeftButton) {
         buttonPressed = Qt::LeftButton;
         if (selecting == NoSelect) {
@@ -130,6 +155,7 @@ void QGraphicsInput::deleteBlockRect(QGraphicsRectItem *item)
 
 void QGraphicsInput::mouseReleaseEvent(QGraphicsSceneMouseEvent *mouseEvent)
 {
+    QGraphicsScene::mouseReleaseEvent(mouseEvent);
     if (buttonPressed == Qt::LeftButton) {
         if (selecting == Selecting) {
             selecting = NoSelect;
@@ -191,6 +217,7 @@ bool QGraphicsInput::addBlock(const QRectF &rect, bool removeObstacles)
 
 void QGraphicsInput::mouseMoveEvent(QGraphicsSceneMouseEvent *mouseEvent)
 {
+    QGraphicsScene::mouseMoveEvent(mouseEvent);
     if (selecting == StartSelect) {
         selecting = Selecting;
         m_CurrentBlockRect = newBlock(blockRect);
@@ -268,6 +295,11 @@ void QGraphicsInput::mouseMoveEvent(QGraphicsSceneMouseEvent *mouseEvent)
         blockRect = newRect;
         return;
     }
+    if (toolbar) {
+       // if (mouseEvent->pos().y() < toolbar->height())
+       //     toolbar->setFocus();
+    }
+
 }
 
 void QGraphicsInput::leftMouseRelease(qreal x, qreal y)
@@ -557,6 +589,18 @@ void QGraphicsInput::setMagnifierCursor(QCursor *cursor)
 {
     delete magnifierCursor;
     magnifierCursor = new QCursor(cursor->pixmap());
+}
+
+void QGraphicsInput::addToolBarAction(QAction *action)
+{
+    actionList.append(action);
+}
+
+void QGraphicsInput::addToolBarSeparator()
+{
+    QAction * action = new QAction(" | ", 0);
+    action->setEnabled(false);
+    actionList.append(action);
 }
 
 void QGraphicsInput::undo()

@@ -68,8 +68,8 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
     setupUi(this);
 
     ///!!!!!
-    alignButton->hide();
-    unalignButton->hide();
+    //alignButton->hide();
+    //unalignButton->hide();
 
 
     setWindowTitle("YAGF");
@@ -93,6 +93,15 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
     //toolBar->addWidget(spellCheckBox);
 //  pixmap = new QPixmap();
     graphicsInput = new QGraphicsInput(QRectF(0, 0, 2000, 2000), graphicsView) ;
+    graphicsInput->addToolBarAction(this->actionTBLV);
+    graphicsInput->addToolBarAction(this->actionSmaller_view);
+    graphicsInput->addToolBarSeparator();
+    graphicsInput->addToolBarAction(actionRotate_90_CCW);
+    graphicsInput->addToolBarAction(actionRotate_180);
+    graphicsInput->addToolBarAction(actionRotate_90_CW);
+    graphicsInput->addToolBarSeparator();
+    graphicsInput->addToolBarAction(ActionClearAllBlocks);
+
     statusBar()->show();
     imageLoaded = false;
     lastDir = QDir::homePath();
@@ -115,12 +124,12 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
     connect(actionAbout, SIGNAL(triggered()), this, SLOT(showAboutDlg()));
     connect(actionOnlineHelp, SIGNAL(triggered()), this, SLOT(showHelp()));
     connect(actionCopyToClipboard, SIGNAL(triggered()), this, SLOT(copyClipboard()));
-    connect(rotateCWButton, SIGNAL(clicked()), this, SLOT(rotateCWButtonClicked()));
-    connect(rotateCCWButton, SIGNAL(clicked()), this, SLOT(rotateCCWButtonClicked()));
-    connect(rotate180Button, SIGNAL(clicked()), this, SLOT(rotate180ButtonClicked()));
-    connect(enlargeButton, SIGNAL(clicked()), this, SLOT(enlargeButtonClicked()));
-    connect(decreaseButton, SIGNAL(clicked()), this, SLOT(decreaseButtonClicked()));
-    connect(singleColumnButton, SIGNAL(clicked()), this, SLOT(singleColumnButtonClicked()));
+    //connect(rotateCWButton, SIGNAL(clicked()), this, SLOT(rotateCWButtonClicked()));
+    //connect(rotateCCWButton, SIGNAL(clicked()), this, SLOT(rotateCCWButtonClicked()));
+    //connect(rotate180Button, SIGNAL(clicked()), this, SLOT(rotate180ButtonClicked()));
+    //connect(enlargeButton, SIGNAL(clicked()), this, SLOT(enlargeButtonClicked()));
+    //connect(decreaseButton, SIGNAL(clicked()), this, SLOT(decreaseButtonClicked()));
+    //connect(singleColumnButton, SIGNAL(clicked()), this, SLOT(singleColumnButtonClicked()));
     connect(textEdit, SIGNAL(copyAvailable(bool)), this, SLOT(copyAvailable(bool)));
     connect(textEdit, SIGNAL(textChanged()), this, SLOT(textChanged()));
     connect(graphicsInput, SIGNAL(rightMouseClicked(int, int, bool)), this, SLOT(rightMouseClicked(int, int, bool)));
@@ -197,12 +206,12 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
 
     QPixmap pm;
     pm.load(":/align.png");
-    alignButton->setIcon(pm);
+    //alignButton->setIcon(pm);
     pm.load(":/undo.png");
-    unalignButton->setIcon(pm);
-    connect(unalignButton, SIGNAL(clicked()), this, SLOT(unalignButtonClicked()));
+    //unalignButton->setIcon(pm);
+    //connect(unalignButton, SIGNAL(clicked()), this, SLOT(unalignButtonClicked()));
 
-    clearBlocksButton->setDefaultAction(ActionClearAllBlocks);
+    //clearBlocksButton->setDefaultAction(ActionClearAllBlocks);
     loadFromCommandLine();
     emit windowShown();
 }
@@ -254,7 +263,7 @@ void MainForm::loadImage()
 
 void MainForm::singleColumnButtonClicked()
 {
-    singleColumn = singleColumnButton->isChecked();
+    //singleColumn = singleColumnButton->isChecked();
 }
 
 void MainForm::closeEvent(QCloseEvent *event)
@@ -371,7 +380,7 @@ void MainForm::readSettings()
     if (settings->value("mainwindow/fullScreen").toBool())
         showFullScreen();
     singleColumn = settings->value("ocr/singleColumn", bool(false)).toBool();
-    singleColumnButton->setChecked(singleColumn);
+    //singleColumnButton->setChecked(singleColumn);
     lastDir = settings->value("mainwindow/lastDir").toString();
     lastOutputDir = settings->value("mainwindow/lastOutputDir", lastOutputDir).toString();
     language = settings->value("ocr/language",  selectDefaultLanguageName()).toString();
@@ -1117,10 +1126,10 @@ void MainForm::on_actionCheck_spelling_activated()
         spellChecker->unSpellCheck();
 }
 
-void MainForm::on_alignButton_clicked()
+/*void MainForm::on_alignButton_clicked()
 {
     this->AnalizePage();
-}
+}*/
 
 void MainForm::AnalizePage()
 {

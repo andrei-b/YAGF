@@ -1,6 +1,6 @@
 /*
     YAGF - cuneiform OCR graphical front-end
-    Copyright (C) 2009-2010 Andrei Borovsky <anb@symmetrica.net>
+    Copyright (C) 2009-2011 Andrei Borovsky <anb@symmetrica.net>
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -22,6 +22,10 @@
 #include <QGraphicsScene>
 #include <QGraphicsView>
 #include <QRectF>
+#include <QAction>
+#include <QList>
+
+typedef QList<QAction *> ActionList;
 
 class QGraphicsPixmapItem;
 class QGraphicsRectItem;
@@ -29,6 +33,8 @@ class QPixmap;
 class QCursor;
 class QRectF;
 class QCursor;
+class QToolBar;
+class QActions;
 
 enum SelectStates {
     NoSelect = 0,
@@ -66,6 +72,8 @@ public:
     void cropWhiteFrame();
     void undo();
     void setMagnifierCursor(QCursor *cursor);
+    void addToolBarAction(QAction * action);
+    void addToolBarSeparator();
     //setMagnifierCursor(QCursor * cursor = );
 protected:
     virtual void mousePressEvent(QGraphicsSceneMouseEvent *event);
@@ -84,6 +92,7 @@ private:
     void rightMouseRelease(qreal x, qreal y);
     int nearActiveBorder(qreal x, qreal y);
     void clearTransform();
+    void addToolBar();
     QPixmap extractPixmap(QGraphicsRectItem *item);
     void deleteBlockRect(QGraphicsRectItem *item);
     QGraphicsRectItem *newBlock(const QRectF &rect);
@@ -108,6 +117,8 @@ private:
     Qt::MouseButton buttonPressed;
     QCursor *magnifierCursor;
     int near_res;
+    QToolBar * toolbar;
+    ActionList actionList;
 };
 
 #endif // QGRAPHICSINPUT_H

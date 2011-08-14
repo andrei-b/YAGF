@@ -49,7 +49,7 @@ private slots:
     //void on_actionRecognize_activated();
     void on_actionSelect_HTML_format_activated();
     void on_actionDeskew_activated();
-    void on_alignButton_clicked();
+    //void on_alignButton_clicked();
     void on_actionCheck_spelling_activated();
     void on_actionSave_block_activated();
     void on_actionSave_current_image_activated();
