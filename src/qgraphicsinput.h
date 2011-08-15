@@ -74,6 +74,7 @@ public:
     void setMagnifierCursor(QCursor *cursor);
     void addToolBarAction(QAction * action);
     void addToolBarSeparator();
+    void setToolBarVisible();
     //setMagnifierCursor(QCursor * cursor = );
 protected:
     virtual void mousePressEvent(QGraphicsSceneMouseEvent *event);

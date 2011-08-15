@@ -657,11 +657,13 @@
         <translation>Не вдалось зберегти зображення</translation>
     </message>
     <message>
-        <location filename="spellchecker.cpp" line="153"/>
-        <source>Required spelling dictionary is not found. Spell-checking is disabled.
- Try to install an appropriate aspell dictionary.</source>
-        <translation>Потрібні словники орфографії не знайдено. Перевірку орфографії вимкнено.
- Спробуйте встановити відповідний словник aspell.</translation>
+        <location filename="spellchecker.cpp" line="161"/>
+        <source>Required spelling dictionary (%1) is not found.
+Spell-checking is disabled.
+Try to install an appropriate aspell dictionary.</source>
+        <translation>Потрібні словники орфографії (%1) не знайдено.
+Перевірку орфографії вимкнено.
+Спробуйте встановити відповідний словник aspell.</translation>
     </message>
 </context>
 </TS>

@@ -79,6 +79,7 @@ private slots:
     void enlargeFont();
     void decreaseFont();
     void unalignButtonClicked();
+    void hideToolBar();
 protected:
     bool eventFilter(QObject *object, QEvent *event);
 private:

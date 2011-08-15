@@ -29,8 +29,9 @@ QXtGraphicsProxyWidget::QXtGraphicsProxyWidget(QGraphicsItem * parent, Qt::Windo
 
 void QXtGraphicsProxyWidget::setView(QXtGraphicsView * view)
 {
-    setPos(0,0);
     mview = view;
+    QPointF p = mview->mapToScene(0,0);
+    setPos(p.x(), p.y());
     connect(mview, SIGNAL(scrolled()), this, SLOT(viewScrolled()));
 }
 

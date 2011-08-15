@@ -93,6 +93,7 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
     //toolBar->addWidget(spellCheckBox);
 //  pixmap = new QPixmap();
     graphicsInput = new QGraphicsInput(QRectF(0, 0, 2000, 2000), graphicsView) ;
+    graphicsInput->addToolBarAction(actionHideShowTolbar);
     graphicsInput->addToolBarAction(this->actionTBLV);
     graphicsInput->addToolBarAction(this->actionSmaller_view);
     graphicsInput->addToolBarSeparator();
@@ -1019,6 +1020,11 @@ void MainForm::unalignButtonClicked()
     rrot *=90;
     rotateImage(rrot - rot);
     rotation = rrot;*/
+}
+
+void MainForm::hideToolBar()
+{
+    graphicsInput->setToolBarVisible();
 }
 
 void MainForm::on_ActionClearAllBlocks_activated()
