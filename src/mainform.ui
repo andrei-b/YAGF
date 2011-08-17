@@ -88,6 +88,7 @@
     </property>
     <addaction name="actionOpen"/>
     <addaction name="actionScan"/>
+    <addaction name="actionImport_from_PDF"/>
     <addaction name="actionRecognize"/>
     <addaction name="actionRecognize_All_Pages"/>
     <addaction name="action_Save"/>
@@ -475,6 +476,18 @@
     <string>Hide/Show Toolbar</string>
    </property>
   </action>
+  <action name="actionImport_from_PDF">
+   <property name="icon">
+    <iconset resource="yagf.qrc">
+     <normaloff>:/images/application_pdf.png</normaloff>:/images/application_pdf.png</iconset>
+   </property>
+   <property name="text">
+    <string>Import from PDF...</string>
+   </property>
+   <property name="toolTip">
+    <string>Import pages from PDF documents</string>
+   </property>
+  </action>
  </widget>
  <customwidgets>
   <customwidget>
@@ -583,6 +596,22 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>actionImport_from_PDF</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>importPDF()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>959</x>
+     <y>568</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <slot>rotateCWButtonClicked()</slot>
@@ -591,5 +620,6 @@
   <slot>enlargeButtonClicked()</slot>
   <slot>decreaseButtonClicked()</slot>
   <slot>hideToolBar()</slot>
+  <slot>importPDF()</slot>
  </slots>
 </ui>

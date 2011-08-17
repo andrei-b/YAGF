@@ -60,6 +60,7 @@
 #include "FileToolBar.h"
 #include "BlockAnalysis.h"
 #include "SkewAnalysis.h"
+#include "popplerdialog.h"
 
 const QString version = "0.8.6";
 
@@ -239,6 +240,12 @@ void MainForm::loadFromCommandLine()
             ((FileToolBar *) m_toolBar)->select(sl.at(1));
 
     }
+}
+
+void MainForm::importPDF()
+{
+    PopplerDialog dialog(this);
+    dialog.exec();
 }
 
 void MainForm::loadImage()

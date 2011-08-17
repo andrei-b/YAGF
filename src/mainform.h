@@ -20,6 +20,7 @@
 #include <QMainWindow>
 #include <QString>
 #include "ui_mainform.h"
+//#include "ui_popplerdialog.h"
 
 class QComboBox;
 class QCheckBox;
@@ -80,6 +81,7 @@ private slots:
     void decreaseFont();
     void unalignButtonClicked();
     void hideToolBar();
+    void importPDF();
 protected:
     bool eventFilter(QObject *object, QEvent *event);
 private:
