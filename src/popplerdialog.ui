@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Extract from PDF</string>
+   <string>Import from PDF</string>
   </property>
   <property name="windowIcon">
    <iconset resource="yagf.qrc">
@@ -69,7 +69,7 @@
               <item>
                <widget class="QLabel" name="label">
                 <property name="text">
-                 <string>from</string>
+                 <string>From</string>
                 </property>
                 <property name="buddy">
                  <cstring>spinBox</cstring>
@@ -108,7 +108,7 @@
               <item>
                <widget class="QLabel" name="label_2">
                 <property name="text">
-                 <string>to</string>
+                 <string>To</string>
                 </property>
                 <property name="buddy">
                  <cstring>spinBox_2</cstring>
@@ -154,7 +154,7 @@
              </sizepolicy>
             </property>
             <property name="text">
-             <string>Entire document</string>
+             <string>Entire Document</string>
             </property>
            </widget>
           </item>

@@ -89,6 +89,7 @@
     <addaction name="actionOpen"/>
     <addaction name="actionScan"/>
     <addaction name="actionImport_from_PDF"/>
+    <addaction name="separator"/>
     <addaction name="actionRecognize"/>
     <addaction name="actionRecognize_All_Pages"/>
     <addaction name="action_Save"/>

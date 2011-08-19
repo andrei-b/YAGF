@@ -2,10 +2,11 @@ project(yagf C CXX)
 cmake_minimum_required(VERSION 2.6.0)
 set (CMAKE_IN_SOURCE_BUILD TRUE)
 set(SOURCES src/main.cpp src/mainform.cpp src/qgraphicsinput.cpp src/utils.cpp src/FileChannel.cpp src/spellchecker.cpp src/FileToolBar.cpp src/BlockAnalysis.cpp src/PageAnalysis.cpp
-    src/SkewAnalysis.cpp src/CCAnalysis.cpp src/qxtgraphicsproxywidget.cpp src/popplerdialog.cpp)
+    src/SkewAnalysis.cpp src/CCAnalysis.cpp src/qxtgraphicsproxywidget.cpp src/popplerdialog.cpp src/pdfextractor.cpp src/pdf2ppt.cpp)
 set(INT_SOURCES src/preload.c)
 set(UIS src/mainform.ui src/popplerdialog.ui)
-set(MOC_HEADERS src/mainform.h src/FileChannel.h src/qgraphicsinput.h src/FileToolBar.h src/qxtgraphicsproxywidget.h src/qxtgraphicsview.h src/popplerdialog.h)
+set(MOC_HEADERS src/mainform.h src/FileChannel.h src/qgraphicsinput.h src/FileToolBar.h src/qxtgraphicsproxywidget.h src/qxtgraphicsview.h
+    src/popplerdialog.h src/pdfextractor.h src/pdf2ppt.h)
 set (yagf_RCCS src/yagf.qrc)
 set(QM_FILES yagf_ru.qm yagf_lt.qm yagf_de.qm yagf_pl.qm yagf_uk.qm)
 set (LIB_PATH_SUFFIX )
