@@ -36,6 +36,7 @@ class SpellChecker;
 class QCursor;
 class QGraphicsInput;
 class QMenu;
+class PDFExtractor;
 
 
 class MainForm : public QMainWindow, public Ui::MainWindow
@@ -82,6 +83,8 @@ private slots:
     void unalignButtonClicked();
     void hideToolBar();
     void importPDF();
+    void addPDFPage(QString pageName);
+    void finishedPDF();
 protected:
     bool eventFilter(QObject *object, QEvent *event);
 private:
@@ -126,6 +129,7 @@ private:
 //        int rotation;
     QToolBar *m_toolBar;
     QMenu *m_menu;
+    PDFExtractor * pdfx;
 //  QLabel * displayLabel;
 private slots:
     void readyRead();

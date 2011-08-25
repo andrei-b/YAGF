@@ -303,7 +303,7 @@ void QGraphicsInput::mouseMoveEvent(QGraphicsSceneMouseEvent *mouseEvent)
         blockRect = newRect;
         return;
     }
-    if (toolbar) {
+    if (!toolbar.isNull()) {
        // if (mouseEvent->pos().y() < toolbar->height())
        //     toolbar->setFocus();
     }
@@ -613,7 +613,7 @@ void QGraphicsInput::addToolBarSeparator()
 
 void QGraphicsInput::setToolBarVisible()
 {
-    if (!toolbar)
+    if (toolbar.isNull())
         return;
     if (actionList.at(0)->text() == QString::fromUtf8("<<")) {
         for (int i = 1; i < actionList.count(); i++)

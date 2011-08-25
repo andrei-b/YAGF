@@ -61,6 +61,8 @@
 #include "BlockAnalysis.h"
 #include "SkewAnalysis.h"
 #include "popplerdialog.h"
+#include "pdfextractor.h"
+#include "pdf2ppt.h"
 
 const QString version = "0.8.6";
 
@@ -216,6 +218,16 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
     //clearBlocksButton->setDefaultAction(ActionClearAllBlocks);
     loadFromCommandLine();
     emit windowShown();
+
+    pdfx = NULL;
+    if (findProgram("pdftoppm")) {
+        pdfx = new PDF2PPT();
+    }
+
+    if (pdfx) {
+        connect(pdfx, SIGNAL(addPage(QString)), this, SLOT(addPDFPage(QString)), Qt::QueuedConnection);
+        connect (pdfx, SIGNAL(finished()), this, SLOT(finishedPDF()));
+    }
 }
 
 void MainForm::onShowWindow()
@@ -246,6 +258,16 @@ void MainForm::importPDF()
 {
     PopplerDialog dialog(this);
     dialog.exec();
+}
+
+void MainForm::addPDFPage(QString pageName)
+{
+   ((FileToolBar *) m_toolBar)->addFile(pageName);
+}
+
+void MainForm::finishedPDF()
+{
+
 }
 
 void MainForm::loadImage()

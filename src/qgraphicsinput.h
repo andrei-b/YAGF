@@ -24,6 +24,7 @@
 #include <QRectF>
 #include <QAction>
 #include <QList>
+#include <QPointer>
 
 typedef QList<QAction *> ActionList;
 
@@ -118,7 +119,7 @@ private:
     Qt::MouseButton buttonPressed;
     QCursor *magnifierCursor;
     int near_res;
-    QToolBar * toolbar;
+    QPointer<QToolBar> toolbar;
     ActionList actionList;
 };
 
