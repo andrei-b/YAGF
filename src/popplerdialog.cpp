@@ -27,3 +27,20 @@ void PopplerDialog::on_pushButton_clicked()
     if (!fileName.isEmpty())
         ui->lineEdit->setText(fileName);
 }
+
+QString PopplerDialog::getPDFFile()
+{
+    return ui->lineEdit->text();
+}
+
+QString PopplerDialog::getStartPage()
+{
+    return QString::number(ui->spinBox->value());
+}
+
+QString PopplerDialog::getStopPage()
+{
+    if (ui->checkBox->isChecked())
+        return "-1";
+    return QString::number(ui->spinBox_2->value());
+}

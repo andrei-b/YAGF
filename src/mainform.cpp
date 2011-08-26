@@ -257,7 +257,20 @@ void MainForm::loadFromCommandLine()
 void MainForm::importPDF()
 {
     PopplerDialog dialog(this);
-    dialog.exec();
+    if (dialog.exec()) {
+        pdfx->setSourcePDF(dialog.getPDFFile());
+        if (pdfx->getSourcePDF().isEmpty()) {
+            QMessageBox::information(this, trUtf8("Error"), trUtf8("PDF file name may not be empty"));
+            return;
+        }
+        pdfx->setStartPage(dialog.getStartPage());
+        pdfx->setStopPage(dialog.getStopPage());
+        QString outputDir = QFileDialog::getExistingDirectory(this, trUtf8("Select Output Directory")); //, QString(""), QString(), (QString*) NULL, QFileDialog::ShowDirsOnly);
+        if (outputDir.isEmpty())
+            return;
+        pdfx->setOutputDir(outputDir);
+        pdfx->exec();
+    }
 }
 
 void MainForm::addPDFPage(QString pageName)
@@ -1144,6 +1157,7 @@ MainForm::~MainForm()
     delete settings;
     delete graphicsInput;
     delete ba;
+    delete pdfx;
 }
 
 void MainForm::on_actionSave_block_activated()

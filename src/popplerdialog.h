@@ -14,7 +14,9 @@ class PopplerDialog : public QDialog
 public:
     explicit PopplerDialog(QWidget *parent = 0);
     ~PopplerDialog();
-
+    QString getPDFFile();
+    QString getStartPage();
+    QString getStopPage();
 private slots:
     void on_checkBox_toggled(bool checked);
 

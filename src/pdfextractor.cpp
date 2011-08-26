@@ -21,7 +21,7 @@ public:
         connect(this, SIGNAL(terminated()), mparent, SIGNAL(finished()), Qt::QueuedConnection);
         connect(mparent, SIGNAL(terminate()), this, SLOT(terminate()));
         process.start(command, arguments);
-        process.waitForFinished(1200000);
+        process.waitForFinished(1600000);
     }
     void setProcess(const QString &cmd, const QStringList &args)
     {
@@ -112,12 +112,12 @@ QString PDFExtractor::getStartPage()
 
 void PDFExtractor::setStopPage(const QString &value)
 {
-    startPage = value;
+    stopPage = value;
 }
 
 QString PDFExtractor::getStopPage()
 {
-    return startPage;
+    return stopPage;
 }
 
 void PDFExtractor::cancel()
@@ -128,7 +128,7 @@ void PDFExtractor::cancel()
 void PDFExtractor::execInternal(const QString &command, const QStringList &arguments)
 {
     filters.clear();
-    filters << QString("%1*.%2").arg(getOutputPrefix()).arg(getOutputExtension());
+    filters << QString("page*.%1").arg(getOutputExtension());
     PDFThread thread(this);
     thread.setProcess(command, arguments);
     thread.start();
@@ -138,7 +138,7 @@ void PDFExtractor::execInternal(const QString &command, const QStringList &argum
         dir.setFilter(QDir::Files | QDir::Hidden | QDir::NoSymLinks);
         dir.setSorting(QDir::Size | QDir::Reversed);
         dir.setSorting(QDir::Name);
-        dir.cd(outputDir);
+        dir.setPath(outputDir);
         QFileInfoList fil;
         fil = dir.entryInfoList(filters, QDir::Files, QDir::Name);
         int lastI = 0;
