@@ -17,8 +17,8 @@ public:
     virtual void run()
     {
         QProcess process;
-        connect(this, SIGNAL(finished()), mparent, SIGNAL(finished()), Qt::QueuedConnection);
-        connect(this, SIGNAL(terminated()), mparent, SIGNAL(finished()), Qt::QueuedConnection);
+       // connect(this, SIGNAL(finished()), mparent, SIGNAL(finished()), Qt::QueuedConnection);
+       // connect(this, SIGNAL(terminated()), mparent, SIGNAL(finished()), Qt::QueuedConnection);
         connect(mparent, SIGNAL(terminate()), this, SLOT(terminate()));
         process.start(command, arguments);
         process.waitForFinished(1600000);
@@ -160,5 +160,5 @@ void PDFExtractor::execInternal(const QString &command, const QStringList &argum
         emit addPage(fil.at(i).absoluteFilePath());
         QApplication::processEvents();
     }
-
+    emit finished();
 }

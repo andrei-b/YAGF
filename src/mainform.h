@@ -20,6 +20,7 @@
 #include <QMainWindow>
 #include <QString>
 #include "ui_mainform.h"
+#include <QProgressDialog>
 //#include "ui_popplerdialog.h"
 
 class QComboBox;
@@ -37,7 +38,6 @@ class QCursor;
 class QGraphicsInput;
 class QMenu;
 class PDFExtractor;
-
 
 class MainForm : public QMainWindow, public Ui::MainWindow
 {
@@ -130,6 +130,7 @@ private:
     QToolBar *m_toolBar;
     QMenu *m_menu;
     PDFExtractor * pdfx;
+    QProgressDialog pdfPD;
 //  QLabel * displayLabel;
 private slots:
     void readyRead();
@@ -140,4 +141,4 @@ private slots:
     void rightMouseClicked(int x, int y, bool inTheBlock);
     void onShowWindow();
     QString selectDefaultLanguageName();
-};
+ };

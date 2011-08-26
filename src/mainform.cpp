@@ -17,6 +17,7 @@
 
 */
 
+#include "mainform.h"
 #include <QComboBox>
 #include <QLabel>
 #include <QPixmap>
@@ -44,7 +45,6 @@
 #include <QRegExp>
 #include <QClipboard>
 #include <QTransform>
-#include "mainform.h"
 #include "qgraphicsinput.h"
 #include "utils.h"
 #include "FileChannel.h"
@@ -63,6 +63,7 @@
 #include "popplerdialog.h"
 #include "pdfextractor.h"
 #include "pdf2ppt.h"
+#include "ghostscr.h"
 
 const QString version = "0.8.6";
 
@@ -222,12 +223,22 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
     pdfx = NULL;
     if (findProgram("pdftoppm")) {
         pdfx = new PDF2PPT();
+    } else
+    if (findProgram("gs")) {
+         pdfx = new GhostScr();
     }
 
     if (pdfx) {
         connect(pdfx, SIGNAL(addPage(QString)), this, SLOT(addPDFPage(QString)), Qt::QueuedConnection);
         connect (pdfx, SIGNAL(finished()), this, SLOT(finishedPDF()));
     }
+
+    pdfPD.setWindowTitle("YAGF");
+    pdfPD.setLabelText(trUtf8("Importing pages from the PDF document..."));
+    pdfPD.setCancelButtonText(trUtf8("Cancel"));
+    pdfPD.setMinimum(-1);
+    pdfPD.setMaximum(-1);
+    pdfPD.setWindowIcon(QIcon(":/yagf.png"));
 }
 
 void MainForm::onShowWindow()
@@ -269,6 +280,10 @@ void MainForm::importPDF()
         if (outputDir.isEmpty())
             return;
         pdfx->setOutputDir(outputDir);
+        QApplication::processEvents();
+        pdfPD.setWindowFlags(Qt::Dialog|Qt::WindowStaysOnTopHint);
+        pdfPD.show();
+        QApplication::processEvents();
         pdfx->exec();
     }
 }
@@ -280,7 +295,7 @@ void MainForm::addPDFPage(QString pageName)
 
 void MainForm::finishedPDF()
 {
-
+    pdfPD.hide();
 }
 
 void MainForm::loadImage()
