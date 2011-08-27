@@ -26,13 +26,15 @@ public:
     void setOutputExtension(const QString &value);
     QString getOutputExtension();
     void virtual exec() = 0;
-    void cancel();
     static bool findProgram();
 signals:
     void terminate();
+    void killProcess();
+    void terminateProcess();
     void addPage(QString pageName);
     void finished();
 public slots:
+    void cancel();
 protected:
     void execInternal(const QString &command, const QStringList &arguments);
 private:
@@ -47,6 +49,7 @@ private:
     QString outputExtension;
     int lastPage;
     QStringList filters;
+    bool canceled;
 };
 
 #endif // PDFEXTRACTOR_H

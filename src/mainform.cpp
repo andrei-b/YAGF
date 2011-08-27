@@ -239,6 +239,8 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
     pdfPD.setMinimum(-1);
     pdfPD.setMaximum(-1);
     pdfPD.setWindowIcon(QIcon(":/yagf.png"));
+    if (pdfx)
+        connect(&pdfPD, SIGNAL(canceled()), pdfx, SLOT(cancel()));
 }
 
 void MainForm::onShowWindow()
@@ -267,6 +269,10 @@ void MainForm::loadFromCommandLine()
 
 void MainForm::importPDF()
 {
+    if (!pdfx) {
+        QMessageBox::critical(this, trUtf8("No PDF converte installed"), trUtf8("No compatible PDF converter software could be found. Please install either the pdftoppm utility or the GhostScript package (from this the gs command will be required)."));
+        return;
+    }
     PopplerDialog dialog(this);
     if (dialog.exec()) {
         pdfx->setSourcePDF(dialog.getPDFFile());
@@ -276,13 +282,23 @@ void MainForm::importPDF()
         }
         pdfx->setStartPage(dialog.getStartPage());
         pdfx->setStopPage(dialog.getStopPage());
-        QString outputDir = QFileDialog::getExistingDirectory(this, trUtf8("Select Output Directory")); //, QString(""), QString(), (QString*) NULL, QFileDialog::ShowDirsOnly);
-        if (outputDir.isEmpty())
-            return;
+        bool doit = true;
+        QString outputDir;
+        while (doit) {
+            outputDir = QFileDialog::getExistingDirectory(this, trUtf8("Select an existing directory for output or create some new one")); //, QString(""), QString(), (QString*) NULL, QFileDialog::ShowDirsOnly);
+            if (outputDir.isEmpty())
+                return;
+            QDir dir(outputDir);
+            if (dir.count() > 2)
+                QMessageBox::warning(this, trUtf8("Selecting Directory"), trUtf8("The selected directory is not empty"));
+            else doit = false;
+        }
         pdfx->setOutputDir(outputDir);
         QApplication::processEvents();
         pdfPD.setWindowFlags(Qt::Dialog|Qt::WindowStaysOnTopHint);
         pdfPD.show();
+        pdfPD.setMinimum(0);
+        pdfPD.setMaximum(100);
         QApplication::processEvents();
         pdfx->exec();
     }
@@ -291,6 +307,7 @@ void MainForm::importPDF()
 void MainForm::addPDFPage(QString pageName)
 {
    ((FileToolBar *) m_toolBar)->addFile(pageName);
+    pdfPD.setValue(pdfPD.value()+1);
 }
 
 void MainForm::finishedPDF()

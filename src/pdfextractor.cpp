@@ -20,6 +20,8 @@ public:
        // connect(this, SIGNAL(finished()), mparent, SIGNAL(finished()), Qt::QueuedConnection);
        // connect(this, SIGNAL(terminated()), mparent, SIGNAL(finished()), Qt::QueuedConnection);
         connect(mparent, SIGNAL(terminate()), this, SLOT(terminate()));
+        connect (mparent, SIGNAL(killProcess()), &process, SLOT(kill()), Qt::QueuedConnection);
+        connect (mparent, SIGNAL(terminateProcess()), &process, SLOT(terminate()), Qt::QueuedConnection);
         process.start(command, arguments);
         process.waitForFinished(1600000);
     }
@@ -122,11 +124,14 @@ QString PDFExtractor::getStopPage()
 
 void PDFExtractor::cancel()
 {
+    emit killProcess();
+    emit terminateProcess();
     emit terminate();
 }
 
 void PDFExtractor::execInternal(const QString &command, const QStringList &arguments)
 {
+    canceled = false;
     filters.clear();
     filters << QString("page*.%1").arg(getOutputExtension());
     PDFThread thread(this);
