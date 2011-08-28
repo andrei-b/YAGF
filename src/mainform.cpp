@@ -496,6 +496,18 @@ void MainForm::readSettings()
     QFont f(textEdit->font());
     f.setPointSize(settings->value("mainWindow/fontSize", int(12)).toInt(&ok));
     textEdit->setFont(f);
+    QString defEngine;
+    if (findProgram("tesseract")&&(!findProgram("cuneiform")))
+        defEngine = "tesseract";
+    else
+        defEngine = "cuneiform";
+    QString engine = settings->value("ocr/engine", QVariant(defEngine)).toString();
+    if (engine == "cuneiform")
+        selectedEngine = UseCuneiform;
+    else
+        selectedEngine = UseTesseract;
+    findTessDataPath();
+    tessdataPath = settings->value("ocr/tessData", QVariant(tessdataPath)).toString();
 }
 
 void MainForm::writeSettings()
@@ -510,6 +522,9 @@ void MainForm::writeSettings()
     settings->setValue("ocr/language", language);
     settings->setValue("ocr/singleColumn", singleColumn);
     settings->setValue("ocr/outputFormat", outputFormat);
+    QString engine = selectedEngine == UseCuneiform ? QString("cuneiform") : QString("tessseract");
+    settings->setValue("ocr/engine", engine);
+    settings->setValue("ocr/tessData", tessdataPath);
     settings->sync();
 }
 
@@ -814,7 +829,7 @@ bool MainForm::useTesseract(const QString &inputFile)
     sl.append("-l");
     sl.append(tesMap->value(language));
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-    env.insert("TESSDATA_PREFIX", "/usr/local/share/");
+    env.insert("TESSDATA_PREFIX", tessdataPath);
     proc.setProcessEnvironment(env);
     proc.start("tesseract", sl);
     proc.waitForFinished(-1);
@@ -864,8 +879,14 @@ void MainForm::recognizeInternal(const QPixmap &pix)
     //outputFormat = selectFormatBox->itemData(selectFormatBox->currentIndex()).toString();
     QPixmapCache::clear();
     pix.save(workingDir + inputFile, "BMP");
-    if (!useTesseract(inputFile))
-                        return;
+    if (selectedEngine == UseCuneiform) {
+        if (!useCuneiform(inputFile, outputFile))
+            return;
+    }
+    if (selectedEngine == UseTesseract) {
+        if (!useTesseract(inputFile))
+           return;
+    }
     QFile textFile(workingDir + outputFile);
     textFile.open(QIODevice::ReadOnly);
     QByteArray text = textFile.readAll();
