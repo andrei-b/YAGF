@@ -91,6 +91,7 @@ private slots:
     void unalignButtonClicked();
     void hideToolBar();
     void importPDF();
+    void showConfigDlg();
     void addPDFPage(QString pageName);
     void finishedPDF();
 protected:

@@ -1,3 +1,7 @@
+* Sun Aug 28 2011 Andrei Borovsky <anb@symmetrica.net> - 0.8.7
+- Tesseract support added
+- PDF import added
+- Dictionary selection bug fixed
 * Sun Feb 20 2011 Andrei Borovsky <anb@symmetrica.net> - 0.8.6
 - Some bugs fixed
 - The default recognition language is now set according to the user's locale

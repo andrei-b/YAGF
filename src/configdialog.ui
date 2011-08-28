@@ -6,12 +6,16 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>400</width>
+    <width>344</width>
     <height>237</height>
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Dialog</string>
+   <string>OCR Settings</string>
+  </property>
+  <property name="windowIcon">
+   <iconset resource="yagf.qrc">
+    <normaloff>:/yagf.png</normaloff>:/yagf.png</iconset>
   </property>
   <layout class="QHBoxLayout" name="horizontalLayout_4">
    <item>
@@ -96,7 +100,9 @@
    </item>
   </layout>
  </widget>
- <resources/>
+ <resources>
+  <include location="yagf.qrc"/>
+ </resources>
  <connections>
   <connection>
    <sender>buttonBox</sender>

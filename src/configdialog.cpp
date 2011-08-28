@@ -32,7 +32,10 @@ int ConfigDialog::selectedEngine()
 
 void ConfigDialog::setTessDataPath(const QString &value)
 {
-    if (value.isEmpty()) {
+    ui->lineEdit->setText(value);
+}
 
-    }
+QString ConfigDialog::tessdataPath()
+{
+    return ui->lineEdit->text();
 }

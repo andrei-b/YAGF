@@ -9,19 +9,19 @@
 # norootforbuild
 
 Name:		yagf
-Version:	0.8.6
+Version:	0.8.7
 Release:	1
 URL:		http://symmetrica.net/cuneiform-linux/yagf-ru.html
 License:	GPLv3+
 Source0:	%{name}-%{version}.tar.gz
 Group:		Productivity/Graphics/Other
-Summary:	Graphical frontend for Cuneiform OCR tool
+Summary:	Graphical frontend for Cuneiform and Tesseract OCR tools
 BuildRoot:      %{_tmppath}/%{name}-%{version}-build
 BuildRequires:  libqt4-devel cmake update-desktop-files fdupes
 Requires:	libqt4 >= 4.5
 
 %description
-YAGF is a graphical front-end for Cuneiform OCR tool.
+YAGF is a graphical front-end for Cuneiform and Tesseract OCR tools.
 With YAGF you can open already scanned image files or obtain new images via
 XSane (scanning results are automatically passed to YAGF).
 Once you have a scanned image you can prepare it for recognition, select

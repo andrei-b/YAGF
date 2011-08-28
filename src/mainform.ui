@@ -105,7 +105,14 @@
     <addaction name="actionOnlineHelp"/>
     <addaction name="actionAbout"/>
    </widget>
+   <widget class="QMenu" name="menu_Settings">
+    <property name="title">
+     <string>&amp;Settings</string>
+    </property>
+    <addaction name="actionOCR_Settings"/>
+   </widget>
    <addaction name="menuFile"/>
+   <addaction name="menu_Settings"/>
    <addaction name="menu_Help"/>
   </widget>
   <widget class="QToolBar" name="toolBar">
@@ -489,6 +496,14 @@
     <string>Import pages from PDF documents</string>
    </property>
   </action>
+  <action name="actionOCR_Settings">
+   <property name="text">
+    <string>OCR Settings</string>
+   </property>
+   <property name="toolTip">
+    <string>Set up the OCR parameters</string>
+   </property>
+  </action>
  </widget>
  <customwidgets>
   <customwidget>
@@ -613,6 +628,22 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>actionOCR_Settings</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>showConfigDlg()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>959</x>
+     <y>568</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <slot>rotateCWButtonClicked()</slot>
@@ -622,5 +653,6 @@
   <slot>decreaseButtonClicked()</slot>
   <slot>hideToolBar()</slot>
   <slot>importPDF()</slot>
+  <slot>showConfigDlg()</slot>
  </slots>
 </ui>
