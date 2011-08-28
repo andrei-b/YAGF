@@ -21,6 +21,7 @@
 #include <QString>
 #include "ui_mainform.h"
 #include <QProgressDialog>
+#include <QMap>
 //#include "ui_popplerdialog.h"
 
 class QComboBox;
@@ -38,6 +39,13 @@ class QCursor;
 class QGraphicsInput;
 class QMenu;
 class PDFExtractor;
+
+typedef QMap<QString, QString> TesMap;
+
+enum SelectedEngine {
+    UseCuneiform,
+    UseTesseract
+};
 
 class MainForm : public QMainWindow, public Ui::MainWindow
 {
@@ -102,6 +110,8 @@ private:
     void saveHtml(QFile *file);
     void delTmpDir();
     void recognizeInternal(const QPixmap &pix);
+    bool useCuneiform(const QString &inputFile, const QString &outputFile);
+    bool useTesseract(const QString &inputFile);
     void saveImageInternal(const QPixmap &pix);
     void loadFromCommandLine();
     bool imageLoaded;
@@ -131,6 +141,8 @@ private:
     QMenu *m_menu;
     PDFExtractor * pdfx;
     QProgressDialog pdfPD;
+    TesMap * tesMap;
+    SelectedEngine selectedEngine;
 //  QLabel * displayLabel;
 private slots:
     void readyRead();

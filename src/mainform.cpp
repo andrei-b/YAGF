@@ -45,6 +45,8 @@
 #include <QRegExp>
 #include <QClipboard>
 #include <QTransform>
+#include <QProcessEnvironment>
+#include <QMap>
 #include "qgraphicsinput.h"
 #include "utils.h"
 #include "FileChannel.h"
@@ -66,6 +68,8 @@
 #include "ghostscr.h"
 
 const QString version = "0.8.6";
+const QString outputBase = "output";
+const QString outputExt = ".txt";
 
 MainForm::MainForm(QWidget *parent): QMainWindow(parent)
 {
@@ -179,6 +183,7 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
     textEdit->addAction(action);
 
 
+    tesMap = new TesMap();
     fillLanguagesBox();
     initSettings();
     delTmpFiles();
@@ -241,6 +246,7 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
     pdfPD.setWindowIcon(QIcon(":/yagf.png"));
     if (pdfx)
         connect(&pdfPD, SIGNAL(canceled()), pdfx, SLOT(cancel()));
+
 }
 
 void MainForm::onShowWindow()
@@ -497,12 +503,15 @@ void MainForm::fillLanguagesBox()
     selectLangsBox->addItem(trUtf8("Dutch"), QVariant("dut"));
     selectLangsBox->addItem(trUtf8("English"), QVariant("eng"));
     selectLangsBox->addItem(trUtf8("Estonian"), QVariant("est"));
+    selectLangsBox->addItem(trUtf8("Finnish (tesseract only)"), QVariant("fin"));
     selectLangsBox->addItem(trUtf8("French"), QVariant("fra"));
     selectLangsBox->addItem(trUtf8("German"), QVariant("ger"));
+    selectLangsBox->addItem(trUtf8("Greek (tesseract only)"), QVariant("ell"));
     selectLangsBox->addItem(trUtf8("Hungarian"), QVariant("hun"));
     selectLangsBox->addItem(trUtf8("Italian"), QVariant("ita"));
     selectLangsBox->addItem(trUtf8("Latvian"), QVariant("lav"));
     selectLangsBox->addItem(trUtf8("Lithuanian"), QVariant("lit"));
+    selectLangsBox->addItem(trUtf8("Norwegian (tesseract only)"), QVariant("nor"));
     selectLangsBox->addItem(trUtf8("Polish"), QVariant("pol"));
     selectLangsBox->addItem(trUtf8("Portuguese"), QVariant("por"));
     selectLangsBox->addItem(trUtf8("Romanian"), QVariant("rum"));
@@ -510,12 +519,40 @@ void MainForm::fillLanguagesBox()
     selectLangsBox->addItem(trUtf8("Swedish"), QVariant("swe"));
     selectLangsBox->addItem(trUtf8("Serbian"), QVariant("srp"));
     selectLangsBox->addItem(trUtf8("Slovenian"), QVariant("slo"));
+    selectLangsBox->addItem(trUtf8("Slovakian (tesseract only)"), QVariant("slk"));
+    selectLangsBox->addItem(trUtf8("Turkish (tesseract only)"), QVariant("tur"));
     selectLangsBox->addItem(trUtf8("Ukrainian"), QVariant("ukr"));
     selectLangsBox->addItem(trUtf8("Russian-French"), QVariant("rus_fra"));
     selectLangsBox->addItem(trUtf8("Russian-German"), QVariant("rus_ger"));
     selectLangsBox->addItem(trUtf8("Russian-Spanish"), QVariant("rus_spa"));
     //selectFormatBox->addItem("TEXT", QVariant("text"));
     //selectFormatBox->addItem("HTML", QVariant("html"));
+
+    tesMap->insert("rus", "rus");
+    tesMap->insert("eng", "eng");
+    tesMap->insert("ger", "deu");
+    tesMap->insert("fra", "fra");
+    tesMap->insert("swe", "swe");
+    tesMap->insert("slo", "slv");
+    tesMap->insert("spa", "spa");
+    tesMap->insert("por", "por");
+    tesMap->insert("pol", "pol");
+    tesMap->insert("ukr", "ukr");
+    tesMap->insert("bul", "bul");
+    tesMap->insert("lav", "lav");
+    tesMap->insert("lit", "lit");
+    tesMap->insert("ita", "ita");
+    tesMap->insert("hun", "hun");
+    tesMap->insert("rum", "ron");
+    tesMap->insert("dan", "dan");
+    tesMap->insert("srp", "srp");
+    tesMap->insert("dut", "nld");
+    tesMap->insert("cze", "ces");
+    tesMap->insert("fin", "fin");
+    tesMap->insert("nor", "nor");
+    tesMap->insert("tur", "tur");
+    tesMap->insert("ell", "ell");
+    tesMap->insert("slk", "slk");
 }
 
 QString MainForm::selectDefaultLanguageName()
@@ -745,13 +782,32 @@ void MainForm::loadPreviousPage()
 
 // TODO: think on blocks/page recognition
 
-void MainForm::recognizeInternal(const QPixmap &pix)
+bool MainForm::useTesseract(const QString &inputFile)
 {
-    const QString inputFile = "input.bmp";
-    const QString outputFile = "output.txt";
-    //outputFormat = selectFormatBox->itemData(selectFormatBox->currentIndex()).toString();
-    QPixmapCache::clear();
-    pix.save(workingDir + inputFile, "BMP");
+    QProcess proc;
+    proc.setWorkingDirectory(workingDir);
+    QStringList sl;
+    sl.append(inputFile);
+    sl.append(outputBase);
+    sl.append("-l");
+    sl.append(tesMap->value(language));
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert("TESSDATA_PREFIX", "/usr/local/share/");
+    proc.setProcessEnvironment(env);
+    proc.start("tesseract", sl);
+    proc.waitForFinished(-1);
+    if (proc.exitCode()) {
+        QByteArray stdout = proc.readAllStandardOutput();
+        QByteArray stderr = proc.readAllStandardError();
+        QString output = QString(stdout) + QString(stderr);
+        QMessageBox::critical(this, trUtf8("Starting tesseract failed"), trUtf8("The system said: ") + (output != "" ? output : trUtf8("program not found")));
+        return false;
+    }
+    return true;
+}
+
+bool MainForm::useCuneiform(const QString &inputFile, const QString &outputFile)
+{
     QProcess proc;
     proc.setWorkingDirectory(workingDir);
     QStringList sl;
@@ -774,8 +830,20 @@ void MainForm::recognizeInternal(const QPixmap &pix)
         QByteArray stderr = proc.readAllStandardError();
         QString output = QString(stdout) + QString(stderr);
         QMessageBox::critical(this, trUtf8("Starting cuneiform failed"), trUtf8("The system said: ") + (output != "" ? output : trUtf8("program not found")));
-        return;
+        return false;
     }
+    return true;
+}
+
+void MainForm::recognizeInternal(const QPixmap &pix)
+{
+    const QString inputFile = "input.bmp";
+    const QString outputFile = "output.txt";
+    //outputFormat = selectFormatBox->itemData(selectFormatBox->currentIndex()).toString();
+    QPixmapCache::clear();
+    pix.save(workingDir + inputFile, "BMP");
+    if (!useTesseract(inputFile))
+                        return;
     QFile textFile(workingDir + outputFile);
     textFile.open(QIODevice::ReadOnly);
     QByteArray text = textFile.readAll();
@@ -807,10 +875,28 @@ void MainForm::recognize()
         QMessageBox::critical(this, trUtf8("Error"), trUtf8("No image loaded"));
         return;
     }
-    if (!findProgram("cuneiform")) {
-        QMessageBox::warning(this, trUtf8("Warning"), trUtf8("cuneiform not found"));
-        return;
-    }
+    if (selectedEngine == UseCuneiform) {
+        if (!findProgram("cuneiform")) {
+            if (findProgram("tesseract")) {
+                QMessageBox::warning(this, trUtf8("Warning"), trUtf8("cuneiform not found, switching to tesseract"));
+                selectedEngine = UseTesseract;
+            } else {
+                QMessageBox::warning(this, trUtf8("Warning"), trUtf8("No recognition engine found.\nPlease install either cuneiform or tesseract"));
+                return;
+            }
+        }
+     }
+    if (selectedEngine == UseTesseract) {
+        if (!findProgram("tesseract")) {
+            if (findProgram("cuneiform")) {
+                QMessageBox::warning(this, trUtf8("Warning"), trUtf8("tesseract not found, switching to cuneiform"));
+                selectedEngine = UseCuneiform;
+            } else {
+                QMessageBox::warning(this, trUtf8("Warning"), trUtf8("No recognition engine found.\nPlease install either cuneiform or tesseract"));
+                return;
+            }
+        }
+     }
     if (graphicsInput->blocksCount() > 0) {
         for (int i = graphicsInput->blocksCount(); i >= 0; i--)
             if (!graphicsInput->getBlockByIndex(i).isNull())
@@ -1190,6 +1276,7 @@ MainForm::~MainForm()
     delete graphicsInput;
     delete ba;
     delete pdfx;
+    delete tesMap;
 }
 
 void MainForm::on_actionSave_block_activated()
