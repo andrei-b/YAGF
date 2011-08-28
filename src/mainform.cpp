@@ -273,6 +273,28 @@ void MainForm::loadFromCommandLine()
     }
 }
 
+void MainForm::findTessDataPath()
+{
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    if (env.contains("TESSDATA_PREFIX")) {
+        tessdataPath = env.value("TESSDATA_PREFIX");
+        return;
+    }
+    QDir dir;
+    dir.setPath("/usr/share/tessdata");
+    if (dir.exists()) {
+        tessdataPath = "/usr/share/";
+        return;
+    }
+    dir.setPath("/usr/local/share/tessdata");
+    if (dir.exists()) {
+        tessdataPath = "/usr/local/share/";
+        return;
+    }
+    tessdataPath.clear();
+    return;
+}
+
 void MainForm::importPDF()
 {
     if (!pdfx) {

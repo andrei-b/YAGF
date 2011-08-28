@@ -114,6 +114,7 @@ private:
     bool useTesseract(const QString &inputFile);
     void saveImageInternal(const QPixmap &pix);
     void loadFromCommandLine();
+    void findTessDataPath();
     bool imageLoaded;
     bool hasCopy;
     QComboBox *selectLangsBox;
@@ -141,6 +142,7 @@ private:
     QMenu *m_menu;
     PDFExtractor * pdfx;
     QProgressDialog pdfPD;
+    QString tessdataPath;
     TesMap * tesMap;
     SelectedEngine selectedEngine;
 //  QLabel * displayLabel;
