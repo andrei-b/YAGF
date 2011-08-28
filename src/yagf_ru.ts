@@ -1,29 +1,31 @@
-<!DOCTYPE TS><TS>
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE TS>
+<TS version="2.0" language="ru_RU">
 <context>
     <name>ConfigDialog</name>
     <message>
         <source>OCR Settings</source>
-        <translation type="unfinished"></translation>
+        <translation>Настройки программ распознавания</translation>
     </message>
     <message>
         <source>OCR Engine</source>
-        <translation type="unfinished"></translation>
+        <translation>Программа распознавания</translation>
     </message>
     <message>
         <source>cuneiform</source>
-        <translation type="unfinished"></translation>
+        <translation>cuneiform</translation>
     </message>
     <message>
         <source>tesseract</source>
-        <translation type="unfinished"></translation>
+        <translation>tesseract</translation>
     </message>
     <message>
         <source>Tesseract Setup</source>
-        <translation type="unfinished"></translation>
+        <translation>Настройка tesseract</translation>
     </message>
     <message>
         <source>Location of the  tessdata directory:</source>
-        <translation type="unfinished"></translation>
+        <translation>Расположение директории tessdata:</translation>
     </message>
 </context>
 <context>
@@ -69,7 +71,7 @@
         <translation>Убрать</translation>
     </message>
 </context>
-<context encoding="UTF-8">
+<context>
     <name>MainForm</name>
     <message>
         <source>Recognition language</source>
@@ -256,36 +258,36 @@
         <translation>Сохранить изображение</translation>
     </message>
     <message>
-        <source>Undo<byte value="x9"/>Ctrl+Z</source>
-        <translation>Отменить<byte value="x9"/>Ctrl+Z</translation>
+        <source>Undo	Ctrl+Z</source>
+        <translation>Отменить	Ctrl+Z</translation>
     </message>
     <message>
-        <source>Redo<byte value="x9"/>Ctrl+Shift+Z</source>
-        <translation>Вернуть<byte value="x9"/>Ctrl+Shift+Z</translation>
+        <source>Redo	Ctrl+Shift+Z</source>
+        <translation>Вернуть	Ctrl+Shift+Z</translation>
     </message>
     <message>
-        <source>Select All<byte value="x9"/>Ctrl+A</source>
-        <translation>Выделить все<byte value="x9"/>Ctrl+A</translation>
+        <source>Select All	Ctrl+A</source>
+        <translation>Выделить все	Ctrl+A</translation>
     </message>
     <message>
-        <source>Cut<byte value="x9"/>Ctrl+X</source>
-        <translation>Вырезать<byte value="x9"/>Ctrl+X</translation>
+        <source>Cut	Ctrl+X</source>
+        <translation>Вырезать	Ctrl+X</translation>
     </message>
     <message>
-        <source>Larger Font<byte value="x9"/>Ctrl++</source>
-        <translation>Увеличить шрифт<byte value="x9"/>Ctrl++</translation>
+        <source>Larger Font	Ctrl++</source>
+        <translation>Увеличить шрифт	Ctrl++</translation>
     </message>
     <message>
-        <source>Smaller Font<byte value="x9"/>Ctrl+-</source>
-        <translation>Уменьшить шрифт<byte value="x9"/>Ctrl+-</translation>
+        <source>Smaller Font	Ctrl+-</source>
+        <translation>Уменьшить шрифт	Ctrl+-</translation>
     </message>
     <message>
-        <source>Copy<byte value="x9"/>Ctrl+C</source>
-        <translation>Копировать<byte value="x9"/>Ctrl+C</translation>
+        <source>Copy	Ctrl+C</source>
+        <translation>Копировать	Ctrl+C</translation>
     </message>
     <message>
-        <source>Paste<byte value="x9"/>Ctrl+V</source>
-        <translation>Вставить<byte value="x9"/>Ctrl+V</translation>
+        <source>Paste	Ctrl+V</source>
+        <translation>Вставить	Ctrl+V</translation>
     </message>
     <message>
         <source>Recognizing pages...</source>
@@ -297,76 +299,77 @@
     </message>
     <message>
         <source>Importing pages from the PDF document...</source>
-        <translation type="unfinished"></translation>
+        <translation>Импорт страниц из документа PDF...</translation>
     </message>
     <message>
         <source>Cancel</source>
-        <translation type="unfinished"></translation>
+        <translation>Отменить</translation>
     </message>
     <message>
         <source>No PDF converte installed</source>
-        <translation type="unfinished"></translation>
+        <translation>Не обнаружено конвертера PDF</translation>
     </message>
     <message>
         <source>No compatible PDF converter software could be found. Please install either the pdftoppm utility or the GhostScript package (from this the gs command will be required).</source>
-        <translation type="unfinished"></translation>
+        <translation>Не найдены подходящие конверторы PDF. Установите, пожалуйста, утилиту pdftoppm или пакет GhostScript (из которого требуется программа gs).</translation>
     </message>
     <message>
         <source>PDF file name may not be empty</source>
-        <translation type="unfinished"></translation>
+        <translation>Необходимо указать имя файла PDF</translation>
     </message>
     <message>
         <source>Select an existing directory for output or create some new one</source>
-        <translation type="unfinished"></translation>
+        <translation>Выберите существующую директорию для вывода или создайте новую</translation>
     </message>
     <message>
         <source>Selecting Directory</source>
-        <translation type="unfinished"></translation>
+        <translation>Выбор директории</translation>
     </message>
     <message>
         <source>The selected directory is not empty</source>
-        <translation type="unfinished"></translation>
+        <translation>Выбранная директория - не пустая</translation>
     </message>
     <message>
         <source>Finnish (tesseract only)</source>
-        <translation type="unfinished"></translation>
+        <translation>Финский (только tesseract)</translation>
     </message>
     <message>
         <source>Greek (tesseract only)</source>
-        <translation type="unfinished"></translation>
+        <translation>Греческий (только tesseract)</translation>
     </message>
     <message>
         <source>Norwegian (tesseract only)</source>
-        <translation type="unfinished"></translation>
+        <translation>Норвежский (только tesseract)</translation>
     </message>
     <message>
         <source>Slovakian (tesseract only)</source>
-        <translation type="unfinished"></translation>
+        <translation>Словацкий (только tesseract)</translation>
     </message>
     <message>
         <source>Turkish (tesseract only)</source>
-        <translation type="unfinished"></translation>
+        <translation>Турецкий (только tesseract)</translation>
     </message>
     <message>
         <source>Starting tesseract failed</source>
-        <translation type="unfinished"></translation>
+        <translation>Не удалось запустить tesseract</translation>
     </message>
     <message>
         <source>cuneiform not found, switching to tesseract</source>
-        <translation type="unfinished"></translation>
+        <translation>Программа cuneiform не найдена, переключаемся на tesseract</translation>
     </message>
     <message>
         <source>No recognition engine found.
 Please install either cuneiform or tesseract</source>
-        <translation type="unfinished"></translation>
+        <translation>Программа распознавания не найдена.
+Установите, пожалуйста, cuneiform или tesseract</translation>
     </message>
     <message>
         <source>tesseract not found, switching to cuneiform</source>
-        <translation type="unfinished"></translation>
+        <translation>Программа tesseract не найдена, переключаемся на cuneiform</translation>
     </message>
-    <message encoding="UTF-8">
+    <message utf8="true">
         <source>&lt;p align=&quot;center&quot;&gt;&lt;b&gt;YAGF - Yet Another Graphical Front-end for cuneiform and tesseract OCR engines&lt;/b&gt;&lt;/p&gt;&lt;p align=&quot;center&quot;&gt;Version %1&lt;/p&gt; &lt;p align=&quot;center&quot;&gt;Ⓒ 2009-2011 Andrei Borovsky&lt;/p&gt; This is a free software distributed under GPL v3. Visit &lt;a href=&quot;http://symmetrica.net/cuneiform-linux/yagf-en.html&quot;&gt;http://symmetrica.net/cuneiform-linux/yagf-en.html&lt;/a&gt; for more details.</source>
-        <translation type="unfinished"></translation>
+        <translation>&lt;p align=&quot;center&quot;&gt;&lt;b&gt;YAGF - Графическая оболочка для программ распознавания текста cuneiform и tesseract&lt;/b&gt;&lt;/p&gt;&lt;p align=&quot;center&quot;&gt;Версия %1&lt;/p&gt; &lt;p align=&quot;center&quot;&gt;Ⓒ 2009-2011 Андрей Боровский&lt;/p&gt; YAGF - открытое программное обеспечение, которое распространяется на условиял лицензии GPL v3. Вы найдете подробности на странице &lt;a href=&quot;http://symmetrica.net/cuneiform-linux/yagf-en.html&quot;&gt;http://symmetrica.net/cuneiform-linux/yagf-ru.html&lt;/a&gt;.</translation>
     </message>
 </context>
 <context>
@@ -569,7 +572,7 @@ Please install either cuneiform or tesseract</source>
     </message>
     <message>
         <source>&amp;Settings</source>
-        <translation type="unfinished"></translation>
+        <translation>&amp;Настройки</translation>
     </message>
     <message>
         <source>toolBar_2</source>
@@ -581,54 +584,54 @@ Please install either cuneiform or tesseract</source>
     </message>
     <message>
         <source>Hide/Show Toolbar</source>
-        <translation type="unfinished"></translation>
+        <translation>Показать/убрать панель</translation>
     </message>
     <message>
         <source>Import from PDF...</source>
-        <translation type="unfinished"></translation>
+        <translation>Импорт из документа PDF...</translation>
     </message>
     <message>
         <source>Import pages from PDF documents</source>
-        <translation type="unfinished"></translation>
+        <translation>Импорт страниц из документа PDF</translation>
     </message>
     <message>
         <source>OCR Settings</source>
-        <translation type="unfinished"></translation>
+        <translation>Настройки программ распознавания</translation>
     </message>
     <message>
         <source>Set up the OCR parameters</source>
-        <translation type="unfinished"></translation>
+        <translation>Установить параметры программ распознавания</translation>
     </message>
 </context>
 <context>
     <name>PopplerDialog</name>
     <message>
         <source>Import from PDF</source>
-        <translation type="unfinished"></translation>
+        <translation>Импорт из документа PDF</translation>
     </message>
     <message>
         <source>File Name</source>
-        <translation type="unfinished"></translation>
+        <translation>Имя файла PDF</translation>
     </message>
     <message>
         <source>Select...</source>
-        <translation type="unfinished"></translation>
+        <translation>Выбрать...</translation>
     </message>
     <message>
         <source>Pages</source>
-        <translation type="unfinished"></translation>
+        <translation>Страницы</translation>
     </message>
     <message>
         <source>From</source>
-        <translation type="unfinished"></translation>
+        <translation>С</translation>
     </message>
     <message>
         <source>To</source>
-        <translation type="unfinished"></translation>
+        <translation>по</translation>
     </message>
     <message>
         <source>Entire Document</source>
-        <translation type="unfinished"></translation>
+        <translation>Весь документ</translation>
     </message>
 </context>
 <context>
