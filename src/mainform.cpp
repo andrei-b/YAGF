@@ -533,6 +533,8 @@ void MainForm::readSettings()
         selectedEngine = UseTesseract;
     findTessDataPath();
     tessdataPath = settings->value("ocr/tessData", QVariant(tessdataPath)).toString();
+    if (tessdataPath.isEmpty())
+        findTessDataPath();
 }
 
 void MainForm::writeSettings()
