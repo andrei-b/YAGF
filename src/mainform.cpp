@@ -292,6 +292,16 @@ void MainForm::findTessDataPath()
         tessdataPath = "/usr/local/share/";
         return;
     }
+    dir.setPath("/usr/local/share/tesseract-ocr/tessdata");
+    if (dir.exists()) {
+        tessdataPath = "/usr/local/share/tesseract-ocr/";
+        return;
+    }
+    dir.setPath("/usr/share/tesseract-ocr/tessdata");
+    if (dir.exists()) {
+        tessdataPath = "/usr/share/tesseract-ocr/";
+        return;
+    }
     tessdataPath.clear();
     return;
 }
