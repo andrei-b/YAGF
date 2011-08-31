@@ -489,7 +489,10 @@ void MainForm::initSettings()
     if (iniFileInfo.exists())
         readSettings();
     else {
+        selectedEngine = UseCuneiform; // Default OCR engine
         language = selectDefaultLanguageName();
+        if ( language == "rus" )
+             language.append("eng"); // Set Russian-English for Russian as default
         writeSettings();
     }
     QList<int> li;
@@ -549,7 +552,7 @@ void MainForm::writeSettings()
     settings->setValue("ocr/language", language);
     settings->setValue("ocr/singleColumn", singleColumn);
     settings->setValue("ocr/outputFormat", outputFormat);
-    QString engine = selectedEngine == UseCuneiform ? QString("cuneiform") : QString("tessseract");
+    QString engine = selectedEngine == UseCuneiform ? QString("cuneiform") : QString("tesseract");
     settings->setValue("ocr/engine", engine);
     settings->setValue("ocr/tessData", tessdataPath);
     settings->sync();
