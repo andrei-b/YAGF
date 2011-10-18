@@ -1,6 +1,7 @@
 project(yagf C CXX)
 cmake_minimum_required(VERSION 2.6.0)
-set (CMAKE_IN_SOURCE_BUILD TRUE)
+include_directories("${PROJECT_SOURCE_DIR}")
+#set (CMAKE_IN_SOURCE_BUILD FALSE)
 set(SOURCES src/main.cpp src/mainform.cpp src/qgraphicsinput.cpp src/utils.cpp src/FileChannel.cpp src/spellchecker.cpp src/FileToolBar.cpp src/BlockAnalysis.cpp src/PageAnalysis.cpp
     src/SkewAnalysis.cpp src/CCAnalysis.cpp src/qxtgraphicsproxywidget.cpp src/popplerdialog.cpp src/pdfextractor.cpp src/pdf2ppt.cpp src/ghostscr.cpp src/configdialog.cpp)
 set(INT_SOURCES src/preload.c)
