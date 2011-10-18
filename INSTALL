@@ -1,0 +1,21 @@
+These are generic installation instructions.
+
+You will need CMake to build YAGF from sources.
+There are two modes for building YAGF with CMake: in-source and out-source.
+The out-source mode is preferred. To build YAGF in this mode follow these instructions:
+make a directory for your build (for example yagf-build). Assuming your yagf-build directory is in the same directory as the yagf directory you can command:
+
+cd yagf-build
+cmake ../yagf
+make
+sudo make install
+
+You can now remove the yagf-build directory.
+
+In order to perform an in-source build you should issue this simple set of commands:
+
+cd yagf
+cmake ./
+make
+sudo make install
+
