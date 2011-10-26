@@ -17,7 +17,16 @@
 
 */
 
+#include "FileToolBar.h"
+#include "BlockAnalysis.h"
+#include "SkewAnalysis.h"
+#include "popplerdialog.h"
+#include "pdfextractor.h"
+#include "pdf2ppt.h"
+#include "ghostscr.h"
+#include "configdialog.h"
 #include "mainform.h"
+#include "ccbuilder.h"
 #include <QComboBox>
 #include <QLabel>
 #include <QPixmap>
@@ -59,14 +68,7 @@
 #include <QWheelEvent>
 #include <QKeyEvent>
 #include <QFont>
-#include "FileToolBar.h"
-#include "BlockAnalysis.h"
-#include "SkewAnalysis.h"
-#include "popplerdialog.h"
-#include "pdfextractor.h"
-#include "pdf2ppt.h"
-#include "ghostscr.h"
-#include "configdialog.h"
+
 
 const QString version = "0.8.7";
 const QString outputBase = "output";
@@ -1439,7 +1441,13 @@ void MainForm::AnalizePage()
 
 void MainForm::on_actionDeskew_activated()
 {
-    AnalizePage();
+   // AnalizePage();
+    QPixmap * pm = graphicsInput->getSmallImage();
+    if (pm) {
+        CCBuilder * cb = new CCBuilder(pm);
+        cb->labelCCs();
+        delete cb;
+    }
 }
 
 void MainForm::on_actionSelect_HTML_format_activated()

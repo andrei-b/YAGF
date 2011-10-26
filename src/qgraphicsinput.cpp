@@ -576,6 +576,12 @@ QPixmap QGraphicsInput::getAdaptedImage()
     return m_realImage->pixmap();
 }
 
+QPixmap * QGraphicsInput::getSmallImage()
+{
+    if (pm2.isNull())
+        return NULL;
+    return &pm2;
+}
 
 void QGraphicsInput::cropImage()
 {

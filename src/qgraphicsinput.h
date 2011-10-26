@@ -67,6 +67,7 @@ public:
     qreal getRealAngle();
     QPixmap getImage();
     QPixmap getAdaptedImage();
+    QPixmap * getSmallImage();
     bool addBlock(const QRectF &rect, bool removeObstacles = true);
     void cropImage();
     void cropImage(const QRect &rect);

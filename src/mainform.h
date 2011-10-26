@@ -39,6 +39,7 @@ class QCursor;
 class QGraphicsInput;
 class QMenu;
 class PDFExtractor;
+class ccbuilder;
 
 typedef QMap<QString, QString> TesMap;
 
