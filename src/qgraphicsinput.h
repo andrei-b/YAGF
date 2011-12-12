@@ -69,6 +69,9 @@ public:
     QPixmap getAdaptedImage();
     QPixmap * getSmallImage();
     bool addBlock(const QRectF &rect, bool removeObstacles = true);
+    void drawLine(int x1, int y1, int x2, int y2);
+    void imageOrigin(QPoint &p);
+    QPixmap getCurrentImage();
     void cropImage();
     void cropImage(const QRect &rect);
     void cropWhiteFrame();
@@ -77,6 +80,8 @@ public:
     void addToolBarAction(QAction * action);
     void addToolBarSeparator();
     void setToolBarVisible();
+    QGraphicsRectItem *newBlock(const QRectF &rect);
+
     //setMagnifierCursor(QCursor * cursor = );
 protected:
     virtual void mousePressEvent(QGraphicsSceneMouseEvent *event);
@@ -98,7 +103,6 @@ private:
     void addToolBar();
     QPixmap extractPixmap(QGraphicsRectItem *item);
     void deleteBlockRect(QGraphicsRectItem *item);
-    QGraphicsRectItem *newBlock(const QRectF &rect);
     QGraphicsView *m_view;
     QGraphicsPixmapItem *m_image;
     QGraphicsPixmapItem *m_realImage;

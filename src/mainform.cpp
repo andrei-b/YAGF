@@ -17,7 +17,8 @@
 
 */
 
-#include "FileToolBar.h"
+#include "sidebar.h"
+#include "droplabel.h"
 #include "BlockAnalysis.h"
 #include "SkewAnalysis.h"
 #include "popplerdialog.h"
@@ -27,6 +28,7 @@
 #include "configdialog.h"
 #include "mainform.h"
 #include "ccbuilder.h"
+#include "analysis.h"
 #include <QComboBox>
 #include <QLabel>
 #include <QPixmap>
@@ -68,6 +70,7 @@
 #include <QWheelEvent>
 #include <QKeyEvent>
 #include <QFont>
+#include <QImageReader>
 
 
 const QString version = "0.8.7";
@@ -210,10 +213,12 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
     l_cursor.load(":/resize_block.png");
     resizeBlockCursor = new QCursor(l_cursor);
     textEdit->setContextMenuPolicy(Qt::ActionsContextMenu);
-    m_toolBar = new FileToolBar(this);
-    addToolBar(Qt::LeftToolBarArea, m_toolBar);
-    m_toolBar->show();
-    connect(m_toolBar, SIGNAL(fileSelected(const QString &)), this, SLOT(fileSelected(const QString &)));
+
+    //m_toolBar = new SideBar(this);
+    //addToolBar(Qt::LeftToolBarArea, m_toolBar);
+    this->
+    sideBar->show();
+    connect(sideBar, SIGNAL(fileSelected(const QString &)), this, SLOT(fileSelected(const QString &)));
 
     connect(actionRecognize_All_Pages, SIGNAL(triggered()), this, SLOT(recognizeAll()));
 
@@ -271,7 +276,7 @@ void MainForm::loadFromCommandLine()
             if (QFile::exists(sl.at(i)))
                 loadFile(sl.at(i), false);
         if (QFile::exists(sl.at(1)))
-            ((FileToolBar *) m_toolBar)->select(sl.at(1));
+            sideBar->select(sl.at(1));
 
     }
 }
@@ -361,7 +366,7 @@ void MainForm::importPDF()
 
 void MainForm::addPDFPage(QString pageName)
 {
-   ((FileToolBar *) m_toolBar)->addFile(pageName);
+    sideBar->addFile(pageName);
     pdfPD.setValue(pdfPD.value()+1);
 }
 
@@ -387,7 +392,7 @@ void MainForm::loadImage()
             loadFile(fileNames.at(i), false);
         }
         if (fileNames.count() > 0)
-            ((FileToolBar *) m_toolBar)->select(fileNames.at(0));
+            sideBar->select(fileNames.at(0));
     }
 }
 
@@ -428,7 +433,7 @@ void MainForm::rotateImage(int deg)
     if (imageLoaded) {
         graphicsInput->clearBlocks();
         graphicsInput->setViewScale(1, deg); //rotateImage(deg,  graphicsView->width()/2, graphicsView->height()/2);
-        ((FileToolBar *) m_toolBar)->setRotation(graphicsInput->getRealAngle());
+        sideBar->setRotation(graphicsInput->getRealAngle());
     }
 }
 
@@ -473,7 +478,7 @@ void MainForm::scaleImage(double sf)
         return;
     graphicsInput->setViewScale(sf, 0);
     scaleFactor = graphicsInput->getRealScale();
-    ((FileToolBar *) m_toolBar)->setScale(scaleFactor);
+    sideBar->setScale(scaleFactor);
 }
 
 void MainForm::initSettings()
@@ -742,25 +747,26 @@ void MainForm::loadFile(const QString &fn, bool loadIntoView)
 {
     QCursor oldCursor = cursor();
     setCursor(Qt::WaitCursor);
-    if ((fileName != "") && ((FileToolBar *) m_toolBar)->getFileNames().contains(fileName)) {
-        ((FileToolBar *) m_toolBar)->select(fileName);
-        ((FileToolBar *) m_toolBar)->clearBlocks();
+    if ((fileName != "") && (sideBar->getFileNames().contains(fileName))) {
+        sideBar->select(fileName);
+        sideBar->clearBlocks();
         for (int i = 0; i < graphicsInput->blocksCount(); i++)
-            ((FileToolBar *) m_toolBar)->setBlock(graphicsInput->getBlockRectByIndex(i));
+            sideBar->addBlock(graphicsInput->getBlockRectByIndex(i).toRect());
     }
     qreal xrotation = 0;
-    if (((FileToolBar *) m_toolBar)->fileLoaded(fn)) {
-        ((FileToolBar *) m_toolBar)->select(fn);
-        xrotation = ((FileToolBar *) m_toolBar)->getRotation(fn);
-        scaleFactor = ((FileToolBar *) m_toolBar)->getScale(fn);
+    if (sideBar->fileLoaded(fn)) {
+        sideBar->select(fn);
+        xrotation = sideBar->getRotation(fn);
+        scaleFactor = sideBar->getScale(fn);
     } else {
-        xrotation = ((FileToolBar *) m_toolBar)->getRotation();
-        scaleFactor = ((FileToolBar *) m_toolBar)->getScale();
+        xrotation = sideBar->getRotation();
+        scaleFactor = sideBar->getScale();
     }
 
     QPixmap pixmap;
     if ((imageLoaded = pixmap.load(fn))) {
-        ((FileToolBar *) m_toolBar)->addFile(pixmap, fn);
+        //pixmap.detach();
+        sideBar->addFile(fn , &pixmap);
     } else {
         setCursor(oldCursor);
         QMessageBox::critical(this, trUtf8("Image loading error"), trUtf8("Image %1 could not be loaded").arg(fn));
@@ -778,8 +784,8 @@ void MainForm::loadFile(const QString &fn, bool loadIntoView)
         if (scaleFactor == 0)
             scaleFactor = 1;
         graphicsInput->setViewScale(1, xrotation);
-        for (int i = 0; i < ((FileToolBar *) m_toolBar)->getBlocksCount(); i++)
-            graphicsInput->addBlock(((FileToolBar *) m_toolBar)->getBlock(i));
+        for (int i = 0; i < sideBar->getBlocksCount(); i++)
+            graphicsInput->addBlock(sideBar->getBlock(i));
         graphicsInput->setViewScale(scaleFactor, 0);
         // ((FileToolBar *) m_toolBar)->setRotation(xrotation);
         //  ((FileToolBar *) m_toolBar)->setScale(graphicsInput->getRealScale());
@@ -810,7 +816,7 @@ void MainForm::delTmpFiles()
 void MainForm::loadNext(int number)
 {
 
-    QStringList files = ((FileToolBar *)m_toolBar)->getFileNames();
+    QStringList files = sideBar->getFileNames();
     if (files.count() == 0)
         return;
     QString name = fileName;
@@ -822,7 +828,7 @@ void MainForm::loadNext(int number)
             if (files.indexOf(name) > 0)
                 name = files.at(files.indexOf(name) - 1);
         }
-        ((FileToolBar *)m_toolBar)->select(name);
+        sideBar->select(name);
         //QString path = extractFilePath(name);
         /*QString path = extractFilePath(fileName);
             QString digits = extractDigits(name);
@@ -1226,7 +1232,7 @@ void MainForm::fileSelected(const QString &path)
 
 void MainForm::recognizeAll()
 {
-    QStringList files = ((FileToolBar *)m_toolBar)->getFileNames();
+    QStringList files = sideBar->getFileNames();
     if (files.empty())
         recognize();
     else {
@@ -1442,12 +1448,53 @@ void MainForm::AnalizePage()
 void MainForm::on_actionDeskew_activated()
 {
    // AnalizePage();
-    QPixmap * pm = graphicsInput->getSmallImage();
+    {QPixmap * pm = graphicsInput->getSmallImage();
     if (pm) {
         CCBuilder * cb = new CCBuilder(pm);
+        cb->setGeneralBrightness(360);
+        cb->setMaximumColorComponent(100);
         cb->labelCCs();
+        CCAnalysis * an = new CCAnalysis(cb);
+        an->analize();
+        //for (int j = 0; j < an->getGlyphBoxCount(); j++) {
+         //   Rect r = an->getGlyphBox(j);
+           // graphicsInput->newBlock(QRect(2*r.x1, 2*r.y1, 2*r.x2-2*r.x1, 2*r.y2-2*r.y1));
+            //this->graphicsInput->addBlock(QRect(2*r.x1, 2*r.y1, 2*r.x2-2*r.x1, 2*r.y2-2*r.y1), false);
+        //}
+        graphicsInput->rotateImage(-atan(an->getK())*360/6.283, 0, 0);
+        delete an;
         delete cb;
     }
+    }
+    /*{QPixmap pm = graphicsInput->getCurrentImage();
+    if (!pm.isNull()) {
+        CCBuilder * cb = new CCBuilder(&pm);
+        cb->setGeneralBrightness(360);
+        cb->setMaximumColorComponent(100);
+        cb->labelCCs();
+        CCAnalysis * an = new CCAnalysis(cb);
+        an->analize();
+        //for (int j = 0; j < an->getGlyphBoxCount(); j++) {
+         //   Rect r = an->getGlyphBox(j);
+           // graphicsInput->newBlock(QRect(2*r.x1, 2*r.y1, 2*r.x2-2*r.x1, 2*r.y2-2*r.y1));
+            //this->graphicsInput->addBlock(QRect(2*r.x1, 2*r.y1, 2*r.x2-2*r.x1, 2*r.y2-2*r.y1), false);
+        //}
+   //     graphicsInput->rotateImage(-atan(an->getK())*360/6.283, 0, 0);
+        an->rotateLines(-atan(an->getK()));
+        Lines lines = an->getLines();
+        QPoint orig;
+        graphicsInput->imageOrigin(orig);
+        for (int i =0; i < lines.count(); i++) {
+            int x1 = orig.x() + lines.at(i).at(0).x();
+            int y1 = orig.y() + lines.at(i).at(0).y();
+            int x2 = orig.x() + lines.at(i).at(lines.at(i).count()-1).x();
+            int y2 = orig.y() + lines.at(i).at(lines.at(i).count()-1).y();
+            graphicsInput->drawLine(x1,y1,x2,y2);
+        }
+        delete an;
+        delete cb;
+    }
+    }*/
 }
 
 void MainForm::on_actionSelect_HTML_format_activated()

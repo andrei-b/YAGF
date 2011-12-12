@@ -88,13 +88,15 @@ bool QGraphicsInput::loadImage(const QPixmap &image, bool clearBlocks)
         this->removeItem(m_image);
         real_scale = 1;
     }
+    m_image = this->addPixmap(image);
+    QApplication::processEvents();
     old_pixmap = image;
     pm2 = image.scaledToWidth(image.width() / 2);
     pm4 = pm2.scaledToWidth(pm2.width() / 2);
     pm8 = pm4.scaledToWidth(pm4.width() / 2);
     pm16 = pm8.scaledToWidth(pm8.width() / 2);
     this->setSceneRect(image.rect());
-    m_image = this->addPixmap(image);
+
     m_realImage = this->addPixmap(image);
     m_realImage->setData(1, "image");
     m_realImage->hide();
@@ -103,7 +105,7 @@ bool QGraphicsInput::loadImage(const QPixmap &image, bool clearBlocks)
     m_image->setAcceptedMouseButtons(Qt::LeftButton | Qt::RightButton | Qt::MidButton);
     m_image->setAcceptHoverEvents(true);
     m_image->setData(1, "image");
-    //this->setSceneRect(0,0,2000,2000);
+    this->setSceneRect(0,0,m_realImage->pixmap().width(),m_realImage->pixmap().height());
     addToolBar();
     if (m_view) {
         m_view->centerOn(0, 0);
@@ -630,8 +632,8 @@ void QGraphicsInput::setToolBarVisible()
     } else {
         for (int i = 1; i < actionList.count(); i++)
             actionList.at(i)->setVisible(true);
-            toolbar->setMaximumWidth(290);
-            toolbar->setMinimumWidth(290);
+            toolbar->setMaximumWidth(320);
+            toolbar->setMinimumWidth(320);
             actionList.at(0)->setText(QString::fromUtf8("<<"));
     }
 }
@@ -701,4 +703,23 @@ void QGraphicsInput::keyPressEvent(QKeyEvent *keyEvent)
         //QApplication::
     }
 
+}
+
+void QGraphicsInput::drawLine(int x1, int y1, int x2, int y2)
+{
+
+    QPen pen(QColor("red"));
+    pen.setWidth(2);
+    this->addLine(x1, y1, x2, y2, pen);
+}
+
+void QGraphicsInput::imageOrigin(QPoint &p)
+{
+    p.setX(m_image->mapToScene(0,0).x());
+    p.setY(m_image->mapToScene(0,0).y());
+}
+
+QPixmap QGraphicsInput::getCurrentImage()
+{
+    return (m_image->pixmap());
 }

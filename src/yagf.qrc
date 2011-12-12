@@ -39,5 +39,6 @@
         <file>images/deskew2.png</file>
         <file>images/stock_new_html.png</file>
         <file>images/application_pdf.png</file>
+        <file>images/trashcan_full.png</file>
     </qresource>
 </RCC>

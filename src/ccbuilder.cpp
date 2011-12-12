@@ -19,6 +19,10 @@
 
 #include "ccbuilder.h"
 #include <QRgb>
+#define XDEBUG
+#ifdef XDEBUG
+#include <QtDebug>
+#endif
 
 CCBuilder::CCBuilder(QPixmap *pixmap, QObject *parent) :
     QObject(parent)
@@ -189,8 +193,10 @@ bool CCBuilder::isForeground(QRgb value)
     int maxc = qRed(value) > qGreen(value) ? qRed(value) : qGreen(value);
     if (maxc < qBlue(value))
 	maxc = qBlue(value);
-    if ((b >= generalBrightness) || (maxc >= maximumComponentBrightness))
+    //generalBrightness = (generalBrightness+b)/2;
+    if ((b >= generalBrightness))// || (maxc >= maximumComponentBrightness))
         return false;
+
     return true;
 }
 
@@ -227,6 +233,16 @@ void CCBuilder::forwardScan()
 
 int CCBuilder::labelCCs()
 {
+    quint64 acc =0;
+    for (int y =0; y < h; y++) {
+        QRgb * line = (QRgb *) image.scanLine(y);
+        for (int x = 0; x < w; x++) {
+            int b = qRed(line[x]) + qGreen(line[x]) + qBlue(line[x]);
+            acc += b;
+        }
+    }
+    acc =acc/(h*w);
+    setGeneralBrightness(acc);
     int count = 0;
     initialScan();
     didRecolor = true;

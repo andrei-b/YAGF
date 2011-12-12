@@ -140,7 +140,6 @@ private:
     QByteArray *ba;
     SpellChecker *spellChecker;
 //        int rotation;
-    QToolBar *m_toolBar;
     QMenu *m_menu;
     PDFExtractor * pdfx;
     QProgressDialog pdfPD;
