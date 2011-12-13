@@ -53,19 +53,21 @@ QGraphicsInput::~QGraphicsInput()
 
 void QGraphicsInput::addToolBar()
 {
-    toolbar = new QToolBar();
+    toolbar = new QToolBar(m_view);
     toolbar->setMouseTracking(false);
     toolbar->setMovable(false);
     toolbar->setWindowOpacity(0.75);
+    toolbar->move(0,0);
+    toolbar->setMinimumHeight(32);
     //toolbar->setCursor();
     actionList.at(0)->setText(QString::fromUtf8(">>"));
     setToolBarVisible();
-    QXtGraphicsProxyWidget * pw = new QXtGraphicsProxyWidget();
-    pw->setWidget(toolbar);
+    //QXtGraphicsProxyWidget * pw = new QXtGraphicsProxyWidget();
+    //pw->setWidget(toolbar);
 
-    pw->setZValue(100);
-    this->addItem(pw);
-    pw->setView((QXtGraphicsView *) views().at(0));
+    //pw->setZValue(100);
+    //this->addItem(pw);
+    //pw->setView((QXtGraphicsView *) views().at(0));
     //toolbar->setParent(0);
     toolbar->show();
     foreach (QAction * action, actionList) {
@@ -110,6 +112,7 @@ bool QGraphicsInput::loadImage(const QPixmap &image, bool clearBlocks)
     if (m_view) {
         m_view->centerOn(0, 0);
         m_view->show();
+        update();
         hasImage = true;
         return true;
     } else

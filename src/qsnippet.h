@@ -13,7 +13,7 @@ class QSnippet : public QListWidgetItem
 {
 public:
     explicit QSnippet(QListWidget *parent = 0);
-    void addFile(const QString &name, const QPixmap * pixmap = NULL);
+    bool addFile(const QString &name, const QPixmap * pixmap = NULL);
     void setRotation(int rot);
     int getRotation();
     void setScale(double sc);

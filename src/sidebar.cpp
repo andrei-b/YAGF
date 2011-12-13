@@ -95,9 +95,11 @@ bool SideBar::dropMimeData(int index, const QMimeData *data, Qt::DropAction acti
            fName = url.toLocalFile();
            info.setFile( fName );
 
-           snippet = new QSnippet(this);
-           snippet->addFile(fName);
-           insertItem(index, snippet);
+           snippet = new QSnippet(0);
+           if (snippet->addFile(fName))
+               insertItem(index, snippet);
+           else
+               delete snippet;
            ++index; // increment index to preserve drop order
        }
 

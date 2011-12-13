@@ -759,7 +759,7 @@ void MainForm::loadFile(const QString &fn, bool loadIntoView)
         xrotation = sideBar->getRotation(fn);
         scaleFactor = sideBar->getScale(fn);
     } else {
-        xrotation = sideBar->getRotation();
+        //xrotation = sideBar->getRotation();
         scaleFactor = sideBar->getScale();
     }
 
@@ -914,6 +914,12 @@ void MainForm::recognizeInternal(const QPixmap &pix)
 {
     const QString inputFile = "input.bmp";
     const QString outputFile = "output.txt";
+
+    QFile f(workingDir+inputFile);
+    f.remove();
+    f.setFileName(workingDir+outputFile);
+    f.remove();
+
     //outputFormat = selectFormatBox->itemData(selectFormatBox->currentIndex()).toString();
     QPixmapCache::clear();
     pix.save(workingDir + inputFile, "BMP");
@@ -1448,23 +1454,27 @@ void MainForm::AnalizePage()
 void MainForm::on_actionDeskew_activated()
 {
    // AnalizePage();
-    {QPixmap * pm = graphicsInput->getSmallImage();
-    if (pm) {
-        CCBuilder * cb = new CCBuilder(pm);
-        cb->setGeneralBrightness(360);
-        cb->setMaximumColorComponent(100);
-        cb->labelCCs();
-        CCAnalysis * an = new CCAnalysis(cb);
-        an->analize();
+    {
+        QPixmap * pm = graphicsInput->getSmallImage();
+        if (pm) {
+            QTransform tr;
+            tr.rotate(graphicsInput->getRealAngle());
+            QPixmap pm1 = pm->transformed(tr);
+            CCBuilder * cb = new CCBuilder(&pm1);
+            cb->setGeneralBrightness(360);
+            cb->setMaximumColorComponent(100);
+            cb->labelCCs();
+            CCAnalysis * an = new CCAnalysis(cb);
+            an->analize();
         //for (int j = 0; j < an->getGlyphBoxCount(); j++) {
          //   Rect r = an->getGlyphBox(j);
            // graphicsInput->newBlock(QRect(2*r.x1, 2*r.y1, 2*r.x2-2*r.x1, 2*r.y2-2*r.y1));
             //this->graphicsInput->addBlock(QRect(2*r.x1, 2*r.y1, 2*r.x2-2*r.x1, 2*r.y2-2*r.y1), false);
         //}
-        graphicsInput->rotateImage(-atan(an->getK())*360/6.283, 0, 0);
-        delete an;
-        delete cb;
-    }
+            rotateImage(-atan(an->getK())*360/6.283);
+            delete an;
+            delete cb;
+        }
     }
     /*{QPixmap pm = graphicsInput->getCurrentImage();
     if (!pm.isNull()) {

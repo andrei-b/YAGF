@@ -8,14 +8,19 @@ QSnippet::QSnippet(QListWidget *parent) :
 
 }
 
-void QSnippet::addFile(const QString &name, const QPixmap *pixmap)
+bool QSnippet::addFile(const QString &name, const QPixmap *pixmap)
 {
-    if (!pixmap)
-        setIcon(QPixmap(name));
+    if (!pixmap) {
+        QPixmap pm(name);
+        if (pm.isNull())
+            return false;
+        setIcon(pm);
+    }
     else
         setIcon(*pixmap);
     this->name = name;
     setToolTip(name);
+    return true;
 }
 
 void QSnippet::setRotation(int rot)
