@@ -72,7 +72,6 @@
 #include <QFont>
 #include <QImageReader>
 
-
 const QString version = "0.8.7";
 const QString outputBase = "output";
 const QString outputExt = ".txt";
@@ -742,6 +741,21 @@ void MainForm::scanImage()
         scanProcess->start("xsane", sl);
 //      proc.waitForFinished(-1);
     }
+}
+
+void MainForm::loadFile(const QString &fn, const QPixmap &pixmap)
+{
+    sideBar->addFile(fn , &pixmap);
+    fileName = fn;
+    setWindowTitle("YAGF - " + extractFileName(fileName));
+    graphicsInput->loadImage(pixmap);
+    graphicsInput->setViewScale(1, 0);
+    scaleFactor = 1;
+    if (pixmap.width() > 4000)
+            scaleImage(0.25);
+     else if (pixmap.width() > 2000)
+          scaleImage(0.5);
+    graphicsInput->setFocus();
 }
 
 void MainForm::loadFile(const QString &fn, bool loadIntoView)
@@ -1517,4 +1531,31 @@ void MainForm::on_actionSelect_HTML_format_activated()
             outputFormat = "html";
         else
             outputFormat = "text";
+}
+
+void MainForm::pasteimage()
+{
+    QClipboard *clipboard = QApplication::clipboard();
+    QPixmap pm = clipboard->pixmap();
+    if (pm.isNull()) return;
+    QCursor oldCursor = cursor();
+    setCursor(Qt::WaitCursor);
+    QString tmpFile = "input-01.jpg";
+    QFileInfo fi(workingDir + tmpFile);
+    while (fi.exists()) {
+        QString digits = extractDigits(tmpFile);
+        bool result;
+        int d = digits.toInt(&result);
+        if (!result) return;
+        d++;
+        if (d < 0) d = 0;
+        QString newDigits = QString::number(d);
+        while (newDigits.size() < digits.size())
+            newDigits = '0' + newDigits;
+        tmpFile = tmpFile.replace(digits, newDigits);
+        fi.setFile(workingDir, tmpFile);
+    }
+    pm.save(fi.absoluteFilePath(), "JPEG");
+    loadFile(fi.absoluteFilePath());
+    setCursor(oldCursor);
 }

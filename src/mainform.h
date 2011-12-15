@@ -95,6 +95,7 @@ private slots:
     void showConfigDlg();
     void addPDFPage(QString pageName);
     void finishedPDF();
+    void pasteimage();
 protected:
     bool eventFilter(QObject *object, QEvent *event);
 private:
@@ -107,6 +108,7 @@ private:
     void writeSettings();
     void fillLanguagesBox();
     void loadFile(const QString &fn, bool loadIntoView = true);
+    void loadFile(const QString &fn, const QPixmap &pixmap);
     void delTmpFiles();
     void loadNext(int number);
     void saveHtml(QFile *file);

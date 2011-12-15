@@ -478,6 +478,7 @@
     </property>
     <addaction name="actionOpen"/>
     <addaction name="actionScan"/>
+    <addaction name="actionPaste_Image"/>
     <addaction name="actionImport_from_PDF"/>
     <addaction name="separator"/>
     <addaction name="actionRecognize"/>
@@ -538,6 +539,7 @@
    </attribute>
    <addaction name="actionOpen"/>
    <addaction name="actionScan"/>
+   <addaction name="actionPaste_Image"/>
    <addaction name="actionPreviousPage"/>
    <addaction name="actionNextPage"/>
    <addaction name="separator"/>
@@ -893,6 +895,18 @@
     <string>Set up the OCR parameters</string>
    </property>
   </action>
+  <action name="actionPaste_Image">
+   <property name="icon">
+    <iconset resource="yagf.qrc">
+     <normaloff>:/images/edit_paste.png</normaloff>:/images/edit_paste.png</iconset>
+   </property>
+   <property name="text">
+    <string>Paste Image</string>
+   </property>
+   <property name="toolTip">
+    <string>Paste image from clipboard</string>
+   </property>
+  </action>
  </widget>
  <customwidgets>
   <customwidget>
@@ -1043,6 +1057,22 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>actionPaste_Image</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>pasteimage()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>959</x>
+     <y>568</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <slot>rotateCWButtonClicked()</slot>
@@ -1053,5 +1083,6 @@
   <slot>hideToolBar()</slot>
   <slot>importPDF()</slot>
   <slot>showConfigDlg()</slot>
+  <slot>pasteimage()</slot>
  </slots>
 </ui>
