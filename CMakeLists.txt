@@ -2,11 +2,12 @@ project(yagf C CXX)
 cmake_minimum_required(VERSION 2.6.0)
 set(SOURCES src/main.cpp src/mainform.cpp src/qgraphicsinput.cpp src/utils.cpp src/FileChannel.cpp src/spellchecker.cpp src/BlockAnalysis.cpp src/PageAnalysis.cpp
     src/SkewAnalysis.cpp src/CCAnalysis.cpp src/qxtgraphicsproxywidget.cpp src/popplerdialog.cpp src/pdfextractor.cpp src/pdf2ppt.cpp src/ghostscr.cpp 
-    src/configdialog.cpp src/ccbuilder.cpp src/analysis.cpp src/qsnippet.cpp src/sidebar.cpp src/droplabel.cpp)
+    src/configdialog.cpp src/ccbuilder.cpp src/analysis.cpp src/qsnippet.cpp src/sidebar.cpp src/droplabel.cpp src/projectmanager.cpp)
 set(INT_SOURCES src/preload.c)
 set(UIS src/mainform.ui src/popplerdialog.ui src/configdialog.ui)
 set(MOC_HEADERS src/mainform.h src/FileChannel.h src/qgraphicsinput.h src/qxtgraphicsproxywidget.h src/qxtgraphicsview.h
-    src/popplerdialog.h src/pdfextractor.h src/pdf2ppt.h src/configdialog.h src/ccbuilder.h src/qsnippet.h src/sidebar.h src/droplabel.h)
+    src/popplerdialog.h src/pdfextractor.h src/pdf2ppt.h src/configdialog.h src/ccbuilder.h src/qsnippet.h src/sidebar.h
+    src/droplabel.h src/projectmanager.h)
 set (yagf_RCCS src/yagf.qrc)
 set(QM_FILES ${CMAKE_BINARY_DIR}/yagf_ru.qm ${CMAKE_BINARY_DIR}/yagf_lt.qm ${CMAKE_BINARY_DIR}/yagf_de.qm ${CMAKE_BINARY_DIR}/yagf_pl.qm ${CMAKE_BINARY_DIR}/yagf_uk.qm)
 set (LIB_PATH_SUFFIX )

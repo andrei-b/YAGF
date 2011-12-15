@@ -114,6 +114,7 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
     graphicsInput->addToolBarAction(actionRotate_90_CCW);
     graphicsInput->addToolBarAction(actionRotate_180);
     graphicsInput->addToolBarAction(actionRotate_90_CW);
+    graphicsInput->addToolBarAction(actionDeskew);
     graphicsInput->addToolBarSeparator();
     graphicsInput->addToolBarAction(ActionClearAllBlocks);
 
@@ -1455,6 +1456,8 @@ void MainForm::on_actionDeskew_activated()
 {
    // AnalizePage();
     {
+        QCursor oldCursor = cursor();
+        setCursor(Qt::WaitCursor);
         QPixmap * pm = graphicsInput->getSmallImage();
         if (pm) {
             QTransform tr;
@@ -1475,6 +1478,7 @@ void MainForm::on_actionDeskew_activated()
             delete an;
             delete cb;
         }
+        setCursor(oldCursor);
     }
     /*{QPixmap pm = graphicsInput->getCurrentImage();
     if (!pm.isNull()) {

@@ -541,7 +541,6 @@
    <addaction name="actionPreviousPage"/>
    <addaction name="actionNextPage"/>
    <addaction name="separator"/>
-   <addaction name="actionDeskew"/>
    <addaction name="actionRecognize"/>
    <addaction name="actionRecognize_All_Pages"/>
    <addaction name="separator"/>
@@ -702,7 +701,7 @@
   <action name="ActionClearAllBlocks">
    <property name="icon">
     <iconset resource="yagf.qrc">
-     <normaloff>:/images/trashcan1s.png</normaloff>:/images/trashcan1s.png</iconset>
+     <normaloff>:/images/clearblocks.png</normaloff>:/images/clearblocks.png</iconset>
    </property>
    <property name="text">
     <string>Clear all blocks</string>
