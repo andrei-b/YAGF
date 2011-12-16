@@ -72,7 +72,7 @@
 #include <QFont>
 #include <QImageReader>
 
-const QString version = "0.8.7";
+const QString version = "0.8.9";
 const QString outputBase = "output";
 const QString outputExt = ".txt";
 
