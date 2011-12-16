@@ -1,4 +1,6 @@
-<!DOCTYPE TS><TS>
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE TS>
+<TS version="2.0" language="ru_RU" sourcelanguage="en">
 <context>
     <name>ConfigDialog</name>
     <message>
@@ -27,49 +29,6 @@
     </message>
 </context>
 <context>
-    <name>FileToolBar</name>
-    <message>
-        <source>Loaded Images</source>
-        <translation>Загруженные изображения</translation>
-    </message>
-    <message>
-        <source>Drop graphic files here</source>
-        <translation>Вы можете перетащить графические файлы сюда</translation>
-    </message>
-    <message>
-        <source>Clear</source>
-        <translation>Очистить</translation>
-    </message>
-    <message>
-        <source>Clear the panel</source>
-        <translation>Очистить панель</translation>
-    </message>
-    <message>
-        <source>Save...</source>
-        <translation>Сохранить...</translation>
-    </message>
-    <message>
-        <source>Save all the files</source>
-        <translation>Сохранить все файлы</translation>
-    </message>
-    <message>
-        <source>Remove the current file</source>
-        <translation>Удалить выбранный файл</translation>
-    </message>
-    <message>
-        <source>Select a directory</source>
-        <translation>Выберите директорию</translation>
-    </message>
-    <message>
-        <source>File %1 already exists. Do you want to replace it?</source>
-        <translation>Файл %1 уже существует. Заменить?</translation>
-    </message>
-    <message>
-        <source>Remove</source>
-        <translation>Убрать</translation>
-    </message>
-</context>
-<context encoding="UTF-8">
     <name>MainForm</name>
     <message>
         <source>Recognition language</source>
@@ -256,36 +215,36 @@
         <translation>Сохранить изображение</translation>
     </message>
     <message>
-        <source>Undo<byte value="x9"/>Ctrl+Z</source>
-        <translation>Отменить<byte value="x9"/>Ctrl+Z</translation>
+        <source>Undo	Ctrl+Z</source>
+        <translation>Отменить	Ctrl+Z</translation>
     </message>
     <message>
-        <source>Redo<byte value="x9"/>Ctrl+Shift+Z</source>
-        <translation>Вернуть<byte value="x9"/>Ctrl+Shift+Z</translation>
+        <source>Redo	Ctrl+Shift+Z</source>
+        <translation>Вернуть	Ctrl+Shift+Z</translation>
     </message>
     <message>
-        <source>Select All<byte value="x9"/>Ctrl+A</source>
-        <translation>Выделить все<byte value="x9"/>Ctrl+A</translation>
+        <source>Select All	Ctrl+A</source>
+        <translation>Выделить все	Ctrl+A</translation>
     </message>
     <message>
-        <source>Cut<byte value="x9"/>Ctrl+X</source>
-        <translation>Вырезать<byte value="x9"/>Ctrl+X</translation>
+        <source>Cut	Ctrl+X</source>
+        <translation>Вырезать	Ctrl+X</translation>
     </message>
     <message>
-        <source>Larger Font<byte value="x9"/>Ctrl++</source>
-        <translation>Увеличить шрифт<byte value="x9"/>Ctrl++</translation>
+        <source>Larger Font	Ctrl++</source>
+        <translation>Увеличить шрифт	Ctrl++</translation>
     </message>
     <message>
-        <source>Smaller Font<byte value="x9"/>Ctrl+-</source>
-        <translation>Уменьшить шрифт<byte value="x9"/>Ctrl+-</translation>
+        <source>Smaller Font	Ctrl+-</source>
+        <translation>Уменьшить шрифт	Ctrl+-</translation>
     </message>
     <message>
-        <source>Copy<byte value="x9"/>Ctrl+C</source>
-        <translation>Копировать<byte value="x9"/>Ctrl+C</translation>
+        <source>Copy	Ctrl+C</source>
+        <translation>Копировать	Ctrl+C</translation>
     </message>
     <message>
-        <source>Paste<byte value="x9"/>Ctrl+V</source>
-        <translation>Вставить<byte value="x9"/>Ctrl+V</translation>
+        <source>Paste	Ctrl+V</source>
+        <translation>Вставить	Ctrl+V</translation>
     </message>
     <message>
         <source>Recognizing pages...</source>
@@ -365,7 +324,7 @@ Please install either cuneiform or tesseract</source>
         <source>tesseract not found, switching to cuneiform</source>
         <translation>Программа tesseract не найдена, переключаемся на cuneiform</translation>
     </message>
-    <message encoding="UTF-8">
+    <message utf8="true">
         <source>&lt;p align=&quot;center&quot;&gt;&lt;b&gt;YAGF - Yet Another Graphical Front-end for cuneiform and tesseract OCR engines&lt;/b&gt;&lt;/p&gt;&lt;p align=&quot;center&quot;&gt;Version %1&lt;/p&gt; &lt;p align=&quot;center&quot;&gt;Ⓒ 2009-2011 Andrei Borovsky&lt;/p&gt; This is a free software distributed under GPL v3. Visit &lt;a href=&quot;http://symmetrica.net/cuneiform-linux/yagf-en.html&quot;&gt;http://symmetrica.net/cuneiform-linux/yagf-en.html&lt;/a&gt; for more details.</source>
         <translation>&lt;p align=&quot;center&quot;&gt;&lt;b&gt;YAGF - Графическая оболочка для программ распознавания текста cuneiform и tesseract&lt;/b&gt;&lt;/p&gt;&lt;p align=&quot;center&quot;&gt;Версия %1&lt;/p&gt; &lt;p align=&quot;center&quot;&gt;Ⓒ 2009-2011 Андрей Боровский&lt;/p&gt; YAGF - открытое программное обеспечение, которое распространяется на условиях лицензии GPL v3. Вы найдете подробности на странице &lt;a href=&quot;http://symmetrica.net/cuneiform-linux/yagf-en.html&quot;&gt;http://symmetrica.net/cuneiform-linux/yagf-ru.html&lt;/a&gt;.</translation>
     </message>
@@ -600,6 +559,22 @@ Please install either cuneiform or tesseract</source>
         <source>Set up the OCR parameters</source>
         <translation>Установить параметры программ распознавания</translation>
     </message>
+    <message>
+        <source>toolBar_3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Paste Image</source>
+        <translation>Вставить изображение</translation>
+    </message>
+    <message>
+        <source>Paste image from clipboard</source>
+        <translation>Вставить страницу из буфера обмена</translation>
+    </message>
+    <message>
+        <source>Select Text Area</source>
+        <translation>Автоматически выделить текстовую область</translation>
+    </message>
 </context>
 <context>
     <name>PopplerDialog</name>
@@ -653,6 +628,13 @@ Try to install an appropriate aspell dictionary.</source>
         <translation>Требуемый орфографический словарь (%1) не найден.
 Проверка орфографии будет отключена.
 Попробуйте установить соответствующий словарь aspell.</translation>
+    </message>
+</context>
+<context>
+    <name>SideBar</name>
+    <message>
+        <source>Drop files here</source>
+        <translation>Перетащите файлы сюда</translation>
     </message>
 </context>
 </TS>
