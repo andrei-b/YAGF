@@ -564,6 +564,17 @@
     <bool>false</bool>
    </attribute>
   </widget>
+  <widget class="QToolBar" name="toolBar_3">
+   <property name="windowTitle">
+    <string>toolBar_3</string>
+   </property>
+   <attribute name="toolBarArea">
+    <enum>TopToolBarArea</enum>
+   </attribute>
+   <attribute name="toolBarBreak">
+    <bool>false</bool>
+   </attribute>
+  </widget>
   <action name="actionScan">
    <property name="icon">
     <iconset resource="yagf.qrc">
@@ -907,6 +918,18 @@
     <string>Paste image from clipboard</string>
    </property>
   </action>
+  <action name="actionSelect_Text_Area">
+   <property name="icon">
+    <iconset resource="yagf.qrc">
+     <normaloff>:/images/selecttext.png</normaloff>:/images/selecttext.png</iconset>
+   </property>
+   <property name="text">
+    <string>Select Text Area</string>
+   </property>
+   <property name="toolTip">
+    <string>Select Text Area</string>
+   </property>
+  </action>
  </widget>
  <customwidgets>
   <customwidget>
@@ -1073,6 +1096,22 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>actionSelect_Text_Area</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>blockAllText()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>959</x>
+     <y>568</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <slot>rotateCWButtonClicked()</slot>
@@ -1084,5 +1123,6 @@
   <slot>importPDF()</slot>
   <slot>showConfigDlg()</slot>
   <slot>pasteimage()</slot>
+  <slot>blockAllText()</slot>
  </slots>
 </ui>

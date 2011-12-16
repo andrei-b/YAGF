@@ -122,9 +122,11 @@ void CCAnalysis::extractComponents()
         hacc +=(r.y2 - r.y1);
         count++;
     }
+    if (count == 0) return;
     wmed = wacc/count;
     hmed = hacc/count;
     mediumGlyphWidth = wmed;
+    mediumGlyphHeight = hmed;
 }
 
 int CCAnalysis::getGlyphBoxCount()
@@ -236,5 +238,15 @@ void CCAnalysis::rotateLines(qreal phi, const QPoint &c)
         }
         lines.replace(i, l);
     }
+}
+
+int CCAnalysis::getMediumGlyphWidth()
+{
+    return mediumGlyphWidth;
+}
+
+int CCAnalysis::getMediumGlyphHeight()
+{
+    return mediumGlyphHeight;
 }
 

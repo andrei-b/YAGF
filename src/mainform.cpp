@@ -115,6 +115,7 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
     graphicsInput->addToolBarAction(actionRotate_90_CW);
     graphicsInput->addToolBarAction(actionDeskew);
     graphicsInput->addToolBarSeparator();
+   graphicsInput->addToolBarAction(actionSelect_Text_Area);
     graphicsInput->addToolBarAction(ActionClearAllBlocks);
 
     statusBar()->show();
@@ -1494,35 +1495,6 @@ void MainForm::on_actionDeskew_activated()
         }
         setCursor(oldCursor);
     }
-    /*{QPixmap pm = graphicsInput->getCurrentImage();
-    if (!pm.isNull()) {
-        CCBuilder * cb = new CCBuilder(&pm);
-        cb->setGeneralBrightness(360);
-        cb->setMaximumColorComponent(100);
-        cb->labelCCs();
-        CCAnalysis * an = new CCAnalysis(cb);
-        an->analize();
-        //for (int j = 0; j < an->getGlyphBoxCount(); j++) {
-         //   Rect r = an->getGlyphBox(j);
-           // graphicsInput->newBlock(QRect(2*r.x1, 2*r.y1, 2*r.x2-2*r.x1, 2*r.y2-2*r.y1));
-            //this->graphicsInput->addBlock(QRect(2*r.x1, 2*r.y1, 2*r.x2-2*r.x1, 2*r.y2-2*r.y1), false);
-        //}
-   //     graphicsInput->rotateImage(-atan(an->getK())*360/6.283, 0, 0);
-        an->rotateLines(-atan(an->getK()));
-        Lines lines = an->getLines();
-        QPoint orig;
-        graphicsInput->imageOrigin(orig);
-        for (int i =0; i < lines.count(); i++) {
-            int x1 = orig.x() + lines.at(i).at(0).x();
-            int y1 = orig.y() + lines.at(i).at(0).y();
-            int x2 = orig.x() + lines.at(i).at(lines.at(i).count()-1).x();
-            int y2 = orig.y() + lines.at(i).at(lines.at(i).count()-1).y();
-            graphicsInput->drawLine(x1,y1,x2,y2);
-        }
-        delete an;
-        delete cb;
-    }
-    }*/
 }
 
 void MainForm::on_actionSelect_HTML_format_activated()
@@ -1558,4 +1530,57 @@ void MainForm::pasteimage()
     pm.save(fi.absoluteFilePath(), "JPEG");
     loadFile(fi.absoluteFilePath());
     setCursor(oldCursor);
+}
+
+void MainForm::blockAllText()
+{
+    QPixmap pm = graphicsInput->getCurrentImage();
+    if (!pm.isNull()) {
+        CCBuilder * cb = new CCBuilder(&pm);
+        cb->setGeneralBrightness(360);
+        cb->setMaximumColorComponent(100);
+        cb->labelCCs();
+        CCAnalysis * an = new CCAnalysis(cb);
+        an->analize();
+ //       an->rotateLines(-atan(an->getK()));
+        Lines lines = an->getLines();
+        foreach(TextLine l, lines)
+            if (l.count() < 2)
+                lines.removeOne(l);
+        QPoint orig;
+        graphicsInput->imageOrigin(orig);
+        int minX = 100000;
+        int minY = 100000;
+        int maxX = 0;
+        int maxY = 0;
+        for (int i =0; i < lines.count(); i++) {
+            int x1 = lines.at(i).at(0).x();
+            int y1 = lines.at(i).at(0).y();
+            int x2 = lines.at(i).at(lines.at(i).count()-1).x();
+            int y2 = lines.at(i).at(lines.at(i).count()-1).y();
+            //graphicsInput->drawLine(x1,y1,x2,y2);
+            if (x1 > x2) {
+                x2 = x1 + x2;
+                x1 = x2 - x1;
+                x2 = x2 - x1;
+            }
+            minX = minX < x1 ? minX : x1;
+            maxX = maxX > x2 ? maxX : x2;
+            if (y1 > y2) {
+                y2 = y1 + y2;
+                y1 = y2 - y1;
+                y2 = y2 - y1;
+            }
+            minY = minY < y1 ? minY : y1;
+            maxY = maxY > y2 ? maxY : y2;
+        }
+        minX = minX  - 2*an->getMediumGlyphWidth();
+        maxX =maxX + 2*an->getMediumGlyphWidth();
+        minY = minY - 2*an->getMediumGlyphHeight();
+        maxY = maxY + 2*an->getMediumGlyphHeight();
+        graphicsInput->clearBlocks();
+        graphicsInput->addBlock(QRectF(minX, minY, maxX-minX, maxY-minY));
+        delete an;
+        delete cb;
+    }
 }

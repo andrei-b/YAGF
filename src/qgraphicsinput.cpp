@@ -452,8 +452,8 @@ void QGraphicsInput::setViewScale(qreal scale, qreal angle)
     qreal x = width() / 2;
     qreal y = height() / 2;
     real_rotate += angle;
-    m_image->setPixmap(m_image->pixmap().transformed(QTransform().translate(-x, -y).rotate(real_rotate).translate(x, y)));
-    m_realImage->setPixmap(m_realImage->pixmap().transformed(QTransform().translate(-x, -y).rotate(angle).translate(x, y)));
+    m_image->setPixmap(m_image->pixmap().transformed(QTransform().translate(-x, -y).rotate(real_rotate).translate(x, y), Qt::SmoothTransformation));
+    m_realImage->setPixmap(m_realImage->pixmap().transformed(QTransform().translate(-x, -y).rotate(angle).translate(x, y), Qt::SmoothTransformation));
     m_rotate = angle;
     m_image->show();
     m_view->centerOn(0, 0);
@@ -635,8 +635,8 @@ void QGraphicsInput::setToolBarVisible()
     } else {
         for (int i = 1; i < actionList.count(); i++)
             actionList.at(i)->setVisible(true);
-            toolbar->setMaximumWidth(320);
-            toolbar->setMinimumWidth(320);
+            toolbar->setMaximumWidth(380);
+            toolbar->setMinimumWidth(380);
             actionList.at(0)->setText(QString::fromUtf8("<<"));
     }
 }

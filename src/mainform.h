@@ -96,6 +96,7 @@ private slots:
     void addPDFPage(QString pageName);
     void finishedPDF();
     void pasteimage();
+    void blockAllText();
 protected:
     bool eventFilter(QObject *object, QEvent *event);
 private:
