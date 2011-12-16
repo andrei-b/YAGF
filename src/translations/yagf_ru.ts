@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
-<TS version="2.0" language="ru_RU" sourcelanguage="en">
+<TS version="2.0" language="ru_RU">
 <context>
     <name>ConfigDialog</name>
     <message>
@@ -532,10 +532,6 @@ Please install either cuneiform or tesseract</source>
         <translation>&amp;Настройки</translation>
     </message>
     <message>
-        <source>toolBar_2</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>&lt;&lt;</source>
         <translation type="unfinished"></translation>
     </message>
@@ -560,10 +556,6 @@ Please install either cuneiform or tesseract</source>
         <translation>Установить параметры программ распознавания</translation>
     </message>
     <message>
-        <source>toolBar_3</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Paste Image</source>
         <translation>Вставить изображение</translation>
     </message>
@@ -574,6 +566,14 @@ Please install either cuneiform or tesseract</source>
     <message>
         <source>Select Text Area</source>
         <translation>Автоматически выделить текстовую область</translation>
+    </message>
+    <message>
+        <source>Deskew  Block</source>
+        <translation>Выровнять блок</translation>
+    </message>
+    <message>
+        <source>Deskew the current block</source>
+        <translation>Выровнять выделенный блок</translation>
     </message>
 </context>
 <context>

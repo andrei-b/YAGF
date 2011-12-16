@@ -242,6 +242,14 @@ int CCBuilder::labelCCs()
         }
     }
     acc =acc/(h*w);
+
+    /* ADHOC
+
+      */
+    if (acc < 200)
+        acc +=80;
+
+
     setGeneralBrightness(acc);
     int count = 0;
     initialScan();

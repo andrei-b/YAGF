@@ -529,10 +529,6 @@ Please install either cuneiform or tesseract</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>toolBar_2</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>&lt;&lt;</source>
         <translation type="unfinished"></translation>
     </message>
@@ -557,10 +553,6 @@ Please install either cuneiform or tesseract</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>toolBar_3</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Paste Image</source>
         <translation type="unfinished"></translation>
     </message>
@@ -570,6 +562,14 @@ Please install either cuneiform or tesseract</source>
     </message>
     <message>
         <source>Select Text Area</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Deskew  Block</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Deskew the current block</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

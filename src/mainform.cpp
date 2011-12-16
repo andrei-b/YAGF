@@ -1303,6 +1303,7 @@ void MainForm::rightMouseClicked(int x, int y, bool inTheBlock)
         m_menu->addAction(ActionDeleteBlock);
         m_menu->addAction(actionRecognize_block);
         m_menu->addAction(actionSave_block);
+        m_menu->addAction(actionDeskew_by_Block);
     }
     QPoint p = graphicsView->mapToGlobal(QPoint(x, y));
     m_menu->move(p);
@@ -1474,25 +1475,7 @@ void MainForm::on_actionDeskew_activated()
         QCursor oldCursor = cursor();
         setCursor(Qt::WaitCursor);
         QPixmap * pm = graphicsInput->getSmallImage();
-        if (pm) {
-            QTransform tr;
-            tr.rotate(graphicsInput->getRealAngle());
-            QPixmap pm1 = pm->transformed(tr);
-            CCBuilder * cb = new CCBuilder(&pm1);
-            cb->setGeneralBrightness(360);
-            cb->setMaximumColorComponent(100);
-            cb->labelCCs();
-            CCAnalysis * an = new CCAnalysis(cb);
-            an->analize();
-        //for (int j = 0; j < an->getGlyphBoxCount(); j++) {
-         //   Rect r = an->getGlyphBox(j);
-           // graphicsInput->newBlock(QRect(2*r.x1, 2*r.y1, 2*r.x2-2*r.x1, 2*r.y2-2*r.y1));
-            //this->graphicsInput->addBlock(QRect(2*r.x1, 2*r.y1, 2*r.x2-2*r.x1, 2*r.y2-2*r.y1), false);
-        //}
-            rotateImage(-atan(an->getK())*360/6.283);
-            delete an;
-            delete cb;
-        }
+        deskew(pm);
         setCursor(oldCursor);
     }
 }
@@ -1534,6 +1517,7 @@ void MainForm::pasteimage()
 
 void MainForm::blockAllText()
 {
+    //this->enlargeButtonClicked();
     QPixmap pm = graphicsInput->getCurrentImage();
     if (!pm.isNull()) {
         CCBuilder * cb = new CCBuilder(&pm);
@@ -1545,7 +1529,7 @@ void MainForm::blockAllText()
  //       an->rotateLines(-atan(an->getK()));
         Lines lines = an->getLines();
         foreach(TextLine l, lines)
-            if (l.count() < 2)
+            if (l.count() < 3)
                 lines.removeOne(l);
         QPoint orig;
         graphicsInput->imageOrigin(orig);
@@ -1558,7 +1542,7 @@ void MainForm::blockAllText()
             int y1 = lines.at(i).at(0).y();
             int x2 = lines.at(i).at(lines.at(i).count()-1).x();
             int y2 = lines.at(i).at(lines.at(i).count()-1).y();
-            //graphicsInput->drawLine(x1,y1,x2,y2);
+            graphicsInput->drawLine(x1,y1,x2,y2);
             if (x1 > x2) {
                 x2 = x1 + x2;
                 x1 = x2 - x1;
@@ -1580,7 +1564,38 @@ void MainForm::blockAllText()
         maxY = maxY + 2*an->getMediumGlyphHeight();
         graphicsInput->clearBlocks();
         graphicsInput->addBlock(QRectF(minX, minY, maxX-minX, maxY-minY));
+        //this->decreaseButtonClicked();
         delete an;
         delete cb;
     }
+}
+
+void MainForm::deskew(QPixmap *pm)
+{
+    if (pm) {
+        QTransform tr;
+        tr.rotate(graphicsInput->getRealAngle());
+        QPixmap pm1 = pm->transformed(tr);
+        CCBuilder * cb = new CCBuilder(&pm1);
+        cb->setGeneralBrightness(360);
+        cb->setMaximumColorComponent(100);
+        cb->labelCCs();
+        CCAnalysis * an = new CCAnalysis(cb);
+        an->analize();
+    //for (int j = 0; j < an->getGlyphBoxCount(); j++) {
+     //   Rect r = an->getGlyphBox(j);
+       // graphicsInput->newBlock(QRect(2*r.x1, 2*r.y1, 2*r.x2-2*r.x1, 2*r.y2-2*r.y1));
+        //this->graphicsInput->addBlock(QRect(2*r.x1, 2*r.y1, 2*r.x2-2*r.x1, 2*r.y2-2*r.y1), false);
+    //}
+        rotateImage(-atan(an->getK())*360/6.283);
+        delete an;
+        delete cb;
+    }
+}
+
+void MainForm::deskewByBlock()
+{
+    if (graphicsInput->getCurrentBlock().isNull())
+        return;
+    deskew(&(graphicsInput->getCurrentBlock()));
 }

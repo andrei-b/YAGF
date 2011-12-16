@@ -97,10 +97,12 @@ private slots:
     void finishedPDF();
     void pasteimage();
     void blockAllText();
+    void deskewByBlock();
 protected:
     bool eventFilter(QObject *object, QEvent *event);
 private:
     virtual void closeEvent(QCloseEvent *event);
+    void deskew(QPixmap * pm);
     void AnalizePage();
     void rotateImage(int deg);
     void scaleImage(double sf);
