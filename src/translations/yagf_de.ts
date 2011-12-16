@@ -509,14 +509,6 @@ Please install either cuneiform or tesseract</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Remove page skew</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Tries to correct the page skew (this is an experimental feature)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Select HTML format</source>
         <translation type="unfinished"></translation>
     </message>
@@ -570,6 +562,14 @@ Please install either cuneiform or tesseract</source>
     </message>
     <message>
         <source>Deskew the current block</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Deskew</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Correct the page skew </source>
         <translation type="unfinished"></translation>
     </message>
 </context>

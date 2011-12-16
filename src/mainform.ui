@@ -775,10 +775,10 @@
      <normaloff>:/images/deskew2.png</normaloff>:/images/deskew2.png</iconset>
    </property>
    <property name="text">
-    <string>Remove page skew</string>
+    <string>Deskew</string>
    </property>
    <property name="toolTip">
-    <string>Tries to correct the page skew (this is an experimental feature)</string>
+    <string>Correct the page skew </string>
    </property>
   </action>
   <action name="actionSelect_HTML_format">

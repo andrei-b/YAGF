@@ -436,14 +436,6 @@ Please install either cuneiform or tesseract</source>
         <translation>Сохранить этот блок в графическом файле</translation>
     </message>
     <message>
-        <source>Remove page skew</source>
-        <translation>Исправить наклон страницы</translation>
-    </message>
-    <message>
-        <source>Tries to correct the page skew (this is an experimental feature)</source>
-        <translation>Пытается исправить наклон страницы (эта опция находится на стадии тестирования)</translation>
-    </message>
-    <message>
         <source>Select HTML format</source>
         <translation>Выбрать формат HTML</translation>
     </message>
@@ -574,6 +566,14 @@ Please install either cuneiform or tesseract</source>
     <message>
         <source>Deskew the current block</source>
         <translation>Выровнять выделенный блок</translation>
+    </message>
+    <message>
+        <source>Deskew</source>
+        <translation>Выровнять</translation>
+    </message>
+    <message>
+        <source>Correct the page skew </source>
+        <translation>Исправить наклон страницы</translation>
     </message>
 </context>
 <context>
