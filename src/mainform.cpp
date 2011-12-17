@@ -1542,7 +1542,7 @@ void MainForm::blockAllText()
             int y1 = lines.at(i).at(0).y();
             int x2 = lines.at(i).at(lines.at(i).count()-1).x();
             int y2 = lines.at(i).at(lines.at(i).count()-1).y();
-            graphicsInput->drawLine(x1,y1,x2,y2);
+            //graphicsInput->drawLine(x1,y1,x2,y2);
             if (x1 > x2) {
                 x2 = x1 + x2;
                 x1 = x2 - x1;
@@ -1595,7 +1595,10 @@ void MainForm::deskew(QPixmap *pm)
 
 void MainForm::deskewByBlock()
 {
+    QCursor oldCursor = cursor();
+    setCursor(Qt::WaitCursor);
     if (graphicsInput->getCurrentBlock().isNull())
         return;
     deskew(&(graphicsInput->getCurrentBlock()));
+    setCursor(oldCursor);
 }
