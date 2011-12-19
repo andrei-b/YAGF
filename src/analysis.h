@@ -26,7 +26,7 @@
 
 typedef struct _Rect
 {
-    quint32 x1, x2, y1, y2;
+    qint32 x1, x2, y1, y2;
 } Rect;
 
 bool operator==(Rect r1, Rect r2);
