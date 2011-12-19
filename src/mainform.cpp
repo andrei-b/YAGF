@@ -1597,7 +1597,11 @@ void MainForm::deskewByBlock()
 {
     QCursor oldCursor = cursor();
     setCursor(Qt::WaitCursor);
-    if (!graphicsInput->getCurrentBlock().isNull())
-        deskew(&(graphicsInput->getCurrentBlock()));
+    graphicsInput->update();
+    QApplication::processEvents();
+    if (!graphicsInput->getCurrentBlock().isNull()) {
+        QPixmap pm = graphicsInput->getCurrentBlock();
+        deskew(&pm);
+    }
     setCursor(oldCursor);
 }
