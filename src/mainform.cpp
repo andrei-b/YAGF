@@ -883,6 +883,8 @@ bool MainForm::useTesseract(const QString &inputFile)
     sl.append("-l");
     sl.append(tesMap->value(language));
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    if (!tessdataPath.endsWith("/"))
+        tessdataPath = tessdataPath.append("/");
     env.insert("TESSDATA_PREFIX", tessdataPath);
     proc.setProcessEnvironment(env);
     proc.start("tesseract", sl);
