@@ -125,6 +125,12 @@ void SideBar::startDrag(Qt::DropActions supportedActions)
             foreach(QListWidgetItem * lwi, selectedItems())
                 model()->removeRow(row(lwi));
         }
+        if (selectedItems().count()) {
+            emit fileSelected(((QSnippet *)selectedItems().at(0))->getName());
+        } else {
+            if (getFileNames().count())
+                emit fileSelected(getFileNames().at(0));
+        }
         //QListWidget::startDrag(supportedActions);
         //delete mimeData;
         //delete drag;
