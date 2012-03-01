@@ -1,5 +1,16 @@
 <!DOCTYPE TS><TS>
 <context>
+    <name>AdvancedConfigDialog</name>
+    <message>
+        <source>Advanced Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Crop Image When Loaded</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>ConfigDialog</name>
     <message>
         <source>OCR Settings</source>
@@ -169,18 +180,6 @@
         <translation>Ukrainisch</translation>
     </message>
     <message>
-        <source>Russian-French</source>
-        <translation>Russisch-Französisch</translation>
-    </message>
-    <message>
-        <source>Russian-German</source>
-        <translation>Russisch-Deutsch</translation>
-    </message>
-    <message>
-        <source>Russian-Spanish</source>
-        <translation>Russisch-Spanisch</translation>
-    </message>
-    <message>
         <source>Warning</source>
         <translation>Warnung</translation>
     </message>
@@ -261,10 +260,6 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>No PDF converte installed</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>No compatible PDF converter software could be found. Please install either the pdftoppm utility or the GhostScript package (from this the gs command will be required).</source>
         <translation type="unfinished"></translation>
     </message>
@@ -321,8 +316,24 @@ Please install either cuneiform or tesseract</source>
         <source>tesseract not found, switching to cuneiform</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>No PDF converter installed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>German Gothic (tesseract 3+)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hebrew (tesseract 3.0.1+)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Swedish Gothic (tesseract 3+)</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message encoding="UTF-8">
-        <source>&lt;p align=&quot;center&quot;&gt;&lt;b&gt;YAGF - Yet Another Graphical Front-end for cuneiform and tesseract OCR engines&lt;/b&gt;&lt;/p&gt;&lt;p align=&quot;center&quot;&gt;Version %1&lt;/p&gt; &lt;p align=&quot;center&quot;&gt;Ⓒ 2009-2011 Andrei Borovsky&lt;/p&gt; This is a free software distributed under GPL v3. Visit &lt;a href=&quot;http://symmetrica.net/cuneiform-linux/yagf-en.html&quot;&gt;http://symmetrica.net/cuneiform-linux/yagf-en.html&lt;/a&gt; for more details.</source>
+        <source>&lt;p align=&quot;center&quot;&gt;&lt;b&gt;YAGF - Yet Another Graphical Front-end for cuneiform and tesseract OCR engines&lt;/b&gt;&lt;/p&gt;&lt;p align=&quot;center&quot;&gt;Version %1&lt;/p&gt; &lt;p align=&quot;center&quot;&gt;Ⓒ 2009-2012 Andrei Borovsky&lt;/p&gt; This is a free software distributed under GPL v3. Visit &lt;a href=&quot;http://symmetrica.net/cuneiform-linux/yagf-en.html&quot;&gt;http://symmetrica.net/cuneiform-linux/yagf-en.html&lt;/a&gt; for more details.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -570,6 +581,14 @@ Please install either cuneiform or tesseract</source>
     </message>
     <message>
         <source>Correct the page skew </source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Advanced Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The settings you should probably never change</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

@@ -2,6 +2,17 @@
 <!DOCTYPE TS>
 <TS version="2.0" language="ru_RU">
 <context>
+    <name>AdvancedConfigDialog</name>
+    <message>
+        <source>Advanced Settings</source>
+        <translation>Дополнительные настройки</translation>
+    </message>
+    <message>
+        <source>Crop Image When Loaded</source>
+        <translation>Обрезать изображение при загрузке</translation>
+    </message>
+</context>
+<context>
     <name>ConfigDialog</name>
     <message>
         <source>OCR Settings</source>
@@ -69,18 +80,6 @@
     <message>
         <source>Russian-English</source>
         <translation>Русский-английский</translation>
-    </message>
-    <message>
-        <source>Russian-French</source>
-        <translation>Русский-французский</translation>
-    </message>
-    <message>
-        <source>Russian-German</source>
-        <translation>Русский-немецкий</translation>
-    </message>
-    <message>
-        <source>Russian-Spanish</source>
-        <translation>Русский-испанский</translation>
     </message>
     <message>
         <source>Warning</source>
@@ -263,10 +262,6 @@
         <translation>Отменить</translation>
     </message>
     <message>
-        <source>No PDF converte installed</source>
-        <translation>Не обнаружено конвертера PDF</translation>
-    </message>
-    <message>
         <source>No compatible PDF converter software could be found. Please install either the pdftoppm utility or the GhostScript package (from this the gs command will be required).</source>
         <translation>Не найдены подходящие конверторы PDF. Установите, пожалуйста, утилиту pdftoppm или пакет GhostScript (из которого требуется программа gs).</translation>
     </message>
@@ -324,9 +319,25 @@ Please install either cuneiform or tesseract</source>
         <source>tesseract not found, switching to cuneiform</source>
         <translation>Программа tesseract не найдена, переключаемся на cuneiform</translation>
     </message>
+    <message>
+        <source>No PDF converter installed</source>
+        <translation>Конвертер PDF не установлен</translation>
+    </message>
+    <message>
+        <source>German Gothic (tesseract 3+)</source>
+        <translation>Немецкий готический (tesseract 3+)</translation>
+    </message>
+    <message>
+        <source>Hebrew (tesseract 3.0.1+)</source>
+        <translation>Иврит (tesseract 3.0.1+)</translation>
+    </message>
+    <message>
+        <source>Swedish Gothic (tesseract 3+)</source>
+        <translation>Шведский готический (tesseract 3+)</translation>
+    </message>
     <message utf8="true">
-        <source>&lt;p align=&quot;center&quot;&gt;&lt;b&gt;YAGF - Yet Another Graphical Front-end for cuneiform and tesseract OCR engines&lt;/b&gt;&lt;/p&gt;&lt;p align=&quot;center&quot;&gt;Version %1&lt;/p&gt; &lt;p align=&quot;center&quot;&gt;Ⓒ 2009-2011 Andrei Borovsky&lt;/p&gt; This is a free software distributed under GPL v3. Visit &lt;a href=&quot;http://symmetrica.net/cuneiform-linux/yagf-en.html&quot;&gt;http://symmetrica.net/cuneiform-linux/yagf-en.html&lt;/a&gt; for more details.</source>
-        <translation>&lt;p align=&quot;center&quot;&gt;&lt;b&gt;YAGF - Графическая оболочка для программ распознавания текста cuneiform и tesseract&lt;/b&gt;&lt;/p&gt;&lt;p align=&quot;center&quot;&gt;Версия %1&lt;/p&gt; &lt;p align=&quot;center&quot;&gt;Ⓒ 2009-2011 Андрей Боровский&lt;/p&gt; YAGF - открытое программное обеспечение, которое распространяется на условиях лицензии GPL v3. Вы найдете подробности на странице &lt;a href=&quot;http://symmetrica.net/cuneiform-linux/yagf-en.html&quot;&gt;http://symmetrica.net/cuneiform-linux/yagf-ru.html&lt;/a&gt;.</translation>
+        <source>&lt;p align=&quot;center&quot;&gt;&lt;b&gt;YAGF - Yet Another Graphical Front-end for cuneiform and tesseract OCR engines&lt;/b&gt;&lt;/p&gt;&lt;p align=&quot;center&quot;&gt;Version %1&lt;/p&gt; &lt;p align=&quot;center&quot;&gt;Ⓒ 2009-2012 Andrei Borovsky&lt;/p&gt; This is a free software distributed under GPL v3. Visit &lt;a href=&quot;http://symmetrica.net/cuneiform-linux/yagf-en.html&quot;&gt;http://symmetrica.net/cuneiform-linux/yagf-en.html&lt;/a&gt; for more details.</source>
+        <translation>&lt;p align=&quot;center&quot;&gt;&lt;b&gt;YAGF - Графическая оболочка для программ распознавания текста cuneiform и tesseract&lt;/b&gt;&lt;/p&gt;&lt;p align=&quot;center&quot;&gt;Версия %1&lt;/p&gt; &lt;p align=&quot;center&quot;&gt;Ⓒ 2009-2012 Андрей Боровский&lt;/p&gt; YAGF - открытое программное обеспечение, которое распространяется на условиях лицензии GPL v3. Вы найдете подробности на странице &lt;a href=&quot;http://symmetrica.net/cuneiform-linux/yagf-en.html&quot;&gt;http://symmetrica.net/cuneiform-linux/yagf-ru.html&lt;/a&gt;.</translation>
     </message>
 </context>
 <context>
@@ -574,6 +585,14 @@ Please install either cuneiform or tesseract</source>
     <message>
         <source>Correct the page skew </source>
         <translation>Исправить наклон страницы</translation>
+    </message>
+    <message>
+        <source>Advanced Settings</source>
+        <translation>Дополнительные настройки</translation>
+    </message>
+    <message>
+        <source>The settings you should probably never change</source>
+        <translation>Настройки, которые вам, скорее всего, менять не нужно</translation>
     </message>
 </context>
 <context>
