@@ -1,7 +1,4 @@
 /*
-    YAGF - cuneiform and tesseract OCR graphical front-ends
-    Copyright (C) 2009-2010 Andrei Borovsky <anb@symmetrica.net>
-
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation, either version 3 of the License, or
@@ -11,17 +8,29 @@
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
 */
 
-#ifndef YCOMMMON_H
-#define YCOMMMON_H
-#include <QList>
-#include <QPoint>
 
-typedef QList<QPoint> QPointList;
+#ifndef QXTUNIXSCINTERNAL_H
+#define QXTUNIXSCINTERNAL_H
 
-#endif
+#include <QObject>
+
+class QXtUnixSignalCatcherInternal  : public QObject
+{
+    Q_OBJECT
+
+public:
+    QXtUnixSignalCatcherInternal(QObject *parent = 0) :
+        QObject(parent) {}
+    void emitSignal(int sig_num)
+    {
+        emit unixSignalInternal(sig_num);
+    }
+
+signals:
+    void unixSignalInternal(int sig_num);
+
+};
+
+#endif // QXTUNIXSCINTERNAL_H

@@ -42,6 +42,7 @@ public:
     void checkWord();
     void enumerateDicts();
     bool hasDict(const QString &shname);
+    QStringList suggestions();
 private:
     void _checkWord(QTextCursor *cursor);
     QTextEdit *m_textEdit;

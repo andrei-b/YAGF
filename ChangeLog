@@ -1,4 +1,13 @@
 
+* Mon Feb 27 2012 Andrei Borovsky <anb@symmetrica.net> - 0.9
+- Hebrew support added
+- corrected word suggestion added to the text editor context menu.
+* Sun Feb 26 2012 Andrei Borovsky <anb@symmetrica.net> - 0.9
+- Automatic cropping of the loaded images added
+* Sun Dec 22 2011 Stefan Grthe - 0.9
+- German Gothic and Swedish Gothic recognition is added (requires tesseract 3+)
+* Sun Dec 22 2011 Andrei Borovsky <anb@symmetrica.net> - 0.9
+- Hebrew recognition support added (requires tesseract 3.0.1+)
 * Fri Dec 16 2011 Andrei Borovsky <anb@symmetrica.net> - 0.8.9
 - Deskewing images improved
 - Pasting i,ages from clipboard added

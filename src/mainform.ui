@@ -501,6 +501,7 @@
      <string>&amp;Settings</string>
     </property>
     <addaction name="actionOCR_Settings"/>
+    <addaction name="actionAdvanced_Settings"/>
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menu_Settings"/>
@@ -916,6 +917,14 @@
     <string>Deskew the current block</string>
    </property>
   </action>
+  <action name="actionAdvanced_Settings">
+   <property name="text">
+    <string>Advanced Settings</string>
+   </property>
+   <property name="toolTip">
+    <string>The settings you should probably never change</string>
+   </property>
+  </action>
  </widget>
  <customwidgets>
   <customwidget>
@@ -1114,6 +1123,22 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>actionAdvanced_Settings</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>showAdvancedSettings()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>959</x>
+     <y>568</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <slot>rotateCWButtonClicked()</slot>
@@ -1127,5 +1152,6 @@
   <slot>pasteimage()</slot>
   <slot>blockAllText()</slot>
   <slot>deskewByBlock()</slot>
+  <slot>showAdvancedSettings()</slot>
  </slots>
 </ui>

@@ -1,5 +1,5 @@
 /*
-    YAGF - cuneiform OCR graphical front-end
+    YAGF - cuneiform and tesseract OCR graphical front-end
     Copyright (C) 2009-2011 Andrei Borovsky <anb@symmetrica.net>
 
     This program is free software: you can redistribute it and/or modify
@@ -24,6 +24,9 @@
 #include <QImage>
 #include <QPixmap>
 #include <QList>
+#include <QRect>
+
+//#define DEBUG_CC
 
 typedef QList<quint32> IntList;
 
@@ -40,7 +43,7 @@ class CCBuilder : public QObject
 public:
 
     /* pixmap is the image to be analysed */
-    explicit CCBuilder(QPixmap * pixmap,  QObject *parent = 0);
+    explicit CCBuilder(const QImage &img,  QObject *parent = 0);
 
     ~CCBuilder();
 
@@ -63,6 +66,11 @@ public:
 
     /* Returns image height */
     int height();
+
+    QRect crop();
+
+    int getGB();
+
 signals:
 
 public slots:
@@ -83,10 +91,18 @@ private:
     int maximumComponentBrightness;
     QImage image;
     quint32 * labels;
+    bool * flags;
+    bool skipNext;
     IntList recolor;
     quint32 maxlabel;
     bool didRecolor;
     int w, h;
+    QRect cropRect;
+#ifdef DEBUG_CC
+    int dcounter;
+    int gcounter;
+#endif
+    friend class Cropper;
 };
 
 #endif // CCBUILDER_H

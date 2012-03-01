@@ -30,9 +30,9 @@ void inline fillLine(QRgb * line, int length, QRgb value)
         line[j] = value;
 }
 
-PageAnalysis::PageAnalysis(QPixmap *pixmap)
+PageAnalysis::PageAnalysis(QImage &img)
 {
-    m_image = new QImage((pixmap->toImage().convertToFormat(QImage::Format_RGB32)));
+    m_image = &img;
     pointList = new QPointList();
 }
 
@@ -40,12 +40,6 @@ PageAnalysis::~PageAnalysis()
 {
     delete m_image;
     delete pointList;
-}
-
-QPixmap PageAnalysis::getPixmap()
-{
-    QPixmap pm = QPixmap::fromImage(*m_image);
-    return pm; //pm.copy(newLeft, newTop, newRight - newLeft+50, newBottom-newTop);
 }
 
 void PageAnalysis::setBlack(QRgb color)
@@ -223,5 +217,10 @@ void PageAnalysis::removeBlackSideStripes()
 
  QPointList * const PageAnalysis::getPoints()
 {
-    return pointList;
-}
+     return pointList;
+ }
+
+ QImage PageAnalysis::getImage()
+ {
+     return *m_image;
+ }

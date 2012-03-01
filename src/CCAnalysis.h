@@ -1,54 +1,60 @@
+/*
+    YAGF - cuneiform and tesseract OCR graphical front-ends
+    Copyright (C) 2009-2012 Andrei Borovsky <anb@symmetrica.net>
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+*/
+
 #ifndef CCANALYSIS_H
 #define CCANALYSIS_H
 
 #include <QRgb>
+#include <QRect>
 #include "ycommon.h"
 
 class QImage;
 
-class CCAnalysis {
+class RotationCropper
+{
 public:
-    CCAnalysis(QImage * image);
-    ~CCAnalysis();
-    void setWhite(int minBrightness, int maxComponent);
-    void setBlack(int maxBrightness, int maxComponent);
-    bool findNonBlackSegment(int lineIndex);
-    bool findBlackSegment(int lineIndex);
-    bool findNonBlackArea(const QPoint &startPoint, bool rightwise);
-    bool findBlackArea(const QPoint &startPoint, bool rightwise);
-    bool findWhiteArea(const QPoint &startPoint, bool rightwise);
-    bool findNonWhiteArea(const QPoint &startPoint, bool rightwise);
-    bool isPointBlack(const QPoint &point);
-    bool isPointWhite(const QPoint &point);
-    void setMaxArea(int maxArea); // setting this to -1 requires the full area scan
-    void setMaxLength(int maxLength); // when looking for vertical lines sets the maximum skew
-    void setMaxHeight(int maxHeight); // when looking for horizontal  lines sets the maximum skew
-    void setMinLength(int minLength);
-    void setMinHeight(int minHeight);
-    bool findHorzNonWhiteLine(int lineIndex);
-    bool findVertNonWhiteLine(int lineIndex, int startX);
-    bool findHorzBlackLine(int lineIndex);
-    bool findVertBlackLine(int lineIndex, int startX);
-    void setConnectionType(bool strongConnection);
-    QPointList * getBorders();
+    RotationCropper(QImage * image, QRgb color, int dtr);
+    ~RotationCropper();
+    QRect crop();
 private:
-    QImage * m_image;
-    int minWhiteBrightness;
-    int maxSingleWhiteComponent;
-    int maxBlackBrightness;
-    int maxSingleBlackComponent;
-    int currentLineIndex;
-    int currentX1;
-    int currentX2;
-    int m_maxArea;
-    int m_maxLength;
-    int m_maxHeight;
-    int m_minLength;
-    int m_minHeight;
-    bool m_strongConnection;
-    QRgb ** colorField;
-    QPointList * borders;
-    void resetColorField();
+    void recolor();
+    bool checkHorzLine(int y);
+    bool checkVertLine(int x);
+
+private:
+    QImage * image;
+    QRgb whitePixel;
+    QRgb replaceColor;
+    int darksCount;
+    int lightsCount;
+    int minval;
+    int maxval;
+    //int clAltCount;
+    int whitesCount;
+    int darktr;
+    int whitetr;
+    int whiteAlt;
+
+    qreal clBrighttoWidth;
+    qreal clBrighttoWidthtr;
+    int clWhiteCount;
+    int y1, y2, x1, x2;
 };
 
 #endif

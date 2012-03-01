@@ -19,21 +19,210 @@
 
 #include "ccbuilder.h"
 #include <QRgb>
+#include <QRect>
 #define XDEBUG
 #ifdef XDEBUG
 #include <QtDebug>
 #endif
 
-CCBuilder::CCBuilder(QPixmap *pixmap, QObject *parent) :
+class Cropper
+{
+public:
+    Cropper(CCBuilder * builder)
+    {
+        this->builder = builder;
+        darksCount = 0;
+        lightsCount = 0;
+        minval = 0;
+        maxval = 0;
+        //clAltCount = 0;
+        darktr = builder->generalBrightness;
+        whitetr = 650;
+        clBrighttoWidthtr = 0.1;
+    }
+    ~Cropper() {}
+    QRect crop()
+    {
+        y1 = 0;
+        int tolerance = 3;
+        for (int y = 0; y < builder->h; y ++) {
+            if (checkHorzLine(y)) {
+                tolerance--;
+                if (tolerance == 0) {
+                    y1 = y;
+                    break;
+                }
+
+            } else
+                tolerance = 3;
+        }
+        y2 = builder->h-1;
+        tolerance = 3;
+        for (int y = y2; y >= 0; y--) {
+            if (checkHorzLine(y)) {
+                tolerance--;
+                if (tolerance == 0) {
+                    y2 = y;
+                    break;
+                }
+
+            } else
+                tolerance = 3;
+        }
+        x1 = 0;
+        tolerance = 3;
+        for (int x = x1; x < builder->w; x++) {
+            if (checkVertLine(x)) {
+                tolerance--;
+                if (tolerance == 0) {
+                    x1 = x;
+                    break;
+                }
+
+            } else
+                tolerance = 3;
+        }
+        x2 = builder->w-1;
+        tolerance = 3;
+        for (int x = x2; x >= 0; x--) {
+            if (checkVertLine(x)) {
+                tolerance--;
+                if (tolerance == 0) {
+                    x2 = x;
+                    break;
+                }
+
+            } else
+                tolerance = 3;
+        }
+        return QRect(x1, y1, x2-x1, y2-y1);
+    }
+    bool checkHorzLine(int y)
+    {
+        darksCount = 0;
+        lightsCount = 0;
+        minval = 800;
+        maxval = 0;
+        whitesCount = 0;
+        //clAltCount = 0;
+        whiteAlt = 0;
+        int maxlstripe = 0;
+        int currentlstripe = 0;
+        QRgb * line = (QRgb *) builder->image.scanLine(y);
+        int curline =0;
+        for (int i = 0; i < builder->w; i++) {
+            int pixel = qRed(line[i]) + qGreen(line[i]) + qBlue(line[i]);
+            if (pixel <= darktr) {
+                darksCount++;
+   //             if (currentlstripe > maxlstripe) maxlstripe = currentlstripe;
+   //             currentlstripe = 0;
+           } else {
+                lightsCount++;
+ //               currentlstripe++;
+                if (pixel >= whitetr) {
+                    whitesCount++;
+                    if (whiteAlt == 0) {
+                        whiteAlt = 1;
+                        clWhiteCount++;
+                    }
+                } else
+                    whiteAlt = 0;
+            }
+            minval = pixel < minval ? pixel : minval;
+            maxval = pixel > maxval ? pixel : maxval;
+        }
+        clBrighttoWidth = (qreal)lightsCount/builder->w;
+        if (clBrighttoWidth <= clBrighttoWidthtr)
+            return false;
+        if (maxval - minval < 40)
+            return false;
+        //if (clAltCount < 10)
+          //  return false;
+        //if (maxlstripe < 10)
+        //    return false;
+       // if ((clWhiteCount > 0)&&(clWhiteCount < 3))
+         //       return false;
+        return true;
+    }
+    bool checkVertLine(int x)
+    {
+        darksCount = 0;
+        lightsCount = 0;
+        minval = 800;
+        maxval = 0;
+        whitesCount = 0;
+        //clAltCount = 0;
+        whiteAlt = 0;
+        int curline =0;
+        for (int y = 0; y < builder->h; y++) {
+            QRgb * line = (QRgb *) builder->image.scanLine(y);
+            int pixel = qRed(line[x]) + qGreen(line[x]) + qBlue(line[x]);
+            if (pixel <= darktr) {
+                darksCount++;
+//                if (curline) {
+//                    clAltCount++;
+//                    curline = 0;
+//                }
+            } else {
+                lightsCount++;
+//                if (!curline) {
+//                    clAltCount++;
+//                    curline = 1;
+//                }
+                if (pixel >= whitetr) {
+                    whitesCount++;
+                    if (whiteAlt == 0) {
+                        whiteAlt = 1;
+                        clWhiteCount++;
+                    }
+                } else
+                    whiteAlt = 0;
+            }
+            minval = pixel < minval ? pixel : minval;
+            maxval = pixel > maxval ? pixel : maxval;
+        }
+        clBrighttoWidth = (qreal)lightsCount/builder->h;
+        if (clBrighttoWidth <= clBrighttoWidthtr)
+            return false;
+        if (maxval - minval < 40)
+            return false;
+//        if (clAltCount < 10)
+//            return false;
+        if ((clWhiteCount > 0)&&(clWhiteCount < 3))
+                return false;
+        return true;
+    }
+private:
+    CCBuilder * builder;
+    int darksCount;
+    int lightsCount;
+    int minval;
+    int maxval;
+    //int clAltCount;
+    int whitesCount;
+    int darktr;
+    int whitetr;
+    int whiteAlt;
+
+    qreal clBrighttoWidth;
+    qreal clBrighttoWidthtr;
+    int clWhiteCount;
+    int y1, y2, x1, x2;
+};
+
+CCBuilder::CCBuilder(const QImage &img, QObject *parent) :
     QObject(parent)
 {
-    if (!pixmap) {
+    if (img.isNull()) {
         w = h = 0;
         return;
     }
-    image = pixmap->toImage();
+    image = img;
     image.convertToFormat(QImage::Format_RGB32);
-    labels = new quint32 [image.height()*image.width()];
+    labels = NULL; //new quint32 [image.height()*image.width()];
+    flags =  NULL; //new bool[image.height()];
+    //memset(flags, 0, sizeof(bool)*image.height());
+    skipNext = false;
     maxlabel = 1;
     w = image.width();
     h = image.height();
@@ -42,7 +231,9 @@ CCBuilder::CCBuilder(QPixmap *pixmap, QObject *parent) :
 CCBuilder::~CCBuilder()
 {
     delete [] labels;
+    delete [] flags;
 }
+
 
 int CCBuilder::width()
 {
@@ -219,20 +410,77 @@ void CCBuilder::initialScan()
 
 void CCBuilder::backwardScan()
 {
-    for (int j = h-1; j >= 0; j--) {
-        relabelLineRL(j);
+    bool rdid = false;
+    didRecolor = false;
+    relabelLineLR(h-1);
+    rdid = rdid|didRecolor;
+    skipNext = flags[h-1];
+    flags[h-1] = !didRecolor;
+    skipNext = skipNext&flags[h-1];
+    for (int j = h-2; j >= 0; j--) {
+        didRecolor = false;
+        skipNext = skipNext&flags[j];
+        if (!skipNext) {
+            relabelLineRL(j);
+            rdid = rdid|didRecolor;
+        }
+#ifdef DEBUG_CC
+        else
+            dcounter++;
+        gcounter++;
+#endif
+        skipNext = flags[j];
+        flags[j] = !didRecolor;
+        skipNext = skipNext&flags[j];
+
     }
+    didRecolor = rdid;
 }
 
 void CCBuilder::forwardScan()
 {
-    for (int j = 0; j < h; j++) {
-        relabelLineLR(j);
+    bool rdid = false;
+    didRecolor = false;
+    relabelLineLR(0);
+    rdid = rdid|didRecolor;
+    skipNext = flags[0];
+    flags[0] = !didRecolor;
+    skipNext = skipNext&flags[0];
+    for (int j = 1; j < h; j++) {
+        didRecolor = false;
+        skipNext = skipNext&flags[j];
+        if (!skipNext) {
+            relabelLineLR(j);
+            rdid = rdid|didRecolor;
+        }
+#ifdef DEBUG_CC
+        else
+            dcounter++;
+        gcounter++;
+#endif
+        skipNext = flags[j];
+        flags[j] = !didRecolor;
+        skipNext = skipNext&flags[j];
+
     }
+    didRecolor = rdid;
 }
 
 int CCBuilder::labelCCs()
 {
+
+    if (w*h == 0)
+        return 0;
+    Cropper cr(this);
+    cropRect = cr.crop();
+    QImage tmp = image.copy(cropRect);
+    image = tmp;
+    w = image.width();
+    h = image.height();
+    labels = new quint32 [image.height()*image.width()];
+    flags = new bool[image.height()];
+    memset(flags, 0, sizeof(bool)*image.height());
+
     quint64 acc =0;
     for (int y =0; y < h; y++) {
         QRgb * line = (QRgb *) image.scanLine(y);
@@ -246,9 +494,14 @@ int CCBuilder::labelCCs()
     /* ADHOC
 
       */
-    if (acc < 200)
-        acc +=80;
+  //  if (acc < 200)
+  //      acc +=80;
 
+
+#ifdef DEBUG_CC
+    dcounter = 0;
+    gcounter = 0;
+#endif
 
     setGeneralBrightness(acc);
     int count = 0;
@@ -264,6 +517,11 @@ int CCBuilder::labelCCs()
         turn = 1 - turn;
         count++;
     }
+
+ #ifdef DEBUG_CC
+    qDebug() << dcounter << gcounter;
+#endif
+
     return count;
 }
 
@@ -371,4 +629,15 @@ void CCBuilder::scanLineLR(int y)
             }
         }
     }
+}
+
+QRect CCBuilder::crop()
+{
+    Cropper cropper(this);
+    return cropper.crop();
+}
+
+int CCBuilder::getGB()
+{
+    return generalBrightness;
 }

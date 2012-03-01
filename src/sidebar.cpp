@@ -1,3 +1,22 @@
+/*
+    YAGF - cuneiform and tesseract OCR graphical front-ends
+    Copyright (C) 2009-2010 Andrei Borovsky <anb@symmetrica.net>
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+*/
+
 #include "src/sidebar.h"
 #include "src/qsnippet.h"
 #include <QStringList>
@@ -21,21 +40,23 @@ SideBar::SideBar(QWidget *parent) :
     setDropIndicatorShown(true);
 }
 
-void SideBar::addFile(const QString &name, const QPixmap *pixmap)
+void SideBar::addFile(const QString &name, const QImage *image, bool select)
 {
     if (getFileNames().contains(name))
             return;
-    if (!pixmap) {
-        QPixmap pm;
-        if (pm.load(name)) {
+    if (!image) {
+        QImage img;
+        if (img.load(name)) {
             QSnippet * snippet = new QSnippet(this);
-            snippet->addFile(name, &pm);
+            snippet->addFile(name, &img);
             current = snippet;
+            current->setSelected(select);
         }
     } else {
         QSnippet * snippet = new QSnippet(this);
-        snippet->addFile(name, pixmap);
+        snippet->addFile(name, image);
         current = snippet;
+        current->setSelected(select);
     }
 }
 
@@ -248,6 +269,55 @@ void SideBar::selectFirstFile()
         return;
     }
     current = (QSnippet *) item(0);
+}
+
+void SideBar::setCrop1(const QRect &rect)
+{
+    if (current)
+        current->setCrop1(rect);
+}
+
+void SideBar::setCrop2(const QRect &rect)
+{
+    if (current)
+        current->setCrop2(rect);
+}
+
+QRect SideBar::getCrop1(const QString &name)
+{
+    if (name == "") {
+        if (current) {
+            return current->getCrop1();
+        }
+    } else {
+        if (getItemByName(name))
+            return getItemByName(name)->getCrop1();
+    }
+    return QRect(0,0,0,0);
+}
+
+QRect SideBar::getCrop2(const QString &name)
+{
+    if (name == "") {
+        if (current) {
+            return current->getCrop2();
+        }
+    } else {
+        if (getItemByName(name))
+            return getItemByName(name)->getCrop2();
+    }
+    return QRect(0,0,0,0);
+}
+
+QRect SideBar::getBlockByHalf(int index)
+{
+    if (current) {
+        if (index < current->blocks()->count()) {
+            QRect b = current->blocks()->at(index);
+            return QRect(b.x()/2, b.y()/2,b.width()/2, b.height()/2);
+        }
+    }
+    return QRect();
 }
 
 /*void SideBar::dragLeaveEvent(QDragLeaveEvent *event)

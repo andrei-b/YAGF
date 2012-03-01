@@ -50,6 +50,8 @@ SpellChecker::SpellChecker(QTextEdit *textEdit): m_textEdit(textEdit)
     m_map->insert("fin", "fi");
     m_map->insert("fra", "fr");
     m_map->insert("ger", "de");
+    m_map->insert("gerf", "de-alt");
+    m_map->insert("heb", "he");
     m_map->insert("hrv", "hr");
     m_map->insert("hun", "hu");
     m_map->insert("ita", "it");
@@ -64,6 +66,7 @@ SpellChecker::SpellChecker(QTextEdit *textEdit): m_textEdit(textEdit)
     m_map->insert("spa", "es");
     m_map->insert("srp", "sr");
     m_map->insert("swe", "sv");
+    m_map->insert("swef", "sv");
     m_map->insert("tur", "tr");
     m_map->insert("ukr", "uk");
     spell_checker1 = 0;
@@ -232,4 +235,29 @@ void SpellChecker::checkWord()
         return;
     QTextCursor cursor = m_textEdit->textCursor();
     _checkWord(&cursor);
+}
+
+QStringList SpellChecker::suggestions()
+{
+    QStringList sl;
+    if ((spell_checker1 == 0) || (spell_checker2 == 0))
+        return sl;
+    QTextCursor cursor = m_textEdit->textCursor();
+    cursor.select(QTextCursor::WordUnderCursor);
+    QString word = cursor.selectedText();
+    QByteArray ba = word.toUtf8();
+    if ((aspell_speller_check(spell_checker2, ba.data(), ba.size()) != 0)||(aspell_speller_check(spell_checker1, ba.data(), ba.size()) != 0))
+        return sl;
+    const struct AspellWordList * awl = aspell_speller_suggest(spell_checker1, ba.data(), ba.size());
+    if(aspell_word_list_size(awl) > 0) {
+        struct AspellStringEnumeration * ase = aspell_word_list_elements(awl);
+        int i  = 0;
+        while ((!aspell_string_enumeration_at_end(ase))&&(i < 10)) {
+            const char * text = aspell_string_enumeration_next(ase);
+            sl << QString::fromUtf8(text);
+            i++;
+        }
+        delete_aspell_string_enumeration(ase);
+    }
+    return sl;
 }

@@ -37,8 +37,6 @@ QGraphicsInput::QGraphicsInput(const QRectF &sceneRect, QGraphicsView *view) :
     hasImage = false;
     m_LastSelected = 0;
     m_scale = 1;
-    real_scale = 1;
-    real_rotate = 0;
     m_rotate = 0;
     buttonPressed = Qt::NoButton;
     near_res = 0;
@@ -76,11 +74,10 @@ void QGraphicsInput::addToolBar()
     ((QXtGraphicsView *) views().at(0))->sendScrollSignal();
 }
 
-bool QGraphicsInput::loadImage(const QPixmap &image, bool clearBlocks)
+bool QGraphicsInput::loadImage(const QImage &image, bool clearBlocks)
 {
     if (clearBlocks || (!hasImage)) {
-        real_rotate = 0;
-        real_scale = 1;
+        m_rotate = 0;
         this->clear();
         items().clear();
         m_LastSelected = 0;
@@ -88,26 +85,26 @@ bool QGraphicsInput::loadImage(const QPixmap &image, bool clearBlocks)
     }
     if ((!clearBlocks) && hasImage) {
         this->removeItem(m_image);
-        real_scale = 1;
     }
-    m_image = this->addPixmap(image);
+    //m_image = this->addPixmap(QPixmap::fromImage(image));
     QApplication::processEvents();
-    old_pixmap = image;
+    //old_pixmap = image;
     pm2 = image.scaledToWidth(image.width() / 2);
+    m_image = this->addPixmap(QPixmap::fromImage(pm2));
     pm4 = pm2.scaledToWidth(pm2.width() / 2);
     pm8 = pm4.scaledToWidth(pm4.width() / 2);
     pm16 = pm8.scaledToWidth(pm8.width() / 2);
     this->setSceneRect(image.rect());
-
-    m_realImage = this->addPixmap(image);
-    m_realImage->setData(1, "image");
-    m_realImage->hide();
+    m_scale = 0.5;
+    m_realImage = image;
+    //m_realImage->setData(1, "image");
+    //m_realImage->hide();
     this->setFocus();
     m_image->setFocus();
     m_image->setAcceptedMouseButtons(Qt::LeftButton | Qt::RightButton | Qt::MidButton);
     m_image->setAcceptHoverEvents(true);
     m_image->setData(1, "image");
-    this->setSceneRect(0,0,m_realImage->pixmap().width(),m_realImage->pixmap().height());
+    this->setSceneRect(0,0,m_realImage.width(),m_realImage.height());
     addToolBar();
     if (m_view) {
         m_view->centerOn(0, 0);
@@ -402,72 +399,82 @@ int QGraphicsInput::nearActiveBorder(qreal x, qreal y)
     return 0;
 }
 
-QPixmap QGraphicsInput::getActiveBlock()
+QImage QGraphicsInput::getActiveBlock()
 {
-    return extractPixmap(m_LastSelected);
+    return extractImage(m_LastSelected);
 }
 
-QPixmap QGraphicsInput::getCurrentBlock()
+QImage QGraphicsInput::getCurrentBlock()
 {
-    return extractPixmap(m_CurrentBlockRect);
+    return extractImage(m_CurrentBlockRect);
 }
 
 
-QPixmap QGraphicsInput::extractPixmap(QGraphicsRectItem *item)
+QImage QGraphicsInput::extractImage(QGraphicsRectItem *item)
 {
     if ((item == 0) || (!hasImage)) {
-        return QPixmap(0, 0);
+        return QImage(0, 0);
     }
     QRectF rect = item->mapRectToScene(item->rect());
-    return m_realImage->pixmap().copy(rect.left() / real_scale, rect.top() / real_scale, (rect.right() - rect.left()) / real_scale, (rect.bottom() - rect.top()) / real_scale);
+    if ((rect.right()/ m_scale) > m_realImage.width())
+        rect.setRight(m_realImage.width()*m_scale);
+    if ((rect.bottom()/ m_scale) > m_realImage.height())
+        rect.setBottom(m_realImage.height()*m_scale);
+
+    return m_realImage.copy(rect.left() / m_scale, rect.top() / m_scale, (rect.right() - rect.left()) / m_scale, (rect.bottom() - rect.top()) / m_scale);
 }
 
 void QGraphicsInput::setViewScale(qreal scale, qreal angle)
 {
     if (!hasImage) return;
-    if ((scale == 0) || ((real_scale * scale) < 0.0625) || (real_scale * scale) > 1)
-        return;
-    m_scale = scale;
-//    m_view->scale(scale,  scale);
-    this->removeItem(m_image);
-    for (int i = 0; i < this->items().size(); i++)
-        if (items().at(i)->data(1) != "image")
-            items().at(i)->scale(scale, scale); // Silly as this line seems it is the only way to scale rectangles correctly.
-    real_scale *= scale;
+    //if (scale != m_scale)  {
+        if ((scale == 0) || (scale < 0.0625) || (scale > 0.5))
+            return;
+    //    m_view->scale(scale,  scale);
+        this->removeItem(m_image);
+        for (int i = 0; i < this->items().size(); i++)
+            if (items().at(i)->data(1) != "image") {
+                double sf = scale/m_scale;
+                items().at(i)->scale(sf, sf); // Silly as this line seems it is the only way to scale rectangles correctly.
+            }
+        m_scale = scale;
 
-    if (real_scale == 1)
-        m_image = this->addPixmap(old_pixmap);
-    else if (real_scale == 0.5)
-        m_image = this->addPixmap(pm2);
-    else if (real_scale == 0.25)
-        m_image = this->addPixmap(pm4);
-    else if (real_scale == 0.125)
-        m_image = this->addPixmap(pm8);
-    else if (real_scale == 0.0625)
-        m_image = this->addPixmap(pm16);
+            //if (real_scale == 1)
+            //  m_image = this->addPixmap(QPixmap::fromImage(old_pixmap));
+            //else
+            if (m_scale == 0.5) {
+                m_image = this->addPixmap(QPixmap::fromImage(pm2));
+                //real_scale = 0.5;
+            }
+            else if (m_scale == 0.25)
+                m_image = this->addPixmap(QPixmap::fromImage(pm4));
+            else if (m_scale == 0.125)
+                m_image = this->addPixmap(QPixmap::fromImage(pm8));
+            else if (m_scale == 0.0625)
+                m_image = this->addPixmap(QPixmap::fromImage(pm16));
+    //}
     m_image->setFocus();
     m_image->setAcceptedMouseButtons(Qt::LeftButton | Qt::RightButton | Qt::MidButton);
     m_image->setAcceptHoverEvents(true);
     m_image->setData(1, "image");
     qreal x = width() / 2;
     qreal y = height() / 2;
-    real_rotate += angle;
-    m_image->setPixmap(m_image->pixmap().transformed(QTransform().translate(-x, -y).rotate(real_rotate).translate(x, y), Qt::SmoothTransformation));
-    m_realImage->setPixmap(m_realImage->pixmap().transformed(QTransform().translate(-x, -y).rotate(angle).translate(x, y), Qt::SmoothTransformation));
-    m_rotate = angle;
+    //real_rotate += angle;
+    //QImage img = m_image->pixmap().toImage();
+    //QPainter painter;
+    //painter.begin(&img);
+    //QPixmap pm;
+    //painter.setBrush(QBrush(Qt::red));
+    //pm = QPixmap::fromImage(img.transformed(QTransform().translate(-x, -y).rotate(real_rotate).translate(x, y), Qt::SmoothTransformation));
+    //painter.end();
+    //m_image->setPixmap(pm);
+    m_rotate += angle;
+    m_image->setPixmap(m_image->pixmap().transformed(QTransform().translate(-x, -y).rotate(m_rotate).translate(x, y), Qt::SmoothTransformation));
+    m_realImage = m_realImage.transformed(QTransform().translate(-x, -y).rotate(angle).translate(x, y), Qt::SmoothTransformation);
     m_image->show();
     m_view->centerOn(0, 0);
 }
 
-void QGraphicsInput::rotateImage(qreal angle, qreal x, qreal y)
-{
-    m_rotate = angle;
-    //real_rotate = real_rotate % 360;
-    setViewScale(1, angle);
-    //QPixmap pm = m_image->pixmap().transformed(QTransform().translate(-x, -y).rotate(angle).translate(x, y));
-    // loadImage(pm, false);
-    //m_image->setPixmap(pm);
-}
 
 int QGraphicsInput::blocksCount()
 {
@@ -498,18 +505,18 @@ void QGraphicsInput::deleteBlock(int index)
     }
 }
 
-QPixmap QGraphicsInput::getBlockByIndex(int index)
+QImage QGraphicsInput::getBlockByIndex(int index)
 {
     int count = 0;
     for (int i = 0; i < items().count(); i++) {
         if (items().at(i)->data(1) == "block") {
             if (index == count) {
-                return extractPixmap((QGraphicsRectItem *)items().at(i));
+                return extractImage((QGraphicsRectItem *)items().at(i));
             }
             count++;
         }
     }
-    return QPixmap(0, 0);
+    return QImage(0, 0);
 }
 
 QRectF QGraphicsInput::getBlockRectByIndex(int index)
@@ -519,7 +526,7 @@ QRectF QGraphicsInput::getBlockRectByIndex(int index)
         if (items().at(i)->data(1) == "block") {
             if (index == count) {
                 QRectF rect = items().at(i)->mapRectToScene(((QGraphicsRectItem *) items().at(i))->rect());
-                return QRectF(rect.left() / real_scale, rect.top() / real_scale, (rect.right() - rect.left()) / real_scale, (rect.bottom() - rect.top()) / real_scale);
+                return QRectF(rect.left() / m_scale, rect.top() / m_scale, (rect.right() - rect.left()) / m_scale, (rect.bottom() - rect.top()) / m_scale);
             }
             count++;
         }
@@ -536,24 +543,24 @@ void QGraphicsInput::clearBlocks()
     }
 }
 
-qreal QGraphicsInput::getRealScale()
+qreal QGraphicsInput::getScale()
 {
-    return real_scale;
+    return m_scale;
 }
 
-qreal QGraphicsInput::getRealAngle()
+qreal QGraphicsInput::getAngle()
 {
-    return real_rotate;
+    return m_rotate;
 }
 
 QPixmap QGraphicsInput::getImage()
 {
-    return hasImage ? m_realImage->pixmap() : 0;
+    return hasImage ? QPixmap::fromImage(m_realImage) : 0;
 }
 
 const float stdwidth = 2550.;
 
-QPixmap QGraphicsInput::getAdaptedImage()
+QImage QGraphicsInput::getAdaptedImage()
 {
 
     /*if (!hasImage)
@@ -568,20 +575,20 @@ QPixmap QGraphicsInput::getAdaptedImage()
         return pm2;
     }
     return m_realImage->pixmap();*/
-    if (m_realImage == NULL)
-        return QPixmap(0,0);
-    if (m_realImage->pixmap().width() < m_realImage->pixmap().height()) {
-        if (m_realImage->pixmap().width() / stdwidth >= 0.75)
-            return m_realImage->pixmap().scaledToWidth(stdwidth);
+    if (m_realImage.isNull())
+        return QImage(0,0);
+    if (m_realImage.width() < m_realImage.height()) {
+        if (m_realImage.width() / stdwidth >= 0.75)
+            return m_realImage.scaledToWidth(stdwidth);
     } else {
-        if (m_realImage->pixmap().height() / stdwidth >= 0.75)
-            return m_realImage->pixmap().scaledToHeight(stdwidth);
+        if (m_realImage.height() / stdwidth >= 0.75)
+            return m_realImage.scaledToHeight(stdwidth);
     }
 
-    return m_realImage->pixmap();
+    return m_realImage;
 }
 
-QPixmap * QGraphicsInput::getSmallImage()
+QImage * QGraphicsInput::getSmallImage()
 {
     if (pm2.isNull())
         return NULL;
@@ -594,14 +601,14 @@ void QGraphicsInput::cropImage()
         return;
     if (m_LastSelected) {
         //QPixmap pm = extractPixmap(m_LastSelected);
-        loadImage(extractPixmap(m_LastSelected));
+        loadImage(extractImage(m_LastSelected));
         clearTransform();
     }
 }
 
 void QGraphicsInput::cropImage(const QRect &rect)
 {
-    this->loadImage(m_realImage->pixmap().copy(rect));
+    this->loadImage(m_realImage.copy(rect));
 }
 
 void QGraphicsInput::setMagnifierCursor(QCursor *cursor)
@@ -644,7 +651,7 @@ void QGraphicsInput::setToolBarVisible()
 void QGraphicsInput::undo()
 {
     if (hasImage)
-        loadImage(old_pixmap);
+        loadImage(m_realImage);
     clearTransform();
 }
 
@@ -696,7 +703,7 @@ void QGraphicsInput::clearTransform()
 bool QGraphicsInput::loadNewImage(const QPixmap &image)
 {
     clearTransform();
-    return loadImage(image);
+    return loadImage(image.toImage());
 }
 
 void QGraphicsInput::keyPressEvent(QKeyEvent *keyEvent)
@@ -725,4 +732,9 @@ void QGraphicsInput::imageOrigin(QPoint &p)
 QPixmap QGraphicsInput::getCurrentImage()
 {
     return (m_image->pixmap());
+}
+
+QImage * QGraphicsInput::getImageBy16()
+{
+    return &pm16;
 }

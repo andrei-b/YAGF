@@ -35,9 +35,9 @@ class QRect;
 class PageAnalysis
 {
 public:
-    PageAnalysis(QPixmap *pixmap);
+    PageAnalysis(QImage &img);
     ~PageAnalysis();
-    QPixmap getPixmap();
+    QImage getImage();
     void setBlack(QRgb color);
     void setBlackDeviance(int d);
     void setWhiteDeviance(int d);

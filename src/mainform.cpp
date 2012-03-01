@@ -1,6 +1,6 @@
 /*
-    YAGF - cuneiform OCR graphical front-end
-    Copyright (C) 2009-2010 Andrei Borovsky <anb@symmetrica.net>
+    YAGF - cuneiform and tesseract OCR graphical front-ends
+    Copyright (C) 2009-2012 Andrei Borovsky <anb@symmetrica.net>
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -26,9 +26,12 @@
 #include "pdf2ppt.h"
 #include "ghostscr.h"
 #include "configdialog.h"
+#include "advancedconfigdialog.h"
 #include "mainform.h"
 #include "ccbuilder.h"
 #include "analysis.h"
+#include "CCAnalysis.h"
+#include <signal.h>
 #include <QComboBox>
 #include <QLabel>
 #include <QPixmap>
@@ -60,7 +63,7 @@
 #include <QMap>
 #include "qgraphicsinput.h"
 #include "utils.h"
-#include "FileChannel.h"
+#include "qxtunixsignalcatcher.h"
 #include "spellchecker.h"
 #include "PageAnalysis.h"
 #include <QTextCodec>
@@ -72,7 +75,7 @@
 #include <QFont>
 #include <QImageReader>
 
-const QString version = "0.8.9";
+const QString version = "0.9";
 const QString outputBase = "output";
 const QString outputExt = ".txt";
 
@@ -115,7 +118,7 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
     graphicsInput->addToolBarAction(actionRotate_90_CW);
     graphicsInput->addToolBarAction(actionDeskew);
     graphicsInput->addToolBarSeparator();
-   graphicsInput->addToolBarAction(actionSelect_Text_Area);
+   //graphicsInput->addToolBarAction(actionSelect_Text_Area);
     graphicsInput->addToolBarAction(ActionClearAllBlocks);
 
     statusBar()->show();
@@ -125,9 +128,9 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
     useXSane = TRUE;
     textSaved = TRUE;
     hasCopy = false;
-    scaleFactor = 1;
     //rotation = 0;
     m_menu = new QMenu(graphicsView);
+    ifCounter = 0;
 
     connect(actionOpen, SIGNAL(triggered()), this, SLOT(loadImage()));
     connect(actionQuit, SIGNAL(triggered()), this, SLOT(close()));
@@ -146,48 +149,11 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
     //connect(enlargeButton, SIGNAL(clicked()), this, SLOT(enlargeButtonClicked()));
     //connect(decreaseButton, SIGNAL(clicked()), this, SLOT(decreaseButtonClicked()));
     //connect(singleColumnButton, SIGNAL(clicked()), this, SLOT(singleColumnButtonClicked()));
+    textEdit->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(textEdit, SIGNAL(customContextMenuRequested(QPoint)), this, SLOT(contextMenuRequested(QPoint)));
     connect(textEdit, SIGNAL(copyAvailable(bool)), this, SLOT(copyAvailable(bool)));
     connect(textEdit, SIGNAL(textChanged()), this, SLOT(textChanged()));
     connect(graphicsInput, SIGNAL(rightMouseClicked(int, int, bool)), this, SLOT(rightMouseClicked(int, int, bool)));
-    QAction *action;
-    action = new QAction(trUtf8("Undo\tCtrl+Z"), this);
-    action->setShortcut(QKeySequence("Ctrl+Z"));
-    connect(action, SIGNAL(triggered()), textEdit, SLOT(undo()));
-    textEdit->addAction(action);
-    action = new QAction(trUtf8("Redo\tCtrl+Shift+Z"), this);
-    action->setShortcut(QKeySequence("Ctrl+Shift+Z"));
-    connect(action, SIGNAL(triggered()), textEdit, SLOT(redo()));
-    textEdit->addAction(action);
-    action = new QAction("separator", this);
-    action->setText("");
-    action->setSeparator(true);
-    textEdit->addAction(action);
-    action = new QAction(trUtf8("Select All\tCtrl+A"), this);
-    action->setShortcut(QKeySequence("Ctrl+A"));
-    connect(action, SIGNAL(triggered()), textEdit, SLOT(selectAll()));
-    textEdit->addAction(action);
-    action = new QAction(trUtf8("Cut\tCtrl+X"), this);
-    action->setShortcut(QKeySequence("Ctrl+X"));
-    connect(action, SIGNAL(triggered()), textEdit, SLOT(cut()));
-    textEdit->addAction(action);
-    action = new QAction(trUtf8("Copy\tCtrl+C"), this);
-    action->setShortcut(QKeySequence("Ctrl+C"));
-    connect(action, SIGNAL(triggered()), textEdit, SLOT(copy()));
-    textEdit->addAction(action);
-    action = new QAction(trUtf8("Paste\tCtrl+V"), this);
-    action->setShortcut(QKeySequence("Ctrl+V"));
-    connect(action, SIGNAL(triggered()), textEdit, SLOT(paste()));
-    textEdit->addAction(action);
-    action = new QAction("separator", this);
-    action->setText("");
-    action->setSeparator(true);
-    textEdit->addAction(action);
-    action = new QAction(trUtf8("Larger Font\tCtrl++"), this);
-    connect(action, SIGNAL(triggered()), this, SLOT(enlargeFont()));
-    textEdit->addAction(action);
-    action = new QAction(trUtf8("Smaller Font\tCtrl+-"), this);
-    connect(action, SIGNAL(triggered()), this, SLOT(decreaseFont()));
-    textEdit->addAction(action);
 
 
     tesMap = new TesMap();
@@ -198,10 +164,9 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
     actionCheck_spelling->setChecked(checkSpelling);
 
     scanProcess = new QProcess(this);
-    fileChannel = new FileChannel("/var/tmp/yagf.fifo");
-    fileChannel->open(QIODevice::ReadOnly);
+    QXtUnixSignalCatcher::connectUnixSignal(SIGUSR2);
     ba = new QByteArray();
-    connect(fileChannel, SIGNAL(readyRead()), this, SLOT(readyRead()));
+    connect(QXtUnixSignalCatcher::catcher(), SIGNAL(unixSignal(int)), this, SLOT(readyRead(int)));
 
     connect(textEdit->document(), SIGNAL(cursorPositionChanged(const QTextCursor &)), this, SLOT(updateSP()));
 
@@ -213,7 +178,7 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
     graphicsInput->setMagnifierCursor(resizeCursor);
     l_cursor.load(":/resize_block.png");
     resizeBlockCursor = new QCursor(l_cursor);
-    textEdit->setContextMenuPolicy(Qt::ActionsContextMenu);
+   // textEdit->setContextMenuPolicy(Qt::ActionsContextMenu);
 
     //m_toolBar = new SideBar(this);
     //addToolBar(Qt::LeftToolBarArea, m_toolBar);
@@ -331,7 +296,7 @@ void MainForm::showConfigDlg()
 void MainForm::importPDF()
 {
     if (!pdfx) {
-        QMessageBox::critical(this, trUtf8("No PDF converte installed"), trUtf8("No compatible PDF converter software could be found. Please install either the pdftoppm utility or the GhostScript package (from this the gs command will be required)."));
+        QMessageBox::critical(this, trUtf8("No PDF converter installed"), trUtf8("No compatible PDF converter software could be found. Please install either the pdftoppm utility or the GhostScript package (from this the gs command will be required)."));
         return;
     }
     PopplerDialog dialog(this);
@@ -422,19 +387,18 @@ void MainForm::closeEvent(QCloseEvent *event)
     }
     scanProcess->terminate();
     writeSettings();
-    fileChannel->flush();
     QByteArray ba;
-    ba = fileChannel->readAll();
     delTmpFiles();
     event->accept();
+    QXtUnixSignalCatcher::catcher()->disconnectUnixSugnals();
 }
 
 void MainForm::rotateImage(int deg)
 {
     if (imageLoaded) {
         graphicsInput->clearBlocks();
-        graphicsInput->setViewScale(1, deg); //rotateImage(deg,  graphicsView->width()/2, graphicsView->height()/2);
-        sideBar->setRotation(graphicsInput->getRealAngle());
+        graphicsInput->setViewScale(sideBar->getScale(), deg); //rotateImage(deg,  graphicsView->width()/2, graphicsView->height()/2);
+        sideBar->setRotation(graphicsInput->getAngle());
     }
 }
 
@@ -475,11 +439,10 @@ void MainForm::scaleImage(double sf)
 {
     if (!imageLoaded)
         return;
-    if (graphicsInput->getRealScale()*sf > 1)
+    if (sideBar->getScale()*sf > 0.5)
         return;
-    graphicsInput->setViewScale(sf, 0);
-    scaleFactor = graphicsInput->getRealScale();
-    sideBar->setScale(scaleFactor);
+    graphicsInput->setViewScale(sideBar->getScale()*sf, 0);
+    sideBar->setScale(sideBar->getScale()*sf);
 }
 
 void MainForm::initSettings()
@@ -546,6 +509,7 @@ void MainForm::readSettings()
     tessdataPath = settings->value("ocr/tessData", QVariant(tessdataPath)).toString();
     if (tessdataPath.isEmpty())
         findTessDataPath();
+    cropLoaded =  settings->value("processing/crop1", QVariant(true)).toBool();
 }
 
 void MainForm::writeSettings()
@@ -563,6 +527,7 @@ void MainForm::writeSettings()
     QString engine = selectedEngine == UseCuneiform ? QString("cuneiform") : QString("tesseract");
     settings->setValue("ocr/engine", engine);
     settings->setValue("ocr/tessData", tessdataPath);
+    settings->setValue("processing/crop1", cropLoaded);
     settings->sync();
 }
 
@@ -581,7 +546,9 @@ void MainForm::fillLanguagesBox()
     selectLangsBox->addItem(trUtf8("Finnish (tesseract only)"), QVariant("fin"));
     selectLangsBox->addItem(trUtf8("French"), QVariant("fra"));
     selectLangsBox->addItem(trUtf8("German"), QVariant("ger"));
+    selectLangsBox->addItem(trUtf8("German Gothic (tesseract 3+)"), QVariant("gerf"));
     selectLangsBox->addItem(trUtf8("Greek (tesseract only)"), QVariant("ell"));
+    selectLangsBox->addItem(trUtf8("Hebrew (tesseract 3.0.1+)"), QVariant("heb"));
     selectLangsBox->addItem(trUtf8("Hungarian"), QVariant("hun"));
     selectLangsBox->addItem(trUtf8("Italian"), QVariant("ita"));
     selectLangsBox->addItem(trUtf8("Latvian"), QVariant("lav"));
@@ -592,22 +559,26 @@ void MainForm::fillLanguagesBox()
     selectLangsBox->addItem(trUtf8("Romanian"), QVariant("rum"));
     selectLangsBox->addItem(trUtf8("Spanish"), QVariant("spa"));
     selectLangsBox->addItem(trUtf8("Swedish"), QVariant("swe"));
+    selectLangsBox->addItem(trUtf8("Swedish Gothic (tesseract 3+)"), QVariant("swef"));
     selectLangsBox->addItem(trUtf8("Serbian"), QVariant("srp"));
     selectLangsBox->addItem(trUtf8("Slovenian"), QVariant("slo"));
     selectLangsBox->addItem(trUtf8("Slovakian (tesseract only)"), QVariant("slk"));
     selectLangsBox->addItem(trUtf8("Turkish (tesseract only)"), QVariant("tur"));
     selectLangsBox->addItem(trUtf8("Ukrainian"), QVariant("ukr"));
-    selectLangsBox->addItem(trUtf8("Russian-French"), QVariant("rus_fra"));
-    selectLangsBox->addItem(trUtf8("Russian-German"), QVariant("rus_ger"));
-    selectLangsBox->addItem(trUtf8("Russian-Spanish"), QVariant("rus_spa"));
+    //selectLangsBox->addItem(trUtf8("Russian-French"), QVariant("rus_fra"));
+    //selectLangsBox->addItem(trUtf8("Russian-German"), QVariant("rus_ger"));
+    //selectLangsBox->addItem(trUtf8("Russian-Spanish"), QVariant("rus_spa"));
     //selectFormatBox->addItem("TEXT", QVariant("text"));
     //selectFormatBox->addItem("HTML", QVariant("html"));
 
     tesMap->insert("rus", "rus");
     tesMap->insert("eng", "eng");
     tesMap->insert("ger", "deu");
+    tesMap->insert("gerf", "deu-frak");
     tesMap->insert("fra", "fra");
+    tesMap->insert("heb", "heb");
     tesMap->insert("swe", "swe");
+    tesMap->insert("swef", "swe-frak");
     tesMap->insert("slo", "slv");
     tesMap->insert("spa", "spa");
     tesMap->insert("por", "por");
@@ -744,21 +715,6 @@ void MainForm::scanImage()
     }
 }
 
-void MainForm::loadFile(const QString &fn, const QPixmap &pixmap)
-{
-    sideBar->addFile(fn , &pixmap);
-    fileName = fn;
-    setWindowTitle("YAGF - " + extractFileName(fileName));
-    graphicsInput->loadImage(pixmap);
-    graphicsInput->setViewScale(1, 0);
-    scaleFactor = 1;
-    if (pixmap.width() > 4000)
-            scaleImage(0.25);
-     else if (pixmap.width() > 2000)
-          scaleImage(0.5);
-    graphicsInput->setFocus();
-}
-
 void MainForm::loadFile(const QString &fn, bool loadIntoView)
 {
     QCursor oldCursor = cursor();
@@ -770,19 +726,37 @@ void MainForm::loadFile(const QString &fn, bool loadIntoView)
             sideBar->addBlock(graphicsInput->getBlockRectByIndex(i).toRect());
     }
     qreal xrotation = 0;
+    QRect crop1(0, 0, 0, 0);
+    double scaleFactor = 0.5;
     if (sideBar->fileLoaded(fn)) {
         sideBar->select(fn);
-        xrotation = sideBar->getRotation(fn);
-        scaleFactor = sideBar->getScale(fn);
+        xrotation = sideBar->getRotation();
+        scaleFactor = sideBar->getScale();
+        crop1 = sideBar->getCrop1();
     } else {
         //xrotation = sideBar->getRotation();
-        scaleFactor = sideBar->getScale();
+        //scaleFactor = sideBar->getScale();
     }
 
-    QPixmap pixmap;
-    if ((imageLoaded = pixmap.load(fn))) {
+    QImage image;
+    if ((imageLoaded = image.load(fn))) {
         //pixmap.detach();
-        sideBar->addFile(fn , &pixmap);
+        //sideBar->addFile(fn , &image);
+        if (cropLoaded) {
+            if (crop1.height() == 0) {
+                CCBuilder * cb = new CCBuilder(image);
+                cb->setGeneralBrightness(360);
+                cb->setMaximumColorComponent(100);
+                QRect r = cb->crop();
+                delete cb;
+                image = image.copy(r);
+                //sideBar->setCrop1(r);
+                crop1 = r;
+            } else {
+                image = image.copy(crop1);
+            }
+        }
+
     } else {
         setCursor(oldCursor);
         QMessageBox::critical(this, trUtf8("Image loading error"), trUtf8("Image %1 could not be loaded").arg(fn));
@@ -796,19 +770,20 @@ void MainForm::loadFile(const QString &fn, bool loadIntoView)
     if (imageLoaded) {
         fileName = fn;
         setWindowTitle("YAGF - " + extractFileName(fileName));
-        graphicsInput->loadImage(pixmap);
-        if (scaleFactor == 0)
-            scaleFactor = 1;
-        graphicsInput->setViewScale(1, xrotation);
+        graphicsInput->loadImage(image);
+        sideBar->addFile(fn , graphicsInput->getImageBy16());
+        sideBar->setCrop1(crop1);
+        sideBar->setScale(scaleFactor);
+        graphicsInput->setViewScale(0.5, xrotation);
         for (int i = 0; i < sideBar->getBlocksCount(); i++)
-            graphicsInput->addBlock(sideBar->getBlock(i));
+            graphicsInput->addBlock(sideBar->getBlockByHalf(i));
         graphicsInput->setViewScale(scaleFactor, 0);
         // ((FileToolBar *) m_toolBar)->setRotation(xrotation);
         //  ((FileToolBar *) m_toolBar)->setScale(graphicsInput->getRealScale());
         if (scaleFactor == 1) {
-            if (pixmap.width() > 4000)
+            if (image.width() > 4000)
                 scaleImage(0.25);
-            else if (pixmap.width() > 2000)
+            else if (image.width() > 2000)
                 scaleImage(0.5);
         }
         graphicsInput->setFocus();
@@ -928,7 +903,7 @@ bool MainForm::useCuneiform(const QString &inputFile, const QString &outputFile)
     return true;
 }
 
-void MainForm::recognizeInternal(const QPixmap &pix)
+void MainForm::recognizeInternal(const QImage &img)
 {
     const QString inputFile = "input.bmp";
     const QString outputFile = "output.txt";
@@ -940,7 +915,7 @@ void MainForm::recognizeInternal(const QPixmap &pix)
 
     //outputFormat = selectFormatBox->itemData(selectFormatBox->currentIndex()).toString();
     QPixmapCache::clear();
-    pix.save(workingDir + inputFile, "BMP");
+    img.save(workingDir + inputFile, "BMP");
     if (selectedEngine == UseCuneiform) {
         if (!useCuneiform(inputFile, outputFile))
             return;
@@ -1083,42 +1058,18 @@ void MainForm::textChanged()
     textSaved = !(textEdit->toPlainText().count());
 }
 
-void MainForm::readyRead()
+void MainForm::readyRead(int sig)
 {
-    char *endMarker = "PIPETZ";
-    QByteArray tmp = fileChannel->read(0xFFFFFF);
-    while (tmp.count() != 0) {
-        ba->append(tmp);
-        if (tmp.contains(endMarker)) {
-            QString tmpFile = "input-01.jpg";
-            QFileInfo fi(workingDir + tmpFile);
-            while (fi.exists()) {
-                QString digits = extractDigits(tmpFile);
-                bool result;
-                int d = digits.toInt(&result);
-                if (!result) return;
-                d++;
-                if (d < 0) d = 0;
-                QString newDigits = QString::number(d);
-                while (newDigits.size() < digits.size())
-                    newDigits = '0' + newDigits;
-                tmpFile = tmpFile.replace(digits, newDigits);
-                fi.setFile(workingDir, tmpFile);
-            }
-            QFile f(fi.absoluteFilePath());
-            f.open(QIODevice::WriteOnly);
-            f.write(*ba);
-            f.close();
-            ba->clear();
-            tmp = fileChannel->read(0xFFFFFF);
-            loadFile(fi.absoluteFilePath());
-            break;
-        }
-        tmp = fileChannel->read(0xFFFFFF);
+    QFile f(workingDir + "/input.jpg");
+    QString newName = QString(workingDir + "/scan-input-%1.jpg").arg(ifCounter);
+    ifCounter++;
+    QFileInfo fi(workingDir + "/" + newName);
+    if (fi.exists()) {
+        QFile f2(workingDir + "/" + newName);
+        f2.remove();
     }
-    tmp = fileChannel->read(0xFFFFFF);
-    while (tmp.count() != 0)
-        tmp = fileChannel->read(0xFFFFFF);
+    f.rename(newName);
+    loadFile(newName);
 }
 
 void MainForm::saveHtml(QFile *file)
@@ -1247,7 +1198,7 @@ void MainForm::setUnresizingCusor()
 void MainForm::fileSelected(const QString &path)
 {
     if (path == "") {
-        graphicsInput->loadImage(QPixmap(0, 0));
+        graphicsInput->loadImage(QImage(0, 0));
         this->setWindowTitle("YAGF");
         return;
     }
@@ -1377,7 +1328,7 @@ MainForm::~MainForm()
     delete resizeBlockCursor;
     delete resizeCursor;
     delete spellChecker;
-    delete fileChannel;
+    //delete fileChannel;
     delete settings;
     delete graphicsInput;
     delete ba;
@@ -1387,7 +1338,7 @@ MainForm::~MainForm()
 
 void MainForm::on_actionSave_block_activated()
 {
-    saveImageInternal(graphicsInput->getCurrentBlock());
+    saveImageInternal(QPixmap::fromImage(graphicsInput->getCurrentBlock()));
 }
 
 void MainForm::on_actionCheck_spelling_activated()
@@ -1408,8 +1359,8 @@ void MainForm::on_actionCheck_spelling_activated()
 void MainForm::AnalizePage()
 {
 
-    QPixmap pm = graphicsInput->getAdaptedImage();
-    PageAnalysis * pa = new PageAnalysis(&pm);
+    QImage img = graphicsInput->getAdaptedImage();
+    PageAnalysis * pa = new PageAnalysis(img);
     pa->setWhiteDeviance(200);
     pa->setBlackDeviance(150);
     pa->setBlack(qRgb(0, 0, 0));
@@ -1418,10 +1369,10 @@ void MainForm::AnalizePage()
           return;
     }
 
-    SkewAnalysis * sa = new SkewAnalysis(pa->getPoints(), pm.width(), pm.height());
+    SkewAnalysis * sa = new SkewAnalysis(pa->getPoints(), img.width(), img.height());
     //pm =pa->getPixmap();
     //pm.
-    graphicsInput->loadImage(pa->getPixmap());
+    graphicsInput->loadImage(pa->getImage());
     QRect rec = pa->getCoords();
     int r = sa->getSkew();
     long signed int tan2 = graphicsInput->getImage().width()*tan(sa->getPhi())/2;
@@ -1446,7 +1397,7 @@ void MainForm::AnalizePage()
     graphicsInput->setViewScale(1, r);
     //int dy = 0;
     //    dy = abs(tan2) + pa->getCoords().top()/3;
-    graphicsInput->cropImage(QRect(rec.x(), rec.y(), pm.width(), pm.height() + rec.y()));
+    graphicsInput->cropImage(QRect(rec.x(), rec.y(), img.width(), img.height() + rec.y()));
 
     /*if (sa->getSkew() < 0)
         graphicsInput->cropImage(QRect(pa->getCoords().left(), pa->getCoords().top(), pm.width()-pa->getCoords().left(), pm.height() - pa->getCoords().top()));
@@ -1476,8 +1427,7 @@ void MainForm::on_actionDeskew_activated()
     {
         QCursor oldCursor = cursor();
         setCursor(Qt::WaitCursor);
-        QPixmap * pm = graphicsInput->getSmallImage();
-        deskew(pm);
+        deskew(graphicsInput->getSmallImage());
         setCursor(oldCursor);
     }
 }
@@ -1520,9 +1470,9 @@ void MainForm::pasteimage()
 void MainForm::blockAllText()
 {
     //this->enlargeButtonClicked();
-    QPixmap pm = graphicsInput->getCurrentImage();
-    if (!pm.isNull()) {
-        CCBuilder * cb = new CCBuilder(&pm);
+    QImage img = graphicsInput->getCurrentImage().toImage();
+    if (!img.isNull()) {
+        CCBuilder * cb = new CCBuilder(img);
         cb->setGeneralBrightness(360);
         cb->setMaximumColorComponent(100);
         cb->labelCCs();
@@ -1572,24 +1522,50 @@ void MainForm::blockAllText()
     }
 }
 
-void MainForm::deskew(QPixmap *pm)
+void MainForm::deskew(QImage *img)
 {
-    if (pm) {
+    if (img) {
         QTransform tr;
-        tr.rotate(graphicsInput->getRealAngle());
-        QPixmap pm1 = pm->transformed(tr);
-        CCBuilder * cb = new CCBuilder(&pm1);
+        tr.rotate(graphicsInput->getAngle());
+        QImage img1 = img->transformed(tr);
+        CCBuilder * cb = new CCBuilder(img1);
         cb->setGeneralBrightness(360);
         cb->setMaximumColorComponent(100);
         cb->labelCCs();
         CCAnalysis * an = new CCAnalysis(cb);
         an->analize();
-    //for (int j = 0; j < an->getGlyphBoxCount(); j++) {
-     //   Rect r = an->getGlyphBox(j);
-       // graphicsInput->newBlock(QRect(2*r.x1, 2*r.y1, 2*r.x2-2*r.x1, 2*r.y2-2*r.y1));
-        //this->graphicsInput->addBlock(QRect(2*r.x1, 2*r.y1, 2*r.x2-2*r.x1, 2*r.y2-2*r.y1), false);
-    //}
-        rotateImage(-atan(an->getK())*360/6.283);
+    /*for (int j = 0; j < an->getGlyphBoxCount(); j++) {
+        Rect r = an->getGlyphBox(j);
+        graphicsInput->newBlock(QRect(2*r.x1, 2*r.y1, 2*r.x2-2*r.x1, 2*r.y2-2*r.y1));
+        this->graphicsInput->addBlock(QRect(2*r.x1, 2*r.y1, 2*r.x2-2*r.x1, 2*r.y2-2*r.y1), false);
+    }*/
+        //QRect r = cb->crop();
+        //graphicsInput->newBlock(QRect(2*r.x(), 2*r.y(), 2*(r.width()), 2*(r.height())));
+        //this->graphicsInput->addBlock(QRect(2*r.x(), 2*r.y(), 2*(r.width()), 2*(r.height())), false);
+        QImage img2 = tryRotate(img1, -atan(an->getK())*360/6.283);
+
+        CCBuilder * cb2 = new CCBuilder(img2);
+        cb2->setGeneralBrightness(360);
+        cb2->setMaximumColorComponent(100);
+        cb2->labelCCs();
+        CCAnalysis * an2 = new CCAnalysis(cb2);
+        an2->analize();
+        qreal angle = -atan(an2->getK())*360/6.283;
+        delete an2;
+        delete cb2;
+        if (abs(angle) >= abs(1))
+            angle += (-atan(an->getK())*360/6.283);
+        else
+            angle = -atan(an->getK())*360/6.283;
+
+        rotateImage(angle);
+
+        QImage  img = graphicsInput->getImage().toImage();
+        RotationCropper rc(&img, QColor("white").rgb(), cb->getGB());
+        QRect r = rc.crop();
+       // graphicsInput->newBlock(QRect(r.x(), r.y(), (r.width()), (r.height())));
+        //this->graphicsInput->addBlock(QRect(r.x(), r.y(), (r.width()), (r.height())), false);
+
         delete an;
         delete cb;
     }
@@ -1602,8 +1578,90 @@ void MainForm::deskewByBlock()
     graphicsInput->update();
     QApplication::processEvents();
     if (!graphicsInput->getCurrentBlock().isNull()) {
-        QPixmap pm = graphicsInput->getCurrentBlock();
-        deskew(&pm);
+        deskew(&(graphicsInput->getCurrentBlock()));
     }
     setCursor(oldCursor);
+}
+
+QImage MainForm::tryRotate(QImage image, qreal angle)
+{
+    qreal x = image.width() / 2;
+    qreal y = image.height() / 2;
+    return image.transformed(QTransform().translate(-x, -y).rotate(angle).translate(x, y), Qt::SmoothTransformation);
+
+}
+
+void MainForm::showAdvancedSettings()
+{
+    AdvancedConfigDialog dlg;
+    dlg.setCrop1(cropLoaded);
+    if (dlg.exec()) {
+        cropLoaded = dlg.doCrop1();
+    }
+}
+
+void MainForm::contextMenuRequested(const QPoint &point)
+{
+    QAction *action;
+    QMenu * menu = new QMenu(textEdit);
+    QStringList sl = spellChecker->suggestions();
+    //if (sl.count() == 0) {
+
+    action = new QAction(trUtf8("Undo\tCtrl+Z"), this);
+    action->setShortcut(QKeySequence("Ctrl+Z"));
+    connect(action, SIGNAL(triggered()), textEdit, SLOT(undo()));
+    menu->addAction(action);
+    action = new QAction(trUtf8("Redo\tCtrl+Shift+Z"), this);
+    action->setShortcut(QKeySequence("Ctrl+Shift+Z"));
+    connect(action, SIGNAL(triggered()), textEdit, SLOT(redo()));
+    menu->addAction(action);
+    action = new QAction("separator", this);
+    action->setText("");
+    action->setSeparator(true);
+    menu->addAction(action);
+    action = new QAction(trUtf8("Select All\tCtrl+A"), this);
+    action->setShortcut(QKeySequence("Ctrl+A"));
+    connect(action, SIGNAL(triggered()), textEdit, SLOT(selectAll()));
+    menu->addAction(action);
+    action = new QAction(trUtf8("Cut\tCtrl+X"), this);
+    action->setShortcut(QKeySequence("Ctrl+X"));
+    connect(action, SIGNAL(triggered()), textEdit, SLOT(cut()));
+    menu->addAction(action);
+    action = new QAction(trUtf8("Copy\tCtrl+C"), this);
+    action->setShortcut(QKeySequence("Ctrl+C"));
+    connect(action, SIGNAL(triggered()), textEdit, SLOT(copy()));
+    menu->addAction(action);
+    action = new QAction(trUtf8("Paste\tCtrl+V"), this);
+    action->setShortcut(QKeySequence("Ctrl+V"));
+    connect(action, SIGNAL(triggered()), textEdit, SLOT(paste()));
+    menu->addAction(action);
+    action = new QAction("separator", this);
+    action->setText("");
+    action->setSeparator(true);
+    menu->addAction(action);
+    action = new QAction(trUtf8("Larger Font\tCtrl++"), this);
+    connect(action, SIGNAL(triggered()), this, SLOT(enlargeFont()));
+    menu->addAction(action);
+    action = new QAction(trUtf8("Smaller Font\tCtrl+-"), this);
+    connect(action, SIGNAL(triggered()), this, SLOT(decreaseFont()));
+    menu->addAction(action);
+
+    //}
+    if (sl.count() > 0)
+        menu->addSeparator();
+    foreach(QString str, sl) {
+        QAction * action = menu->addAction(str);
+        connect(action, SIGNAL(triggered()), this, SLOT(replaceWord()));
+    }
+    menu->exec(textEdit->mapToGlobal(point));
+    delete menu;
+}
+
+void MainForm::replaceWord()
+{
+    QAction * action =  (QAction *) sender();
+    QTextCursor cursor = textEdit->textCursor();
+    cursor.select(QTextCursor::WordUnderCursor);
+    cursor.removeSelectedText();
+    cursor.insertText(action->text());
 }

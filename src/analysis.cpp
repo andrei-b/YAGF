@@ -193,10 +193,10 @@ void CCAnalysis::normalizeLines()
     TextLine l = extractLine();
     while (l.count()) {
         lines.append(l);
-        if (l.count() > 2) {
-            qreal d = l.at(l.count()-1).x() - l.at(0).x();
+        if (l.count() > 4) {
+            qreal d = l.at(l.count()-1).x() - l.at(1).x();
             if (d != 0) {
-                k = k + ((qreal)(l.at(l.count()-1).y() - l.at(0).y()))/d;
+                k = k + ((qreal)(l.at(l.count()-1).y() - l.at(1).y()))/d;
                 count++;
             }
         }
