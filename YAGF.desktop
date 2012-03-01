@@ -16,8 +16,9 @@ GenericName[ru]=Распознавание текста
 GenericName[lt]=ENTER YOUR TRANSLATION HERE
 GenericName[pl]=ENTER YOUR TRANSLATION HERE
 GenericName[de]=OCR Texterkennung
-Comment=Graphical frontend for Cuneiform
-Comment[ru]=Графическая оболочка для Cuneiform
+Comment=Graphical frontend for Cuneiform and Tesseract
+Comment[ru]=Графическая оболочка для Cuneiform и Tesseract
 Comment[lt]=Grafinė teksto atpažinimo programos Cuneiform sąsaja
 Comment[pl]=Grafinė teksto atpažinimo programos Cuneiform sąsaja
 Comment[de]=Graphische Benutzeroberfläche zu Cuneiform
+
