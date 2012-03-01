@@ -1,4 +1,5 @@
-
+* Tue Feb 28 2012 Andrei Borovsky <anb@symmetrica.net> - 0.9
+- Genral program restructure. Images are loaded and processed much faster.
 * Mon Feb 27 2012 Andrei Borovsky <anb@symmetrica.net> - 0.9
 - Hebrew support added
 - corrected word suggestion added to the text editor context menu.
