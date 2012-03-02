@@ -1577,7 +1577,8 @@ void MainForm::deskewByBlock()
     graphicsInput->update();
     QApplication::processEvents();
     if (!graphicsInput->getCurrentBlock().isNull()) {
-        deskew(&(graphicsInput->getCurrentBlock()));
+        QImage img = graphicsInput->getCurrentBlock();
+        deskew(&img);
     }
     setCursor(oldCursor);
 }
