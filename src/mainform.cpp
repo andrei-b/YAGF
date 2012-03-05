@@ -239,7 +239,7 @@ void MainForm::loadFromCommandLine()
             loadFile(sl.at(1));
         for (int i = 2; i < sl.count(); i++)
             if (QFile::exists(sl.at(i)))
-                loadFile(sl.at(i), false);
+                loadFile(sl.at(i));
         if (QFile::exists(sl.at(1)))
             sideBar->select(sl.at(1));
 
@@ -786,6 +786,8 @@ void MainForm::loadFile(const QString &fn, bool loadIntoView)
                 scaleImage(0.5);
         }
         graphicsInput->setFocus();
+    } else {
+       // sideBar->addFile(fn);
     }
     scaleFactor = 1;
     setCursor(oldCursor);
