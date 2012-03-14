@@ -106,10 +106,10 @@ public:
         whitesCount = 0;
         //clAltCount = 0;
         whiteAlt = 0;
-        int maxlstripe = 0;
-        int currentlstripe = 0;
+        //int maxlstripe = 0;
+        //int currentlstripe = 0;
         QRgb * line = (QRgb *) builder->image.scanLine(y);
-        int curline =0;
+        //int curline =0;
         for (int i = 0; i < builder->w; i++) {
             int pixel = qRed(line[i]) + qGreen(line[i]) + qBlue(line[i]);
             if (pixel <= darktr) {
@@ -153,7 +153,7 @@ public:
         whitesCount = 0;
         //clAltCount = 0;
         whiteAlt = 0;
-        int curline =0;
+        //int curline =0;
         for (int y = 0; y < builder->h; y++) {
             QRgb * line = (QRgb *) builder->image.scanLine(y);
             int pixel = qRed(line[x]) + qGreen(line[x]) + qBlue(line[x]);

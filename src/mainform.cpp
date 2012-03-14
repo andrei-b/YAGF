@@ -456,15 +456,9 @@ void MainForm::initSettings()
     QString iniFile = workingDir + "yagf.ini";
     settings = new QSettings(iniFile, QSettings::IniFormat);
     QFileInfo iniFileInfo(iniFile);
-    if (iniFileInfo.exists())
-        readSettings();
-    else {
-        selectedEngine = UseCuneiform; // Default OCR engine
-        language = selectDefaultLanguageName();
-        if ( language == "rus" )
-             language.append("eng"); // Set Russian-English for Russian as default
-        writeSettings();
-    }
+    //if (iniFileInfo.exists())
+    readSettings();
+    writeSettings();
     QList<int> li;
     li.append(1);
     li.append(1);
@@ -484,16 +478,6 @@ void MainForm::readSettings()
     //singleColumnButton->setChecked(singleColumn);
     lastDir = settings->value("mainwindow/lastDir").toString();
     lastOutputDir = settings->value("mainwindow/lastOutputDir", lastOutputDir).toString();
-    language = settings->value("ocr/language",  selectDefaultLanguageName()).toString();
-    //selectLangsBox->setCurrentIndex(selectLangsBox->findData(QVariant(language)));
-    outputFormat = settings->value("ocr/outputFormat", QString("text")).toString();
-    if (outputFormat == "") outputFormat = "text";
-    actionSelect_HTML_format->setChecked(outputFormat != "text"); // =  selectFormatBox->setCurrentIndex(selectFormatBox->findData(QVariant(outputFormat)));
-    checkSpelling = settings->value("mainWindow/checkSpelling", bool(true)).toBool();
-    bool ok;
-    QFont f(textEdit->font());
-    f.setPointSize(settings->value("mainWindow/fontSize", int(12)).toInt(&ok));
-    textEdit->setFont(f);
     QString defEngine;
     if (findProgram("tesseract")&&(!findProgram("cuneiform")))
         defEngine = "tesseract";
@@ -504,6 +488,16 @@ void MainForm::readSettings()
         selectedEngine = UseCuneiform;
     else
         selectedEngine = UseTesseract;
+    language = settings->value("ocr/language",  selectDefaultLanguageName()).toString();
+    //selectLangsBox->setCurrentIndex(selectLangsBox->findData(QVariant(language)));
+    outputFormat = settings->value("ocr/outputFormat", QString("text")).toString();
+    if (outputFormat == "") outputFormat = "text";
+    actionSelect_HTML_format->setChecked(outputFormat != "text"); // =  selectFormatBox->setCurrentIndex(selectFormatBox->findData(QVariant(outputFormat)));
+    checkSpelling = settings->value("mainWindow/checkSpelling", bool(true)).toBool();
+    bool ok;
+    QFont f(textEdit->font());
+    f.setPointSize(settings->value("mainWindow/fontSize", int(12)).toInt(&ok));
+    textEdit->setFont(f);
     findTessDataPath();
     tessdataPath = settings->value("ocr/tessData", QVariant(tessdataPath)).toString();
     if (tessdataPath.isEmpty())
@@ -661,8 +655,19 @@ QString MainForm::selectDefaultLanguageName()
             break;
         case QLocale::Ukrainian:
             name = "ukr";
+        case QLocale::Finnish:
+            name = "fin";
+        case QLocale::Greek:
+            name = "ell";
+        case QLocale::Hebrew:
+            name = "heb";
         default:
-            name = "rus";
+            {
+                if (selectedEngine == UseCuneiform)
+                    name = "ruseng";
+                else
+                    name = "rus";
+            }
     }
     return name;
 }
@@ -1563,7 +1568,7 @@ void MainForm::deskew(QImage *img)
 
         QImage  img = graphicsInput->getImage().toImage();
         RotationCropper rc(&img, QColor("white").rgb(), cb->getGB());
-        QRect r = rc.crop();
+        //QRect r = rc.crop();
        // graphicsInput->newBlock(QRect(r.x(), r.y(), (r.width()), (r.height())));
         //this->graphicsInput->addBlock(QRect(r.x(), r.y(), (r.width()), (r.height())), false);
 

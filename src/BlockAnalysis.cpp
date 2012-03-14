@@ -346,7 +346,7 @@ void BlockAnalysis::preScan1()
     int div = (m_coords->height() - m_coords->top()) * (m_coords->width() - m_coords->left());
     mtreshold = mtreshold / div;
     for (int i = m_coords->top(); i < m_coords->height(); i++) {
-        qint16 pixel1 = qRed(lines[i][m_coords->left()]) + qGreen(lines[i][m_coords->left()]) + qBlue(lines[i][m_coords->left()]);
+        //qint16 pixel1 = qRed(lines[i][m_coords->left()]) + qGreen(lines[i][m_coords->left()]) + qBlue(lines[i][m_coords->left()]);
         qint16 pixel2 = qRed(lines[i][m_coords->left() + 1]) + qGreen(lines[i][m_coords->left() + 1]) + qBlue(lines[i][m_coords->left() + 1]);
         for (int j = m_coords->left() + 2; j < m_coords->width(); j++) {
             qint16 pixel3 = qRed(lines[i][j]) + qGreen(lines[i][j]) + qBlue(lines[i][j]);
@@ -354,7 +354,7 @@ void BlockAnalysis::preScan1()
                 lines[i][j-1] = lines[i][j];
                 lines[i][j-2] = lines[i][j];
             }
-            pixel1 = pixel2;
+            //pixel1 = pixel2;
             pixel2 = pixel3;
         }
         lines[i][m_coords->width()-1] = lines[i][m_coords->width()-2];
