@@ -2,7 +2,8 @@ project(yagf C CXX)
 cmake_minimum_required(VERSION 2.6.0)
 set(SOURCES src/main.cpp src/mainform.cpp src/qgraphicsinput.cpp src/utils.cpp src/qxtunixsignalcatcher.cpp src/spellchecker.cpp src/BlockAnalysis.cpp src/PageAnalysis.cpp
     src/SkewAnalysis.cpp src/CCAnalysis.cpp src/qxtgraphicsproxywidget.cpp src/popplerdialog.cpp src/pdfextractor.cpp src/pdf2ppt.cpp src/ghostscr.cpp 
-    src/configdialog.cpp src/advancedconfigdialog.cpp src/ccbuilder.cpp src/analysis.cpp src/qsnippet.cpp src/sidebar.cpp src/droplabel.cpp src/projectmanager.cpp)
+    src/configdialog.cpp src/advancedconfigdialog.cpp src/ccbuilder.cpp src/analysis.cpp src/qsnippet.cpp src/sidebar.cpp src/droplabel.cpp src/projectmanager.cpp src/settings.cpp)
+set (HEADERS src/settings.h)
 set(INT_SOURCES src/preload.c)
 set(UIS src/mainform.ui src/popplerdialog.ui src/configdialog.ui src/advancedconfigdialog.ui)
 set(MOC_HEADERS src/mainform.h src/qxtunixsignalcatcher.h src/qxtunixscinternal.h src/qgraphicsinput.h src/qxtgraphicsproxywidget.h src/qxtgraphicsview.h
@@ -12,7 +13,7 @@ set (yagf_RCCS src/yagf.qrc)
 set(QM_FILES ${CMAKE_BINARY_DIR}/yagf_ru.qm ${CMAKE_BINARY_DIR}/yagf_lt.qm ${CMAKE_BINARY_DIR}/yagf_de.qm ${CMAKE_BINARY_DIR}/yagf_pl.qm ${CMAKE_BINARY_DIR}/yagf_uk.qm)
 set (LIB_PATH_SUFFIX )
 add_definitions(-Wall -g)
-find_package(Qt4 REQUIRED)
+find_package(Qt4 4.6 REQUIRED)
 find_package(ASPELL REQUIRED)
 include(${QT_USE_FILE})
 qt4_wrap_ui(UI_HEADERS ${UIS})
