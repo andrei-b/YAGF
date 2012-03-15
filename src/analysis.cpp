@@ -33,6 +33,18 @@ bool operator==(Rect r1, Rect r2)
     return true;
 }
 
+bool operator==(GlyphInfo g1, GlyphInfo g2)
+{
+    if (g1.x != g2.x)
+        return false;
+    if (g1.y != g2.y)
+        return false;
+    if (g1.h != g2.h)
+        return false;
+    return true;
+}
+
+
 CCAnalysis::CCAnalysis(CCBuilder * builder)
 {
 	this->builder = builder;
@@ -155,14 +167,14 @@ TextLine CCAnalysis::extractLine()
         if (glyphField.values(x).count()) {
             first = glyphField.values(x).at(0);
             glyphField.remove(x, first);
-            line.append(QPoint((first.x1+first.x2)/2, (first.y1+first.y2)/2));
+            line.append(ginfo((first.x1+first.x2)/2, (first.y1+first.y2)/2, abs(first.y1-first.y2)));
             break;
         }
     }
     if (line.count()) {
         Rect temp = first;
         while (findAdjacent(temp) >= 0) {
-            line.append(QPoint((temp.x1+temp.x2)/2, (temp.y1+temp.y2)/2));
+            line.append(ginfo((temp.x1+temp.x2)/2, (temp.y1+temp.y2)/2, abs(temp.y1-temp.y2)));
         }
     }
     return line;
@@ -194,10 +206,26 @@ void CCAnalysis::normalizeLines()
     while (l.count()) {
         lines.append(l);
         if (l.count() > 4) {
-            qreal d = l.at(l.count()-1).x() - l.at(1).x();
-            if (d != 0) {
-                k = k + ((qreal)(l.at(l.count()-1).y() - l.at(1).y()))/d;
-                count++;
+            if (abs (l.last().h - l.first().h) < 3) {
+                qreal d = l.last().x - l.first().x;
+                if (d != 0) {
+                    k = k + ((qreal)(l.last().y - l.first().y))/d;
+                    count++;
+                }
+            } else {
+                int lastX = l.at(l.count()-1).x;
+                int lastY = l.at(l.count()-1).y;
+                int lastH = l.at(l.count()-1).h;
+                int firstX = l.at(1).x;
+                int firstY = l.at(1).y;
+                int firstH = l.at(1).h;
+                if (abs (lastH - firstH) < 3) {
+                    qreal d = lastX - firstX;
+                    if (d != 0) {
+                        k = k + ((qreal)(lastY - firstY))/d;
+                        count++;
+                    }
+                }
             }
         }
         //graphicsInput->drawLine(l.at(0).x()*2, l.at(0).y()*2, l.at(l.count()-1).x()*2,l.at(l.count()-1).y()*2);
@@ -232,9 +260,12 @@ void CCAnalysis::rotateLines(qreal phi, const QPoint &c)
     for (int i = 0; i < lines.count(); i++) {
         TextLine l = lines.at(i);
         for (int j =0; j < l.count(); j++) {
-            QPoint p = l.at(j);
+            QPoint p = QPoint(l.at(j).x, l.at(j).y);
             rotatePhi(phi, c, p);
-            l.replace(j, p);
+            ginfo g = l.at(j);
+            g.x = p.x();
+            g.y = p.y();
+            l.replace(j, g);
         }
         lines.replace(i, l);
     }
@@ -248,5 +279,12 @@ int CCAnalysis::getMediumGlyphWidth()
 int CCAnalysis::getMediumGlyphHeight()
 {
     return mediumGlyphHeight;
+}
+
+ginfo::ginfo(int a1, int a2, int a3)
+{
+    x = a1;
+    y = a2;
+    h = a3;
 }
 

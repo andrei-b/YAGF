@@ -35,7 +35,16 @@ typedef QHash<quint32, Rect> ComponentParameters;
 typedef QList<qint32> Strings;
 typedef QList<Rect> StringsBoxes;
 typedef QMultiHash<quint32, Rect> GlyphField;
-typedef QList<QPoint> TextLine;
+typedef struct ginfo {
+    ginfo(int a1, int a2, int a3);
+int h;
+int x;
+int y;
+} GlyphInfo;
+
+bool operator==(GlyphInfo g1, GlyphInfo g2);
+
+typedef QList<GlyphInfo> TextLine;
 typedef QMultiHash<quint32, TextLine> LineField;
 typedef QList<TextLine> Lines;
 

@@ -1318,10 +1318,10 @@ void MainForm::blockAllText()
         int maxX = 0;
         int maxY = 0;
         for (int i =0; i < lines.count(); i++) {
-            int x1 = lines.at(i).at(0).x();
-            int y1 = lines.at(i).at(0).y();
-            int x2 = lines.at(i).at(lines.at(i).count()-1).x();
-            int y2 = lines.at(i).at(lines.at(i).count()-1).y();
+            int x1 = lines.at(i).at(0).x;
+            int y1 = lines.at(i).at(0).y;
+            int x2 = lines.at(i).at(lines.at(i).count()-1).x;
+            int y2 = lines.at(i).at(lines.at(i).count()-1).y;
             //graphicsInput->drawLine(x1,y1,x2,y2);
             if (x1 > x2) {
                 x2 = x1 + x2;
