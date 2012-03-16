@@ -1381,10 +1381,10 @@ void MainForm::deskew(QImage *img)
         qreal angle = -atan(an2->getK())*360/6.283;
         delete an2;
         delete cb2;
-        if (abs(angle) >= abs(1))
+        if (abs(angle*10) >= abs(5))
             angle += (-atan(an->getK())*360/6.283);
         else
-            angle = -atan(an->getK())*360/6.283;
+            angle -= (-atan(an->getK())*360/6.283);
 
         rotateImage(angle);
 
