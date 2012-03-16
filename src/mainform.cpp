@@ -350,7 +350,7 @@ void MainForm::closeEvent(QCloseEvent *event)
     QXtUnixSignalCatcher::catcher()->disconnectUnixSugnals();
 }
 
-void MainForm::rotateImage(int deg)
+void MainForm::rotateImage(qreal deg)
 {
     if (imageLoaded) {
         graphicsInput->clearBlocks();

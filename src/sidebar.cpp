@@ -168,7 +168,7 @@ QSnippet * SideBar::getItemByName(const QString &name)
     return NULL;
 }
 
-void SideBar::setRotation(int r, const QString &name)
+void SideBar::setRotation(qreal r, const QString &name)
 {
     if (name == "") {
         if (current) {

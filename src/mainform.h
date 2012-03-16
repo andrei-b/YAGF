@@ -100,7 +100,7 @@ private:
     virtual void closeEvent(QCloseEvent *event);
     void deskew(QImage * img);
     void AnalizePage();
-    void rotateImage(int deg);
+    void rotateImage(qreal deg);
     void scaleImage(double sf);
     void initSettings();
     void fillLanguagesBox();
