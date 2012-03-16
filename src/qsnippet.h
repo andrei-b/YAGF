@@ -34,7 +34,7 @@ public:
     explicit QSnippet(QListWidget *parent = 0);
     bool addFile(const QString &name, const QImage * image = NULL);
     void setRotation(qreal rot);
-    int getRotation();
+    qreal getRotation();
     void setScale(double sc);
     double getScale();
     void setCrop1(const QRect &rect);

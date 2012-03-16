@@ -47,7 +47,7 @@ void QSnippet::setRotation(qreal rot)
     rotation = rot;
 }
 
-int QSnippet::getRotation()
+qreal QSnippet::getRotation()
 {
     return rotation;
 }

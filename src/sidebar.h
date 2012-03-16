@@ -32,7 +32,7 @@ public:
     void addFile(const QString &name, const QImage * image = 0, bool select = true);
     QStringList getFileNames();
     void setRotation(qreal r, const QString &name = "");
-    int getRotation(const QString &name = "");
+    qreal getRotation(const QString &name = "");
     int getBlocksCount();
     void clearBlocks();
     void addBlock(const QRect &block, const QString &name = "");

@@ -180,7 +180,7 @@ void SideBar::setRotation(qreal r, const QString &name)
     }
 }
 
-int SideBar::getRotation(const QString &name)
+qreal SideBar::getRotation(const QString &name)
 {
     if (name == "") {
         if (current) {
