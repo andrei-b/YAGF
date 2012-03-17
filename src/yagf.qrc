@@ -33,7 +33,6 @@
         <file>images/trashcan1s.png</file>
         <file>images/trashcan2-s.png</file>
         <file>images/check_spelling.png</file>
-        <file>images/scanner48.png</file>
         <file>images/savpicas.png</file>
         <file>images/saveblock.png</file>
         <file>images/deskew2.png</file>
@@ -43,5 +42,6 @@
         <file>images/clearblocks.png</file>
         <file>images/selecttext.png</file>
         <file>images/edit_paste.png</file>
+        <file>images/scanner48.png</file>
     </qresource>
 </RCC>
