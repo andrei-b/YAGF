@@ -427,7 +427,6 @@ QImage QGraphicsInput::extractImage(QGraphicsRectItem *item)
 void QGraphicsInput::setViewScale(qreal scale, qreal angle)
 {
     if (!hasImage) return;
-    //if (scale != m_scale)  {
         if ((scale == 0) || (scale < 0.0625) || (scale > 0.5))
             return;
     //    m_view->scale(scale,  scale);
@@ -438,39 +437,30 @@ void QGraphicsInput::setViewScale(qreal scale, qreal angle)
                 items().at(i)->scale(sf, sf); // Silly as this line seems it is the only way to scale rectangles correctly.
             }
         m_scale = scale;
-
+        QImage imgr;
             //if (real_scale == 1)
             //  m_image = this->addPixmap(QPixmap::fromImage(old_pixmap));
             //else
             if (m_scale == 0.5) {
-                m_image = this->addPixmap(QPixmap::fromImage(pm2));
                 //real_scale = 0.5;
+                imgr = pm2;
             }
             else if (m_scale == 0.25)
-                m_image = this->addPixmap(QPixmap::fromImage(pm4));
+                imgr = pm4;
             else if (m_scale == 0.125)
-                m_image = this->addPixmap(QPixmap::fromImage(pm8));
+                imgr = pm8;
             else if (m_scale == 0.0625)
-                m_image = this->addPixmap(QPixmap::fromImage(pm16));
-    //}
+                imgr = pm16;
+    qreal x = imgr.width() / 2;
+    qreal y = imgr.height() / 2;
+    m_rotate += angle;
+    imgr = imgr.transformed(QTransform().translate(-x, -y).rotate(m_rotate).translate(x, y), Qt::SmoothTransformation);
+    m_image = addPixmap(QPixmap::fromImage(imgr));
+    m_realImage = m_realImage.transformed(QTransform().translate(-x, -y).rotate(angle).translate(x, y), Qt::SmoothTransformation);
     m_image->setFocus();
     m_image->setAcceptedMouseButtons(Qt::LeftButton | Qt::RightButton | Qt::MidButton);
     m_image->setAcceptHoverEvents(true);
     m_image->setData(1, "image");
-    qreal x = width() / 2;
-    qreal y = height() / 2;
-    //real_rotate += angle;
-    //QImage img = m_image->pixmap().toImage();
-    //QPainter painter;
-    //painter.begin(&img);
-    //QPixmap pm;
-    //painter.setBrush(QBrush(Qt::red));
-    //pm = QPixmap::fromImage(img.transformed(QTransform().translate(-x, -y).rotate(real_rotate).translate(x, y), Qt::SmoothTransformation));
-    //painter.end();
-    //m_image->setPixmap(pm);
-    m_rotate += angle;
-    m_image->setPixmap(m_image->pixmap().transformed(QTransform().translate(-x, -y).rotate(m_rotate).translate(x, y), Qt::SmoothTransformation));
-    m_realImage = m_realImage.transformed(QTransform().translate(-x, -y).rotate(angle).translate(x, y), Qt::SmoothTransformation);
     m_image->show();
     m_view->centerOn(0, 0);
 }

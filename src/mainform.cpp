@@ -1400,7 +1400,7 @@ void MainForm::deskew(QImage *img)
 
         delete an;
         delete cb;
-        blockAllText();
+        //blockAllText();
     }
 }
 
