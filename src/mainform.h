@@ -92,8 +92,8 @@ private slots:
     void addPDFPage(QString pageName);
     void finishedPDF();
     void pasteimage();
-    void blockAllText();
     void deskewByBlock();
+    void selectTextArea();
 protected:
     bool eventFilter(QObject *object, QEvent *event);
 private:

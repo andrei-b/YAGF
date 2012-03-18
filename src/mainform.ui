@@ -469,7 +469,7 @@
      <x>0</x>
      <y>0</y>
      <width>1920</width>
-     <height>25</height>
+     <height>20</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">
@@ -1095,7 +1095,7 @@
    <sender>actionSelect_Text_Area</sender>
    <signal>triggered()</signal>
    <receiver>MainWindow</receiver>
-   <slot>blockAllText()</slot>
+   <slot>selectTextArea()</slot>
    <hints>
     <hint type="sourcelabel">
      <x>-1</x>
@@ -1153,5 +1153,6 @@
   <slot>blockAllText()</slot>
   <slot>deskewByBlock()</slot>
   <slot>showAdvancedSettings()</slot>
+  <slot>selectTextArea()</slot>
  </slots>
 </ui>

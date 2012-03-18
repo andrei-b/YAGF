@@ -18,6 +18,9 @@
 */
 
 #include "PageAnalysis.h"
+#include "CCAnalysis.h"
+#include "ccbuilder.h"
+#include "analysis.h"
 #include <QImage>
 #include <QPixmap>
 #include <QRect>
@@ -224,3 +227,82 @@ void PageAnalysis::removeBlackSideStripes()
  {
      return *m_image;
  }
+
+ void BlockSplitter::setImage(const QImage &image, qreal rotation, qreal scale)
+ {
+     img = image;
+     m_rotate = rotation;
+     m_scale = scale;
+ }
+
+ QRect BlockSplitter::getRootBlock(const QImage &image)
+ {
+     QImage img1 = image;
+     QRect result = blockAllText();
+     RotationCropper rc(&img1, QColor("white").rgb(), generalBr);
+     QRect r = rc.crop();
+     result.setWidth(result.width() + r.x());
+     result.setX(result.x() + r.x());
+     result.setHeight(result.height()+r.y());
+     result.setY(result.y() + r.y());
+     return result;
+ }
+
+ QRect BlockSplitter::blockAllText()
+ {
+     qreal x = img.width() / 2;
+     qreal y = img.height() / 2;
+     img = img.transformed(QTransform().translate(-x, -y).rotate(m_rotate).translate(x, y), Qt::SmoothTransformation);
+     if (!img.isNull()) {
+         CCBuilder * cb = new CCBuilder(img);
+         cb->setGeneralBrightness(360);
+         cb->setMaximumColorComponent(100);
+         cb->labelCCs();
+         CCAnalysis * an = new CCAnalysis(cb);
+         an->analize();
+  //       an->rotateLines(-atan(an->getK()));
+         Lines lines = an->getLines();
+         foreach(TextLine l, lines)
+             if (l.count() < 3)
+                 lines.removeOne(l);
+         //QPoint orig;
+         //graphicsInput->imageOrigin(orig);
+         int minX = 100000;
+         int minY = 100000;
+         int maxX = 0;
+         int maxY = 0;
+         for (int i =0; i < lines.count(); i++) {
+             int x1 = lines.at(i).at(0).x;
+             int y1 = lines.at(i).at(0).y;
+             int x2 = lines.at(i).at(lines.at(i).count()-1).x;
+             int y2 = lines.at(i).at(lines.at(i).count()-1).y;
+             //graphicsInput->drawLine(x1,y1,x2,y2);
+             if (x1 > x2) {
+                 int t = x2;
+                 x2 = x1;
+                 x1 = t;
+             }
+             minX = minX < x1 ? minX : x1;
+             maxX = maxX > x2 ? maxX : x2;
+             if (y1 > y2) {
+                 int t = y2;
+                 y2 = y1;
+                 y1 = t;
+             }
+             minY = minY < y1 ? minY : y1;
+             maxY = maxY > y2 ? maxY : y2;
+         }
+         minX = minX  - 2*an->getMediumGlyphWidth();
+         maxX =maxX + 2*an->getMediumGlyphWidth();
+         minY = minY - 2*an->getMediumGlyphHeight();
+         maxY = maxY + 2*an->getMediumGlyphHeight();
+         //graphicsInput->clearBlocks();
+         //graphicsInput->addBlock(QRectF(ox + minX*2*sideBar->getScale(), oy + minY*2*sideBar->getScale(), (maxX-minX)*2*sideBar->getScale(), (maxY-minY)*2*sideBar->getScale()));
+
+         delete an;
+         generalBr = cb->getGB();
+         delete cb;
+         return QRect(minX*2*m_scale, minY*2*m_scale, (maxX-minX)*2*m_scale, (maxY-minY)*2*m_scale);
+     }
+ }
+

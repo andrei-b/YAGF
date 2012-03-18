@@ -30,6 +30,7 @@
 #include "mainform.h"
 #include "ccbuilder.h"
 #include "analysis.h"
+#include "PageAnalysis.h"
 #include "CCAnalysis.h"
 #include <signal.h>
 #include <QComboBox>
@@ -115,7 +116,7 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
     graphicsInput->addToolBarAction(actionRotate_90_CW);
     graphicsInput->addToolBarAction(actionDeskew);
     graphicsInput->addToolBarSeparator();
-   //graphicsInput->addToolBarAction(actionSelect_Text_Area);
+    graphicsInput->addToolBarAction(actionSelect_Text_Area);
     graphicsInput->addToolBarAction(ActionClearAllBlocks);
 
     statusBar()->show();
@@ -1295,65 +1296,6 @@ void MainForm::pasteimage()
     setCursor(oldCursor);
 }
 
-void MainForm::blockAllText()
-{
-    //this->enlargeButtonClicked();
-    QImage img = *(graphicsInput->getSmallImage());
-    qreal x = img.width() / 2;
-    qreal y = img.height() / 2;
-    qreal m_rotate = sideBar->getRotation();
-    img = img.transformed(QTransform().translate(-x, -y).rotate(m_rotate).translate(x, y), Qt::SmoothTransformation);
-    if (!img.isNull()) {
-        CCBuilder * cb = new CCBuilder(img);
-        cb->setGeneralBrightness(360);
-        cb->setMaximumColorComponent(100);
-        cb->labelCCs();
-        CCAnalysis * an = new CCAnalysis(cb);
-        an->analize();
- //       an->rotateLines(-atan(an->getK()));
-        Lines lines = an->getLines();
-        foreach(TextLine l, lines)
-            if (l.count() < 3)
-                lines.removeOne(l);
-        //QPoint orig;
-        //graphicsInput->imageOrigin(orig);
-        int minX = 100000;
-        int minY = 100000;
-        int maxX = 0;
-        int maxY = 0;
-        for (int i =0; i < lines.count(); i++) {
-            int x1 = lines.at(i).at(0).x;
-            int y1 = lines.at(i).at(0).y;
-            int x2 = lines.at(i).at(lines.at(i).count()-1).x;
-            int y2 = lines.at(i).at(lines.at(i).count()-1).y;
-            //graphicsInput->drawLine(x1,y1,x2,y2);
-            if (x1 > x2) {
-                int t = x2;
-                x2 = x1;
-                x1 = t;
-            }
-            minX = minX < x1 ? minX : x1;
-            maxX = maxX > x2 ? maxX : x2;
-            if (y1 > y2) {
-                int t = y2;
-                y2 = y1;
-                y1 = t;
-            }
-            minY = minY < y1 ? minY : y1;
-            maxY = maxY > y2 ? maxY : y2;
-        }
-        minX = minX  - 2*an->getMediumGlyphWidth();
-        maxX =maxX + 2*an->getMediumGlyphWidth();
-        minY = minY - 2*an->getMediumGlyphHeight();
-        maxY = maxY + 2*an->getMediumGlyphHeight();
-        graphicsInput->clearBlocks();
-        graphicsInput->addBlock(QRectF(minX*2*sideBar->getScale(), minY*2*sideBar->getScale(), (maxX-minX)*2*sideBar->getScale(), (maxY-minY)*2*sideBar->getScale()));
-        //this->decreaseButtonClicked();
-        delete an;
-        delete cb;
-    }
-}
-
 void MainForm::deskew(QImage *img)
 {
     if (img) {
@@ -1392,15 +1334,13 @@ void MainForm::deskew(QImage *img)
 
         rotateImage(angle);
 
-        QImage  img = graphicsInput->getImage().toImage();
-        RotationCropper rc(&img, QColor("white").rgb(), cb->getGB());
-        //QRect r = rc.crop();
-       // graphicsInput->newBlock(QRect(r.x(), r.y(), (r.width()), (r.height())));
+//        QImage  img = graphicsInput->getCurrentImage().toImage();
+        //graphicsInput->newBlock(QRect(r.x(), r.y(), (r.width()), (r.height())));
         //this->graphicsInput->addBlock(QRect(r.x(), r.y(), (r.width()), (r.height())), false);
 
         delete an;
         delete cb;
-        //blockAllText();
+        //blockAllText(r.x(), r.y());
     }
 }
 
@@ -1415,6 +1355,15 @@ void MainForm::deskewByBlock()
         deskew(&img);
     }
     setCursor(oldCursor);
+}
+
+void MainForm::selectTextArea()
+{
+    BlockSplitter bs;
+    bs.setImage(*(graphicsInput->getSmallImage()), sideBar->getRotation(), sideBar->getScale());
+    QRect r = bs.getRootBlock(graphicsInput->getCurrentImage().toImage());
+    sideBar->addBlock(r);
+    graphicsInput->addBlock(r);
 }
 
 QImage MainForm::tryRotate(QImage image, qreal angle)

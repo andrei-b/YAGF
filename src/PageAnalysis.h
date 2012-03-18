@@ -24,6 +24,7 @@
 #include <QColor>
 #include <QList>
 #include <QPoint>
+#include <QImage>
 #include "ycommon.h"
 
 class QPixmap;
@@ -63,5 +64,18 @@ private:
     QPointList * pointList;
 };
 
+class BlockSplitter
+{
+public:
+    void setImage(const QImage &image, qreal rotation, qreal scale);
+    QRect getRootBlock(const QImage &image);
+private:
+    QRect blockAllText();
+private:
+    QImage img;
+    qreal m_rotate;
+    qreal m_scale;
+    int generalBr;
+};
 
 #endif
