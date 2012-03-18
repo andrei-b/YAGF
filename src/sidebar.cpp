@@ -27,6 +27,7 @@
 #include <QFileInfo>
 #include <QDrag>
 
+
 SideBar::SideBar(QWidget *parent) :
     QListWidget(parent)
 {
@@ -38,6 +39,7 @@ SideBar::SideBar(QWidget *parent) :
     setToolTip(trUtf8("Drop files here"));
     setAcceptDrops(true);
     setDropIndicatorShown(true);
+    lock = false;
 }
 
 void SideBar::addFile(const QString &name, const QImage *image, bool select)
@@ -71,9 +73,12 @@ QStringList SideBar::getFileNames()
 
 void SideBar::itemActive(QListWidgetItem *item)
 {
+    if (lock) return;
+    lock = true;
     QString s = ((QSnippet *)item)->getName();
     emit fileSelected(s);
     current = ((QSnippet *)item);
+    lock = false;
 }
 
 /*void SideBar::dragEnterEvent(QDragEnterEvent *event)

@@ -66,6 +66,7 @@ protected:
 private:
     QSnippet * getItemByName(const QString &name);
     QSnippet * current;
+    bool lock;
 };
 
 #endif // SIDEBAR_H
