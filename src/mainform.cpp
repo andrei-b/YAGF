@@ -1298,7 +1298,11 @@ void MainForm::pasteimage()
 void MainForm::blockAllText()
 {
     //this->enlargeButtonClicked();
-    QImage img = graphicsInput->getCurrentImage().toImage();
+    QImage img = *(graphicsInput->getSmallImage());
+    qreal x = img.width() / 2;
+    qreal y = img.height() / 2;
+    qreal m_rotate = sideBar->getRotation();
+    img = img.transformed(QTransform().translate(-x, -y).rotate(m_rotate).translate(x, y), Qt::SmoothTransformation);
     if (!img.isNull()) {
         CCBuilder * cb = new CCBuilder(img);
         cb->setGeneralBrightness(360);
@@ -1311,8 +1315,8 @@ void MainForm::blockAllText()
         foreach(TextLine l, lines)
             if (l.count() < 3)
                 lines.removeOne(l);
-        QPoint orig;
-        graphicsInput->imageOrigin(orig);
+        //QPoint orig;
+        //graphicsInput->imageOrigin(orig);
         int minX = 100000;
         int minY = 100000;
         int maxX = 0;
@@ -1324,16 +1328,16 @@ void MainForm::blockAllText()
             int y2 = lines.at(i).at(lines.at(i).count()-1).y;
             //graphicsInput->drawLine(x1,y1,x2,y2);
             if (x1 > x2) {
-                x2 = x1 + x2;
-                x1 = x2 - x1;
-                x2 = x2 - x1;
+                int t = x2;
+                x2 = x1;
+                x1 = t;
             }
             minX = minX < x1 ? minX : x1;
             maxX = maxX > x2 ? maxX : x2;
             if (y1 > y2) {
-                y2 = y1 + y2;
-                y1 = y2 - y1;
-                y2 = y2 - y1;
+                int t = y2;
+                y2 = y1;
+                y1 = t;
             }
             minY = minY < y1 ? minY : y1;
             maxY = maxY > y2 ? maxY : y2;
@@ -1343,7 +1347,7 @@ void MainForm::blockAllText()
         minY = minY - 2*an->getMediumGlyphHeight();
         maxY = maxY + 2*an->getMediumGlyphHeight();
         graphicsInput->clearBlocks();
-        graphicsInput->addBlock(QRectF(minX, minY, maxX-minX, maxY-minY));
+        graphicsInput->addBlock(QRectF(minX*2*sideBar->getScale(), minY*2*sideBar->getScale(), (maxX-minX)*2*sideBar->getScale(), (maxY-minY)*2*sideBar->getScale()));
         //this->decreaseButtonClicked();
         delete an;
         delete cb;
@@ -1396,6 +1400,7 @@ void MainForm::deskew(QImage *img)
 
         delete an;
         delete cb;
+        blockAllText();
     }
 }
 
