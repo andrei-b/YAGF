@@ -245,7 +245,21 @@ void PageAnalysis::removeBlackSideStripes()
      result.setX(result.x() + r.x());
      result.setHeight(result.height()+r.y());
      result.setY(result.y() + r.y());
+     foreach (Rect rc, bars) {
+         bars.removeOne(rc);
+         rc.x1 += r.x();
+         rc.x2 += r.x();
+         rc.y1 += r.y();
+         rc.y2 += r.y();
+         bars.append(rc);
+     }
+
      return result;
+ }
+
+ Bars BlockSplitter::getBars()
+ {
+     return bars;
  }
 
  QRect BlockSplitter::blockAllText()
@@ -299,10 +313,13 @@ void PageAnalysis::removeBlackSideStripes()
          //graphicsInput->clearBlocks();
          //graphicsInput->addBlock(QRectF(ox + minX*2*sideBar->getScale(), oy + minY*2*sideBar->getScale(), (maxX-minX)*2*sideBar->getScale(), (maxY-minY)*2*sideBar->getScale()));
 
+         bars = an->addBars();
+
          delete an;
          generalBr = cb->getGB();
          delete cb;
          return QRect(minX*2*m_scale, minY*2*m_scale, (maxX-minX)*2*m_scale, (maxY-minY)*2*m_scale);
      }
+     return QRect(0, 0, 0, 0);
  }
 

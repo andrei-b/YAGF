@@ -16,6 +16,10 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+
+#ifndef ANALYSIS_H
+#define ANALYSIS_H
+
 #include "ccbuilder.h"
 #include <QObject>
 //#include <QRect>
@@ -47,15 +51,17 @@ bool operator==(GlyphInfo g1, GlyphInfo g2);
 typedef QList<GlyphInfo> TextLine;
 typedef QMultiHash<quint32, TextLine> LineField;
 typedef QList<TextLine> Lines;
+typedef QList<Rect> Bars;
 
- 
+const int BarRatio = 24;
 
 class CCAnalysis : public QObject
 {
 public:
         CCAnalysis(CCBuilder * builder);
 	~CCAnalysis();
-        void analize();
+        void analize(bool extractBars = false);
+        Bars addBars();
         TextLine extractLine();
 	int getGlyphCount();
 	int getMediumGlyphHeight();
@@ -70,11 +76,14 @@ public:
         qreal getK();
         void rotateLines(qreal phi, const QPoint &c = QPoint(0,0));
 private:
-        void extractComponents();
+        void extractComponents(bool extractBars = false);
         void classifyGlyphs();
         int findAdjacent(Rect &r);
         void normalizeLines();
         void rotatePhi(qreal phi, const QPoint &c, QPoint &p);
+        void addBarsHorizontal();
+        void addBarsVertical();
+private:
         CCBuilder * builder;
 	ComponentParameters components;
 	Strings strings;
@@ -88,4 +97,7 @@ private:
 	int mediumWordSpace;
 	int stringsCount;
         qreal k;
+    Bars bars;
 };
+
+#endif

@@ -1362,6 +1362,11 @@ void MainForm::selectTextArea()
     BlockSplitter bs;
     bs.setImage(*(graphicsInput->getSmallImage()), sideBar->getRotation(), sideBar->getScale());
     QRect r = bs.getRootBlock(graphicsInput->getCurrentImage().toImage());
+    Bars bars = bs.getBars();
+    foreach (Rect rc, bars) {
+        graphicsInput->addLine(rc.x1, rc.y1, rc.x2, rc.y2);
+    }
+
     sideBar->addBlock(r);
     graphicsInput->addBlock(r);
 }

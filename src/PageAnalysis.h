@@ -26,6 +26,7 @@
 #include <QPoint>
 #include <QImage>
 #include "ycommon.h"
+#include "analysis.h"
 
 class QPixmap;
 class QImage;
@@ -69,6 +70,7 @@ class BlockSplitter
 public:
     void setImage(const QImage &image, qreal rotation, qreal scale);
     QRect getRootBlock(const QImage &image);
+    Bars getBars(); // call after something calls blockAllText();
 private:
     QRect blockAllText();
 private:
@@ -76,6 +78,7 @@ private:
     qreal m_rotate;
     qreal m_scale;
     int generalBr;
+    Bars bars;
 };
 
 #endif
