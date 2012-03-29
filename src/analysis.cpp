@@ -433,13 +433,14 @@ void CCAnalysis::addBarsVertical()
             if (fcount >= mediumGlyphWidth ) { //mediumGlyphHeight) {
                 Rect r;
                 for (int j = i - (fcount + mediumGlyphWidth); j < i; j++) {
-                    if ((!li[j-1])&&(!li[j])&&(!li[j+1]))
-                    r.x1 = j;
-                    r.x2 = r.x1;
-                    r.y1 = 0;
-                    r.y2 = builder->height()-1;
-                    bars.append(r);
-                    break;
+                    if ((!li[j-1])&&(!li[j])&&(!li[j+1])) {
+                        r.x1 = j;
+                        r.x2 = r.x1;
+                        r.y1 = 0;
+                        r.y2 = builder->height()-1;
+                        bars.append(r);
+                        break;
+                    }
                 }
                 fcount = 0;
             }
