@@ -417,7 +417,7 @@ void CCAnalysis::addBarsVertical()
     foreach (TextLine tl, lines) {
         if (tl.count() < 3) continue;
         foreach (GlyphInfo gi, tl) {
-            for (int i = gi.x - gi.h; (i < builder->width()) && (i < gi.x + gi.h); i++)
+            for (int i = (gi.x - gi.h > 0 ? gi.x - gi.h : 0); (i < builder->width()) && (i < gi.x + gi.h); i++)
                 li[i] = true;
         }
 
