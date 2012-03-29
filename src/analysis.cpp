@@ -297,6 +297,86 @@ void CCAnalysis::addBarsHorizontal()
     bool * li = new bool[builder->height()];
     for (int i = 0; i < builder->height(); i++)
         li[i] = false;
+    foreach (TextLine tl, lines) {
+        if (tl.count() == 1) continue;
+        foreach(GlyphInfo gi, tl)
+            for (int i = gi.y - gi.h/2;  i < gi.y + gi.h/2; i++)
+                li[i] = true;
+    }
+    int him = 0;
+    int hlm = 0;
+    int lcount = 0;
+    int icount = 0;
+    int chl = 0;
+    int chi = 0;
+    for (int i= 0; i < builder->height(); i++) {
+        if (!li[i]) { // empty space
+            if (chl > 0) {
+                hlm += chl;
+                lcount++;
+                chl = 0;
+            }
+            chi++;
+        } else {
+            if (chi > 0) {
+                if (icount > 0)
+                    him += chi;
+                icount++;
+                chi = 0;
+            }
+            chl++;
+        }
+    }
+    if ((icount < 3)||(lcount == 0)) {
+        delete[] li;
+        return;
+    }
+    him -= chi;
+    him = him/(icount-2);
+    hlm /= lcount;
+    int ilcount = 0;
+    int llcount = 0;
+    for (int i = 0; i < builder->height(); i++) {
+        if (!li[i]) {
+            /*if (llcount >= 1.5*hlm) {
+                Rect r;
+                r.x1 = 0;
+                r.x2 = builder->width()-1;
+                r.y1 = i - hlm/2;
+                r.y2 = r.y1;
+                bars.append(r);
+                llcount = 0;
+            }*/
+            ilcount++;
+        } else {
+            if (ilcount >= 4*him) {
+                Rect r;
+                r.x1 = 0;
+                r.x2 = builder->width()-1;
+                r.y1 = 0;
+                for (int j = i - 3*him; j < i; j++) {
+                    if ((!li[j-1]) && (!li[j]) && (!li[j+1])) {
+                        r.y1 = j;
+                        break;
+                    }
+                }
+                if (r.y1 > 0) {
+                    r.y2 = r.y1;
+                    bars.append(r);
+                }
+            }
+            ilcount = 0;
+            llcount++;
+        }
+    }
+    delete[] li;
+}
+
+/*void CCAnalysis::addBarsHorizontal()
+{
+    bool * li = new bool[builder->height()];
+    for (int i = 0; i < builder->height(); i++)
+        li[i] = false;
     int hlm = 0;
     foreach (TextLine tl, lines)
         hlm += tl.first().h;
@@ -327,7 +407,7 @@ void CCAnalysis::addBarsHorizontal()
         }
     }
     delete[] li;
-}
+}*/
 
 void CCAnalysis::addBarsVertical()
 {
