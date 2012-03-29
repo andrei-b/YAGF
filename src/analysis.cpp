@@ -439,6 +439,7 @@ void CCAnalysis::addBarsVertical()
                     r.y1 = 0;
                     r.y2 = builder->height()-1;
                     bars.append(r);
+                    break;
                 }
                 fcount = 0;
             }
