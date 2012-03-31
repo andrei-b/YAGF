@@ -411,14 +411,14 @@ void CCAnalysis::addBarsHorizontal()
 
 void CCAnalysis::addBarsVertical()
 {
-    bool * li = new bool[builder->width()];
+    int * li = new int[builder->width()];
     for (int i = 0; i < builder->width(); i++)
-        li[i] = false;
+        li[i] = 0;
     foreach (TextLine tl, lines) {
         if (tl.count() < 3) continue;
         foreach (GlyphInfo gi, tl) {
             for (int i = (gi.x - gi.h > 0 ? gi.x - gi.h : 0); (i < builder->width()) && (i < gi.x + gi.h); i++)
-                li[i] = true;
+                li[i]++;
         }
 
         /*for (int i = (tl.first().x - tl.first().h < 0 ? 0 : tl.first().x - tl.first().h); i < tl.last().x; i++) //(tl.last().x < builder->width() ? tl.last().x : builder->width()); i++)
@@ -427,13 +427,13 @@ void CCAnalysis::addBarsVertical()
   //          li[i] = true;*/
     }
     int fcount = 0;
-    for (int i = 0; i < builder->width(); i++) {
-        if (!li[i]) fcount++;
+    for (int i = 1; i < builder->width(); i++) {
+        if (li[i] < 2) fcount++;
         else {
             if (fcount >= mediumGlyphWidth ) { //mediumGlyphHeight) {
                 Rect r;
                 for (int j = i - (fcount + mediumGlyphWidth); j < i; j++) {
-                    if ((!li[j-1])&&(!li[j])&&(!li[j+1])) {
+                    if ((li[j-1] < 2)&&(li[j] < 2)&&(li[j+1] < 2)) {
                         r.x1 = j;
                         r.x2 = r.x1;
                         r.y1 = 0;

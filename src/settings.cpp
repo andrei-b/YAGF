@@ -238,7 +238,7 @@ void Settings::findTessDataPath()
 QString Settings::selectDefaultLanguageName()
 {
     QLocale loc = QLocale::system();
-    QString name = "rus";
+    QString name = "eng";
     switch (loc.language()) {
         case QLocale::Bulgarian:
             name = "bul";
@@ -254,6 +254,14 @@ QString Settings::selectDefaultLanguageName()
             break;
         case QLocale::Dutch:
             name = "dut";
+            break;
+        case QLocale::Russian:
+            {
+                if (selectedEngine == UseCuneiform)
+                    name = "ruseng";
+                else
+                    name = "rus";
+            }
             break;
         case QLocale::English:
             name = "eng";
@@ -306,12 +314,8 @@ QString Settings::selectDefaultLanguageName()
             name = "heb";
             break;
         default:
-            {
-                if (selectedEngine == UseCuneiform)
-                    name = "ruseng";
-                else
-                    name = "rus";
-            }
+            name = "eng";
+            break;
     }
     return name;
 }
