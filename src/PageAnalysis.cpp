@@ -27,206 +27,6 @@
 #include <QColor>
 #include <QList>
 
-void inline fillLine(QRgb * line, int length, QRgb value)
-{
-    for  (int j = 0; j < length; j++)
-        line[j] = value;
-}
-
-PageAnalysis::PageAnalysis(QImage &img)
-{
-    m_image = &img;
-    pointList = new QPointList();
-}
-
-PageAnalysis::~PageAnalysis()
-{
-    delete m_image;
-    delete pointList;
-}
-
-void PageAnalysis::setBlack(QRgb color)
-{
-    tBlack = color;
-}
-
-void PageAnalysis::setBlackDeviance(int d)
-{
-    blackDeviance = d;
-}
-
-void PageAnalysis::setWhiteDeviance(int d)
-{
-    whiteDeviance = d;
-}
-
-void PageAnalysis::findTWhite()
-{
-    tWhite = qRgb(240,240,240);
-    return;
-    long int accumulator = 0;
-    for (int i = 0; i < m_image->height(); i++) {
-        QRgb * line = (QRgb *) m_image->scanLine(i);
-        for (int j = 0; j < m_image->width(); j++) {
-            int brightness = qBlue(line[j])+qRed(line[j])+qGreen(line[j]);
-            if (755 - brightness < whiteDeviance) {
-                accumulator = 0;
-                break;
-            } else {
-                accumulator += line[j];
-            }
-        }
-            if (accumulator != 0) {
-        //        tWhite = line[m_image->width()/2];
-                return;
-            }
-    }
-    tWhite = 0xff888888;
-}
-
-bool PageAnalysis::isLineBlack(int index)
-{
-    int nonBlackPixels = 0;
-    QRgb * line = (QRgb *) m_image->scanLine(index);
-    int lastPixel = 0;
-    int stripeLength = 0;
-    for  (int j = 0; j < m_image->width(); j++) {
-        int brightness = qBlue(line[j])+qRed(line[j])+qGreen(line[j]);
-        if (brightness > blackDeviance) {
-                nonBlackPixels++;
-                if (lastPixel == j - 1) {
-                    lastPixel = j;
-                    stripeLength++;
-                } else {
-                    if (stripeLength == 0)
-                        lastPixel = j;
-                }
-        }
-    }
-    if (!nonBlackPixels) return false;
-    if (stripeLength >= 50)
-        return false;
-    int w = m_image->width();
-    return ((w*10)/nonBlackPixels) > 25;
-}
-
-void PageAnalysis::removeBlackLines()
-{
-
-    newTop = 0;
-    for (int i = 0; i < m_image->height(); i++) {
-        if (isLineBlack(i)) {
-            QRgb * line = (QRgb *) m_image->scanLine(i);
-            fillLine(line, m_image->width(), tWhite);
-            newTop = i +1;
-        } else {
-            bool anyBlack = false;
-            for (int j = i; j < (m_image->height() - i < 10 ? m_image->height() : i + 10); j++)
-                if (isLineBlack(j))
-                    anyBlack = true;
-            if (anyBlack) {
-                fillLine((QRgb *) m_image->scanLine(i), m_image->width(), tWhite);
-                newTop = i+1;
-            } else break;
-        }
-    }
-    newBottom = m_image->height() - 1;
-    for (int i = m_image->height() - 1; i >= 0; i--) {
-        if (isLineBlack(i)) {
-            QRgb * line = (QRgb *) m_image->scanLine(i);
-            fillLine(line, m_image->width(), tWhite);
-            newBottom = i -1;
-        } else  {
-            bool anyBlack = false;
-            for (int j = i; j >= (i < 10 ? 0 : i - 10); j--)
-                if (isLineBlack(j))
-                    anyBlack = true;
-            if (anyBlack) {
-                fillLine((QRgb *) m_image->scanLine(i), m_image->width(), tWhite);
-                newBottom = i+1;
-            } else break;
-        }
-    }
-    if (newBottom < m_image->height() -2) {
-        fillLine((QRgb *) m_image->scanLine(m_image->height() -1), m_image->width(), tWhite);
-        fillLine((QRgb *) m_image->scanLine(m_image->height() -2), m_image->width(), tWhite);
-    }
-}
-int PageAnalysis::findFirstNonBalckPixel(int index)
-{
-    QRgb * line = (QRgb *) m_image->scanLine(index);
-    for (int i = 0; i < m_image->width(); i++) {
-        int brightness = qBlue(line[i])+qRed(line[i])+qGreen(line[i]);
-        if (765 - brightness < whiteDeviance)
-                return i;
-    }
-    return m_image->width() - 1;
-}
-
-int PageAnalysis::findFirstNonBalckPixelBackwards(int index)
-{
-    QRgb * line = (QRgb *) m_image->scanLine(index);
-    for (int i =  m_image->width() - 1; i>=0; i--) {
-        int brightness = qBlue(line[i])+qRed(line[i])+qGreen(line[i]);
-        if (765 - brightness < whiteDeviance)
-                 return i;
-    }
-    return 0;
-}
-
-bool PageAnalysis::Process()
-{
-    findTWhite();
-    removeBlackLines();
-    removeBlackSideStripes();
-    int ymiddle = (newBottom-newTop)/2;
-    if (ymiddle < 50)
-            return false;
-    if (newRight - newLeft < 100)
-        return false;
-    return true;
-}
-
-QRect PageAnalysis::getCoords()
-{
-    return QRect(newLeft, newTop, newRight - newLeft, newBottom-newTop);
-}
-
-void PageAnalysis::removeBlackSideStripes()
-{
-    newLeft = m_image->width();
-    newRight = 0;
-    int nm = 0;
-    for (int i = newTop; i < newBottom; i++) {
-        QRgb * line = (QRgb *) m_image->scanLine(i);
-        nm = findFirstNonBalckPixel(i);
-        //if (nm < m_image->width()/2)
-            pointList->append(QPoint(nm, i));
-        if (newLeft > nm)
-            newLeft = nm;
-        for (int j = 0; j < nm; j++) {
-            line[j] = tWhite;
-        }
-
-        nm = findFirstNonBalckPixelBackwards(i);;
-        pointList->append(QPoint(nm, i));
-        if (newRight < nm)
-            newRight = nm;
-        for (int j = m_image->width()-1; j > nm; j--) {
-            line[j] = tWhite;
-        }
-    }
-}
-
- QPointList * const PageAnalysis::getPoints()
-{
-     return pointList;
- }
-
- QImage PageAnalysis::getImage()
- {
-     return *m_image;
- }
 
  void BlockSplitter::setImage(const QImage &image, qreal rotation, qreal scale)
  {
@@ -321,5 +121,57 @@ void PageAnalysis::removeBlackSideStripes()
          return QRect(minX*2*m_scale, minY*2*m_scale, (maxX-minX)*2*m_scale, (maxY-minY)*2*m_scale);
      }
      return QRect(0, 0, 0, 0);
+ }
+
+ void BlockSplitter::splitVertical()
+ {
+     bool didSplit = true;
+     while(didSplit) {
+         didSplit = false;
+        for (int i = blocks.count() - 1; i >=0; i--) {
+             Rect block = blocks.at(i);
+            foreach(Rect bar, bars) {
+                 if (abs(bar.x2 - bar.x1) > (bar.y2-bar.y1))
+                     continue;
+                int xmid = (bar.x1 + bar.x2)/2;
+                if ((block.x1 < (xmid - 5)) &&(block.x2 > (xmid + 5))) {
+                    Rect block1 = block;
+                    block1.x2 = xmid -1;
+                    Rect block2 = block;
+                    block2.x1 = xmid + 1;
+                    blocks.removeAll(block);
+                    blocks.append(block1);
+                    blocks.append(block2);
+                    didSplit = true;
+                }
+            }
+        }
+     }
+ }
+
+ void BlockSplitter::splitBlocks()
+ {
+     QRect r = getRootBlock(img);
+     Rect b;
+     b.x1 = r.x();
+     b.y1 = r.y();
+     b.x2 = b.x1 + r.width();
+     b.y2 = b.y1 + r.height();
+     blocks.clear();
+     blocks.append(b);
+     splitVertical();
+ }
+
+ QList<Rect> BlockSplitter::getBlocks()
+ {
+     return blocks;
+ }
+
+ QRect BlockSplitter::getRotationCropRect(const QImage &image)
+ {
+     const QImage * img = &image;
+     QImage * img2 = const_cast<QImage *>(img);
+     RotationCropper rc(img2, QColor("white").rgb(), generalBr);
+     return rc.crop();
  }
 

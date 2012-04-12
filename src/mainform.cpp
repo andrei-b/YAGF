@@ -1176,71 +1176,6 @@ void MainForm::on_actionCheck_spelling_activated()
     this->AnalizePage();
 }*/
 
-void MainForm::AnalizePage()
-{
-
-    QImage img = graphicsInput->getAdaptedImage();
-    PageAnalysis * pa = new PageAnalysis(img);
-    pa->setWhiteDeviance(200);
-    pa->setBlackDeviance(150);
-    pa->setBlack(qRgb(0, 0, 0));
-    if (!pa->Process()) {
-          delete pa;
-          return;
-    }
-
-    SkewAnalysis * sa = new SkewAnalysis(pa->getPoints(), img.width(), img.height());
-    //pm =pa->getPixmap();
-    //pm.
-    graphicsInput->loadImage(pa->getImage());
-    QRect rec = pa->getCoords();
-    int r = sa->getSkew();
-    long signed int tan2 = graphicsInput->getImage().width()*tan(sa->getPhi())/2;
-
-    if (abs(tan2) > 800) {
-        tan2 = 1;
-        r = 0;
-    }
-
-    if (abs(r) > 45)
-        r = 0;
-
-    //QTransform tm = QTransform().translate(-rec.width()/2, -rec.height()/2).rotate(r).translate(rec.width()/2, rec.height()/2); //, rec.width(), rec.height());
-    //QPoint newPoint = tm.map(QPoint(rec.left(), rec.top()));
-
-
-    //DEBUG!!!
-    // pm = sa->drawTriangle(pm);
-    // graphicsInput->loadImage(pm);
-    //return;
-
-    graphicsInput->setViewScale(1, r);
-    //int dy = 0;
-    //    dy = abs(tan2) + pa->getCoords().top()/3;
-    graphicsInput->cropImage(QRect(rec.x(), rec.y(), img.width(), img.height() + rec.y()));
-
-    /*if (sa->getSkew() < 0)
-        graphicsInput->cropImage(QRect(pa->getCoords().left(), pa->getCoords().top(), pm.width()-pa->getCoords().left(), pm.height() - pa->getCoords().top()));
-    if (sa->getSkew() > 0) {
-        int dy = pm.width()*tan(sa->getPhi())/2 + pa->getCoords().top();
-        graphicsInput->cropImage(QRect(pa->getCoords().left(), dy, pm.width()-pa->getCoords().left(), pm.height() + dy));
-    }*/
-
-    QString fn;
-    if (fileName != "") {
-        fn = fileName.replace(".", "-c.");
-    } else {
-        fn = "corrected.png";
-    }
-    QFileInfo fi(fn);
-    fn = fn.replace("."+fi.completeSuffix(), ".png");
-    fn = workingDir + fi.fileName();
-    graphicsInput->getImage().save(fn, "PNG");
-    loadFile(fn);
-    delete pa;
-    delete sa;
-}
-
 void MainForm::on_actionDeskew_activated()
 {
    // AnalizePage();
@@ -1304,14 +1239,30 @@ void MainForm::selectTextArea()
 {
     BlockSplitter bs;
     bs.setImage(*(graphicsInput->getSmallImage()), sideBar->getRotation(), sideBar->getScale());
-    QRect r = bs.getRootBlock(graphicsInput->getCurrentImage().toImage());
-    Bars bars = bs.getBars();
-    foreach (Rect rc, bars) {
-        graphicsInput->addLine(rc.x1, rc.y1, rc.x2, rc.y2);
-    }
+    //QRect r = bs.getRootBlock(graphicsInput->getCurrentImage().toImage());
+    //Bars bars = bs.getBars();
+    //foreach (Rect rc, bars) {
+     //   graphicsInput->addLine(rc.x1, rc.y1, rc.x2, rc.y2);
+    //}
+    bs.getBars();
+    bs.splitBlocks();
+    QList<Rect> blocks = bs.getBlocks();
+    foreach (Rect block, blocks) {
+        QRect r;
+        qreal sf = 2.0*sideBar->getScale();
+        QRect cr = bs.getRotationCropRect(graphicsInput->getCurrentImage().toImage());
+        block.x1 += cr.x();
+        block.y1 += cr.y();
+        block.x2 += cr.x();
+        block.y2 += cr.y();
 
-    sideBar->addBlock(r);
-    graphicsInput->addBlock(r);
+        r.setX(block.x1);
+        r.setY(block.y1);
+        r.setWidth(block.x2 - block.x1);
+        r.setHeight(block.y2 - block.y1);
+        sideBar->addBlock(r);
+        graphicsInput->addBlock(r);
+    }
 }
 
 void MainForm::showAdvancedSettings()

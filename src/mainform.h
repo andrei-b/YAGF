@@ -98,7 +98,6 @@ protected:
     bool eventFilter(QObject *object, QEvent *event);
 private:
     virtual void closeEvent(QCloseEvent *event);
-    void AnalizePage();
     void scaleImage(double sf);
     void initSettings();
     void fillLanguagesBox();
