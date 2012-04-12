@@ -98,9 +98,7 @@ protected:
     bool eventFilter(QObject *object, QEvent *event);
 private:
     virtual void closeEvent(QCloseEvent *event);
-    void deskew(QImage * img);
     void AnalizePage();
-    void rotateImage(qreal deg);
     void scaleImage(double sf);
     void initSettings();
     void fillLanguagesBox();
@@ -115,7 +113,6 @@ private:
     bool useTesseract(const QString &inputFile);
     void saveImageInternal(const QPixmap &pix);
     void loadFromCommandLine();
-    QImage tryRotate(QImage image, qreal angle);
     bool imageLoaded;
     bool hasCopy;
     QComboBox *selectLangsBox;

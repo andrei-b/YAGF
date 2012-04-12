@@ -19,6 +19,9 @@
 #include "qgraphicsinput.h"
 #include "qxtgraphicsview.h"
 #include "qxtgraphicsproxywidget.h"
+#include "ccbuilder.h"
+#include "analysis.h"
+#include "math.h"
 #include <QPixmap>
 #include <QGraphicsPixmapItem>
 #include <QMessageBox>
@@ -727,4 +730,74 @@ QPixmap QGraphicsInput::getCurrentImage()
 QImage * QGraphicsInput::getImageBy16()
 {
     return &pm16;
+}
+
+void QGraphicsInput::rotateImage(qreal deg)
+{
+    if (hasImage) {
+        clearBlocks();
+        setViewScale(sideBar->getScale(), deg); //rotateImage(deg,  graphicsView->width()/2, graphicsView->height()/2);
+        sideBar->setRotation(getAngle());
+    }
+}
+
+void QGraphicsInput::setSideBar(SideBar *value)
+{
+    sideBar = value;
+}
+
+void QGraphicsInput::deskew(QImage *img)
+{
+    if (img) {
+        QTransform tr;
+        tr.rotate(getAngle());
+        QImage img1 = img->transformed(tr);
+        CCBuilder * cb = new CCBuilder(img1);
+        cb->setGeneralBrightness(360);
+        cb->setMaximumColorComponent(100);
+        cb->labelCCs();
+        CCAnalysis * an = new CCAnalysis(cb);
+        an->analize();
+    /*for (int j = 0; j < an->getGlyphBoxCount(); j++) {
+        Rect r = an->getGlyphBox(j);
+        graphicsInput->newBlock(QRect(2*r.x1, 2*r.y1, 2*r.x2-2*r.x1, 2*r.y2-2*r.y1));
+        this->graphicsInput->addBlock(QRect(2*r.x1, 2*r.y1, 2*r.x2-2*r.x1, 2*r.y2-2*r.y1), false);
+    }*/
+        //QRect r = cb->crop();
+        //graphicsInput->newBlock(QRect(2*r.x(), 2*r.y(), 2*(r.width()), 2*(r.height())));
+        //this->graphicsInput->addBlock(QRect(2*r.x(), 2*r.y(), 2*(r.width()), 2*(r.height())), false);
+        QImage img2 = tryRotate(img1, -atan(an->getK())*360/6.283);
+
+        CCBuilder * cb2 = new CCBuilder(img2);
+        cb2->setGeneralBrightness(360);
+        cb2->setMaximumColorComponent(100);
+        cb2->labelCCs();
+        CCAnalysis * an2 = new CCAnalysis(cb2);
+        an2->analize();
+        qreal angle = -atan(an2->getK())*360/6.283;
+        delete an2;
+        delete cb2;
+        if (abs(angle*10) >= abs(5))
+            angle += (-atan(an->getK())*360/6.283);
+        else
+            angle = -atan(an->getK())*360/6.283;
+
+        rotateImage(angle);
+
+//        QImage  img = graphicsInput->getCurrentImage().toImage();
+        //graphicsInput->newBlock(QRect(r.x(), r.y(), (r.width()), (r.height())));
+        //this->graphicsInput->addBlock(QRect(r.x(), r.y(), (r.width()), (r.height())), false);
+
+        delete an;
+        delete cb;
+        //blockAllText(r.x(), r.y());
+    }
+
+}
+
+QImage QGraphicsInput::tryRotate(QImage image, qreal angle)
+{
+    qreal x = image.width() / 2;
+    qreal y = image.height() / 2;
+    return image.transformed(QTransform().translate(-x, -y).rotate(angle).translate(x, y), Qt::SmoothTransformation);
 }

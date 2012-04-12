@@ -446,6 +446,17 @@ void CCAnalysis::addBarsVertical()
             }
         }
     }
+    for (int i = 1; i < builder->width(); i++) {
+        for (int j = bars.count()-1; j >= 0; j--) {
+            Rect r = bars.at(j);
+            if (abs(r.x2 - r.x1) > abs(r.y2 - r.y1))
+                continue;
+            if ((i >= r.x1)&&(i <= r.x2))
+                if (li[i] > 1)
+                    bars.removeOne(r);
+        }
+    }
+
     delete[] li;
 }
 
