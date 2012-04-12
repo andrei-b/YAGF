@@ -1238,7 +1238,7 @@ void MainForm::deskewByBlock()
 void MainForm::selectTextArea()
 {
     BlockSplitter bs;
-    bs.setImage(*(graphicsInput->getSmallImage()), sideBar->getRotation(), sideBar->getScale());
+    bs.setImage(*(graphicsInput->getSmallImage()), sideBar->getRotation(), 0.5);// sideBar->getScale());
     //QRect r = bs.getRootBlock(graphicsInput->getCurrentImage().toImage());
     //Bars bars = bs.getBars();
     //foreach (Rect rc, bars) {
@@ -1247,10 +1247,15 @@ void MainForm::selectTextArea()
     bs.getBars();
     bs.splitBlocks();
     QList<Rect> blocks = bs.getBlocks();
+    qreal sf = 2.0*sideBar->getScale();
+    QRect cr = bs.getRotationCropRect(graphicsInput->getCurrentImage().toImage());
     foreach (Rect block, blocks) {
         QRect r;
-        qreal sf = 2.0*sideBar->getScale();
-        QRect cr = bs.getRotationCropRect(graphicsInput->getCurrentImage().toImage());
+        block.x1 *=sf;
+        block.y1 *=sf;
+        block.x2 *= sf;
+        block.y2 *=sf;
+
         block.x1 += cr.x();
         block.y1 += cr.y();
         block.x2 += cr.x();
@@ -1261,7 +1266,7 @@ void MainForm::selectTextArea()
         r.setWidth(block.x2 - block.x1);
         r.setHeight(block.y2 - block.y1);
         sideBar->addBlock(r);
-        graphicsInput->addBlock(r);
+        graphicsInput->addBlockColliding(r);
     }
 }
 

@@ -801,3 +801,9 @@ QImage QGraphicsInput::tryRotate(QImage image, qreal angle)
     qreal y = image.height() / 2;
     return image.transformed(QTransform().translate(-x, -y).rotate(angle).translate(x, y), Qt::SmoothTransformation);
 }
+
+void QGraphicsInput::addBlockColliding(const QRectF &rect)
+{
+    QGraphicsRectItem *block = newBlock(rect);
+    m_CurrentBlockRect = block;
+}

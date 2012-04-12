@@ -70,6 +70,7 @@ public:
     QImage * getSmallImage();
     QImage * getImageBy16();
     bool addBlock(const QRectF &rect, bool removeObstacles = true);
+    void addBlockColliding(const QRectF &rect);
     void drawLine(int x1, int y1, int x2, int y2);
     void imageOrigin(QPoint &p);
     QPixmap getCurrentImage();

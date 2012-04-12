@@ -143,6 +143,7 @@
                     blocks.append(block1);
                     blocks.append(block2);
                     didSplit = true;
+                    break;
                 }
             }
         }
