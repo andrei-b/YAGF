@@ -44,6 +44,7 @@ public:
 private:
     QRect blockAllText();
     void splitVertical();
+    void splitHorisontal();
 private:
     QImage img;
     qreal m_rotate;

@@ -136,9 +136,9 @@
                 int xmid = (bar.x1 + bar.x2)/2;
                 if ((block.x1 < (xmid - 5)) &&(block.x2 > (xmid + 5))) {
                     Rect block1 = block;
-                    block1.x2 = xmid -1;
+                    block1.x2 = xmid -2;
                     Rect block2 = block;
-                    block2.x1 = xmid + 1;
+                    block2.x1 = xmid + 2;
                     blocks.removeAll(block);
                     blocks.append(block1);
                     blocks.append(block2);
@@ -148,6 +148,15 @@
             }
         }
      }
+ }
+
+ bool rectLessThan(const Rect &r1, const Rect &r2)
+ {
+     if (r1.y1 < r2.y1)
+         return true;
+     if (r1.x1 < r2.x1)
+         return true;
+     return false;
  }
 
  void BlockSplitter::splitBlocks()
@@ -161,6 +170,8 @@
      blocks.clear();
      blocks.append(b);
      splitVertical();
+     splitHorisontal();
+     qSort(blocks.begin(), blocks.end(), rectLessThan);
  }
 
  QList<Rect> BlockSplitter::getBlocks()
@@ -174,5 +185,32 @@
      QImage * img2 = const_cast<QImage *>(img);
      RotationCropper rc(img2, QColor("white").rgb(), generalBr);
      return rc.crop();
+ }
+
+ void BlockSplitter::splitHorisontal()
+ {
+     bool didSplit = true;
+     while(didSplit) {
+         didSplit = false;
+        for (int i = blocks.count() - 1; i >=0; i--) {
+             Rect block = blocks.at(i);
+            foreach(Rect bar, bars) {
+                 if (abs(bar.y2 - bar.y1) > (bar.x2-bar.x1))
+                     continue;
+                int ymid = (bar.y1 + bar.y2)/2;
+                if ((block.y1 < (ymid - 5)) &&(block.y2 > (ymid + 5))) {
+                    Rect block1 = block;
+                    block1.y2 = ymid -2;
+                    Rect block2 = block;
+                    block2.y1 = ymid + 2;
+                    blocks.removeAll(block);
+                    blocks.append(block1);
+                    blocks.append(block2);
+                    didSplit = true;
+                    break;
+                }
+            }
+        }
+     }
  }
 
