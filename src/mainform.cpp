@@ -19,8 +19,6 @@
 
 #include "sidebar.h"
 #include "droplabel.h"
-#include "BlockAnalysis.h"
-#include "SkewAnalysis.h"
 #include "popplerdialog.h"
 #include "pdfextractor.h"
 #include "pdf2ppt.h"
@@ -28,8 +26,6 @@
 #include "configdialog.h"
 #include "advancedconfigdialog.h"
 #include "mainform.h"
-#include "PageAnalysis.h"
-#include "CCAnalysis.h"
 #include <signal.h>
 #include <QComboBox>
 #include <QLabel>
@@ -1237,37 +1233,7 @@ void MainForm::deskewByBlock()
 
 void MainForm::selectTextArea()
 {
-    BlockSplitter bs;
-    bs.setImage(*(graphicsInput->getSmallImage()), sideBar->getRotation(), 0.5);// sideBar->getScale());
-    //QRect r = bs.getRootBlock(graphicsInput->getCurrentImage().toImage());
-    //Bars bars = bs.getBars();
-    //foreach (Rect rc, bars) {
-     //   graphicsInput->addLine(rc.x1, rc.y1, rc.x2, rc.y2);
-    //}
-    bs.getBars();
-    bs.splitBlocks();
-    QList<Rect> blocks = bs.getBlocks();
-    qreal sf = 2.0*sideBar->getScale();
-    QRect cr = bs.getRotationCropRect(graphicsInput->getCurrentImage().toImage());
-    foreach (Rect block, blocks) {
-        QRect r;
-        block.x1 *=sf;
-        block.y1 *=sf;
-        block.x2 *= sf;
-        block.y2 *=sf;
-
-        block.x1 += cr.x();
-        block.y1 += cr.y();
-        block.x2 += cr.x();
-        block.y2 += cr.y();
-
-        r.setX(block.x1);
-        r.setY(block.y1);
-        r.setWidth(block.x2 - block.x1);
-        r.setHeight(block.y2 - block.y1);
-        sideBar->addBlock(r);
-        graphicsInput->addBlockColliding(r);
-    }
+  graphicsInput->blockAllText();
 }
 
 void MainForm::showAdvancedSettings()

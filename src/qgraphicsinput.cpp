@@ -21,6 +21,7 @@
 #include "qxtgraphicsproxywidget.h"
 #include "ccbuilder.h"
 #include "analysis.h"
+#include "PageAnalysis.h"
 #include "math.h"
 #include <QPixmap>
 #include <QGraphicsPixmapItem>
@@ -806,4 +807,48 @@ void QGraphicsInput::addBlockColliding(const QRectF &rect)
 {
     QGraphicsRectItem *block = newBlock(rect);
     m_CurrentBlockRect = block;
+}
+
+void QGraphicsInput::splitPage()
+{
+    BlockSplitter bs;
+    bs.setImage(*(getSmallImage()), sideBar->getRotation(), 0.5);// sideBar->getScale());
+    //QRect r = bs.getRootBlock(graphicsInput->getCurrentImage().toImage());
+    //Bars bars = bs.getBars();
+    //foreach (Rect rc, bars) {
+     //   graphicsInput->addLine(rc.x1, rc.y1, rc.x2, rc.y2);
+    //}
+    bs.getBars();
+    bs.splitBlocks();
+    QList<Rect> blocks = bs.getBlocks();
+    qreal sf = 2.0*sideBar->getScale();
+    QRect cr = bs.getRotationCropRect(getCurrentImage().toImage());
+    foreach (Rect block, blocks) {
+        QRect r;
+        block.x1 *=sf;
+        block.y1 *=sf;
+        block.x2 *= sf;
+        block.y2 *=sf;
+
+        block.x1 += cr.x();
+        block.y1 += cr.y();
+        block.x2 += cr.x();
+        block.y2 += cr.y();
+
+        r.setX(block.x1);
+        r.setY(block.y1);
+        r.setWidth(block.x2 - block.x1);
+        r.setHeight(block.y2 - block.y1);
+        sideBar->addBlock(r);
+        addBlockColliding(r);
+    }
+}
+
+void QGraphicsInput::blockAllText()
+{
+    BlockSplitter bs;
+    bs.setImage(*getSmallImage(), sideBar->getRotation(), sideBar->getScale());
+    QRect r = bs.getRootBlock(getCurrentImage().toImage());
+    sideBar->addBlock(r);
+    addBlock(r);
 }

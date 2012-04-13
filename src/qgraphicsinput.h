@@ -81,6 +81,8 @@ public:
     void cropWhiteFrame();
     void rotateImage(qreal deg);
     void deskew(QImage *img);
+    void splitPage();
+    void blockAllText();
 
     void undo();
     void setMagnifierCursor(QCursor *cursor);
