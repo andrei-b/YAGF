@@ -176,6 +176,7 @@ void CCAnalysis::extractComponents(bool extractBars)
     hmed = hacc/count;
     mediumGlyphWidth = wmed;
     mediumGlyphHeight = hmed;
+    glyphCount = count;
 }
 
 int CCAnalysis::getGlyphBoxCount()
@@ -491,5 +492,10 @@ ginfo::ginfo(int a1, int a2, int a3)
     x = a1;
     y = a2;
     h = a3;
+}
+
+int CCAnalysis::getGlyphCount()
+{
+    return glyphCount;
 }
 

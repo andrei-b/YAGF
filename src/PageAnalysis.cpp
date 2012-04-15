@@ -75,7 +75,7 @@
          CCAnalysis * an = new CCAnalysis(cb);
          an->analize();
   //       an->rotateLines(-atan(an->getK()));
-         Lines lines = an->getLines();
+         lines = an->getLines();
          foreach(TextLine l, lines)
              if (l.count() < 3)
                  lines.removeOne(l);
@@ -172,6 +172,11 @@
      splitVertical();
      splitHorisontal();
      qSort(blocks.begin(), blocks.end(), rectLessThan);
+     for (int i = blocks.count() -1; i >=0; i--) {
+         Rect r  = blocks.at(i);
+         if (!isBlockRecogniseable(r))
+             blocks.removeAll(r);
+     }
  }
 
  QList<Rect> BlockSplitter::getBlocks()
@@ -212,5 +217,31 @@
             }
         }
      }
+ }
+
+ inline bool between(int a, int b, int c)
+ {
+     return (c > a) && (c < b);
+
+ }
+
+ bool BlockSplitter::isBlockRecogniseable(const Rect &block)
+ {
+     int contains = 0;
+     int maxl = 0;
+     foreach(TextLine l, lines) {
+         if (!between(block.x1, block.x2, l.first().x))
+             continue;
+         if (!between(block.x1, block.x2, l.last().x))
+             continue;
+         if (!between(block.y1, block.y2, l.first().y))
+             continue;
+         if (!between(block.y1, block.y2, l.last().y))
+             continue;
+         contains++;
+         if (l.count() > maxl) maxl = l.count();
+     }
+     if ((maxl > 3)) return true;
+     return false;
  }
 

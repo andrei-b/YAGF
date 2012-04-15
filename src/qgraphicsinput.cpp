@@ -636,8 +636,8 @@ void QGraphicsInput::setToolBarVisible()
     } else {
         for (int i = 1; i < actionList.count(); i++)
             actionList.at(i)->setVisible(true);
-            toolbar->setMaximumWidth(380);
-            toolbar->setMinimumWidth(380);
+            toolbar->setMaximumWidth(400);
+            toolbar->setMinimumWidth(400);
             actionList.at(0)->setText(QString::fromUtf8("<<"));
     }
 }

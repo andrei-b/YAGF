@@ -94,6 +94,7 @@ private slots:
     void pasteimage();
     void deskewByBlock();
     void selectTextArea();
+    void selectBlocks();
 protected:
     bool eventFilter(QObject *object, QEvent *event);
 private:

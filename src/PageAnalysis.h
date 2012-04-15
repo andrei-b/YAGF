@@ -45,12 +45,14 @@ private:
     QRect blockAllText();
     void splitVertical();
     void splitHorisontal();
+    bool isBlockRecogniseable(const Rect &block);
 private:
     QImage img;
     qreal m_rotate;
     qreal m_scale;
     int generalBr;
     Bars bars;
+    Lines lines;
     QList<Rect> blocks;
 };
 

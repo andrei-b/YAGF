@@ -111,6 +111,7 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
     graphicsInput->addToolBarAction(actionDeskew);
     graphicsInput->addToolBarSeparator();
     graphicsInput->addToolBarAction(actionSelect_Text_Area);
+    graphicsInput->addToolBarAction(actionSelect_multiple_blocks);
     graphicsInput->addToolBarAction(ActionClearAllBlocks);
 
     statusBar()->show();
@@ -1233,7 +1234,8 @@ void MainForm::deskewByBlock()
 
 void MainForm::selectTextArea()
 {
-  graphicsInput->blockAllText();
+    graphicsInput->blockAllText();
+    //graphicsInput->splitPage();
 }
 
 void MainForm::showAdvancedSettings()
@@ -1309,4 +1311,9 @@ void MainForm::replaceWord()
     cursor.select(QTextCursor::WordUnderCursor);
     cursor.removeSelectedText();
     cursor.insertText(action->text());
+}
+
+void MainForm::selectBlocks()
+{
+    graphicsInput->splitPage();
 }

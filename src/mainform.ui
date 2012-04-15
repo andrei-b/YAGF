@@ -469,7 +469,7 @@
      <x>0</x>
      <y>0</y>
      <width>1920</width>
-     <height>20</height>
+     <height>25</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">
@@ -925,6 +925,18 @@
     <string>The settings you should probably never change</string>
    </property>
   </action>
+  <action name="actionSelect_multiple_blocks">
+   <property name="icon">
+    <iconset resource="yagf.qrc">
+     <normaloff>:/images/selectmulti.png</normaloff>:/images/selectmulti.png</iconset>
+   </property>
+   <property name="text">
+    <string>select multiple blocks</string>
+   </property>
+   <property name="toolTip">
+    <string>Splits text into several blocks</string>
+   </property>
+  </action>
  </widget>
  <customwidgets>
   <customwidget>
@@ -1139,6 +1151,22 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>actionSelect_multiple_blocks</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>selectBlocks()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>959</x>
+     <y>568</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <slot>rotateCWButtonClicked()</slot>
@@ -1154,5 +1182,6 @@
   <slot>deskewByBlock()</slot>
   <slot>showAdvancedSettings()</slot>
   <slot>selectTextArea()</slot>
+  <slot>selectBlocks()</slot>
  </slots>
 </ui>

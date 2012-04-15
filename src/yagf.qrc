@@ -43,5 +43,6 @@
         <file>images/selecttext.png</file>
         <file>images/edit_paste.png</file>
         <file>images/scanner48.png</file>
+        <file>images/selectmulti.png</file>
     </qresource>
 </RCC>
