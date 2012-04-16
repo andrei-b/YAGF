@@ -95,6 +95,7 @@ private slots:
     void deskewByBlock();
     void selectTextArea();
     void selectBlocks();
+    void setSmallIcons();
 protected:
     bool eventFilter(QObject *object, QEvent *event);
 private:

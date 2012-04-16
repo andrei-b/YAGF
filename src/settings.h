@@ -39,6 +39,7 @@ public:
   QString getTessdataPath();
   SelectedEngine getSelectedEngine();
   QSize getSize();
+  QSize getIconSize();
   QPoint getPosition();
   bool getFullScreen();
   int getFontSize();
@@ -51,6 +52,7 @@ public:
   void setTessdataPath(const QString &value);
   void setSelectedEngine(const SelectedEngine value);
   void setSize(const QSize &value);
+  void setIconSize(const QSize &value);
   void setPosition(const QPoint &value);
   void setFullScreen(const bool value);
   void setFontSize(const int &value);
@@ -67,6 +69,7 @@ private:
   QString tessdataPath;
   SelectedEngine selectedEngine;
   QSize size;
+  QSize iconSize;
   QPoint position;
   bool fullScreen;
   int fontSize;

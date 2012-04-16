@@ -57,6 +57,7 @@ void Settings::readSettings(const QString &path)
         findTessDataPath();
     cropLoaded =  settings->value("processing/crop1", QVariant(true)).toBool();
     size = settings->value("mainwindow/size", QSize(800, 600)).toSize();
+    iconSize = settings->value("mainwindow/iconSize", QSize(48, 48)).toSize();
     position = settings->value("mainwindow/pos", QPoint(0, 0)).toPoint();
     fullScreen = settings->value("mainwindow/fullScreen", QVariant(false)).toBool();
 
@@ -65,6 +66,7 @@ void Settings::readSettings(const QString &path)
 void Settings::writeSettings()
 {
     settings->setValue("mainwindow/size", size);
+    settings->setValue("mainwindow/iconSize", iconSize);
     settings->setValue("mainwindow/pos", position);
     settings->setValue("mainwindow/fullScreen", fullScreen);
     settings->setValue("mainwindow/lastDir", lastDir);
@@ -318,4 +320,14 @@ QString Settings::selectDefaultLanguageName()
             break;
     }
     return name;
+}
+
+QSize Settings::getIconSize()
+{
+    return iconSize;
+}
+
+void Settings::setIconSize(const QSize &value)
+{
+    iconSize = value;
 }

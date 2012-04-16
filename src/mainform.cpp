@@ -418,6 +418,7 @@ void MainForm::initSettings()
     li.append(1);
     li.append(1);
     splitter->setSizes(li);
+    toolBar->setIconSize(settings.getIconSize());
 }
 
 void MainForm::fillLanguagesBox()
@@ -1316,4 +1317,19 @@ void MainForm::replaceWord()
 void MainForm::selectBlocks()
 {
     graphicsInput->splitPage();
+}
+
+void MainForm::setSmallIcons()
+{
+    QSize s = toolBar->iconSize();
+    if (s.height() > 32) {
+         s.setHeight(32);
+         s.setWidth(32);
+    }
+    else {
+        s.setHeight(48);
+        s.setWidth(48);
+    }
+    toolBar->setIconSize(s);
+    settings.setIconSize(s);
 }

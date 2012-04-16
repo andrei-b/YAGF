@@ -60,6 +60,7 @@ void QGraphicsInput::addToolBar()
     toolbar->setMovable(false);
     toolbar->setWindowOpacity(0.75);
     toolbar->move(0,0);
+    toolbar->setIconSize(QSize(24,24));
     toolbar->setMinimumHeight(32);
     //toolbar->setCursor();
     actionList.at(0)->setText(QString::fromUtf8(">>"));
