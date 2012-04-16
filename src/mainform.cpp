@@ -87,19 +87,10 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
     QLabel *label = new QLabel();
     label->setMargin(4);
     label->setText(trUtf8("Recognition language"));
-    //QLabel *label1 = new QLabel();
-    //label1->setMargin(4);
-    //label1->setText(trUtf8("Output format"));
-    //spellCheckBox = new QCheckBox(trUtf8("Check spelling"), 0);
     frame->show();
-    //selectFormatBox = new QComboBox();
     toolBar->addWidget(label);
     selectLangsBox->setFrame(true);
     toolBar->addWidget(selectLangsBox);
-    //toolBar->addWidget(label1);
-    //toolBar->addWidget(selectFormatBox);
-    //toolBar->addWidget(spellCheckBox);
-//  pixmap = new QPixmap();
     graphicsInput = new QGraphicsInput(QRectF(0, 0, 2000, 2000), graphicsView) ;
     graphicsInput->addToolBarAction(actionHideShowTolbar);
     graphicsInput->addToolBarAction(this->actionTBLV);
@@ -162,10 +153,7 @@ MainForm::MainForm(QWidget *parent): QMainWindow(parent)
     resizeBlockCursor = new QCursor(l_cursor);
    // textEdit->setContextMenuPolicy(Qt::ActionsContextMenu);
 
-    //m_toolBar = new SideBar(this);
-    //addToolBar(Qt::LeftToolBarArea, m_toolBar);
-    this->
-    sideBar->show();
+    this->sideBar->show();
     connect(sideBar, SIGNAL(fileSelected(const QString &)), this, SLOT(fileSelected(const QString &)));
 
     connect(actionRecognize_All_Pages, SIGNAL(triggered()), this, SLOT(recognizeAll()));
@@ -396,7 +384,13 @@ void MainForm::initSettings()
     workingDir = QDir::homePath();
     if (!workingDir.endsWith("/"))
         workingDir += '/';
-    workingDir += ".yagf/";
+    QDir d(workingDir + ".config");
+    if (d.exists()) workingDir += ".config/";
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    workingDir = env.value("XDG_CONFIG_HOME", workingDir);
+    if (!workingDir.endsWith("/"))
+        workingDir += '/';
+    workingDir += "yagf/";
     QDir dir(workingDir);
     if (!dir.exists())
         dir.mkdir(workingDir);
