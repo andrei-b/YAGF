@@ -812,6 +812,7 @@ void QGraphicsInput::addBlockColliding(const QRectF &rect)
 
 void QGraphicsInput::splitPage()
 {
+    clearBlocks();
     BlockSplitter bs;
     bs.setImage(*(getSmallImage()), sideBar->getRotation(), 0.5);// sideBar->getScale());
     //QRect r = bs.getRootBlock(graphicsInput->getCurrentImage().toImage());
@@ -847,6 +848,7 @@ void QGraphicsInput::splitPage()
 
 void QGraphicsInput::blockAllText()
 {
+    clearBlocks();
     BlockSplitter bs;
     bs.setImage(*getSmallImage(), sideBar->getRotation(), sideBar->getScale());
     QRect r = bs.getRootBlock(getCurrentImage().toImage());
