@@ -592,6 +592,18 @@ Please install either cuneiform or tesseract</source>
         <source>The settings you should probably never change</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>select multiple blocks</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Splits text into several blocks</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Toggle Large/Small Icons</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>PopplerDialog</name>

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
-<TS version="2.0" language="ru_RU">
+<TS version="2.0" language="ru_RU" sourcelanguage="ru_RU">
 <context>
     <name>AdvancedConfigDialog</name>
     <message>
@@ -593,6 +593,18 @@ Please install either cuneiform or tesseract</source>
     <message>
         <source>The settings you should probably never change</source>
         <translation>Настройки, которые вам, скорее всего, менять не нужно</translation>
+    </message>
+    <message>
+        <source>select multiple blocks</source>
+        <translation>Выделить несколько блоков</translation>
+    </message>
+    <message>
+        <source>Splits text into several blocks</source>
+        <translation>Разбивает текст на блоки</translation>
+    </message>
+    <message>
+        <source>Toggle Large/Small Icons</source>
+        <translation>Большие.маленькие иконки</translation>
     </message>
 </context>
 <context>

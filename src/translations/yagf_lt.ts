@@ -3,38 +3,38 @@
     <name>AdvancedConfigDialog</name>
     <message>
         <source>Advanced Settings</source>
-        <translation type="unfinished"></translation>
+        <translation>Sudėtingesni nustatymai</translation>
     </message>
     <message>
         <source>Crop Image When Loaded</source>
-        <translation type="unfinished"></translation>
+        <translation>Apkarpyti įkeltą paveikslėlį</translation>
     </message>
 </context>
 <context>
     <name>ConfigDialog</name>
     <message>
         <source>OCR Settings</source>
-        <translation type="unfinished"></translation>
+        <translation>OCR nustatymai</translation>
     </message>
     <message>
         <source>OCR Engine</source>
-        <translation type="unfinished"></translation>
+        <translation>OCR variklis</translation>
     </message>
     <message>
         <source>cuneiform</source>
-        <translation type="unfinished"></translation>
+        <translation>cuneiform</translation>
     </message>
     <message>
         <source>tesseract</source>
-        <translation type="unfinished"></translation>
+        <translation>tesseract</translation>
     </message>
     <message>
         <source>Tesseract Setup</source>
-        <translation type="unfinished"></translation>
+        <translation>Tesseract nustatymai</translation>
     </message>
     <message>
         <source>Location of the  tessdata directory:</source>
-        <translation type="unfinished"></translation>
+        <translation>Tesseract direktorijos vieta:</translation>
     </message>
 </context>
 <context encoding="UTF-8">
@@ -89,7 +89,7 @@
     </message>
     <message>
         <source>libxspreload.so not found</source>
-        <translation type="unfinished"></translation>
+        <translation>Nerasta libxspreload.so biblioteka</translation>
     </message>
     <message>
         <source>No image loaded</source>
@@ -109,11 +109,11 @@
     </message>
     <message>
         <source>Text Files (*.txt)</source>
-        <translation type="unfinished"></translation>
+        <translation>Teksto failai (*.txt)</translation>
     </message>
     <message>
         <source>HTML Files (*.html)</source>
-        <translation type="unfinished"></translation>
+        <translation>HTML failai (*.html)</translation>
     </message>
     <message>
         <source>Save Text</source>
@@ -129,43 +129,43 @@
     </message>
     <message>
         <source>Undo<byte value="x9"/>Ctrl+Z</source>
-        <translation type="unfinished"></translation>
+        <translation>Atkurti Vald+Z</translation>
     </message>
     <message>
         <source>Redo<byte value="x9"/>Ctrl+Shift+Z</source>
-        <translation type="unfinished"></translation>
+        <translation>Iš naujo Vald+Lyg2+Z</translation>
     </message>
     <message>
         <source>Select All<byte value="x9"/>Ctrl+A</source>
-        <translation type="unfinished"></translation>
+        <translation>Pažymėti viską Vald+A</translation>
     </message>
     <message>
         <source>Cut<byte value="x9"/>Ctrl+X</source>
-        <translation type="unfinished"></translation>
+        <translation>Iškirpti Vald+X</translation>
     </message>
     <message>
         <source>Copy<byte value="x9"/>Ctrl+C</source>
-        <translation type="unfinished"></translation>
+        <translation>Kopijuoti Vald+C</translation>
     </message>
     <message>
         <source>Paste<byte value="x9"/>Ctrl+V</source>
-        <translation type="unfinished"></translation>
+        <translation>Įterpti Vald+V</translation>
     </message>
     <message>
         <source>Larger Font<byte value="x9"/>Ctrl++</source>
-        <translation type="unfinished"></translation>
+        <translation>Didinti šriftą Vald++</translation>
     </message>
     <message>
         <source>Smaller Font<byte value="x9"/>Ctrl+-</source>
-        <translation type="unfinished"></translation>
+        <translation>Mažinti šriftą Vald+-</translation>
     </message>
     <message>
         <source>Bulgarian</source>
-        <translation type="unfinished"></translation>
+        <translation>Bulgarų</translation>
     </message>
     <message>
         <source>Croatian</source>
-        <translation type="unfinished"></translation>
+        <translation>Kroatų</translation>
     </message>
     <message>
         <source>Czech</source>
@@ -205,11 +205,11 @@
     </message>
     <message>
         <source>Portuguese</source>
-        <translation type="unfinished">Portugalų</translation>
+        <translation>Portugalų</translation>
     </message>
     <message>
         <source>Romanian</source>
-        <translation type="unfinished">Rumunų</translation>
+        <translation>Rumunų</translation>
     </message>
     <message>
         <source>Spanish</source>
@@ -221,11 +221,11 @@
     </message>
     <message>
         <source>Serbian</source>
-        <translation type="unfinished"></translation>
+        <translation>Serbų</translation>
     </message>
     <message>
         <source>Slovenian</source>
-        <translation type="unfinished"></translation>
+        <translation>Slovėnų</translation>
     </message>
     <message>
         <source>Ukrainian</source>
@@ -233,108 +233,109 @@
     </message>
     <message>
         <source>Image loading error</source>
-        <translation type="unfinished"></translation>
+        <translation>Paveikslėlio įkėlimo klaida</translation>
     </message>
     <message>
         <source>Image %1 could not be loaded</source>
-        <translation type="unfinished"></translation>
+        <translation>Paveikslėlio %1 įkelti nepavyko</translation>
     </message>
     <message>
         <source>Recognizing pages...</source>
-        <translation type="unfinished"></translation>
+        <translation>Atpažįstami puslapiai...</translation>
     </message>
     <message>
         <source>Abort</source>
-        <translation type="unfinished"></translation>
+        <translation>Nutraukti</translation>
     </message>
     <message>
         <source>Save Image</source>
-        <translation type="unfinished"></translation>
+        <translation>Įrašyti paveikslėlį</translation>
     </message>
     <message>
         <source>Importing pages from the PDF document...</source>
-        <translation type="unfinished"></translation>
+        <translation>Importuojami puslapiai iš PDF dokumento...</translation>
     </message>
     <message>
         <source>Cancel</source>
-        <translation type="unfinished"></translation>
+        <translation>Atšaukti</translation>
     </message>
     <message>
         <source>No compatible PDF converter software could be found. Please install either the pdftoppm utility or the GhostScript package (from this the gs command will be required).</source>
-        <translation type="unfinished"></translation>
+        <translation>Nerasta tinkama PDF konvertavimo priemonė. Prašome įdiegti „pdftoppm“ įrankį arba „GrostScript“ programų paketą (iš jo bus reikalinga programa „gs“).</translation>
     </message>
     <message>
         <source>PDF file name may not be empty</source>
-        <translation type="unfinished"></translation>
+        <translation>PDF failo vardas negali būti tuščias</translation>
     </message>
     <message>
         <source>Select an existing directory for output or create some new one</source>
-        <translation type="unfinished"></translation>
+        <translation>Pasirinkite egzistuojantį aplanką sukuriamiems failams arba sukurkite naują</translation>
     </message>
     <message>
         <source>Selecting Directory</source>
-        <translation type="unfinished"></translation>
+        <translation>Pasirenkamas aplankas</translation>
     </message>
     <message>
         <source>The selected directory is not empty</source>
-        <translation type="unfinished"></translation>
+        <translation>Pasirinktas aplankas netuščias</translation>
     </message>
     <message>
         <source>Finnish (tesseract only)</source>
-        <translation type="unfinished"></translation>
+        <translation>Suomių (tik tesseract)</translation>
     </message>
     <message>
         <source>Greek (tesseract only)</source>
-        <translation type="unfinished"></translation>
+        <translation>Graikų (tik tesseract)</translation>
     </message>
     <message>
         <source>Norwegian (tesseract only)</source>
-        <translation type="unfinished"></translation>
+        <translation>Norvegų (tik tesseract)</translation>
     </message>
     <message>
         <source>Slovakian (tesseract only)</source>
-        <translation type="unfinished"></translation>
+        <translation>Slovakų (tik tesseract)</translation>
     </message>
     <message>
         <source>Turkish (tesseract only)</source>
-        <translation type="unfinished"></translation>
+        <translation>Turkų (tik tesseract)</translation>
     </message>
     <message>
         <source>Starting tesseract failed</source>
-        <translation type="unfinished"></translation>
+        <translation>Nepavyko paleisti tesseract</translation>
     </message>
     <message>
         <source>cuneiform not found, switching to tesseract</source>
-        <translation type="unfinished"></translation>
+        <translation>Nepavyko rasti cuneiform, perjungiama į tesseract</translation>
     </message>
     <message>
         <source>No recognition engine found.
 Please install either cuneiform or tesseract</source>
-        <translation type="unfinished"></translation>
+        <translation>Nepavyko rasti jokio atpažinimo variklio.
+Prašome įdiegti cuneiform arba tesseract.</translation>
     </message>
     <message>
         <source>tesseract not found, switching to cuneiform</source>
-        <translation type="unfinished"></translation>
+        <translation>Tesseract nerastas, perjungiama į cuneiform</translation>
     </message>
     <message>
         <source>No PDF converter installed</source>
-        <translation type="unfinished"></translation>
+        <translation>Neįdiegtas PDF konvertuoklis</translation>
     </message>
     <message>
         <source>German Gothic (tesseract 3+)</source>
-        <translation type="unfinished"></translation>
+        <translation>Vokiečių gotiškasis (tesseract 3+)</translation>
     </message>
     <message>
         <source>Hebrew (tesseract 3.0.1+)</source>
-        <translation type="unfinished"></translation>
+        <translation>Hebrajų (tesseract 3.0.1+)</translation>
     </message>
     <message>
         <source>Swedish Gothic (tesseract 3+)</source>
-        <translation type="unfinished"></translation>
+        <translation>Švedų gotiškasis (tesseract 3+)</translation>
     </message>
     <message encoding="UTF-8">
         <source>&lt;p align=&quot;center&quot;&gt;&lt;b&gt;YAGF - Yet Another Graphical Front-end for cuneiform and tesseract OCR engines&lt;/b&gt;&lt;/p&gt;&lt;p align=&quot;center&quot;&gt;Version %1&lt;/p&gt; &lt;p align=&quot;center&quot;&gt;Ⓒ 2009-2012 Andrei Borovsky&lt;/p&gt; This is a free software distributed under GPL v3. Visit &lt;a href=&quot;http://symmetrica.net/cuneiform-linux/yagf-en.html&quot;&gt;http://symmetrica.net/cuneiform-linux/yagf-en.html&lt;/a&gt; for more details.</source>
-        <translation type="unfinished"></translation>
+        <translation>GPL v3. Jei norite sužinoti plačiau, aplankykite &lt;a href=&quot;http://symmetrica.net/cuneiform-linux/yagf-en.html&quot;&gt;http://symmetrica.net/cuneiform-linux/yagf-en.html&lt;/a&gt; svetainę.</translation>
     </message>
 </context>
 <context>
@@ -401,67 +402,67 @@ Please install either cuneiform or tesseract</source>
     </message>
     <message>
         <source>Recognize &amp;All Pages</source>
-        <translation type="unfinished"></translation>
+        <translation>Atpažinti &amp;visus puslapius</translation>
     </message>
     <message>
         <source>Recognize All Pages</source>
-        <translation type="unfinished"></translation>
+        <translation>Atpažinti visus puslapius</translation>
     </message>
     <message>
         <source>Ctrl+A</source>
-        <translation type="unfinished"></translation>
+        <translation>Vald+A</translation>
     </message>
     <message>
         <source>Clear all blocks</source>
-        <translation type="unfinished"></translation>
+        <translation>Išvalyti visus pažymėjimus</translation>
     </message>
     <message>
         <source>Delete the current block</source>
-        <translation type="unfinished"></translation>
+        <translation>Ištrinti šį pažymėjimą</translation>
     </message>
     <message>
         <source>Recognize block</source>
-        <translation type="unfinished"></translation>
+        <translation>Atpažinti pažymėjimą</translation>
     </message>
     <message>
         <source>Recognize this block</source>
-        <translation type="unfinished"></translation>
+        <translation>Atpažinti šį pažymėjimą</translation>
     </message>
     <message>
         <source>Clear numbers</source>
-        <translation type="unfinished"></translation>
+        <translation>Išvalyti skaičius</translation>
     </message>
     <message>
         <source>Crear block numbering</source>
-        <translation type="unfinished"></translation>
+        <translation>Išvalyti pažymėjimų numeravimą</translation>
     </message>
     <message>
         <source>Check spelling</source>
-        <translation type="unfinished"></translation>
+        <translation>Tikrinti rašybą</translation>
     </message>
     <message>
         <source>Save current image...</source>
-        <translation type="unfinished"></translation>
+        <translation>Įrašyti šį paveikslėlį...</translation>
     </message>
     <message>
         <source>Save currently opened image in its real size</source>
-        <translation type="unfinished"></translation>
+        <translation>Išsaugoti šiuo metu atvertą paveikslėlį realiu dydžiu</translation>
     </message>
     <message>
         <source>Save block</source>
-        <translation type="unfinished"></translation>
+        <translation>Išsaugoti pažymėjimą</translation>
     </message>
     <message>
         <source>Save the current block to the image file</source>
-        <translation type="unfinished"></translation>
+        <translation>Įrašyti dabartinį pažymėjimą į paveikslėlio failą</translation>
     </message>
     <message>
         <source>Select HTML format</source>
-        <translation type="unfinished"></translation>
+        <translation>Pasirinkti HTML formatą</translation>
     </message>
     <message>
         <source>Select HTML format as recognition output</source>
-        <translation type="unfinished"></translation>
+        <translation>Pasirinkti HTML formatą kaip atpažinimo išvestį</translation>
     </message>
     <message>
         <source>Larger view</source>
@@ -501,94 +502,106 @@ Please install either cuneiform or tesseract</source>
     </message>
     <message>
         <source>MainWindow</source>
-        <translation type="unfinished"></translation>
+        <translation>PagrindinisLangas</translation>
     </message>
     <message>
         <source>toolBar</source>
-        <translation type="unfinished"></translation>
+        <translation>įrankiųJuosta</translation>
     </message>
     <message>
         <source>Ctrl+N</source>
-        <translation type="unfinished"></translation>
+        <translation>Vald+N</translation>
     </message>
     <message>
         <source>Ctrl+S</source>
-        <translation type="unfinished"></translation>
+        <translation>Vald+S</translation>
     </message>
     <message>
         <source>Ctrl+O</source>
-        <translation type="unfinished"></translation>
+        <translation>Vald+O</translation>
     </message>
     <message>
         <source>Ctrl+R</source>
-        <translation type="unfinished"></translation>
+        <translation>Vald+R</translation>
     </message>
     <message>
         <source>Ctrl+Q</source>
-        <translation type="unfinished"></translation>
+        <translation>Vald+Q</translation>
     </message>
     <message>
         <source>&amp;Settings</source>
-        <translation type="unfinished"></translation>
+        <translation>&amp;Nustatymai</translation>
     </message>
     <message>
         <source>&lt;&lt;</source>
-        <translation type="unfinished"></translation>
+        <translation>&lt;&lt;</translation>
     </message>
     <message>
         <source>Hide/Show Toolbar</source>
-        <translation type="unfinished"></translation>
+        <translation>Slėpti/Rodyti įrankių juostą</translation>
     </message>
     <message>
         <source>Import from PDF...</source>
-        <translation type="unfinished"></translation>
+        <translation>Importuoti iš PDF...</translation>
     </message>
     <message>
         <source>Import pages from PDF documents</source>
-        <translation type="unfinished"></translation>
+        <translation>Importuoti puslapius iš PDF dokumento</translation>
     </message>
     <message>
         <source>OCR Settings</source>
-        <translation type="unfinished"></translation>
+        <translation>OCR nustatymai</translation>
     </message>
     <message>
         <source>Set up the OCR parameters</source>
-        <translation type="unfinished"></translation>
+        <translation>Nustatykite OCR parametrus</translation>
     </message>
     <message>
         <source>Paste Image</source>
-        <translation type="unfinished"></translation>
+        <translation>Įterpti paveikslėlį</translation>
     </message>
     <message>
         <source>Paste image from clipboard</source>
-        <translation type="unfinished"></translation>
+        <translation>Įterpti paveikslėlį iš iškarpinės</translation>
     </message>
     <message>
         <source>Select Text Area</source>
-        <translation type="unfinished"></translation>
+        <translation>Pažymėkite teksto sritį</translation>
     </message>
     <message>
         <source>Deskew  Block</source>
-        <translation type="unfinished"></translation>
+        <translation>Ištiesinti  pažymėjimą</translation>
     </message>
     <message>
         <source>Deskew the current block</source>
-        <translation type="unfinished"></translation>
+        <translation>Ištiesinti dabartinį pažymėjimą</translation>
     </message>
     <message>
         <source>Deskew</source>
-        <translation type="unfinished"></translation>
+        <translation>Ištiesinti</translation>
     </message>
     <message>
         <source>Correct the page skew </source>
-        <translation type="unfinished"></translation>
+        <translation>Pataisyti puslapio kreivumą </translation>
     </message>
     <message>
         <source>Advanced Settings</source>
-        <translation type="unfinished"></translation>
+        <translation>Sudėtingesni nustatymai</translation>
     </message>
     <message>
         <source>The settings you should probably never change</source>
+        <translation>Nustatymai, kurių ko gero geriau niekada nekeisti</translation>
+    </message>
+    <message>
+        <source>select multiple blocks</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Splits text into several blocks</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Toggle Large/Small Icons</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -596,59 +609,61 @@ Please install either cuneiform or tesseract</source>
     <name>PopplerDialog</name>
     <message>
         <source>Import from PDF</source>
-        <translation type="unfinished"></translation>
+        <translation>Importuoti iš PDF</translation>
     </message>
     <message>
         <source>File Name</source>
-        <translation type="unfinished"></translation>
+        <translation>Failo pavadinimas</translation>
     </message>
     <message>
         <source>Select...</source>
-        <translation type="unfinished"></translation>
+        <translation>Pažymėti...</translation>
     </message>
     <message>
         <source>Pages</source>
-        <translation type="unfinished"></translation>
+        <translation>Puslapiai</translation>
     </message>
     <message>
         <source>From</source>
-        <translation type="unfinished"></translation>
+        <translation>Nuo</translation>
     </message>
     <message>
         <source>To</source>
-        <translation type="unfinished"></translation>
+        <translation>Iki</translation>
     </message>
     <message>
         <source>Entire Document</source>
-        <translation type="unfinished"></translation>
+        <translation>Visą dokumentą</translation>
     </message>
 </context>
 <context>
     <name>QObject</name>
     <message>
         <source>JPEG Files (*.jpg)</source>
-        <translation type="unfinished"></translation>
+        <translation>JPEG failai (*.jpg)</translation>
     </message>
     <message>
         <source>PNG Files (*.png)</source>
-        <translation type="unfinished"></translation>
+        <translation>PNG failai (*.png)</translation>
     </message>
     <message>
         <source>Failed to save the image</source>
-        <translation type="unfinished"></translation>
+        <translation>Nepavyko įrašyti paveikslėlio</translation>
     </message>
     <message>
         <source>Required spelling dictionary (%1) is not found.
 Spell-checking is disabled.
 Try to install an appropriate aspell dictionary.</source>
-        <translation type="unfinished"></translation>
+        <translation>Reikiamo rašybos tikrinimo žodyno (%1) rasti nepavyko
+Rašybos tikrinimas išjungtas.
+Prašome įdiegti reikiamą aspell žodyną.</translation>
     </message>
 </context>
 <context>
     <name>SideBar</name>
     <message>
         <source>Drop files here</source>
-        <translation type="unfinished"></translation>
+        <translation>Meskite failus čia</translation>
     </message>
 </context>
 </TS>
