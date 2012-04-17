@@ -1,4 +1,6 @@
-<!DOCTYPE TS><TS>
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE TS>
+<TS version="2.0" language="ru_RU">
 <context>
     <name>AdvancedConfigDialog</name>
     <message>
@@ -37,7 +39,7 @@
         <translation>Расположение директории tessdata:</translation>
     </message>
 </context>
-<context encoding="UTF-8">
+<context>
     <name>MainForm</name>
     <message>
         <source>Recognition language</source>
@@ -212,36 +214,36 @@
         <translation>Сохранить изображение</translation>
     </message>
     <message>
-        <source>Undo<byte value="x9"/>Ctrl+Z</source>
-        <translation>Отменить<byte value="x9"/>Ctrl+Z</translation>
+        <source>Undo	Ctrl+Z</source>
+        <translation>Отменить	Ctrl+Z</translation>
     </message>
     <message>
-        <source>Redo<byte value="x9"/>Ctrl+Shift+Z</source>
-        <translation>Вернуть<byte value="x9"/>Ctrl+Shift+Z</translation>
+        <source>Redo	Ctrl+Shift+Z</source>
+        <translation>Вернуть	Ctrl+Shift+Z</translation>
     </message>
     <message>
-        <source>Select All<byte value="x9"/>Ctrl+A</source>
-        <translation>Выделить все<byte value="x9"/>Ctrl+A</translation>
+        <source>Select All	Ctrl+A</source>
+        <translation>Выделить все	Ctrl+A</translation>
     </message>
     <message>
-        <source>Cut<byte value="x9"/>Ctrl+X</source>
-        <translation>Вырезать<byte value="x9"/>Ctrl+X</translation>
+        <source>Cut	Ctrl+X</source>
+        <translation>Вырезать	Ctrl+X</translation>
     </message>
     <message>
-        <source>Larger Font<byte value="x9"/>Ctrl++</source>
-        <translation>Увеличить шрифт<byte value="x9"/>Ctrl++</translation>
+        <source>Larger Font	Ctrl++</source>
+        <translation>Увеличить шрифт	Ctrl++</translation>
     </message>
     <message>
-        <source>Smaller Font<byte value="x9"/>Ctrl+-</source>
-        <translation>Уменьшить шрифт<byte value="x9"/>Ctrl+-</translation>
+        <source>Smaller Font	Ctrl+-</source>
+        <translation>Уменьшить шрифт	Ctrl+-</translation>
     </message>
     <message>
-        <source>Copy<byte value="x9"/>Ctrl+C</source>
-        <translation>Копировать<byte value="x9"/>Ctrl+C</translation>
+        <source>Copy	Ctrl+C</source>
+        <translation>Копировать	Ctrl+C</translation>
     </message>
     <message>
-        <source>Paste<byte value="x9"/>Ctrl+V</source>
-        <translation>Вставить<byte value="x9"/>Ctrl+V</translation>
+        <source>Paste	Ctrl+V</source>
+        <translation>Вставить	Ctrl+V</translation>
     </message>
     <message>
         <source>Recognizing pages...</source>
@@ -333,7 +335,7 @@ Please install either cuneiform or tesseract</source>
         <source>Swedish Gothic (tesseract 3+)</source>
         <translation>Шведский готический (tesseract 3+)</translation>
     </message>
-    <message encoding="UTF-8">
+    <message utf8="true">
         <source>&lt;p align=&quot;center&quot;&gt;&lt;b&gt;YAGF - Yet Another Graphical Front-end for cuneiform and tesseract OCR engines&lt;/b&gt;&lt;/p&gt;&lt;p align=&quot;center&quot;&gt;Version %1&lt;/p&gt; &lt;p align=&quot;center&quot;&gt;Ⓒ 2009-2012 Andrei Borovsky&lt;/p&gt; This is a free software distributed under GPL v3. Visit &lt;a href=&quot;http://symmetrica.net/cuneiform-linux/yagf-en.html&quot;&gt;http://symmetrica.net/cuneiform-linux/yagf-en.html&lt;/a&gt; for more details.</source>
         <translation>&lt;p align=&quot;center&quot;&gt;&lt;b&gt;YAGF - Графическая оболочка для программ распознавания текста cuneiform и tesseract&lt;/b&gt;&lt;/p&gt;&lt;p align=&quot;center&quot;&gt;Версия %1&lt;/p&gt; &lt;p align=&quot;center&quot;&gt;Ⓒ 2009-2012 Андрей Боровский&lt;/p&gt; YAGF - открытое программное обеспечение, которое распространяется на условиях лицензии GPL v3. Вы найдете подробности на странице &lt;a href=&quot;http://symmetrica.net/cuneiform-linux/yagf-en.html&quot;&gt;http://symmetrica.net/cuneiform-linux/yagf-ru.html&lt;/a&gt;.</translation>
     </message>
@@ -594,7 +596,7 @@ Please install either cuneiform or tesseract</source>
     </message>
     <message>
         <source>select multiple blocks</source>
-        <translation>Выделить несколько блоков</translation>
+        <translation>Разделить текст на блоки</translation>
     </message>
     <message>
         <source>Splits text into several blocks</source>

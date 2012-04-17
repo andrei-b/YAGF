@@ -1070,6 +1070,9 @@ void MainForm::rightMouseClicked(int x, int y, bool inTheBlock)
         m_menu->addAction(actionRecognize_block);
         m_menu->addAction(actionSave_block);
         m_menu->addAction(actionDeskew_by_Block);
+    } else {
+        m_menu->addAction(actionSelect_Text_Area);
+        m_menu->addAction(actionSelect_multiple_blocks);
     }
     QPoint p = graphicsView->mapToGlobal(QPoint(x, y));
     m_menu->move(p);
