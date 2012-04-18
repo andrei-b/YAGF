@@ -752,10 +752,10 @@ void MainForm::recognizeInternal(const QImage &img)
 //       textData.replace("-</p><p>", "");
 //        textData.replace("-<br>", "");
     textEdit->append(textData);
+    textEdit->append(QString(" "));
     textSaved = FALSE;
     if (settings.getCheckSpelling()) {
         spellChecker->setLanguage(settings.getLanguage());
-        //actionCheck_spelling->setEnabled(spellChecker->spellCheck());
         actionCheck_spelling->setChecked(spellChecker->spellCheck());
     }
 

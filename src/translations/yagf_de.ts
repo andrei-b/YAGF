@@ -1,13 +1,15 @@
-<!DOCTYPE TS><TS>
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE TS>
+<TS version="2.0" language="de_DE">
 <context>
     <name>AdvancedConfigDialog</name>
     <message>
         <source>Advanced Settings</source>
-        <translation type="unfinished"></translation>
+        <translation>Erweiterte Einstellungen</translation>
     </message>
     <message>
         <source>Crop Image When Loaded</source>
-        <translation type="unfinished"></translation>
+        <translation>Bild nach dem Laden beschneiden</translation>
     </message>
 </context>
 <context>
@@ -37,43 +39,43 @@
         <translation>Ort des tessdata Verzeichnisses:</translation>
     </message>
 </context>
-<context encoding="UTF-8">
+<context>
     <name>MainForm</name>
     <message>
         <source>Recognition language</source>
         <translation>Erkennungs-Sprache</translation>
     </message>
     <message>
-        <source>Undo<byte value="x9"/>Ctrl+Z</source>
-        <translation>Rückgängig<byte value="x9"/>Ctrl+Z</translation>
+        <source>Undo	Ctrl+Z</source>
+        <translation>Rückgängig	Ctrl+Z</translation>
     </message>
     <message>
-        <source>Redo<byte value="x9"/>Ctrl+Shift+Z</source>
-        <translation>Wiederherstellen<byte value="x9"/>Ctrl+Shift+Z</translation>
+        <source>Redo	Ctrl+Shift+Z</source>
+        <translation>Wiederherstellen	Ctrl+Shift+Z</translation>
     </message>
     <message>
-        <source>Select All<byte value="x9"/>Ctrl+A</source>
-        <translation>Alles markieren<byte value="x9"/>Ctrl+A</translation>
+        <source>Select All	Ctrl+A</source>
+        <translation>Alles markieren	Ctrl+A</translation>
     </message>
     <message>
-        <source>Cut<byte value="x9"/>Ctrl+X</source>
-        <translation>Ausschneiden<byte value="x9"/>Ctrl+X</translation>
+        <source>Cut	Ctrl+X</source>
+        <translation>Ausschneiden	Ctrl+X</translation>
     </message>
     <message>
-        <source>Copy<byte value="x9"/>Ctrl+C</source>
-        <translation>Kopieren<byte value="x9"/>Ctrl+C</translation>
+        <source>Copy	Ctrl+C</source>
+        <translation>Kopieren	Ctrl+C</translation>
     </message>
     <message>
-        <source>Paste<byte value="x9"/>Ctrl+V</source>
-        <translation>Einfügen<byte value="x9"/>Ctrl+V</translation>
+        <source>Paste	Ctrl+V</source>
+        <translation>Einfügen	Ctrl+V</translation>
     </message>
     <message>
-        <source>Larger Font<byte value="x9"/>Ctrl++</source>
-        <translation>Schrift vergrößern<byte value="x9"/>Ctrl++</translation>
+        <source>Larger Font	Ctrl++</source>
+        <translation>Schrift vergrößern	Ctrl++</translation>
     </message>
     <message>
-        <source>Smaller Font<byte value="x9"/>Ctrl+-</source>
-        <translation>Schrift verkleinern<byte value="x9"/>Ctrl+-</translation>
+        <source>Smaller Font	Ctrl+-</source>
+        <translation>Schrift verkleinern	Ctrl+-</translation>
     </message>
     <message>
         <source>Open Image</source>
@@ -319,23 +321,23 @@ Bitte cuneiform und/oder tesseract installieren</translation>
     </message>
     <message>
         <source>No PDF converter installed</source>
-        <translation type="unfinished"></translation>
+        <translation>Kein PDF Konvertierer installiert</translation>
     </message>
     <message>
         <source>German Gothic (tesseract 3+)</source>
-        <translation type="unfinished"></translation>
+        <translation>Deutsche Fraktur (tesseract 3+)</translation>
     </message>
     <message>
         <source>Hebrew (tesseract 3.0.1+)</source>
-        <translation type="unfinished"></translation>
+        <translation>Hebräisch (tesseract 3.0.1+)</translation>
     </message>
     <message>
         <source>Swedish Gothic (tesseract 3+)</source>
-        <translation type="unfinished"></translation>
+        <translation>Schwedische Fraktur (tesseract 3+)</translation>
     </message>
-    <message encoding="UTF-8">
+    <message utf8="true">
         <source>&lt;p align=&quot;center&quot;&gt;&lt;b&gt;YAGF - Yet Another Graphical Front-end for cuneiform and tesseract OCR engines&lt;/b&gt;&lt;/p&gt;&lt;p align=&quot;center&quot;&gt;Version %1&lt;/p&gt; &lt;p align=&quot;center&quot;&gt;Ⓒ 2009-2012 Andrei Borovsky&lt;/p&gt; This is a free software distributed under GPL v3. Visit &lt;a href=&quot;http://symmetrica.net/cuneiform-linux/yagf-en.html&quot;&gt;http://symmetrica.net/cuneiform-linux/yagf-en.html&lt;/a&gt; for more details.</source>
-        <translation type="unfinished">&lt;p align=&quot;center&quot;&gt;&lt;b&gt;YAGF - Yet Another Graphical Front-end (Noch ein weiteres grafisches Frontend) fürr cuneiform und tesseract OCR (Optical Character Recognition = Optische Zeichen Erkennung) engines&lt;/b&gt;&lt;/p&gt;&lt;p align=&quot;center&quot;&gt;Version %1&lt;/p&gt; &lt;p align=&quot;center&quot;&gt;Ⓒ 2009-2012 Andrei Borovsky&lt;/p&gt; Dies ist freie Softwater die unter der GPL v3 verbreitet wird. Besuchen Sie &lt;a href=&quot;http://symmetrica.net/cuneiform-linux/yagf-en.html&quot;&gt;http://symmetrica.net/cuneiform-linux/yagf-en.html&lt;/a&gt; für weitere Informationen. {2009-2012?}</translation>
+        <translation>&lt;p align=&quot;center&quot;&gt;&lt;b&gt;YAGF - Yet Another Graphical Front-end (Noch ein weiteres grafisches Frontend) fürr cuneiform und tesseract OCR (Optical Character Recognition = Optische Zeichen Erkennung) engines&lt;/b&gt;&lt;/p&gt;&lt;p align=&quot;center&quot;&gt;Version %1&lt;/p&gt; &lt;p align=&quot;center&quot;&gt;Ⓒ 2009-2012 Andrei Borovsky&lt;/p&gt; Dies ist freie Softwater die unter der GPL v3 verbreitet wird. Besuchen Sie &lt;a href=&quot;http://symmetrica.net/cuneiform-linux/yagf-en.html&quot;&gt;http://symmetrica.net/cuneiform-linux/yagf-en.html&lt;/a&gt; für weitere Informationen. {2009-2012?}</translation>
     </message>
 </context>
 <context>
@@ -586,23 +588,23 @@ Bitte cuneiform und/oder tesseract installieren</translation>
     </message>
     <message>
         <source>Advanced Settings</source>
-        <translation type="unfinished"></translation>
+        <translation>Erweiterte Einstellungen</translation>
     </message>
     <message>
         <source>The settings you should probably never change</source>
-        <translation type="unfinished"></translation>
+        <translation>Einstellungen die sie wahrscheinlich nie ändern sollten</translation>
     </message>
     <message>
         <source>select multiple blocks</source>
-        <translation type="unfinished"></translation>
+        <translation>Mehrere Blöcke auswählen</translation>
     </message>
     <message>
         <source>Splits text into several blocks</source>
-        <translation type="unfinished"></translation>
+        <translation>Teilt Text in mehrere Blöcke</translation>
     </message>
     <message>
         <source>Toggle Large/Small Icons</source>
-        <translation type="unfinished"></translation>
+        <translation>Große/kleine Icons</translation>
     </message>
 </context>
 <context>
