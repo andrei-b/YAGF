@@ -3,38 +3,38 @@
     <name>AdvancedConfigDialog</name>
     <message>
         <source>Advanced Settings</source>
-        <translation type="unfinished"></translation>
+        <translation>Розширені налаштування</translation>
     </message>
     <message>
         <source>Crop Image When Loaded</source>
-        <translation type="unfinished"></translation>
+        <translation>Обрізати зображення після завантаження</translation>
     </message>
 </context>
 <context>
     <name>ConfigDialog</name>
     <message>
         <source>OCR Settings</source>
-        <translation type="unfinished"></translation>
+        <translation>Налаштування розпізнавання</translation>
     </message>
     <message>
         <source>OCR Engine</source>
-        <translation type="unfinished"></translation>
+        <translation>Рушій розпізнавання</translation>
     </message>
     <message>
         <source>cuneiform</source>
-        <translation type="unfinished"></translation>
+        <translation>Cuneiform</translation>
     </message>
     <message>
         <source>tesseract</source>
-        <translation type="unfinished"></translation>
+        <translation>Tesseract</translation>
     </message>
     <message>
         <source>Tesseract Setup</source>
-        <translation type="unfinished"></translation>
+        <translation>Налаштування Tesseract</translation>
     </message>
     <message>
         <source>Location of the  tessdata directory:</source>
-        <translation type="unfinished"></translation>
+        <translation>Розташування теки tessdata</translation>
     </message>
 </context>
 <context encoding="UTF-8">
@@ -130,7 +130,7 @@
     </message>
     <message>
         <source>Danish</source>
-        <translation>Датська</translation>
+        <translation>Данська</translation>
     </message>
     <message>
         <source>Dutch</source>
@@ -254,88 +254,89 @@
     </message>
     <message>
         <source>Importing pages from the PDF document...</source>
-        <translation type="unfinished"></translation>
+        <translation>Імпорт сторінок з PDF-документа</translation>
     </message>
     <message>
         <source>Cancel</source>
-        <translation type="unfinished"></translation>
+        <translation>Скасувати</translation>
     </message>
     <message>
         <source>No compatible PDF converter software could be found. Please install either the pdftoppm utility or the GhostScript package (from this the gs command will be required).</source>
-        <translation type="unfinished"></translation>
+        <translation>Не знайдено перетворювач PDF-документів. Пропонуємо встановити або програму pdftoppm, або покет GhostScript (достатньо виконуваного файла gs).</translation>
     </message>
     <message>
         <source>PDF file name may not be empty</source>
-        <translation type="unfinished"></translation>
+        <translation>Назва PDF-файла не може бути порожньою</translation>
     </message>
     <message>
         <source>Select an existing directory for output or create some new one</source>
-        <translation type="unfinished"></translation>
+        <translation>Виберіть існуючу теку для виводу результату або створіть нову</translation>
     </message>
     <message>
         <source>Selecting Directory</source>
-        <translation type="unfinished"></translation>
+        <translation>Вибрати теку</translation>
     </message>
     <message>
         <source>The selected directory is not empty</source>
-        <translation type="unfinished"></translation>
+        <translation>Вибрана тека непорожня</translation>
     </message>
     <message>
         <source>Finnish (tesseract only)</source>
-        <translation type="unfinished"></translation>
+        <translation>Фінська (лише tesseract)</translation>
     </message>
     <message>
         <source>Greek (tesseract only)</source>
-        <translation type="unfinished"></translation>
+        <translation>Грецька (лише tesseract)</translation>
     </message>
     <message>
         <source>Norwegian (tesseract only)</source>
-        <translation type="unfinished"></translation>
+        <translation>Норвезька (лише tesseract)</translation>
     </message>
     <message>
         <source>Slovakian (tesseract only)</source>
-        <translation type="unfinished"></translation>
+        <translation>Словацька (лише tesseract)</translation>
     </message>
     <message>
         <source>Turkish (tesseract only)</source>
-        <translation type="unfinished"></translation>
+        <translation>Турецька (лише tesseract)</translation>
     </message>
     <message>
         <source>Starting tesseract failed</source>
-        <translation type="unfinished"></translation>
+        <translation>Невдалий запуск tesseract</translation>
     </message>
     <message>
         <source>cuneiform not found, switching to tesseract</source>
-        <translation type="unfinished"></translation>
+        <translation>Не знайдено cuneiform, перемикаємось у tesseract</translation>
     </message>
     <message>
         <source>No recognition engine found.
 Please install either cuneiform or tesseract</source>
-        <translation type="unfinished"></translation>
+        <translation>Не знайдено жодного рушія з розпізнавання.
+ Просимо встановити або cuneiform, або tesseract</translation>
     </message>
     <message>
         <source>tesseract not found, switching to cuneiform</source>
-        <translation type="unfinished"></translation>
+        <translation>tesseract не знайдено, перкмикаємось у cuneiform</translation>
     </message>
     <message>
         <source>No PDF converter installed</source>
-        <translation type="unfinished"></translation>
+        <translation>Не встановлено PDF-конвертера</translation>
     </message>
     <message>
         <source>German Gothic (tesseract 3+)</source>
-        <translation type="unfinished"></translation>
+        <translation>Німецька готська (лише tesseract)</translation>
     </message>
     <message>
         <source>Hebrew (tesseract 3.0.1+)</source>
-        <translation type="unfinished"></translation>
+        <translation>Іврит (лише tesseract)</translation>
     </message>
     <message>
         <source>Swedish Gothic (tesseract 3+)</source>
-        <translation type="unfinished"></translation>
+        <translation>Шведська готська (лише tesseract)</translation>
     </message>
     <message encoding="UTF-8">
         <source>&lt;p align=&quot;center&quot;&gt;&lt;b&gt;YAGF - Yet Another Graphical Front-end for cuneiform and tesseract OCR engines&lt;/b&gt;&lt;/p&gt;&lt;p align=&quot;center&quot;&gt;Version %1&lt;/p&gt; &lt;p align=&quot;center&quot;&gt;Ⓒ 2009-2012 Andrei Borovsky&lt;/p&gt; This is a free software distributed under GPL v3. Visit &lt;a href=&quot;http://symmetrica.net/cuneiform-linux/yagf-en.html&quot;&gt;http://symmetrica.net/cuneiform-linux/yagf-en.html&lt;/a&gt; for more details.</source>
-        <translation type="unfinished"></translation>
+        <translation>&lt;p align=&quot;center&quot;&gt;&lt;b&gt;YAGF - Ще один графічний фронт-енд (Yet Another Graphical Front-end) для рушіїв з розпізнавання cuneiform та tesseract&lt;/b&gt;&lt;/p&gt;&lt;p align=&quot;center&quot;&gt;Version %1&lt;/p&gt; &lt;p align=&quot;center&quot;&gt;Ⓒ 2009-2012 Andrei Borovsky&lt;/p&gt; Це вільне програмне забезпечення, яке поширюється піл ліцензією GPL v3. Відвідайте &lt;a href=&quot;http://symmetrica.net/cuneiform-linux/yagf-en.html&quot;&gt;http://symmetrica.net/cuneiform-linux/yagf-en.html&lt;/a&gt; , щоб отримати більше інформації.</translation>
     </message>
 </context>
 <context>
@@ -530,110 +531,110 @@ Please install either cuneiform or tesseract</source>
     </message>
     <message>
         <source>&amp;Settings</source>
-        <translation type="unfinished"></translation>
+        <translation>&amp;Налаштування</translation>
     </message>
     <message>
         <source>&lt;&lt;</source>
-        <translation type="unfinished"></translation>
+        <translation>&lt;&lt;</translation>
     </message>
     <message>
         <source>Hide/Show Toolbar</source>
-        <translation type="unfinished"></translation>
+        <translation>Сховати/відобразити панель інструментів</translation>
     </message>
     <message>
         <source>Import from PDF...</source>
-        <translation type="unfinished"></translation>
+        <translation>Імпортувати з PDF</translation>
     </message>
     <message>
         <source>Import pages from PDF documents</source>
-        <translation type="unfinished"></translation>
+        <translation>Імпортувати сторінки з PDF-документів</translation>
     </message>
     <message>
         <source>OCR Settings</source>
-        <translation type="unfinished"></translation>
+        <translation>Налаштування розпізнавання</translation>
     </message>
     <message>
         <source>Set up the OCR parameters</source>
-        <translation type="unfinished"></translation>
+        <translation>Конфігурування параметрів розпізнавання</translation>
     </message>
     <message>
         <source>Paste Image</source>
-        <translation type="unfinished"></translation>
+        <translation>Вставити зображення</translation>
     </message>
     <message>
         <source>Paste image from clipboard</source>
-        <translation type="unfinished"></translation>
+        <translation>Вставити зображення з буферу обміну</translation>
     </message>
     <message>
         <source>Select Text Area</source>
-        <translation type="unfinished"></translation>
+        <translation>Вибрати текстовий блок</translation>
     </message>
     <message>
         <source>Deskew  Block</source>
-        <translation type="unfinished"></translation>
+        <translation>Вирівняти блок</translation>
     </message>
     <message>
         <source>Deskew the current block</source>
-        <translation type="unfinished"></translation>
+        <translation>Вирівняти поточний блок</translation>
     </message>
     <message>
         <source>Deskew</source>
-        <translation type="unfinished"></translation>
+        <translation>Вирівняти</translation>
     </message>
     <message>
-        <source>Correct the page skew </source>
-        <translation type="unfinished"></translation>
+        <source>Correct the page skew</source>
+        <translation>Виправити нахил сторінки</translation>
     </message>
     <message>
         <source>Advanced Settings</source>
-        <translation type="unfinished"></translation>
+        <translation>Роширені налаштування</translation>
     </message>
     <message>
         <source>The settings you should probably never change</source>
-        <translation type="unfinished"></translation>
+        <translation>Налаштування, які ви скоріш за все ніколи не змінюватимете</translation>
     </message>
     <message>
         <source>select multiple blocks</source>
-        <translation type="unfinished"></translation>
+        <translation>вибрати кілька блоків</translation>
     </message>
     <message>
         <source>Splits text into several blocks</source>
-        <translation type="unfinished"></translation>
+        <translation>Розділити текст на декілька окремих блоків</translation>
     </message>
     <message>
         <source>Toggle Large/Small Icons</source>
-        <translation type="unfinished"></translation>
+        <translation>Перемикнути великі/маленькі піктограми</translation>
     </message>
 </context>
 <context>
     <name>PopplerDialog</name>
     <message>
         <source>Import from PDF</source>
-        <translation type="unfinished"></translation>
+        <translation>Імпортувати з PDF</translation>
     </message>
     <message>
         <source>File Name</source>
-        <translation type="unfinished"></translation>
+        <translation>Назва файла</translation>
     </message>
     <message>
         <source>Select...</source>
-        <translation type="unfinished"></translation>
+        <translation>Виберіть...</translation>
     </message>
     <message>
         <source>Pages</source>
-        <translation type="unfinished"></translation>
+        <translation>Сторінки</translation>
     </message>
     <message>
         <source>From</source>
-        <translation type="unfinished"></translation>
+        <translation>Від</translation>
     </message>
     <message>
         <source>To</source>
-        <translation type="unfinished"></translation>
+        <translation>Адресат</translation>
     </message>
     <message>
         <source>Entire Document</source>
-        <translation type="unfinished"></translation>
+        <translation>Документ повністю</translation>
     </message>
 </context>
 <context>
@@ -663,7 +664,7 @@ Try to install an appropriate aspell dictionary.</source>
     <name>SideBar</name>
     <message>
         <source>Drop files here</source>
-        <translation type="unfinished"></translation>
+        <translation>Пересуньте файли сюди</translation>
     </message>
 </context>
 </TS>
