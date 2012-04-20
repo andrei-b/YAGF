@@ -1,3 +1,10 @@
+* Fri Apr 20 2012 Andrei Borovsky <anb@symmetrica.net> - 0.9.1
+- Some minor bug fixes and improvements
+* Sun Apr 15 2012 Andrei Borovsky <anb@symmetrica.net> - 0.9.1
+- Toolbar icons size togling options is added
+- YAGF now stores its private data in a FeeDesktop conformat way
+* Mon Apr 09 2012 Andrei Borovsky <anb@symmetrica.net> - 0.9.1
+- Text-splitting capability for splitting ext into blocks automatically is added 
 * Tue Feb 28 2012 Andrei Borovsky <anb@symmetrica.net> - 0.9
 - Genral program restructure. Images are loaded and processed much faster.
 * Mon Feb 27 2012 Andrei Borovsky <anb@symmetrica.net> - 0.9
