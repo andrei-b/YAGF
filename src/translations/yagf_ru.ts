@@ -600,7 +600,7 @@ Please install either cuneiform or tesseract</source>
     </message>
     <message>
         <source>Splits text into several blocks</source>
-        <translation>Разбитm текст на блоки</translation>
+        <translation type="unfinished">Разбить текст на блоки</translation>
     </message>
     <message>
         <source>Toggle Large/Small Icons</source>
