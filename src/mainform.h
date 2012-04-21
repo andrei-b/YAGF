@@ -42,7 +42,7 @@ class ccbuilder;
 
 typedef QMap<QString, QString> TesMap;
 
-const QString version = "0.9";
+const QString version = "0.9.1";
 
 class MainForm : public QMainWindow, public Ui::MainWindow
 {
