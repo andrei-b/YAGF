@@ -76,6 +76,8 @@ MainWindow::MainWindow()
     splitter->addWidget(wordList);
     splitter->setStretchFactor(0, 3);
     splitter->setStretchFactor(1, 1);
+    splitter->setSizes({900, 300});
+    splitter->setChildrenCollapsible(false);
     setCentralWidget(splitter);
     connect(view, &PageView::wordClicked, this, &MainWindow::selectWord);
     connect(wordList, &QListWidget::currentRowChanged, this, &MainWindow::selectWord);
@@ -132,6 +134,11 @@ void MainWindow::openFile()
 {
     const QString path = QFileDialog::getOpenFileName(this, tr("Open document"), {},
                                                      tr("Documents (*.pdf *.png *.jpg *.jpeg *.tif *.tiff *.bmp);;All files (*)"));
+    loadSource(path);
+}
+
+void MainWindow::loadSource(const QString &path)
+{
     if (path.isEmpty()) return;
     if (processor.isBusy()) return;
     if (!maybeSave()) return;

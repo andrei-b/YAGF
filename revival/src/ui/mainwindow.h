@@ -28,6 +28,7 @@ class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
     MainWindow();
+    void loadSource(const QString &path);
 protected:
     void closeEvent(QCloseEvent *event) override;
 private:

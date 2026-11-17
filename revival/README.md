@@ -4,6 +4,10 @@ This is the first vertical slice of the YAGF 2.0 proposal. The Qt 4 application 
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the source layout, dependency boundaries, and next implementation slices.
 
+![OCR prototype with linked word boxes](docs/preview.png)
+
+The screenshot uses a generated sample image.
+
 ## Build
 
 ```sh
@@ -11,6 +15,8 @@ cmake -S revival -B build-revival -G Ninja
 cmake --build build-revival
 ctest --test-dir build-revival --output-on-failure
 ./build-revival/yagf-revival
+# Or open a source document immediately:
+./build-revival/yagf-revival /path/to/scan.png
 ```
 
 Qt 6 development packages are required. Install Tesseract and language data to recognize images. PDF import also requires Poppler's `pdftoppm` command. Missing tools are reported in the app.
