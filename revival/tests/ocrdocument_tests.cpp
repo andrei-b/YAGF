@@ -47,4 +47,31 @@ int main()
     assert(doc.page(2)->words.at(0).page == 2);
     assert(doc.wordCount() == 6);
     assert(doc.plainText().contains(QStringLiteral("\f")));
+
+    const QByteArray layoutTsv =
+        "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n"
+        "5\t1\t1\t1\t1\t1\t10\t20\t30\t12\t90\tLeft\n"
+        "5\t1\t2\t1\t1\t1\t110\t20\t40\t12\t90\tRight\n";
+    OcrDocument layout = OcrDocument::fromTsv(layoutTsv, 200, 100,
+                                               QStringLiteral("scan.png"), QStringLiteral("eng"));
+    assert(layout.page(1)->regions.size() == 2);
+    layout.page(1)->regions[1].type = QStringLiteral("column");
+    layout.page(1)->regions[1].bounds = QRect(100, 10, 70, 50);
+    assert(layout.page(1)->moveRegion(1, -1));
+    assert(layout.plainText() == QStringLiteral("Right\n\nLeft"));
+    assert(!layout.page(1)->moveRegion(0, -1));
+    OcrDocument restored;
+    QString error;
+    assert(OcrDocument::fromJson(layout.toJson(), &restored, &error));
+    assert(restored.plainText() == layout.plainText());
+    assert(restored.page(1)->regions.at(0).type == QStringLiteral("column"));
+    assert(restored.page(1)->regions.at(0).bounds == QRect(100, 10, 70, 50));
+
+    OcrPage extracted = *doc.page(1);
+    assert(!extracted.extractRegion({0, 1, 2}));
+    assert(extracted.extractRegion({1}));
+    assert(extracted.regions.size() == 2);
+    assert(extracted.words.last().text == QStringLiteral("earth"));
+    assert(extracted.words.last().reviewed);
+    assert(extracted.regions.last().bounds == QRect(50, 20, 40, 12));
 }

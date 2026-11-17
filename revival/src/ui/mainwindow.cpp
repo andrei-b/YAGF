@@ -2,6 +2,7 @@
 #include "projectfile.h"
 #include "preprocessdialog.h"
 #include "imageprocessor.h"
+#include "layoutdialog.h"
 
 #include <QCloseEvent>
 #include <QActionGroup>
@@ -39,6 +40,8 @@
 
 #include <utility>
 #include <cmath>
+#include <algorithm>
+#include <limits>
 
 namespace yagf::ui {
 using core::OcrDocument;
@@ -47,6 +50,7 @@ using core::OcrWord;
 using core::ProjectFile;
 using processing::DocumentProcessor;
 using processing::ImageProcessor;
+using processing::BatchPageOptions;
 
 namespace {
 bool overlapsWord(const QRect &box, const QRect &selection)
@@ -56,6 +60,42 @@ bool overlapsWord(const QRect &box, const QRect &selection)
     return !overlap.isEmpty() &&
         static_cast<qint64>(overlap.width()) * overlap.height() * 4 >=
         static_cast<qint64>(box.width()) * box.height();
+}
+
+void carryCorrections(OcrPage &fresh, const OcrPage *oldPage)
+{
+    if (!oldPage) return;
+    fresh.regions = oldPage->regions;
+    for (OcrWord &word : fresh.words) {
+        for (const OcrWord &old : oldPage->words) {
+            if (old.bounds != word.bounds || old.originalText != word.originalText) continue;
+            word.id = old.id;
+            word.bold = old.bold;
+            word.italic = old.italic;
+            word.fontSizePt = old.fontSizePt;
+            word.sourceFontSizePt = old.sourceFontSizePt;
+            if (old.reviewed) { word.text = old.text; word.reviewed = true; }
+            break;
+        }
+    }
+    if (oldPage->regions.size() < 2) return;
+    QHash<QString, int> oldOrder;
+    for (int i = 0; i < oldPage->regions.size(); ++i)
+        oldOrder.insert(oldPage->regions.at(i).id, i);
+    QVector<QVector<OcrWord>> groups;
+    for (const OcrWord &word : fresh.words) {
+        if (groups.isEmpty() || groups.last().last().block != word.block) groups.emplaceBack();
+        groups.last().append(word);
+    }
+    const auto orderOf = [&oldOrder, &fresh](const QVector<OcrWord> &group) {
+        return oldOrder.value(QStringLiteral("page-%1/region-%2")
+            .arg(fresh.number).arg(group.first().block), std::numeric_limits<int>::max());
+    };
+    std::stable_sort(groups.begin(), groups.end(), [&](const auto &a, const auto &b) {
+        return orderOf(a) < orderOf(b);
+    });
+    fresh.words.clear();
+    for (const auto &group : groups) fresh.words += group;
 }
 }
 
@@ -148,6 +188,7 @@ MainWindow::MainWindow()
     updateTitle();
     resize(1200, 800);
     auto *fileMenu = menuBar()->addMenu(tr("&File"));
+    auto *toolsMenu = menuBar()->addMenu(tr("&Tools"));
     auto *toolbar = addToolBar(tr("Document"));
     fileMenu->addAction(toolbar->addAction(tr("Open image or PDF"), this, &MainWindow::openFile));
     fileMenu->addAction(toolbar->addAction(tr("Open project"), this, &MainWindow::openProject));
@@ -190,6 +231,14 @@ MainWindow::MainWindow()
     improveAction = toolbar->addAction(tr("Improve page…"), this, &MainWindow::improveCurrentPage);
     improveAction->setObjectName(QStringLiteral("improvePageAction"));
     improveAction->setEnabled(false);
+    toolsMenu->addAction(improveAction);
+    layoutAction = toolsMenu->addAction(tr("Edit layout…"), this, &MainWindow::editLayout);
+    createRegionAction = toolsMenu->addAction(tr("Create region from selection"), this,
+                                             &MainWindow::createRegionFromSelection);
+    batchAction = toolsMenu->addAction(tr("Recognize all pages"), this, &MainWindow::runBatchOcr);
+    layoutAction->setEnabled(false);
+    createRegionAction->setEnabled(false);
+    batchAction->setEnabled(false);
     ocrButton = new QPushButton(tr("Recognize"), this);
     toolbar->addWidget(ocrButton);
     connect(ocrButton, &QPushButton::clicked, this, &MainWindow::runOcr);
@@ -350,19 +399,20 @@ MainWindow::MainWindow()
         for (OcrWord &word : newPage->words) {
             word.bounds.translate(offset);
             if (!region.isEmpty()) word.id.clear();
-            if (!oldPage) continue;
-            for (const OcrWord &old : oldPage->words) {
-                if (old.bounds == word.bounds && old.originalText == word.originalText) {
-                    word.id = old.id;
-                    word.bold = old.bold;
-                    word.italic = old.italic;
-                    word.fontSizePt = old.fontSizePt;
-                    word.sourceFontSizePt = old.sourceFontSizePt;
-                    if (old.reviewed) {
-                        word.text = old.text;
-                        word.reviewed = true;
+        }
+        if (region.isEmpty()) carryCorrections(*newPage, oldPage);
+        else if (oldPage) {
+            for (OcrWord &word : newPage->words) {
+                for (const OcrWord &old : oldPage->words) {
+                    if (old.bounds == word.bounds && old.originalText == word.originalText) {
+                        word.id = old.id;
+                        word.bold = old.bold;
+                        word.italic = old.italic;
+                        word.fontSizePt = old.fontSizePt;
+                        word.sourceFontSizePt = old.sourceFontSizePt;
+                        if (old.reviewed) { word.text = old.text; word.reviewed = true; }
+                        break;
                     }
-                    break;
                 }
             }
         }
@@ -412,14 +462,50 @@ MainWindow::MainWindow()
         markDirty();
         status->setText(tr("Page %1: %2 words recognized").arg(currentPage).arg(document.page(currentPage)->words.size()));
     });
+    connect(&processor, &DocumentProcessor::batchPageRecognized, this,
+            [this](int number, const QByteArray &tsv, const QSize &sourceSize,
+                   const QSize &processedSize, const QString &language) {
+        const OcrPage *oldPage = document.page(number);
+        if (oldPage && (oldPage->sourceWidth != sourceSize.width() ||
+                        oldPage->sourceHeight != sourceSize.height() ||
+                        oldPage->width != processedSize.width() || oldPage->height != processedSize.height())) {
+            processor.cancel();
+            showError(tr("Page %1 no longer matches its saved source or processing geometry.").arg(number));
+            return;
+        }
+        OcrDocument result = OcrDocument::fromTsv(tsv, processedSize.width(), processedSize.height(),
+                                                  originalPath, language, number);
+        OcrPage page = std::move(*result.page(number));
+        page.sourceWidth = sourceSize.width();
+        page.sourceHeight = sourceSize.height();
+        if (oldPage) page.preprocessing = oldPage->preprocessing;
+        carryCorrections(page, oldPage);
+        document.replacePage(std::move(page));
+        document.language = language;
+        document.totalPages = pageCount;
+        markDirty();
+        if (number == currentPage) showDocument();
+    });
+    connect(&processor, &DocumentProcessor::batchProgress, this, [this](int completed, int total) {
+        status->setText(tr("Batch OCR: %1 of %2 pages complete").arg(completed).arg(total));
+    });
+    connect(&processor, &DocumentProcessor::batchFinished, this, [this] {
+        status->setText(tr("Batch OCR complete: %1 pages").arg(pageCount));
+    });
 }
 
 void MainWindow::setBusy(bool busy)
 {
     ocrButton->setEnabled(!busy && !imagePath.isEmpty());
     cancelButton->setEnabled(busy);
+    selectionEditor->setEnabled(!busy);
+    applyButton->setEnabled(!busy && !selectedWords.isEmpty());
     regionOcrButton->setEnabled(!busy && !imagePath.isEmpty() && !selectedRegion.isEmpty());
     improveAction->setEnabled(!busy && !rawImage.isNull());
+    batchAction->setEnabled(!busy && pageCount > 1 && originalPath.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive));
+    layoutAction->setEnabled(!busy && document.page(currentPage) && !document.page(currentPage)->regions.isEmpty());
+    createRegionAction->setEnabled(!busy && !selectedWords.isEmpty() &&
+        document.page(currentPage) && selectedWords.size() < document.page(currentPage)->words.size());
     updatePageControls();
 }
 
@@ -442,6 +528,12 @@ void MainWindow::updatePageControls()
         pageList->setCurrentRow(currentPage - 1);
         pageList->setEnabled(available);
     }
+    if (batchAction) batchAction->setEnabled(available && pageCount > 1 &&
+        originalPath.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive));
+    if (layoutAction) layoutAction->setEnabled(available && document.page(currentPage) &&
+        !document.page(currentPage)->regions.isEmpty());
+    if (createRegionAction) createRegionAction->setEnabled(available && !selectedWords.isEmpty() &&
+        document.page(currentPage) && selectedWords.size() < document.page(currentPage)->words.size());
 }
 
 void MainWindow::showError(const QString &message)
@@ -484,6 +576,9 @@ void MainWindow::loadSource(const QString &path)
     rawImage = {};
     ocrButton->setEnabled(false);
     improveAction->setEnabled(false);
+    layoutAction->setEnabled(false);
+    createRegionAction->setEnabled(false);
+    batchAction->setEnabled(false);
     currentPage = 1;
     pageCount = 1;
     updatePageControls();
@@ -529,6 +624,9 @@ void MainWindow::openProject()
     rawImagePath.clear();
     rawImage = {};
     improveAction->setEnabled(false);
+    layoutAction->setEnabled(false);
+    createRegionAction->setEnabled(false);
+    batchAction->setEnabled(false);
     currentPage = 1;
     pageCount = 1;
     updatePageControls();
@@ -681,6 +779,8 @@ void MainWindow::showPage(int number)
     rawImage = {};
     ocrButton->setEnabled(false);
     improveAction->setEnabled(false);
+    layoutAction->setEnabled(false);
+    createRegionAction->setEnabled(false);
     if (originalPath.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive)) {
         status->setText(tr("Rendering page %1 of %2…").arg(number).arg(pageCount));
         processor.renderPdfPage(number);
@@ -735,6 +835,51 @@ void MainWindow::runOcr()
     if (!maybeApplyEditor()) return;
     status->setText(tr("Recognizing…"));
     processor.recognize(imagePath, languageEdit->text().trimmed());
+}
+
+void MainWindow::runBatchOcr()
+{
+    if (processor.isBusy() || pageCount < 2 ||
+        !originalPath.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive) || !maybeApplyEditor()) return;
+    bool hasCorrections = false;
+    for (const OcrPage &page : document.pages)
+        for (const OcrWord &word : page.words) hasCorrections |= word.reviewed;
+    if (hasCorrections && QMessageBox::question(this, tr("Recognize all pages again"),
+        tr("Matching corrections will be kept, but unmatched words may be replaced. Continue?"))
+        != QMessageBox::Yes) return;
+    QVector<BatchPageOptions> options;
+    options.reserve(pageCount);
+    for (int number = 1; number <= pageCount; ++number) {
+        const OcrPage *page = document.page(number);
+        options.append({.number = number,
+                        .language = page && !page->language.isEmpty() ? page->language : languageEdit->text().trimmed(),
+                        .preprocessing = page ? page->preprocessing : core::PreprocessSettings{}});
+    }
+    processor.recognizePages(options);
+}
+
+void MainWindow::editLayout()
+{
+    OcrPage *page = document.page(currentPage);
+    if (!page || page->regions.isEmpty() || imagePath.isEmpty() || processor.isBusy() || !maybeApplyEditor()) return;
+    LayoutDialog dialog(*page, QImage(imagePath), this);
+    if (dialog.exec() != QDialog::Accepted || !dialog.hasChanges()) return;
+    document.replacePage(dialog.editedPage());
+    showDocument();
+    markDirty();
+    status->setText(tr("Page %1 layout and reading order updated").arg(currentPage));
+}
+
+void MainWindow::createRegionFromSelection()
+{
+    OcrPage *page = document.page(currentPage);
+    if (!page || selectedWords.isEmpty() || processor.isBusy() || !maybeApplyEditor()) return;
+    OcrPage edited = *page;
+    if (!edited.extractRegion(selectedWords)) return;
+    document.replacePage(std::move(edited));
+    showDocument();
+    markDirty();
+    status->setText(tr("Created a region from selected words. Use Edit layout to set its type and order."));
 }
 
 void MainWindow::showDocument()
@@ -807,6 +952,8 @@ void MainWindow::selectRegion(const QRectF &bounds)
 void MainWindow::updateSelection(const QVector<int> &indices)
 {
     selectedWords = indices;
+    if (createRegionAction) createRegionAction->setEnabled(!processor.isBusy() && !indices.isEmpty() &&
+        document.page(currentPage) && indices.size() < document.page(currentPage)->words.size());
     QSet<int> selectedSet;
     for (int index : indices) selectedSet.insert(index);
     const QSignalBlocker listBlocker(wordList);
@@ -820,7 +967,7 @@ void MainWindow::updateSelection(const QVector<int> &indices)
     const QSignalBlocker editorBlocker(selectionEditor);
     selectionEditor->clear();
     editorPending = false;
-    applyButton->setEnabled(!indices.isEmpty());
+    applyButton->setEnabled(!processor.isBusy() && !indices.isEmpty());
     selectionLabel->setText(indices.isEmpty() ? tr("Recognized text") :
                             tr("Selected text (%1 words)").arg(indices.size()));
     QTextCursor cursor(selectionEditor->document());

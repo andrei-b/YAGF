@@ -14,6 +14,7 @@ revival/
     processing/imageprocessor.{h,cpp}     deskew detection, contrast, denoise, rotation
     ui/mainwindow.{h,cpp}            page view, selection, editing, user actions
     ui/preprocessdialog.{h,cpp}       before/after preview and quality controls
+    ui/layoutdialog.{h,cpp}           region geometry, type, and reading order
   tests/ocrdocument_tests.cpp
   tests/projectfile_tests.cpp
   tests/imageprocessor_tests.cpp
@@ -27,12 +28,12 @@ The `OcrDocument` is the current in-memory source of truth. It contains numbered
 
 ## Processing boundary
 
-`DocumentProcessor` owns the subprocesses and temporary directory for PDF rendering, background miniature generation, full-page OCR, and region OCR. It emits image paths or Tesseract TSV and reports failures. The UI turns TSV into `OcrDocument`, translating region coordinates back to the page. Later engine adapters should return normalized OCR results through a common interface and identify engine version and capabilities. External commands must receive argument lists, never a shell command string.
+`DocumentProcessor` owns the subprocesses and temporary directory for PDF rendering, background miniature generation, full-page OCR, region OCR, and sequential batch OCR. It emits image paths or Tesseract TSV and reports failures. The batch queue keeps the processor busy across pages and reports per-page progress; cancellation stops the queue. The UI turns TSV into `OcrDocument`, translating region coordinates back to the page. Later engine adapters should return normalized OCR results through a common interface and identify engine version and capabilities. External commands must receive argument lists, never a shell command string.
 
 `ImageProcessor` estimates page skew and luminance range, then applies optional denoise, contrast stretching, and rotation. `MainWindow` keeps the original image in memory, writes the processed page to a temporary PNG for Tesseract, and displays that same processed image. Project files store settings and both source and processed dimensions; reopening a project recreates the temporary image from the source. Changing rotation invalidates OCR geometry for that page.
 
 ## Next implementation slices
 
-1. Add batch recognition and editable layout geometry/reading order.
-2. Add searchable PDF export through OCRmyPDF.
+1. Add searchable PDF export through OCRmyPDF and complete 2.0 editing polish.
+2. Package the Linux desktop app.
 3. Add optional neural and Jetson adapters behind the same processing boundary, with measured comparison data.

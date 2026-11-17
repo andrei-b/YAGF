@@ -74,6 +74,9 @@ private:
     bool applyCorrection();
     bool maybeApplyEditor();
     void runRegionOcr();
+    void runBatchOcr();
+    void editLayout();
+    void createRegionFromSelection();
     void improveCurrentPage();
     void exportText();
     void exportHtml();
@@ -96,6 +99,9 @@ private:
     QPushButton *previousButton;
     QPushButton *nextButton;
     QAction *improveAction;
+    QAction *batchAction = nullptr;
+    QAction *layoutAction = nullptr;
+    QAction *createRegionAction = nullptr;
     QSpinBox *pageSpin;
     processing::DocumentProcessor processor;
     QVector<QGraphicsRectItem *> wordBoxes;

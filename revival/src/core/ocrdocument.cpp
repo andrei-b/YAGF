@@ -89,6 +89,8 @@ bool parseWord(const QJsonObject &json, int pageNumber, int width, int height, O
 
 void OcrPage::rebuildHierarchy()
 {
+    QHash<QString, OcrRegion> previousRegions;
+    for (const OcrRegion &region : regions) previousRegions.insert(region.id, region);
     regions.clear();
     int previousBlock = -1, previousParagraph = -1, previousLine = -1;
     for (int i = 0; i < words.size(); ++i) {
@@ -125,6 +127,12 @@ void OcrPage::rebuildHierarchy()
         previousParagraph = word.paragraph;
         previousLine = word.line;
     }
+    for (OcrRegion &region : regions) {
+        if (const auto old = previousRegions.constFind(region.id); old != previousRegions.cend()) {
+            if (!old->bounds.isNull()) region.bounds = old->bounds;
+            region.type = old->type;
+        }
+    }
     QVector<int> heights;
     QHash<QString, int> lineHeights;
     for (const OcrRegion &region : regions)
@@ -143,6 +151,59 @@ void OcrPage::rebuildHierarchy()
             if (word.fontSizePt <= 0) word.fontSizePt = word.sourceFontSizePt;
         }
     }
+}
+
+bool OcrPage::moveRegion(int index, int direction)
+{
+    if ((direction != -1 && direction != 1) || index < 0 || index >= regions.size() ||
+        index + direction < 0 || index + direction >= regions.size()) return false;
+    QVector<QVector<OcrWord>> groups;
+    for (const OcrWord &word : words) {
+        if (groups.isEmpty() || groups.last().last().block != word.block) groups.emplaceBack();
+        groups.last().append(word);
+    }
+    if (groups.size() != regions.size()) return false;
+    groups.swapItemsAt(index, index + direction);
+    words.clear();
+    for (const auto &group : groups) words += group;
+    rebuildHierarchy();
+    return true;
+}
+
+bool OcrPage::extractRegion(const QVector<int> &wordIndices)
+{
+    QSet<int> selected;
+    for (int index : wordIndices) {
+        if (index < 0 || index >= words.size()) return false;
+        selected.insert(index);
+    }
+    if (selected.isEmpty() || selected.size() == words.size()) return false;
+    int nextBlock = 0;
+    QSet<int> affectedBlocks;
+    QVector<OcrWord> kept, moved;
+    for (int i = 0; i < words.size(); ++i) {
+        const OcrWord &word = words.at(i);
+        nextBlock = qMax(nextBlock, word.block);
+        if (selected.contains(i)) { moved.append(word); affectedBlocks.insert(word.block); }
+        else kept.append(word);
+    }
+    ++nextBlock;
+    for (OcrRegion &region : regions)
+        for (int block : affectedBlocks)
+            if (region.id == regionId(number, block)) region.bounds = {};
+    int nextLine = 0;
+    QString previousLine;
+    for (OcrWord &word : moved) {
+        const QString key = QStringLiteral("%1/%2/%3").arg(word.block).arg(word.paragraph).arg(word.line);
+        if (key != previousLine) { ++nextLine; previousLine = key; }
+        word.block = nextBlock;
+        word.paragraph = 1;
+        word.line = nextLine;
+        word.id.clear();
+    }
+    words = kept + moved;
+    rebuildHierarchy();
+    return true;
 }
 
 OcrDocument OcrDocument::fromTsv(const QByteArray &tsv, int width, int height,
@@ -378,6 +439,23 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
             if (!parseWord(wordValue.toObject(), page.number, page.width, page.height, &word))
                 return fail(QStringLiteral("Invalid word data or geometry."));
             page.words.append(std::move(word));
+        }
+        if (version == 2 && object.contains(QStringLiteral("regions"))) {
+            if (!object.value(QStringLiteral("regions")).isArray())
+                return fail(QStringLiteral("Invalid regions."));
+            QSet<QString> regionIds;
+            for (const QJsonValue &regionValue : object.value(QStringLiteral("regions")).toArray()) {
+                if (!regionValue.isObject()) return fail(QStringLiteral("Invalid region entry."));
+                const QJsonObject item = regionValue.toObject();
+                OcrRegion region;
+                region.id = item.value(QStringLiteral("id")).toString();
+                region.type = item.value(QStringLiteral("type")).toString();
+                if (region.id.isEmpty() || region.type.isEmpty() || regionIds.contains(region.id) ||
+                    !parseBox(item.value(QStringLiteral("box")).toObject(), page.width, page.height, &region.bounds))
+                    return fail(QStringLiteral("Invalid region geometry or type."));
+                regionIds.insert(region.id);
+                page.regions.append(std::move(region));
+            }
         }
         if (version == 2 && object.contains(QStringLiteral("reading_order"))) {
             const QJsonValue orderValue = object.value(QStringLiteral("reading_order"));

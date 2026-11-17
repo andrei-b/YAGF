@@ -59,6 +59,8 @@ struct OcrPage {
     QVector<OcrWord> words;
     QVector<OcrRegion> regions;
     void rebuildHierarchy();
+    bool moveRegion(int index, int direction);
+    bool extractRegion(const QVector<int> &wordIndices);
 };
 
 class OcrDocument {

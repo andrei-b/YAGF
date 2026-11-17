@@ -22,7 +22,8 @@ target_include_directories(yagf_processing PUBLIC src/processing)
 
 qt_add_executable(yagf-revival
     src/main.cpp src/ui/mainwindow.cpp src/ui/mainwindow.h
-    src/ui/preprocessdialog.cpp src/ui/preprocessdialog.h resources/icons.qrc)
+    src/ui/preprocessdialog.cpp src/ui/preprocessdialog.h
+    src/ui/layoutdialog.cpp src/ui/layoutdialog.h resources/icons.qrc)
 target_link_libraries(yagf-revival PRIVATE yagf_core yagf_processing Qt6::Widgets)
 
 include(CTest)
