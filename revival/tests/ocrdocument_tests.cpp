@@ -85,6 +85,32 @@ int main()
     assert(restored.page(1)->regions.at(0).type == QStringLiteral("column"));
     assert(restored.page(1)->regions.at(0).bounds == QRect(100, 10, 70, 50));
 
+    OcrDocument manual;
+    manual.sourcePath = QStringLiteral("image.png");
+    OcrPage manualPage;
+    manualPage.number = 1;
+    manualPage.width = manualPage.sourceWidth = 200;
+    manualPage.height = manualPage.sourceHeight = 100;
+    manualPage.imageRegions = {{QStringLiteral("area-a"), QRect(10, 10, 50, 40)},
+                               {QStringLiteral("area-b"), QRect(100, 20, 60, 50)}};
+    manual.replacePage(manualPage);
+    assert(OcrDocument::fromJson(manual.toJson(), &restored, &error));
+    assert(restored.page(1)->words.isEmpty());
+    assert(restored.page(1)->imageRegions.size() == 2);
+    assert(restored.page(1)->imageRegions.at(1).bounds == QRect(100, 20, 60, 50));
+    QJsonObject invalidArea = manual.toJson();
+    QJsonArray areaPages = invalidArea.value(QStringLiteral("pages")).toArray();
+    QJsonObject areaPage = areaPages.at(0).toObject();
+    QJsonArray areas = areaPage.value(QStringLiteral("image_regions")).toArray();
+    QJsonObject area = areas.at(0).toObject();
+    area.insert(QStringLiteral("box"), QJsonObject{{"x", 195}, {"y", 10},
+                                                    {"width", 50}, {"height", 40}});
+    areas.replace(0, area);
+    areaPage.insert(QStringLiteral("image_regions"), areas);
+    areaPages.replace(0, areaPage);
+    invalidArea.insert(QStringLiteral("pages"), areaPages);
+    assert(!OcrDocument::fromJson(invalidArea, &restored, &error));
+
     OcrPage extracted = *doc.page(1);
     assert(!extracted.extractRegion({0, 1, 2}));
     assert(extracted.extractRegion({1}));

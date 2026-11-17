@@ -37,6 +37,7 @@ int main()
     original.page(1)->preprocessing = {.deskewDegrees = 1.5, .autoContrast = true, .denoise = false};
     original.page(1)->sourceWidth = 198;
     original.page(1)->sourceHeight = 98;
+    original.page(1)->imageRegions = {{QStringLiteral("selected-area"), QRect(5, 8, 95, 60)}};
     OcrPage secondPage;
     secondPage.number = 2;
     secondPage.width = 200;
@@ -67,6 +68,8 @@ int main()
     assert(loaded.page(1)->preprocessing.deskewDegrees == 1.5);
     assert(loaded.page(1)->preprocessing.autoContrast);
     assert(loaded.page(1)->sourceWidth == 198);
+    assert(loaded.page(1)->imageRegions.size() == 1);
+    assert(loaded.page(1)->imageRegions.first().bounds == QRect(5, 8, 95, 60));
     assert(loaded.totalPages == 2);
     assert(loaded.page(2)->words.at(0).text == QStringLiteral("Hallo!"));
     assert(loaded.page(2)->regions.at(0).paragraphs.at(0).lines.at(0).wordIds.size() == 1);
@@ -124,6 +127,7 @@ int main()
     assert(copied.open(QIODevice::ReadOnly));
     assert(copied.readAll() == imageBytes);
     assert(relocated.page(1)->words.at(0).text == original.page(1)->words.at(0).text);
+    assert(relocated.page(1)->imageRegions.first().bounds == QRect(5, 8, 95, 60));
     copied.close();
     relocated.page(1)->words[0].text = QStringLiteral("portable edit");
     assert(ProjectFile::savePortable(moved, relocated, &error));

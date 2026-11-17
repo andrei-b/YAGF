@@ -9,6 +9,7 @@
 #include <QMainWindow>
 #include <QImage>
 #include <QPoint>
+#include <QPointF>
 #include <QRectF>
 #include <QTemporaryDir>
 #include <QUndoStack>
@@ -32,6 +33,7 @@ class QAction;
 class QMimeData;
 class QDragEnterEvent;
 class QDropEvent;
+class QKeyEvent;
 
 namespace yagf::ui {
 
@@ -40,17 +42,22 @@ class PageView : public QGraphicsView {
 public:
     explicit PageView(QWidget *parent = nullptr);
     void setRegionMode(bool enabled);
+    void setActiveRegionIndex(int index);
     void fitPage();
     void zoomBy(qreal factor);
 signals:
     void wordClicked(int index);
     void regionSelected(const QRectF &bounds);
+    void regionActivated(int index);
+    void regionChanged(int index, const QRectF &bounds);
+    void regionDeleteRequested(int index);
 protected:
     void mousePressEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
+    void keyPressEvent(QKeyEvent *event) override;
     void dragEnterEvent(QDragEnterEvent *event) override;
     void dropEvent(QDropEvent *event) override;
 signals:
@@ -60,6 +67,12 @@ private:
     QPoint regionOrigin;
     bool regionMode = false;
     bool fitMode = true;
+    int activeRegionIndex = -1;
+    int editingRegionIndex = -1;
+    int resizeEdges = 0;
+    QRectF editStartRect;
+    QPointF editStartScene;
+    QGraphicsRectItem *editingRegionItem = nullptr;
 };
 
 class MainWindow : public QMainWindow {
@@ -96,6 +109,11 @@ private:
     void showDocument();
     void selectWord(int index);
     void selectRegion(const QRectF &bounds);
+    void activateImageRegion(int index);
+    void moveImageRegion(int index, const QRectF &bounds);
+    void deleteImageRegion(int index);
+    void refreshImageRegionSelection(bool updateWords);
+    void runNextImageRegion();
     void updateSelection(const QVector<int> &indices);
     QVector<int> indicesForIds(const QStringList &ids) const;
     bool applyCorrection();
@@ -116,10 +134,12 @@ private:
     QGraphicsScene *scene;
     QListWidget *wordList;
     QListWidget *pageList = nullptr;
+    QListWidget *regionList = nullptr;
     QTextEdit *selectionEditor;
     QLabel *selectionLabel;
     QPushButton *applyButton;
     QPushButton *regionOcrButton;
+    QPushButton *deleteRegionButton = nullptr;
     QLineEdit *languageEdit;
     QLabel *status;
     QPushButton *ocrButton;
@@ -137,10 +157,13 @@ private:
     QSpinBox *pageSpin;
     processing::DocumentProcessor processor;
     QVector<QGraphicsPathItem *> wordBoxes;
+    QVector<QGraphicsRectItem *> imageRegionBoxes;
     QVector<core::OcrWord *> displayedWords;
     QVector<int> selectedWords;
     QRect selectedRegion;
-    QGraphicsRectItem *regionOutline = nullptr;
+    int selectedImageRegion = -1;
+    QVector<QRect> queuedImageRegions;
+    int nextQueuedImageRegion = 0;
     core::OcrDocument document;
     QString imagePath;
     QString rawImagePath;

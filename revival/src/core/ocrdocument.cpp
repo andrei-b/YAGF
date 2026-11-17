@@ -321,7 +321,7 @@ QJsonObject OcrDocument::toJson() const
 {
     QJsonArray pageItems;
     for (const OcrPage &page : pages) {
-        QJsonArray wordItems, regionItems, readingOrder;
+        QJsonArray wordItems, regionItems, imageRegionItems, readingOrder;
         for (const OcrWord &word : page.words) {
             wordItems.append(wordJson(word));
             readingOrder.append(word.id);
@@ -341,6 +341,8 @@ QJsonObject OcrDocument::toJson() const
             regionItems.append(QJsonObject{{"id", region.id}, {"type", region.type},
                                            {"box", boxJson(region.bounds)}, {"paragraphs", paragraphItems}});
         }
+        for (const ImageRegion &region : page.imageRegions)
+            imageRegionItems.append(QJsonObject{{"id", region.id}, {"box", boxJson(region.bounds)}});
         pageItems.append(QJsonObject{{"id", page.id}, {"number", page.number},
                                      {"width", page.width}, {"height", page.height},
                                      {"source_width", page.sourceWidth > 0 ? page.sourceWidth : page.width},
@@ -350,7 +352,8 @@ QJsonObject OcrDocument::toJson() const
                                          {"auto_contrast", page.preprocessing.autoContrast},
                                          {"denoise", page.preprocessing.denoise}}},
                                      {"engine", page.engineId}, {"language", page.language},
-                                     {"regions", regionItems}, {"words", wordItems},
+                                     {"regions", regionItems}, {"image_regions", imageRegionItems},
+                                     {"words", wordItems},
                                      {"reading_order", readingOrder}});
     }
     return {{"schema_version", 2}, {"source", sourcePath}, {"engine", engine},
@@ -420,6 +423,24 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
         }
         page.engineId = object.value(QStringLiteral("engine")).toString(parsed.engine);
         page.language = object.value(QStringLiteral("language")).toString(parsed.language);
+        if (object.contains(QStringLiteral("image_regions"))) {
+            const QJsonValue areas = object.value(QStringLiteral("image_regions"));
+            if (!areas.isArray() || areas.toArray().size() > 1000)
+                return fail(QStringLiteral("Invalid image regions."));
+            QSet<QString> ids;
+            for (const QJsonValue &area : areas.toArray()) {
+                if (!area.isObject()) return fail(QStringLiteral("Invalid image region."));
+                const QJsonObject item = area.toObject();
+                ImageRegion region;
+                region.id = item.value(QStringLiteral("id")).toString();
+                if (region.id.isEmpty() || ids.contains(region.id) ||
+                    !parseBox(item.value(QStringLiteral("box")).toObject(),
+                              page.width, page.height, &region.bounds))
+                    return fail(QStringLiteral("Invalid image region geometry or ID."));
+                ids.insert(region.id);
+                page.imageRegions.append(std::move(region));
+            }
+        }
         for (const QJsonValue &wordValue : object.value(QStringLiteral("words")).toArray()) {
             if (!wordValue.isObject()) return fail(QStringLiteral("Invalid word entry."));
             OcrWord word;

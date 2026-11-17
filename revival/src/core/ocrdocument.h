@@ -48,6 +48,12 @@ struct OcrRegion {
     QVector<OcrParagraph> paragraphs;
 };
 
+// User-drawn OCR areas exist before recognition and survive OCR page rebuilds.
+struct ImageRegion {
+    QString id;
+    QRect bounds;
+};
+
 struct OcrPage {
     QString id;
     int number = 1;
@@ -60,6 +66,7 @@ struct OcrPage {
     QString language;
     QVector<OcrWord> words;
     QVector<OcrRegion> regions;
+    QVector<ImageRegion> imageRegions;
     void rebuildHierarchy();
     bool moveRegion(int index, int direction);
     bool extractRegion(const QVector<int> &wordIndices);

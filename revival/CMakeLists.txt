@@ -47,6 +47,7 @@ install(FILES ../COPYING
 
 include(CTest)
 if(BUILD_TESTING)
+    find_package(Qt6 6.2 REQUIRED COMPONENTS Test)
     qt_add_executable(ocrdocument_tests tests/ocrdocument_tests.cpp)
     target_link_libraries(ocrdocument_tests PRIVATE yagf_core)
     add_test(NAME ocrdocument_tests COMMAND ocrdocument_tests)
@@ -61,7 +62,7 @@ if(BUILD_TESTING)
         src/ui/layoutdialog.cpp src/ui/layoutdialog.h
         src/ui/scannerdialog.cpp src/ui/scannerdialog.h
         src/ui/documentcommands.cpp src/ui/documentcommands.h resources/icons.qrc)
-    target_link_libraries(mainwindow_tests PRIVATE yagf_processing Qt6::Widgets Qt6::Concurrent)
+    target_link_libraries(mainwindow_tests PRIVATE yagf_processing Qt6::Widgets Qt6::Concurrent Qt6::Test)
     target_include_directories(mainwindow_tests PRIVATE src/ui)
     add_test(NAME mainwindow_tests COMMAND mainwindow_tests)
     set_tests_properties(mainwindow_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

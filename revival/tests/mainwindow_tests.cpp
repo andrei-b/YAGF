@@ -6,6 +6,8 @@
 #include <QDialog>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QGraphicsRectItem>
+#include <QGraphicsScene>
 #include <QImage>
 #include <QLineEdit>
 #include <QListWidget>
@@ -15,6 +17,7 @@
 #include <QTextEdit>
 #include <QThread>
 #include <QTimer>
+#include <QTest>
 
 #ifdef NDEBUG
 #undef NDEBUG
@@ -135,4 +138,71 @@ int main(int argc, char **argv)
     for (QLineEdit *edit : window.findChildren<QLineEdit *>())
         hasAutoLanguage |= edit->text() == QStringLiteral("auto");
     assert(hasAutoLanguage);
+
+    yagf::ui::MainWindow regionWindow;
+    regionWindow.loadSource(sourcePath);
+    regionWindow.show();
+    app.processEvents();
+    auto *pageView = regionWindow.findChild<yagf::ui::PageView *>(QStringLiteral("pagePreview"));
+    auto *regions = regionWindow.findChild<QListWidget *>(QStringLiteral("imageRegions"));
+    auto *regionWords = regionWindow.findChild<QListWidget *>(QStringLiteral("recognizedWords"));
+    assert(pageView && regions && regionWords);
+    const auto drag = [&](QPointF start, QPointF end) {
+        const QPoint from = pageView->mapFromScene(start);
+        const QPoint to = pageView->mapFromScene(end);
+        QTest::mousePress(pageView->viewport(), Qt::LeftButton, {}, from);
+        QTest::mouseMove(pageView->viewport(), to);
+        QTest::mouseRelease(pageView->viewport(), Qt::LeftButton, {}, to);
+        app.processEvents();
+    };
+    const auto regionBox = [&](int index) {
+        for (QGraphicsItem *item : pageView->scene()->items())
+            if (auto *rect = qgraphicsitem_cast<QGraphicsRectItem *>(item);
+                rect && rect->data(1).isValid() && rect->data(1).toInt() == index)
+                return rect->rect().toAlignedRect();
+        return QRect{};
+    };
+    drag({5, 5}, {90, 75});
+    drag({105, 5}, {195, 75});
+    assert(regions->count() == 2);
+    assert(std::abs(regionBox(0).x() - 5) <= 2 && std::abs(regionBox(0).width() - 85) <= 3);
+    assert(std::abs(regionBox(1).x() - 105) <= 2 && std::abs(regionBox(1).width() - 90) <= 3);
+    drag({30, 40}, {40, 45});
+    assert(regionBox(0).left() >= 14);
+    const QRect moved = regionBox(0);
+    drag({qreal(moved.right()), qreal(moved.center().y())},
+         {moved.right() - 10.0, qreal(moved.center().y())});
+    assert(regionBox(0).width() < moved.width());
+    regions->setCurrentRow(0);
+    pageView->setFocus();
+    QTest::keyClick(pageView, Qt::Key_Delete);
+    assert(regions->count() == 1);
+    QAction *regionUndo = nullptr, *regionRedo = nullptr;
+    for (QAction *action : regionWindow.findChildren<QAction *>())
+        if (action->text() == QStringLiteral("Undo")) regionUndo = action;
+        else if (action->text() == QStringLiteral("Redo")) regionRedo = action;
+    assert(regionUndo && regionRedo);
+    regionUndo->trigger();
+    assert(regions->count() == 2);
+    regionUndo->trigger();
+    assert(regionBox(0).width() == moved.width());
+    regionUndo->trigger();
+    assert(std::abs(regionBox(0).x() - 5) <= 2);
+    regionRedo->trigger();
+    regionRedo->trigger();
+    QPushButton *recognizeRegions = nullptr;
+    for (QPushButton *button : regionWindow.findChildren<QPushButton *>())
+        if (button->text() == QStringLiteral("Recognize regions")) recognizeRegions = button;
+    assert(recognizeRegions);
+    recognizeRegions->click();
+    timer.restart();
+    while (regionWords->count() != 2 && timer.elapsed() < 5000) {
+        app.processEvents();
+        QThread::msleep(10);
+    }
+    assert(regionWords->count() == 2);
+    QTest::mouseClick(pageView->viewport(), Qt::LeftButton, Qt::ControlModifier,
+                      pageView->mapFromScene(QPointF(30, 35)));
+    auto *regionEditor = regionWindow.findChild<QTextEdit *>(QStringLiteral("recognizedTextEditor"));
+    assert(regionEditor && regionEditor->toPlainText() == QStringLiteral("mod"));
 }
