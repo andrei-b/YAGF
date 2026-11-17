@@ -1,5 +1,6 @@
 #include "wordeditor.h"
 
+#include <QSet>
 #include <QUuid>
 
 #include <algorithm>
@@ -47,19 +48,28 @@ QVector<OcrWord> changedSpan(const OcrPage &page, const QVector<OcrWord> &old,
         const OcrWord *anchor = left ? left : right;
         const int y = anchor ? anchor->bounds.y() : 0;
         const int height = anchor ? anchor->bounds.height() : qMin(12, page.height);
-        const int gapStart = left ? left->bounds.right() + 1 : right ? right->bounds.x() : 0;
-        const int gapEnd = right && left && left->block == right->block &&
+        const int gapStart = left ? left->bounds.right() + 1 : 0;
+        const int gapEnd = !left && right ? right->bounds.x() :
+            right && left && left->block == right->block &&
             left->paragraph == right->paragraph && left->line == right->line
-            ? right->bounds.x() : page.width;
+                ? right->bounds.x() : page.width;
         const int available = std::max(1, gapEnd - gapStart);
+        qint64 totalCharacters = 0;
+        for (int i = newStart; i < newEnd; ++i)
+            totalCharacters += std::max<qsizetype>(1, replacement.at(i).text.size());
+        qint64 charactersBefore = 0;
         for (int i = 0; i < resultCount; ++i) {
             OcrWord word = anchor ? *anchor : OcrWord{};
             word.id = newId();
             word.originalText.clear();
             word.sourceWordIds.clear();
+            word.sourceBoxes.clear();
             word.confidence = -1;
-            const int x = qBound(0, gapStart + available * i / resultCount, page.width - 1);
-            const int end = qBound(x + 1, gapStart + available * (i + 1) / resultCount, page.width);
+            const int x = qBound(0, gapStart + available * charactersBefore / totalCharacters,
+                                 page.width - 1);
+            charactersBefore += std::max<qsizetype>(1, replacement.at(newStart + i).text.size());
+            const int end = qBound(x + 1, gapStart + available * charactersBefore / totalCharacters,
+                                   page.width);
             word.bounds = QRect(x, y, end - x, height);
             setText(word, replacement.at(newStart + i));
             result.append(std::move(word));
@@ -67,32 +77,80 @@ QVector<OcrWord> changedSpan(const OcrPage &page, const QVector<OcrWord> &old,
         return result;
     }
 
-    QRect sourceBox;
-    QStringList sourceIds, originalTexts;
+    struct Fragment {
+        QRect box;
+        int sourceIndex;
+        bool actual;
+        qint64 offset;
+    };
+    QVector<Fragment> fragments;
+    qint64 totalWidth = 0;
     for (int i = oldStart; i < oldEnd; ++i) {
         const OcrWord &word = old.at(i);
-        sourceBox = sourceBox.isNull() ? word.bounds : sourceBox.united(word.bounds);
-        for (const QString &id : word.sourceWordIds)
-            if (!sourceIds.contains(id)) sourceIds.append(id);
-        if (!word.originalText.isEmpty()) originalTexts.append(word.originalText);
+        const bool actual = !word.sourceBoxes.isEmpty();
+        const QVector<QRect> boxes = actual ? word.sourceBoxes : QVector<QRect>{word.bounds};
+        for (const QRect &box : boxes) {
+            fragments.append({box, i, actual, totalWidth});
+            totalWidth += box.width();
+        }
     }
     qint64 totalCharacters = 0;
     for (int i = newStart; i < newEnd; ++i)
         totalCharacters += std::max<qsizetype>(1, replacement.at(i).text.size());
     qint64 charactersBefore = 0;
+    QSet<QString> usedIds;
     for (int i = 0; i < resultCount; ++i) {
         const EditedWord &edit = replacement.at(newStart + i);
-        OcrWord word = old.at(oldStart);
-        word.id = i == 0 ? word.id : newId();
+        const qint64 start = static_cast<qint64>(
+            static_cast<long double>(totalWidth) * charactersBefore / totalCharacters);
+        charactersBefore += std::max<qsizetype>(1, edit.text.size());
+        const qint64 end = static_cast<qint64>(
+            static_cast<long double>(totalWidth) * charactersBefore / totalCharacters);
+        QVector<QRect> placement, sourceBoxes;
+        QStringList sourceIds, originalTexts;
+        QSet<QString> originalKeys;
+        int firstContributor = -1;
+        const auto addPiece = [&](const Fragment &fragment, qint64 begin, qint64 finish) {
+            const int x = fragment.box.x() + static_cast<int>(begin - fragment.offset);
+            const QRect piece(x, fragment.box.y(), static_cast<int>(finish - begin),
+                              fragment.box.height());
+            placement.append(piece);
+            if (fragment.actual) sourceBoxes.append(piece);
+            const OcrWord &source = old.at(fragment.sourceIndex);
+            if (firstContributor < 0) firstContributor = fragment.sourceIndex;
+            for (const QString &id : source.sourceWordIds)
+                if (!sourceIds.contains(id)) sourceIds.append(id);
+            const QString key = source.sourceWordIds.join(QChar(0x1f));
+            if (!source.originalText.isEmpty() && !originalKeys.contains(key)) {
+                originalKeys.insert(key);
+                originalTexts.append(source.originalText);
+            }
+        };
+        for (const Fragment &fragment : fragments) {
+            const qint64 begin = std::max(start, fragment.offset);
+            const qint64 finish = std::min(end, fragment.offset + fragment.box.width());
+            if (finish > begin) addPiece(fragment, begin, finish);
+        }
+        if (placement.isEmpty()) {
+            const auto candidate = std::find_if(fragments.cbegin(), fragments.cend(),
+                [start](const Fragment &fragment) {
+                    return start < fragment.offset + fragment.box.width();
+                });
+            const Fragment &fragment = candidate == fragments.cend() ? fragments.last() : *candidate;
+            const qint64 begin = qBound(fragment.offset, start,
+                                       fragment.offset + fragment.box.width() - 1);
+            addPiece(fragment, begin, begin + 1);
+        }
+        OcrWord word = old.at(firstContributor);
+        word.id = usedIds.contains(word.id) ? newId() : word.id;
+        usedIds.insert(word.id);
         word.sourceWordIds = sourceIds;
         word.originalText = originalTexts.join(QLatin1Char(' '));
+        word.sourceBoxes = std::move(sourceBoxes);
         word.confidence = -1;
-        const int x = sourceBox.x() + sourceBox.width() * charactersBefore / totalCharacters;
-        charactersBefore += std::max<qsizetype>(1, edit.text.size());
-        const int end = sourceBox.x() + sourceBox.width() * charactersBefore / totalCharacters;
-        word.bounds = QRect(qBound(0, x, page.width - 1), sourceBox.y(),
-                           std::max(1, end - x), sourceBox.height());
-        if (word.bounds.right() >= page.width) word.bounds.setRight(page.width - 1);
+        word.bounds = placement.first();
+        for (int j = 1; j < placement.size(); ++j)
+            word.bounds = word.bounds.united(placement.at(j));
         setText(word, edit);
         result.append(std::move(word));
     }

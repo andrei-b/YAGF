@@ -5,7 +5,7 @@ include(GNUInstallDirs)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.2 REQUIRED COMPONENTS Core Gui Widgets Concurrent)
+find_package(Qt6 6.2 REQUIRED COMPONENTS Core Gui Widgets Concurrent Network)
 qt_standard_project_setup()
 set(CMAKE_AUTORCC ON)
 
@@ -21,8 +21,9 @@ add_library(yagf_processing STATIC
     src/processing/imageprocessor.cpp src/processing/imageprocessor.h
     src/processing/iocrengine.h
     src/processing/tesseractengine.cpp src/processing/tesseractengine.h
+    src/processing/remoteocrengine.cpp src/processing/remoteocrengine.h
     src/processing/pdfexporter.cpp src/processing/pdfexporter.h)
-target_link_libraries(yagf_processing PUBLIC yagf_core Qt6::Core Qt6::Gui Qt6::Concurrent)
+target_link_libraries(yagf_processing PUBLIC yagf_core Qt6::Core Qt6::Gui Qt6::Concurrent Qt6::Network)
 target_include_directories(yagf_processing PUBLIC src/processing)
 
 qt_add_executable(yagf-revival
@@ -73,6 +74,14 @@ if(BUILD_TESTING)
     qt_add_executable(ocrengine_tests tests/ocrengine_tests.cpp)
     target_link_libraries(ocrengine_tests PRIVATE yagf_processing)
     add_test(NAME ocrengine_tests COMMAND ocrengine_tests)
+    qt_add_executable(remoteocrengine_tests tests/remoteocrengine_tests.cpp)
+    target_link_libraries(remoteocrengine_tests PRIVATE yagf_processing Qt6::Network)
+    add_test(NAME remoteocrengine_tests COMMAND remoteocrengine_tests)
+    find_package(Python3 QUIET COMPONENTS Interpreter)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME paddleocr_service_tests
+            COMMAND ${Python3_EXECUTABLE} -m unittest discover -s ${CMAKE_CURRENT_SOURCE_DIR}/service/tests)
+    endif()
     qt_add_executable(scannerdialog_tests tests/scannerdialog_tests.cpp
         src/ui/scannerdialog.cpp src/ui/scannerdialog.h)
     target_link_libraries(scannerdialog_tests PRIVATE Qt6::Widgets)

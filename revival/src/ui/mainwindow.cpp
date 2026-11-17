@@ -6,6 +6,8 @@
 #include "scannerdialog.h"
 #include "documentcommands.h"
 #include "wordeditor.h"
+#include "remoteocrengine.h"
+#include "tesseractengine.h"
 
 #include <QCloseEvent>
 #include <QApplication>
@@ -14,10 +16,15 @@
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QActionGroup>
+#include <QComboBox>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QFormLayout>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QGraphicsPixmapItem>
+#include <QGraphicsPathItem>
 #include <QGraphicsRectItem>
 #include <QGraphicsScene>
 #include <QHBoxLayout>
@@ -44,6 +51,7 @@
 #include <QPushButton>
 #include <QSignalBlocker>
 #include <QSaveFile>
+#include <QSettings>
 #include <QSplitter>
 #include <QSpinBox>
 #include <QStandardPaths>
@@ -70,13 +78,21 @@ using processing::ImageProcessor;
 using processing::BatchPageOptions;
 
 namespace {
-bool overlapsWord(const QRect &box, const QRect &selection)
+bool overlapsBox(const QRect &box, const QRect &selection)
 {
     if (selection.contains(box.center())) return true;
     const QRect overlap = box.intersected(selection);
     return !overlap.isEmpty() &&
         static_cast<qint64>(overlap.width()) * overlap.height() * 4 >=
         static_cast<qint64>(box.width()) * box.height();
+}
+
+bool overlapsWord(const OcrWord &word, const QRect &selection)
+{
+    if (word.sourceBoxes.isEmpty()) return overlapsBox(word.bounds, selection);
+    for (const QRect &fragment : word.sourceBoxes)
+        if (overlapsBox(fragment, selection)) return true;
+    return false;
 }
 
 void carryCorrections(OcrPage &fresh, const OcrPage *oldPage)
@@ -90,6 +106,7 @@ void carryCorrections(OcrPage &fresh, const OcrPage *oldPage)
             word.bold = old.bold;
             word.italic = old.italic;
             word.sourceWordIds = old.sourceWordIds;
+            word.sourceBoxes = old.sourceBoxes;
             word.fontSizePt = old.fontSizePt;
             word.sourceFontSizePt = old.sourceFontSizePt;
             if (old.reviewed) { word.text = old.text; word.reviewed = true; }
@@ -145,7 +162,7 @@ void PageView::zoomBy(qreal factor)
 
 void PageView::mousePressEvent(QMouseEvent *event)
 {
-    if (auto *box = qgraphicsitem_cast<QGraphicsRectItem *>(itemAt(event->pos()))) {
+    if (auto *box = qgraphicsitem_cast<QGraphicsPathItem *>(itemAt(event->pos()))) {
         const QVariant index = box->data(0);
         if (index.isValid())
             emit wordClicked(index.toInt());
@@ -239,8 +256,10 @@ MainWindow::MainWindow()
     auto *pasteAction = fileMenu->addAction(tr("Paste image from clipboard"), this, &MainWindow::pasteImage);
     pasteAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+V")));
     fileMenu->addAction(toolbar->addAction(tr("Open project"), this, &MainWindow::openProject));
+    fileMenu->addAction(tr("Open portable project folder…"), this, &MainWindow::openPortableProject);
     fileMenu->addAction(toolbar->addAction(tr("Save project"), this, &MainWindow::saveProject));
     fileMenu->addAction(tr("Save project as…"), this, &MainWindow::saveProjectAs);
+    fileMenu->addAction(tr("Save portable project folder…"), this, &MainWindow::savePortableProject);
     toolbar->addSeparator();
     previousButton = new QPushButton(QIcon(QStringLiteral(":/legacy/back.png")), {}, this);
     previousButton->setToolTip(tr("Previous page"));
@@ -283,6 +302,7 @@ MainWindow::MainWindow()
     createRegionAction = toolsMenu->addAction(tr("Create region from selection"), this,
                                              &MainWindow::createRegionFromSelection);
     batchAction = toolsMenu->addAction(tr("Recognize all pages"), this, &MainWindow::runBatchOcr);
+    toolsMenu->addAction(tr("OCR engine…"), this, &MainWindow::configureOcrEngine);
     layoutAction->setEnabled(false);
     createRegionAction->setEnabled(false);
     batchAction->setEnabled(false);
@@ -303,7 +323,7 @@ MainWindow::MainWindow()
     toolbar->addSeparator();
     toolbar->addWidget(new QLabel(tr("Language: "), this));
     languageEdit = new QLineEdit(QStringLiteral("eng"), this);
-    languageEdit->setToolTip(tr("Tesseract language code, for example eng or eng+deu"));
+    languageEdit->setToolTip(tr("Language code for the selected OCR engine"));
     languageEdit->setMaximumWidth(120);
     toolbar->addWidget(languageEdit);
     toolbar->addSeparator();
@@ -464,6 +484,7 @@ MainWindow::MainWindow()
         }
         for (OcrWord &word : newPage.words) {
             word.bounds.translate(offset);
+            for (QRect &fragment : word.sourceBoxes) fragment.translate(offset);
             if (!region.isEmpty()) { word.id.clear(); word.sourceWordIds.clear(); }
         }
         if (region.isEmpty()) carryCorrections(newPage, oldPage);
@@ -475,6 +496,7 @@ MainWindow::MainWindow()
                         word.bold = old.bold;
                         word.italic = old.italic;
                         word.sourceWordIds = old.sourceWordIds;
+                        word.sourceBoxes = old.sourceBoxes;
                         word.fontSizePt = old.fontSizePt;
                         word.sourceFontSizePt = old.sourceFontSizePt;
                         if (old.reviewed) { word.text = old.text; word.reviewed = true; }
@@ -510,7 +532,7 @@ MainWindow::MainWindow()
             QVector<OcrWord> kept;
             int insertion = -1;
             for (const OcrWord &old : merged.words) {
-                if (overlapsWord(old.bounds, region)) {
+                if (overlapsWord(old, region)) {
                     if (insertion < 0) insertion = kept.size();
                 } else {
                     kept.append(old);
@@ -773,10 +795,26 @@ void MainWindow::openProject()
     if (processor.isBusy() || exportBusy) return;
     const QString path = QFileDialog::getOpenFileName(this, tr("Open YAGF project"), {},
                                                      tr("YAGF projects (*.yagf.json);;JSON (*.json)"));
-    if (path.isEmpty() || !maybeSave()) return;
+    loadProject(path);
+}
+
+void MainWindow::openPortableProject()
+{
+    if (processor.isBusy() || exportBusy) return;
+    const QString directory = QFileDialog::getExistingDirectory(this, tr("Open portable YAGF project folder"));
+    loadProject(directory);
+}
+
+void MainWindow::loadProject(const QString &path)
+{
+    if (processor.isBusy() || exportBusy || path.isEmpty()) return;
+    if (!maybeSave()) return;
     OcrDocument loaded;
     QString error;
-    if (!ProjectFile::load(path, &loaded, &error)) { showError(error); return; }
+    const bool portable = QFileInfo(path).isDir() || path.endsWith(QStringLiteral(".yagfproj"), Qt::CaseInsensitive);
+    const bool opened = portable ? ProjectFile::loadPortable(path, &loaded, &error)
+                                 : ProjectFile::load(path, &loaded, &error);
+    if (!opened) { showError(error); return; }
     if (!QFileInfo::exists(loaded.sourcePath)) {
         showError(tr("Source document is missing: %1").arg(loaded.sourcePath));
         return;
@@ -822,13 +860,18 @@ void MainWindow::openProject()
 
 bool MainWindow::saveProject()
 {
+    if (!maybeApplyEditor()) return false;
     if (document.sourcePath.isEmpty() || document.pages.isEmpty()) {
         showError(tr("Recognize a document before saving a project."));
         return false;
     }
     if (projectPath.isEmpty()) return saveProjectAs();
     QString error;
-    if (!ProjectFile::save(projectPath, document, &error)) { showError(error); return false; }
+    const bool portable = projectPath.endsWith(QStringLiteral(".yagfproj"), Qt::CaseInsensitive) ||
+                          QFileInfo(projectPath).isDir();
+    const bool saved = portable ? ProjectFile::savePortable(projectPath, document, &error)
+                                : ProjectFile::save(projectPath, document, &error);
+    if (!saved) { showError(error); return false; }
     externalDirty = false;
     undoStack.setClean();
     dirty = false;
@@ -839,6 +882,7 @@ bool MainWindow::saveProject()
 
 bool MainWindow::saveProjectAs()
 {
+    if (!maybeApplyEditor()) return false;
     if (document.sourcePath.isEmpty() || document.pages.isEmpty()) {
         showError(tr("Recognize a document before saving a project."));
         return false;
@@ -856,6 +900,28 @@ bool MainWindow::saveProjectAs()
     dirty = false;
     updateTitle();
     statusBar()->showMessage(tr("Project saved: %1").arg(projectPath));
+    return true;
+}
+
+bool MainWindow::savePortableProject()
+{
+    if (document.sourcePath.isEmpty() || document.pages.isEmpty() || !maybeApplyEditor()) {
+        if (document.pages.isEmpty()) showError(tr("Recognize a document before saving a project."));
+        return false;
+    }
+    QString directory = QFileDialog::getSaveFileName(this, tr("Save portable YAGF project folder"), {},
+                                                     tr("Portable project folders (*.yagfproj)"));
+    if (directory.isEmpty()) return false;
+    if (!directory.endsWith(QStringLiteral(".yagfproj"), Qt::CaseInsensitive))
+        directory += QStringLiteral(".yagfproj");
+    QString error;
+    if (!ProjectFile::savePortable(directory, document, &error)) { showError(error); return false; }
+    projectPath = directory;
+    externalDirty = false;
+    undoStack.setClean();
+    dirty = false;
+    updateTitle();
+    statusBar()->showMessage(tr("Portable project saved: %1").arg(directory));
     return true;
 }
 
@@ -957,7 +1023,8 @@ void MainWindow::showPage(int number)
     if (!maybeApplyEditor()) return;
     currentPage = number;
     updatePageControls();
-    if (const OcrPage *page = document.page(number))
+    if (const OcrPage *page = document.page(number);
+        page && page->engineId == processor.engineId() && !page->language.isEmpty())
         languageEdit->setText(page->language);
     wordList->clear();
     displayedWords.clear();
@@ -1029,6 +1096,55 @@ void MainWindow::runOcr()
     processor.recognize(imagePath, languageEdit->text().trimmed(), currentPage);
 }
 
+void MainWindow::configureOcrEngine()
+{
+    if (processor.isBusy()) return;
+    QSettings settings(QStringLiteral("YAGF"), QStringLiteral("YAGF Revival"));
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("OCR engine"));
+    auto *layout = new QFormLayout(&dialog);
+    auto *provider = new QComboBox(&dialog);
+    provider->addItem(tr("Tesseract (on this computer)"));
+    provider->addItem(tr("PaddleOCR (remote service)"));
+    provider->setCurrentIndex(processor.engineId() == QStringLiteral("paddleocr-remote") ? 1 : 0);
+    auto *address = new QLineEdit(settings.value(QStringLiteral("ocr/remoteUrl"),
+        QStringLiteral("http://127.0.0.1:8765")).toString(), &dialog);
+    address->setPlaceholderText(QStringLiteral("http://127.0.0.1:8765"));
+    auto *token = new QLineEdit(&dialog);
+    token->setEchoMode(QLineEdit::Password);
+    token->setPlaceholderText(tr("Optional bearer token; held only for this session"));
+    layout->addRow(tr("Engine:"), provider);
+    layout->addRow(tr("Service URL:"), address);
+    layout->addRow(tr("Token:"), token);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    layout->addRow(buttons);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    connect(provider, &QComboBox::currentIndexChanged, &dialog, [=](int index) {
+        address->setEnabled(index == 1);
+        token->setEnabled(index == 1);
+    });
+    address->setEnabled(provider->currentIndex() == 1);
+    token->setEnabled(provider->currentIndex() == 1);
+    if (dialog.exec() != QDialog::Accepted) return;
+    if (provider->currentIndex() == 0) {
+        processor.setEngine(std::make_unique<processing::TesseractEngine>());
+        if (languageEdit->text() == QStringLiteral("en")) languageEdit->setText(QStringLiteral("eng"));
+    } else {
+        const QUrl url = QUrl::fromUserInput(address->text().trimmed());
+        if ((url.scheme() != QStringLiteral("http") && url.scheme() != QStringLiteral("https")) ||
+            url.host().isEmpty() || !url.userInfo().isEmpty() || url.hasQuery() || url.hasFragment() ||
+            (!url.path().isEmpty() && url.path() != QStringLiteral("/"))) {
+            showError(tr("Enter the service base URL, for example http://127.0.0.1:8765"));
+            return;
+        }
+        processor.setEngine(std::make_unique<processing::RemoteOcrEngine>(url, token->text()));
+        settings.setValue(QStringLiteral("ocr/remoteUrl"), url.toString());
+        if (languageEdit->text() == QStringLiteral("eng")) languageEdit->setText(QStringLiteral("en"));
+    }
+    status->setText(tr("OCR engine: %1").arg(processor.engineId()));
+}
+
 void MainWindow::runBatchOcr()
 {
     if (processor.isBusy() || pageCount < 2 ||
@@ -1044,7 +1160,9 @@ void MainWindow::runBatchOcr()
     for (int number = 1; number <= pageCount; ++number) {
         const OcrPage *page = document.page(number);
         options.append({.number = number,
-                        .language = page && !page->language.isEmpty() ? page->language : languageEdit->text().trimmed(),
+                        .language = processor.engineId() == QStringLiteral("paddleocr-remote")
+                            ? languageEdit->text().trimmed()
+                            : page && !page->language.isEmpty() ? page->language : languageEdit->text().trimmed(),
                         .preprocessing = page ? page->preprocessing : core::PreprocessSettings{}});
     }
     processor.recognizePages(options);
@@ -1108,7 +1226,7 @@ void MainWindow::showDocument()
 {
     const QSignalBlocker blockListSignals(wordList);
     wordList->clear();
-    for (QGraphicsRectItem *box : wordBoxes) {
+    for (QGraphicsPathItem *box : wordBoxes) {
         scene->removeItem(box);
         delete box;
     }
@@ -1125,16 +1243,19 @@ void MainWindow::showDocument()
     for (OcrWord &word : page->words) {
         const int i = displayedWords.size();
         displayedWords.append(&word);
-        auto *box = scene->addRect(word.bounds, QPen(QColor(20, 90, 220), 1.5));
+        QPainterPath path;
+        if (word.sourceBoxes.isEmpty()) path.addRect(word.bounds);
+        else for (const QRect &fragment : word.sourceBoxes) path.addRect(fragment);
+        auto *box = scene->addPath(path, QPen(QColor(20, 90, 220), 1.5));
         box->setBrush(QColor(20, 90, 220, 35));
         box->setData(0, i);
         box->setZValue(1);
         wordBoxes.append(box);
         auto *item = new QListWidgetItem(word.text, wordList);
         if (word.reviewed) item->setForeground(QColor(0, 90, 20));
-        item->setToolTip(tr("Confidence: %1; box: %2, %3, %4 × %5")
+        item->setToolTip(tr("Confidence: %1; box: %2, %3, %4 × %5; source fragments: %6")
                          .arg(word.confidence).arg(word.bounds.x()).arg(word.bounds.y())
-                         .arg(word.bounds.width()).arg(word.bounds.height()));
+                         .arg(word.bounds.width()).arg(word.bounds.height()).arg(word.sourceBoxes.size()));
     }
     QVector<int> all;
     for (int i = 0; i < displayedWords.size(); ++i) all.append(i);
@@ -1176,7 +1297,7 @@ void MainWindow::selectRegion(const QRectF &bounds)
     regionOutline->setZValue(3);
     QVector<int> matches;
     for (int i = 0; i < displayedWords.size(); ++i)
-        if (overlapsWord(displayedWords.at(i)->bounds, selectedRegion)) matches.append(i);
+        if (overlapsWord(*displayedWords.at(i), selectedRegion)) matches.append(i);
     updateSelection(matches);
     regionOcrButton->setEnabled(!processor.isBusy());
     status->setText(tr("Selected region: %1 × %2 px, %3 words")
@@ -1194,7 +1315,9 @@ void MainWindow::updateSelection(const QVector<int> &indices)
     wordList->clearSelection();
     for (int i = 0; i < wordBoxes.size(); ++i) {
         const bool selected = selectedSet.contains(i);
-        wordBoxes[i]->setPen(QPen(selected ? QColor(215, 65, 25) : QColor(20, 90, 220), selected ? 2.5 : 1.5));
+        wordBoxes[i]->setPen(QPen(selected ? QColor(215, 65, 25) : QColor(20, 90, 220),
+                                   selected ? 2.5 : 1.5,
+                                   displayedWords.at(i)->sourceBoxes.isEmpty() ? Qt::DashLine : Qt::SolidLine));
         wordBoxes[i]->setBrush(selected ? QColor(235, 95, 30, 50) : QColor(20, 90, 220, 35));
         if (selected) wordList->item(i)->setSelected(true);
     }

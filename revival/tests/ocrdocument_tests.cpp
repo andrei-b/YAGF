@@ -101,6 +101,7 @@ int main()
     assert(split->words.at(0).id != split->words.at(1).id);
     assert(split->words.at(0).sourceWordIds == split->words.at(1).sourceWordIds);
     assert(split->words.at(0).bounds.united(split->words.at(1).bounds) == doc.page(1)->words.at(0).bounds);
+    assert(split->words.at(0).sourceBoxes.size() == 1 && split->words.at(1).sourceBoxes.size() == 1);
     const auto joined = WordEditor::apply(*split, {0, 1}, {{QStringLiteral("Hello")}});
     assert(joined && joined->words.size() == 3);
     assert(joined->words.at(0).bounds == doc.page(1)->words.at(0).bounds);
@@ -109,17 +110,32 @@ int main()
     assert(inserted && inserted->words.size() == 4);
     assert(inserted->words.at(1).originalText.isEmpty());
     assert(inserted->words.at(1).sourceWordIds.isEmpty());
+    assert(inserted->words.at(1).sourceBoxes.isEmpty());
     assert(inserted->words.at(1).bounds.isValid());
     const auto deleted = WordEditor::apply(*inserted, {1}, {});
     assert(deleted && deleted->words.size() == 3);
     assert(deleted->words.at(1).text == QStringLiteral("earth"));
     const auto merged = WordEditor::apply(*doc.page(1), {0, 1}, {{QStringLiteral("Helloearth")}});
     assert(merged && merged->words.at(0).sourceWordIds.size() == 2);
+    assert(merged->words.at(0).sourceBoxes.size() == 2);
     OcrDocument editedDocument = doc;
     editedDocument.replacePage(*merged);
     OcrDocument reloaded;
     assert(OcrDocument::fromJson(editedDocument.toJson(), &reloaded, &error));
     assert(reloaded.page(1)->words.at(0).sourceWordIds == merged->words.at(0).sourceWordIds);
+    assert(reloaded.page(1)->words.at(0).sourceBoxes == merged->words.at(0).sourceBoxes);
+    QJsonObject brokenGeometry = editedDocument.toJson();
+    QJsonArray pages = brokenGeometry.value(QStringLiteral("pages")).toArray();
+    QJsonObject firstPage = pages.at(0).toObject();
+    QJsonArray corruptWords = firstPage.value(QStringLiteral("words")).toArray();
+    QJsonObject firstWord = corruptWords.at(0).toObject();
+    firstWord.insert(QStringLiteral("source_boxes"), QJsonArray{QJsonObject{
+        {"x", 199}, {"y", 20}, {"width", 1}, {"height", 1}}});
+    corruptWords.replace(0, firstWord);
+    firstPage.insert(QStringLiteral("words"), corruptWords);
+    pages.replace(0, firstPage);
+    brokenGeometry.insert(QStringLiteral("pages"), pages);
+    assert(!OcrDocument::fromJson(brokenGeometry, &reloaded, &error));
     editedDocument.replacePage(*inserted);
     assert(OcrDocument::fromJson(editedDocument.toJson(), &reloaded, &error));
     assert(reloaded.page(1)->words.at(1).sourceWordIds.isEmpty());
@@ -143,6 +159,23 @@ int main()
     assert(multiple->words.at(1).bounds == phrase.words.at(2).bounds);
     assert(multiple->words.at(0).sourceWordIds.size() == 2);
     assert(multiple->words.at(2).sourceWordIds == multiple->words.at(3).sourceWordIds);
+    assert(multiple->words.at(2).sourceBoxes.first().united(
+        multiple->words.at(3).sourceBoxes.first()) == phrase.words.at(3).bounds);
+
+    OcrPage acrossLines;
+    acrossLines.number = 1;
+    acrossLines.width = 250;
+    acrossLines.height = 100;
+    acrossLines.words.append({1, 1, 1, 1, QRect(10, 10, 25, 12),
+                              QStringLiteral("hyphen-"), QStringLiteral("hyphen-"), 90});
+    acrossLines.words.append({1, 1, 1, 2, QRect(160, 70, 40, 12),
+                              QStringLiteral("ated"), QStringLiteral("ated"), 90});
+    acrossLines.rebuildHierarchy();
+    const auto joinedLines = WordEditor::apply(acrossLines, {0, 1}, {{QStringLiteral("hyphenated")}});
+    assert(joinedLines && joinedLines->words.size() == 1);
+    assert(joinedLines->words.first().sourceBoxes ==
+           QVector<QRect>({QRect(10, 10, 25, 12), QRect(160, 70, 40, 12)}));
+    assert(joinedLines->words.first().bounds == QRect(10, 10, 190, 72));
 
     OcrPage longPage;
     longPage.number = 1;

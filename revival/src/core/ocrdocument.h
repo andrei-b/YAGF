@@ -26,6 +26,7 @@ struct OcrWord {
     bool italic = false;
     int fontSizePt = 0;
     int sourceFontSizePt = 0;
+    QVector<QRect> sourceBoxes; // Exact image fragments; empty for inserted text.
 };
 
 struct OcrLine {

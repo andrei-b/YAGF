@@ -17,6 +17,7 @@
 #include <memory>
 
 class QGraphicsRectItem;
+class QGraphicsPathItem;
 class QGraphicsScene;
 class QLabel;
 class QLineEdit;
@@ -67,6 +68,7 @@ public:
     MainWindow();
     ~MainWindow() override;
     void loadSource(const QString &path);
+    void loadProject(const QString &path);
 protected:
     void closeEvent(QCloseEvent *event) override;
     void dragEnterEvent(QDragEnterEvent *event) override;
@@ -78,6 +80,8 @@ private:
     void importMimeData(const QMimeData *mime);
     QString saveImportedImage(const QImage &image);
     void openProject();
+    void openPortableProject();
+    bool savePortableProject();
     bool saveProject();
     bool saveProjectAs();
     bool maybeSave();
@@ -88,6 +92,7 @@ private:
     void showPage(int number);
     void updatePageControls();
     void runOcr();
+    void configureOcrEngine();
     void showDocument();
     void selectWord(int index);
     void selectRegion(const QRectF &bounds);
@@ -131,7 +136,7 @@ private:
     QAction *redoAction = nullptr;
     QSpinBox *pageSpin;
     processing::DocumentProcessor processor;
-    QVector<QGraphicsRectItem *> wordBoxes;
+    QVector<QGraphicsPathItem *> wordBoxes;
     QVector<core::OcrWord *> displayedWords;
     QVector<int> selectedWords;
     QRect selectedRegion;

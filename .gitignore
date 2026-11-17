@@ -1,2 +1,3 @@
 /build-appimage/
 /dist/
+/revival/service/**/__pycache__/

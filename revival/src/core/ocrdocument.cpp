@@ -51,10 +51,13 @@ QJsonObject wordJson(const OcrWord &word)
 {
     QJsonArray sources;
     for (const QString &id : word.sourceWordIds) sources.append(id);
+    QJsonArray sourceBoxes;
+    for (const QRect &box : word.sourceBoxes) sourceBoxes.append(boxJson(box));
     return {{"id", word.id}, {"page", word.page}, {"block", word.block},
             {"paragraph", word.paragraph}, {"line", word.line}, {"box", boxJson(word.bounds)},
             {"original_text", word.originalText}, {"text", word.text},
             {"source_word_ids", sources},
+            {"source_boxes", sourceBoxes},
             {"confidence", word.confidence}, {"reviewed", word.reviewed},
             {"style", QJsonObject{{"bold", word.bold}, {"italic", word.italic},
                                    {"font_size_pt", word.fontSizePt},
@@ -85,6 +88,16 @@ bool parseWord(const QJsonObject &json, int pageNumber, int width, int height, O
             word->sourceWordIds.append(value.toString());
         }
     } else if (!word->id.isEmpty()) word->sourceWordIds.append(word->id);
+    if (json.contains(QStringLiteral("source_boxes"))) {
+        const QJsonValue boxes = json.value(QStringLiteral("source_boxes"));
+        if (!boxes.isArray() || boxes.toArray().size() > 4096) return false;
+        for (const QJsonValue &value : boxes.toArray()) {
+            QRect box;
+            if (!value.isObject() || !parseBox(value.toObject(), width, height, &box) ||
+                !word->bounds.contains(box)) return false;
+            word->sourceBoxes.append(box);
+        }
+    } else if (!word->originalText.isEmpty()) word->sourceBoxes.append(word->bounds);
     const QJsonObject style = json.value(QStringLiteral("style")).toObject();
     word->bold = style.value(QStringLiteral("bold")).toBool();
     word->italic = style.value(QStringLiteral("italic")).toBool();
@@ -111,6 +124,8 @@ void OcrPage::rebuildHierarchy()
             word.id = QStringLiteral("%1/word-%2").arg(lineId(number, word.block, word.paragraph, word.line)).arg(i + 1);
         if (word.sourceWordIds.isEmpty() && !word.originalText.isEmpty())
             word.sourceWordIds.append(word.id);
+        if (word.sourceBoxes.isEmpty() && !word.originalText.isEmpty())
+            word.sourceBoxes.append(word.bounds);
         if (regions.isEmpty() || word.block != previousBlock) {
             OcrRegion region;
             region.id = regionId(number, word.block);
