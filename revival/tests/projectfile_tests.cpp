@@ -33,6 +33,9 @@ int main()
     original.page(1)->words[0].bold = true;
     original.page(1)->words[0].italic = true;
     original.page(1)->words[0].fontSizePt = 15;
+    original.page(1)->preprocessing = {.deskewDegrees = 1.5, .autoContrast = true, .denoise = false};
+    original.page(1)->sourceWidth = 198;
+    original.page(1)->sourceHeight = 98;
     OcrPage secondPage;
     secondPage.number = 2;
     secondPage.width = 200;
@@ -60,6 +63,9 @@ int main()
     assert(loaded.page(1)->words.at(0).italic);
     assert(loaded.page(1)->words.at(0).fontSizePt == 15);
     assert(loaded.page(1)->words.at(0).sourceFontSizePt > 0);
+    assert(loaded.page(1)->preprocessing.deskewDegrees == 1.5);
+    assert(loaded.page(1)->preprocessing.autoContrast);
+    assert(loaded.page(1)->sourceWidth == 198);
     assert(loaded.totalPages == 2);
     assert(loaded.page(2)->words.at(0).text == QStringLiteral("Hallo!"));
     assert(loaded.page(2)->regions.at(0).paragraphs.at(0).lines.at(0).wordIds.size() == 1);

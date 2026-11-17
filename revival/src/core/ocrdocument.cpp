@@ -157,6 +157,8 @@ OcrDocument OcrDocument::fromTsv(const QByteArray &tsv, int width, int height,
     page.number = pageNumber;
     page.width = width;
     page.height = height;
+    page.sourceWidth = width;
+    page.sourceHeight = height;
     page.engineId = document.engine;
     page.language = lang;
     const QStringList rows = QString::fromUtf8(tsv).split(QLatin1Char('\n'));
@@ -293,6 +295,12 @@ QJsonObject OcrDocument::toJson() const
         }
         pageItems.append(QJsonObject{{"id", page.id}, {"number", page.number},
                                      {"width", page.width}, {"height", page.height},
+                                     {"source_width", page.sourceWidth > 0 ? page.sourceWidth : page.width},
+                                     {"source_height", page.sourceHeight > 0 ? page.sourceHeight : page.height},
+                                     {"preprocessing", QJsonObject{
+                                         {"deskew_degrees", page.preprocessing.deskewDegrees},
+                                         {"auto_contrast", page.preprocessing.autoContrast},
+                                         {"denoise", page.preprocessing.denoise}}},
                                      {"engine", page.engineId}, {"language", page.language},
                                      {"regions", regionItems}, {"words", wordItems},
                                      {"reading_order", readingOrder}});
@@ -341,6 +349,27 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
             return fail(QStringLiteral("Invalid or duplicate page."));
         page.id = object.value(QStringLiteral("id")).toString();
         if (page.id.isEmpty()) page.id = pageId(page.number);
+        page.sourceWidth = page.width;
+        page.sourceHeight = page.height;
+        if (object.contains(QStringLiteral("source_width")) &&
+            (!integer(object, QStringLiteral("source_width"), &page.sourceWidth) || page.sourceWidth <= 0))
+            return fail(QStringLiteral("Invalid source width."));
+        if (object.contains(QStringLiteral("source_height")) &&
+            (!integer(object, QStringLiteral("source_height"), &page.sourceHeight) || page.sourceHeight <= 0))
+            return fail(QStringLiteral("Invalid source height."));
+        if (object.contains(QStringLiteral("preprocessing"))) {
+            if (!object.value(QStringLiteral("preprocessing")).isObject())
+                return fail(QStringLiteral("Invalid preprocessing settings."));
+            const QJsonObject settings = object.value(QStringLiteral("preprocessing")).toObject();
+            const QJsonValue angle = settings.value(QStringLiteral("deskew_degrees"));
+            const QJsonValue contrast = settings.value(QStringLiteral("auto_contrast"));
+            const QJsonValue denoise = settings.value(QStringLiteral("denoise"));
+            if (!angle.isDouble() || !std::isfinite(angle.toDouble()) ||
+                std::abs(angle.toDouble()) > 15.0 || !contrast.isBool() || !denoise.isBool())
+                return fail(QStringLiteral("Invalid preprocessing values."));
+            page.preprocessing = {.deskewDegrees = angle.toDouble(),
+                                  .autoContrast = contrast.toBool(), .denoise = denoise.toBool()};
+        }
         page.engineId = object.value(QStringLiteral("engine")).toString(parsed.engine);
         page.language = object.value(QStringLiteral("language")).toString(parsed.language);
         for (const QJsonValue &wordValue : object.value(QStringLiteral("words")).toArray()) {

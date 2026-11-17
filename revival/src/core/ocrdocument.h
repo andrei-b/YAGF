@@ -1,5 +1,7 @@
 #pragma once
 
+#include "preprocesssettings.h"
+
 #include <QJsonObject>
 #include <QRect>
 #include <QString>
@@ -49,6 +51,9 @@ struct OcrPage {
     int number = 1;
     int width = 0;
     int height = 0;
+    int sourceWidth = 0;
+    int sourceHeight = 0;
+    PreprocessSettings preprocessing;
     QString engineId = QStringLiteral("tesseract");
     QString language;
     QVector<OcrWord> words;

@@ -5,8 +5,10 @@
 
 #include <QGraphicsView>
 #include <QMainWindow>
+#include <QImage>
 #include <QPoint>
 #include <QRectF>
+#include <QTemporaryDir>
 
 class QGraphicsRectItem;
 class QGraphicsScene;
@@ -19,6 +21,7 @@ class QSpinBox;
 class QTabWidget;
 class QTextEdit;
 class QRubberBand;
+class QAction;
 
 namespace yagf::ui {
 
@@ -71,6 +74,7 @@ private:
     bool applyCorrection();
     bool maybeApplyEditor();
     void runRegionOcr();
+    void improveCurrentPage();
     void exportText();
     void exportHtml();
     void exportJson();
@@ -91,6 +95,7 @@ private:
     QPushButton *cancelButton;
     QPushButton *previousButton;
     QPushButton *nextButton;
+    QAction *improveAction;
     QSpinBox *pageSpin;
     processing::DocumentProcessor processor;
     QVector<QGraphicsRectItem *> wordBoxes;
@@ -100,6 +105,9 @@ private:
     QGraphicsRectItem *regionOutline = nullptr;
     core::OcrDocument document;
     QString imagePath;
+    QString rawImagePath;
+    QImage rawImage;
+    QTemporaryDir preparedDir;
     QString originalPath;
     QString projectPath;
     bool dirty = false;

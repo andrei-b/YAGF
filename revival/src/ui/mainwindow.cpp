@@ -1,5 +1,7 @@
 #include "mainwindow.h"
 #include "projectfile.h"
+#include "preprocessdialog.h"
+#include "imageprocessor.h"
 
 #include <QCloseEvent>
 #include <QActionGroup>
@@ -36,6 +38,7 @@
 #include <QVBoxLayout>
 
 #include <utility>
+#include <cmath>
 
 namespace yagf::ui {
 using core::OcrDocument;
@@ -43,6 +46,7 @@ using core::OcrPage;
 using core::OcrWord;
 using core::ProjectFile;
 using processing::DocumentProcessor;
+using processing::ImageProcessor;
 
 namespace {
 bool overlapsWord(const QRect &box, const QRect &selection)
@@ -183,6 +187,9 @@ MainWindow::MainWindow()
     toolbar->addAction(QIcon(QStringLiteral(":/legacy/larger.png")), tr("Zoom in"), this,
                        [this] { view->zoomBy(1.25); });
     toolbar->addSeparator();
+    improveAction = toolbar->addAction(tr("Improve page…"), this, &MainWindow::improveCurrentPage);
+    improveAction->setObjectName(QStringLiteral("improvePageAction"));
+    improveAction->setEnabled(false);
     ocrButton = new QPushButton(tr("Recognize"), this);
     toolbar->addWidget(ocrButton);
     connect(ocrButton, &QPushButton::clicked, this, &MainWindow::runOcr);
@@ -311,9 +318,13 @@ MainWindow::MainWindow()
     });
     connect(&processor, &DocumentProcessor::thumbnailReady, this, [this](int number, const QString &path) {
         if (number < 1 || number > pageList->count()) return;
-        const QPixmap miniature(path);
+        QImage miniature(path);
+        if (const OcrPage *page = document.page(number); page && !page->preprocessing.isIdentity()) {
+            const auto processed = ImageProcessor::apply(miniature, page->preprocessing);
+            if (processed) miniature = *processed;
+        }
         if (!miniature.isNull())
-            pageList->item(number - 1)->setIcon(QIcon(miniature.scaled(
+            pageList->item(number - 1)->setIcon(QIcon(QPixmap::fromImage(miniature).scaled(
                 pageList->iconSize(), Qt::KeepAspectRatio, Qt::SmoothTransformation)));
     });
     connect(&processor, &DocumentProcessor::pageRendered, this, [this](int number, const QString &path) {
@@ -328,6 +339,14 @@ MainWindow::MainWindow()
                                                   originalPath, languageEdit->text().trimmed(), currentPage);
         OcrPage *newPage = result.page(currentPage);
         const OcrPage *oldPage = document.page(currentPage);
+        if (oldPage) {
+            newPage->sourceWidth = oldPage->sourceWidth;
+            newPage->sourceHeight = oldPage->sourceHeight;
+            newPage->preprocessing = oldPage->preprocessing;
+        } else {
+            newPage->sourceWidth = rawImage.width();
+            newPage->sourceHeight = rawImage.height();
+        }
         for (OcrWord &word : newPage->words) {
             word.bounds.translate(offset);
             if (!region.isEmpty()) word.id.clear();
@@ -360,6 +379,10 @@ MainWindow::MainWindow()
             merged.number = currentPage;
             merged.width = size.width();
             merged.height = size.height();
+            if (!oldPage) {
+                merged.sourceWidth = rawImage.width();
+                merged.sourceHeight = rawImage.height();
+            }
             merged.engineId = result.engine;
             merged.language = result.language;
             int maxBlock = 0;
@@ -396,6 +419,7 @@ void MainWindow::setBusy(bool busy)
     ocrButton->setEnabled(!busy && !imagePath.isEmpty());
     cancelButton->setEnabled(busy);
     regionOcrButton->setEnabled(!busy && !imagePath.isEmpty() && !selectedRegion.isEmpty());
+    improveAction->setEnabled(!busy && !rawImage.isNull());
     updatePageControls();
 }
 
@@ -456,7 +480,10 @@ void MainWindow::loadSource(const QString &path)
     wordBoxes.clear();
     scene->clear();
     imagePath.clear();
+    rawImagePath.clear();
+    rawImage = {};
     ocrButton->setEnabled(false);
+    improveAction->setEnabled(false);
     currentPage = 1;
     pageCount = 1;
     updatePageControls();
@@ -499,6 +526,9 @@ void MainWindow::openProject()
     wordBoxes.clear();
     scene->clear();
     imagePath.clear();
+    rawImagePath.clear();
+    rawImage = {};
+    improveAction->setEnabled(false);
     currentPage = 1;
     pageCount = 1;
     updatePageControls();
@@ -578,18 +608,35 @@ void MainWindow::closeEvent(QCloseEvent *event)
 void MainWindow::loadImage(const QString &path)
 {
     QImageReader reader(path);
-    const QImage image = reader.read();
-    if (image.isNull()) {
+    const QImage source = reader.read();
+    if (source.isNull()) {
         showError(tr("Could not read image: %1").arg(reader.errorString()));
         return;
     }
-    imagePath = path;
     const OcrPage *page = document.page(currentPage);
-    if (page && (page->width != image.width() || page->height != image.height())) {
-        imagePath.clear();
+    if (page && (page->sourceWidth != source.width() || page->sourceHeight != source.height())) {
         showError(tr("The source image size changed since this project was saved."));
         return;
     }
+    const core::PreprocessSettings settings = page ? page->preprocessing : core::PreprocessSettings{};
+    const auto processed = ImageProcessor::apply(source, settings);
+    if (!processed) { showError(processed.error()); return; }
+    const QImage &image = *processed;
+    if (page && (page->width != image.width() || page->height != image.height())) {
+        showError(tr("The processed page size does not match the saved OCR geometry."));
+        return;
+    }
+    QString recognitionPath = path;
+    if (!settings.isIdentity()) {
+        recognitionPath = preparedDir.filePath(QStringLiteral("page-%1-prepared.png").arg(currentPage));
+        if (!image.save(recognitionPath, "PNG")) {
+            showError(tr("Could not save the prepared page image."));
+            return;
+        }
+    }
+    rawImage = source;
+    rawImagePath = path;
+    imagePath = recognitionPath;
     wordBoxes.clear();
     displayedWords.clear();
     selectedWords.clear();
@@ -607,7 +654,8 @@ void MainWindow::loadImage(const QString &path)
     view->fitPage();
     showDocument();
     setBusy(false);
-    status->setText(tr("Image loaded: %1 × %2").arg(image.width()).arg(image.height()));
+    status->setText(tr("Page ready: %1 × %2%3").arg(image.width()).arg(image.height())
+                    .arg(settings.isIdentity() ? QString() : tr(" · improved")));
 }
 
 void MainWindow::showPage(int number)
@@ -629,13 +677,56 @@ void MainWindow::showPage(int number)
     wordBoxes.clear();
     scene->clear();
     imagePath.clear();
+    rawImagePath.clear();
+    rawImage = {};
     ocrButton->setEnabled(false);
+    improveAction->setEnabled(false);
     if (originalPath.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive)) {
         status->setText(tr("Rendering page %1 of %2…").arg(number).arg(pageCount));
         processor.renderPdfPage(number);
     } else {
         loadImage(originalPath);
     }
+}
+
+void MainWindow::improveCurrentPage()
+{
+    if (rawImage.isNull() || processor.isBusy() || !maybeApplyEditor()) return;
+    const OcrPage *existing = document.page(currentPage);
+    const core::PreprocessSettings current = existing ? existing->preprocessing : core::PreprocessSettings{};
+    PreprocessDialog dialog(rawImage, current, this);
+    if (dialog.exec() != QDialog::Accepted) return;
+    const core::PreprocessSettings proposed = dialog.settings();
+    if (proposed == current) return;
+    const bool geometryChanged = std::abs(proposed.deskewDegrees - current.deskewDegrees) >= 0.01;
+    if (geometryChanged && existing && !existing->words.isEmpty() &&
+        QMessageBox::warning(this, tr("Rebuild page geometry"),
+            tr("Changing the deskew angle moves the scan and will clear OCR boxes and corrections on this page. Continue?"),
+            QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Yes) return;
+    const auto processed = ImageProcessor::apply(rawImage, proposed);
+    if (!processed) { showError(processed.error()); return; }
+    if (!proposed.isIdentity() &&
+        !processed->save(preparedDir.filePath(QStringLiteral("page-%1-prepared.png").arg(currentPage)), "PNG")) {
+        showError(tr("Could not save the prepared page image."));
+        return;
+    }
+    OcrPage page = existing ? *existing : OcrPage{};
+    page.id = QStringLiteral("page-%1").arg(currentPage);
+    page.number = currentPage;
+    page.sourceWidth = rawImage.width();
+    page.sourceHeight = rawImage.height();
+    page.width = processed->width();
+    page.height = processed->height();
+    page.preprocessing = proposed;
+    if (geometryChanged) {
+        page.words.clear();
+        page.regions.clear();
+    }
+    document.replacePage(std::move(page));
+    markDirty();
+    const QString sourcePath = rawImagePath;
+    loadImage(sourcePath);
+    status->setText(tr("Improvement applied to page %1. Recognize it to update OCR.").arg(currentPage));
 }
 
 void MainWindow::runOcr()
