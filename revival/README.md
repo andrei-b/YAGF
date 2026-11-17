@@ -1,6 +1,6 @@
 # YAGF Revival prototype
 
-This is the first vertical slice of the YAGF 2.0 proposal. The Qt 4 application remains in the repository root. This prototype uses Qt 6 and C++23 and requires no cloud service.
+This is the Qt 6 and C++23 revival of YAGF. The Qt 4 application remains in the repository root. The revival runs locally and requires no cloud service.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the source layout, dependency boundaries, and next implementation slices.
 
@@ -19,7 +19,25 @@ ctest --test-dir build-revival --output-on-failure
 ./build-revival/yagf-revival /path/to/scan.png
 ```
 
-Qt 6 development packages are required. Install Tesseract and language data to recognize images. PDF import also requires Poppler's `pdftoppm` command. Missing tools are reported in the app.
+Qt 6 development packages are required. Install Tesseract and language data to recognize images. PDF import and searchable PDF export also require Poppler's `pdfinfo` and `pdftoppm` commands. PDF/A export additionally requires OCRmyPDF. Missing tools are reported in the app.
+
+## Linux installation and AppImage
+
+For a local desktop install:
+
+```sh
+cmake --install build-revival --prefix "$HOME/.local"
+```
+
+This installs the executable, desktop entry, icon, and AppStream metadata. Make sure `$HOME/.local/bin` is on your `PATH`.
+
+To build an x86-64 or AArch64 AppImage, install Ninja, `curl`, `qmake6`, and the Qt 6 Wayland platform plugins, then run:
+
+```sh
+./revival/packaging/build-appimage.sh
+```
+
+The result is written to `dist/`. The script downloads the official linuxdeploy and Qt plugin AppImages on first use; set `LINUXDEPLOY` and `LINUXDEPLOY_QT_PLUGIN` to use existing copies. The AppImage bundles the Qt desktop dependencies. OCR workers remain external commands, so install Tesseract and Poppler on the host; install OCRmyPDF if you need PDF/A export. The current AppImage was built and smoke tested on Ubuntu 24.04; compatibility with older distributions has not yet been verified.
 
 ## Current workflow
 
@@ -29,9 +47,9 @@ Use **Improve page…** to inspect the original beside a processed preview. **De
 
 For a PDF, choose **Tools → Recognize all pages** to OCR every page in sequence. The status bar shows progress and **Cancel** stops the queue. Existing corrections and layout settings are retained where the new OCR still matches source words and region IDs. To correct segmentation, select words on the preview and choose **Tools → Create region from selection**. **Tools → Edit layout…** lets you set each region's type and box and move regions up or down in reading order. The order controls plain-text and structured JSON export; layout HTML keeps words at their source coordinates. Region boxes are metadata and do not move individual word boxes.
 
-**Save project** writes a versioned `.yagf.json` file with corrections for all recognized pages; **Open project** restores the pages, boxes, edits, and word formatting. The title shows `*` for unsaved work, and opening another document or closing the window prompts to save. The **File** menu exports plain text, structured JSON, or layout HTML with positioned words. Pages are rendered on demand at 150 DPI. OCR and thumbnail generation run in subprocesses so the interface stays responsive, and **Cancel** stops the current OCR or page rendering job.
+**Save project** writes a versioned `.yagf.json` file with corrections for all recognized pages; **Open project** restores the pages, boxes, edits, and word formatting. The title shows `*` for unsaved work, and opening another document or closing the window prompts to save. The **File** menu exports plain text, structured JSON, layout HTML, a searchable PDF, or PDF/A. PDF export uses the source image with an invisible text layer made from the corrected words, so text extraction uses your edits. PDF/A conversion uses OCRmyPDF without rerunning OCR on that text layer. Pages are rendered on demand at 150 DPI; exported PDFs use the same resolution. PDF export runs in a worker thread with progress and cancellation. OCR and thumbnail generation run in subprocesses, and **Cancel** stops the current job.
 
-The project and document JSON schemas are version 2. They record the source path, source and processed page dimensions, per-page quality settings, Tesseract language, stable page/region/paragraph/line/word IDs, reading order, each word's geometry, original reading, current reading, confidence, review state, and basic formatting. Version 1 project files still load. Coordinates are pixels in the processed page image. Corrections survive a rerun when the recognized word and box match exactly. Projects reference their original source file by absolute path, so that file must remain available. OCR does not recover exact fonts or complete column layout; the editor keeps detected line and paragraph breaks and estimates relative text size. Searchable PDF output and Linux packaging are the next 2.0 steps.
+The project and document JSON schemas are version 2. They record the source path, source and processed page dimensions, per-page quality settings, Tesseract language, stable page/region/paragraph/line/word IDs, reading order, each word's geometry, original reading, current reading, confidence, review state, and basic formatting. Version 1 project files still load. Coordinates are pixels in the processed page image. Corrections survive a rerun when the recognized word and box match exactly. Projects reference their original source file by absolute path, so that file must remain available. OCR does not recover exact fonts or complete column layout; the editor keeps detected line and paragraph breaks and estimates relative text size. Flatpak packaging and broader release testing remain before a complete 2.0 release.
 
 ## Audit and direction
 

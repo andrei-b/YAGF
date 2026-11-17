@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=YAGF Revival
+GenericName=OCR document editor
+Comment=Recognize and correct scanned documents locally
+Exec=yagf-revival %f
+Icon=io.github.andrei_b.YAGF
+Terminal=false
+StartupNotify=true
+Categories=Office;
+MimeType=application/pdf;image/png;image/jpeg;image/tiff;image/bmp;

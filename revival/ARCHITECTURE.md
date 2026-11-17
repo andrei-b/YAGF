@@ -12,15 +12,17 @@ revival/
     core/preprocesssettings.h         per-page, persisted quality options
     processing/documentprocessor.{h,cpp}  subprocesses and temporary PDF rendering
     processing/imageprocessor.{h,cpp}     deskew detection, contrast, denoise, rotation
+    processing/pdfexporter.{h,cpp}       searchable PDF and optional PDF/A conversion
     ui/mainwindow.{h,cpp}            page view, selection, editing, user actions
     ui/preprocessdialog.{h,cpp}       before/after preview and quality controls
     ui/layoutdialog.{h,cpp}           region geometry, type, and reading order
   tests/ocrdocument_tests.cpp
   tests/projectfile_tests.cpp
   tests/imageprocessor_tests.cpp
+  tests/pdfexporter_tests.cpp
 ```
 
-Types live in `yagf::core`, `yagf::processing`, and `yagf::ui`. `ui` depends on `core` and `processing`. `core` has no widget or process dependency. `processing` uses only core preprocessing settings, not the OCR document model. This boundary lets a future PaddleOCR or Jetson adapter provide the same normalized document data without changing the editor. The application uses C++23, including `std::expected` for image-processing errors and `std::span` for skew scoring.
+Types live in `yagf::core`, `yagf::processing`, and `yagf::ui`. `ui` depends on `core` and `processing`. `core` has no widget or process dependency. OCR jobs and PDF export live in `processing`; the exporter reads an immutable `OcrDocument` snapshot. This boundary lets a future PaddleOCR or Jetson adapter provide the same normalized document data without changing the editor. The application uses C++23, including `std::expected` for image-processing errors and `std::span` for skew scoring.
 
 ## Data ownership
 
@@ -32,8 +34,10 @@ The `OcrDocument` is the current in-memory source of truth. It contains numbered
 
 `ImageProcessor` estimates page skew and luminance range, then applies optional denoise, contrast stretching, and rotation. `MainWindow` keeps the original image in memory, writes the processed page to a temporary PNG for Tesseract, and displays that same processed image. Project files store settings and both source and processed dimensions; reopening a project recreates the temporary image from the source. Changing rotation invalidates OCR geometry for that page.
 
+`PdfExporter` renders each source page at the editor's 150 DPI, applies its saved image settings, and draws an invisible text layer from corrected words. It writes to a temporary file and atomically replaces the destination on success. The UI runs it through Qt Concurrent and can cancel between pages or during external commands. For PDF/A it calls OCRmyPDF in skip-text mode, preserving the edited text layer while converting the document.
+
 ## Next implementation slices
 
-1. Add searchable PDF export through OCRmyPDF and complete 2.0 editing polish.
-2. Package the Linux desktop app.
+1. Complete editing polish, especially undo/redo and richer layout controls.
+2. Add Flatpak packaging and test releases on supported Linux distributions.
 3. Add optional neural and Jetson adapters behind the same processing boundary, with measured comparison data.

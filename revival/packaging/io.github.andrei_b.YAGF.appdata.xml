@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.andrei_b.YAGF</id>
+  <name>YAGF Revival</name>
+  <summary>Local OCR studio for scanned documents</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <developer id="io.github.andrei_b">
+    <name>YAGF contributors</name>
+  </developer>
+  <content_rating type="oars-1.1" />
+  <url type="homepage">https://github.com/andrei-b/YAGF</url>
+  <description>
+    <p>Open scanned images and PDFs, recognize text with Tesseract, and correct words against the source page. Edit page regions and reading order, then export text, structured data, and searchable PDFs.</p>
+  </description>
+  <launchable type="desktop-id">io.github.andrei_b.YAGF.desktop</launchable>
+  <provides>
+    <binary>yagf-revival</binary>
+  </provides>
+</component>

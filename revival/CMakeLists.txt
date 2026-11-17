@@ -1,10 +1,11 @@
 cmake_minimum_required(VERSION 3.21)
 project(yagf_revival VERSION 2.0.0 LANGUAGES CXX)
+include(GNUInstallDirs)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.2 REQUIRED COMPONENTS Core Gui Widgets)
+find_package(Qt6 6.2 REQUIRED COMPONENTS Core Gui Widgets Concurrent)
 qt_standard_project_setup()
 set(CMAKE_AUTORCC ON)
 
@@ -16,7 +17,8 @@ target_include_directories(yagf_core PUBLIC src/core)
 
 add_library(yagf_processing STATIC
     src/processing/documentprocessor.cpp src/processing/documentprocessor.h
-    src/processing/imageprocessor.cpp src/processing/imageprocessor.h)
+    src/processing/imageprocessor.cpp src/processing/imageprocessor.h
+    src/processing/pdfexporter.cpp src/processing/pdfexporter.h)
 target_link_libraries(yagf_processing PUBLIC yagf_core Qt6::Core Qt6::Gui)
 target_include_directories(yagf_processing PUBLIC src/processing)
 
@@ -24,7 +26,18 @@ qt_add_executable(yagf-revival
     src/main.cpp src/ui/mainwindow.cpp src/ui/mainwindow.h
     src/ui/preprocessdialog.cpp src/ui/preprocessdialog.h
     src/ui/layoutdialog.cpp src/ui/layoutdialog.h resources/icons.qrc)
-target_link_libraries(yagf-revival PRIVATE yagf_core yagf_processing Qt6::Widgets)
+target_link_libraries(yagf-revival PRIVATE yagf_core yagf_processing Qt6::Widgets Qt6::Concurrent)
+
+install(TARGETS yagf-revival RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES packaging/io.github.andrei_b.YAGF.desktop
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+install(FILES resources/yagf.png
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/96x96/apps
+        RENAME io.github.andrei_b.YAGF.png)
+install(FILES packaging/io.github.andrei_b.YAGF.appdata.xml
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo)
+install(FILES ../COPYING
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/io.github.andrei_b.YAGF)
 
 include(CTest)
 if(BUILD_TESTING)
@@ -37,4 +50,11 @@ if(BUILD_TESTING)
     qt_add_executable(imageprocessor_tests tests/imageprocessor_tests.cpp)
     target_link_libraries(imageprocessor_tests PRIVATE yagf_processing)
     add_test(NAME imageprocessor_tests COMMAND imageprocessor_tests)
+    find_program(PDFTOTEXT_EXECUTABLE pdftotext)
+    if(PDFTOTEXT_EXECUTABLE)
+        qt_add_executable(pdfexporter_tests tests/pdfexporter_tests.cpp)
+        target_link_libraries(pdfexporter_tests PRIVATE yagf_processing Qt6::Gui)
+        add_test(NAME pdfexporter_tests COMMAND pdfexporter_tests)
+        set_tests_properties(pdfexporter_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    endif()
 endif()

@@ -2,13 +2,18 @@
 
 #include "ocrdocument.h"
 #include "documentprocessor.h"
+#include "pdfexporter.h"
 
+#include <QFutureWatcher>
 #include <QGraphicsView>
 #include <QMainWindow>
 #include <QImage>
 #include <QPoint>
 #include <QRectF>
 #include <QTemporaryDir>
+
+#include <atomic>
+#include <memory>
 
 class QGraphicsRectItem;
 class QGraphicsScene;
@@ -52,6 +57,7 @@ class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
     MainWindow();
+    ~MainWindow() override;
     void loadSource(const QString &path);
 protected:
     void closeEvent(QCloseEvent *event) override;
@@ -81,6 +87,7 @@ private:
     void exportText();
     void exportHtml();
     void exportJson();
+    void exportPdf(bool archive);
     void setBusy(bool busy);
     void showError(const QString &message);
 
@@ -102,6 +109,8 @@ private:
     QAction *batchAction = nullptr;
     QAction *layoutAction = nullptr;
     QAction *createRegionAction = nullptr;
+    QAction *pdfAction = nullptr;
+    QAction *pdfaAction = nullptr;
     QSpinBox *pageSpin;
     processing::DocumentProcessor processor;
     QVector<QGraphicsRectItem *> wordBoxes;
@@ -118,6 +127,10 @@ private:
     QString projectPath;
     bool dirty = false;
     bool editorPending = false;
+    bool exportBusy = false;
+    QString pdfExportPath;
+    std::shared_ptr<std::atomic_bool> pdfCancel;
+    QFutureWatcher<processing::PdfExportResult> pdfWatcher;
     int currentPage = 1;
     int pageCount = 1;
 };

@@ -16,6 +16,7 @@
 #include <QImageReader>
 #include <QIcon>
 #include <QJsonDocument>
+#include <QMetaObject>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -37,6 +38,7 @@
 #include <QStatusBar>
 #include <QToolBar>
 #include <QVBoxLayout>
+#include <QtConcurrent>
 
 #include <utility>
 #include <cmath>
@@ -246,6 +248,13 @@ MainWindow::MainWindow()
     cancelButton->setEnabled(false);
     toolbar->addWidget(cancelButton);
     connect(cancelButton, &QPushButton::clicked, &processor, &DocumentProcessor::cancel);
+    connect(cancelButton, &QPushButton::clicked, this, [this] {
+        if (exportBusy && pdfCancel) {
+            pdfCancel->store(true);
+            cancelButton->setEnabled(false);
+            status->setText(tr("Cancelling PDF export…"));
+        }
+    });
     toolbar->addSeparator();
     toolbar->addWidget(new QLabel(tr("Language: "), this));
     languageEdit = new QLineEdit(QStringLiteral("eng"), this);
@@ -257,6 +266,11 @@ MainWindow::MainWindow()
     fileMenu->addAction(tr("Export text"), this, &MainWindow::exportText);
     fileMenu->addAction(tr("Export layout HTML"), this, &MainWindow::exportHtml);
     fileMenu->addAction(tr("Export JSON"), this, &MainWindow::exportJson);
+    fileMenu->addSeparator();
+    pdfAction = fileMenu->addAction(tr("Export searchable PDF…"), this, [this] { exportPdf(false); });
+    pdfaAction = fileMenu->addAction(tr("Export archival PDF/A…"), this, [this] { exportPdf(true); });
+    pdfAction->setEnabled(false);
+    pdfaAction->setEnabled(false);
 
     auto *splitter = new QSplitter(this);
     pageList = new QListWidget(splitter);
@@ -492,20 +506,42 @@ MainWindow::MainWindow()
     connect(&processor, &DocumentProcessor::batchFinished, this, [this] {
         status->setText(tr("Batch OCR complete: %1 pages").arg(pageCount));
     });
+    connect(&pdfWatcher, &QFutureWatcher<processing::PdfExportResult>::finished, this, [this] {
+        const auto result = pdfWatcher.result();
+        exportBusy = false;
+        pdfCancel.reset();
+        setBusy(processor.isBusy());
+        if (result.status == processing::PdfExportResult::Status::Success)
+            status->setText(tr("PDF exported: %1").arg(pdfExportPath));
+        else if (result.status == processing::PdfExportResult::Status::Cancelled)
+            status->setText(tr("PDF export cancelled"));
+        else showError(result.error);
+    });
+}
+
+MainWindow::~MainWindow()
+{
+    if (exportBusy && pdfCancel) {
+        pdfCancel->store(true);
+        pdfWatcher.waitForFinished();
+    }
 }
 
 void MainWindow::setBusy(bool busy)
 {
-    ocrButton->setEnabled(!busy && !imagePath.isEmpty());
-    cancelButton->setEnabled(busy);
-    selectionEditor->setEnabled(!busy);
-    applyButton->setEnabled(!busy && !selectedWords.isEmpty());
-    regionOcrButton->setEnabled(!busy && !imagePath.isEmpty() && !selectedRegion.isEmpty());
-    improveAction->setEnabled(!busy && !rawImage.isNull());
-    batchAction->setEnabled(!busy && pageCount > 1 && originalPath.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive));
-    layoutAction->setEnabled(!busy && document.page(currentPage) && !document.page(currentPage)->regions.isEmpty());
-    createRegionAction->setEnabled(!busy && !selectedWords.isEmpty() &&
+    const bool blocked = busy || exportBusy;
+    ocrButton->setEnabled(!blocked && !imagePath.isEmpty());
+    cancelButton->setEnabled(blocked);
+    selectionEditor->setEnabled(!blocked);
+    applyButton->setEnabled(!blocked && !selectedWords.isEmpty());
+    regionOcrButton->setEnabled(!blocked && !imagePath.isEmpty() && !selectedRegion.isEmpty());
+    improveAction->setEnabled(!blocked && !rawImage.isNull());
+    batchAction->setEnabled(!blocked && pageCount > 1 && originalPath.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive));
+    layoutAction->setEnabled(!blocked && document.page(currentPage) && !document.page(currentPage)->regions.isEmpty());
+    createRegionAction->setEnabled(!blocked && !selectedWords.isEmpty() &&
         document.page(currentPage) && selectedWords.size() < document.page(currentPage)->words.size());
+    pdfAction->setEnabled(!blocked && document.wordCount() > 0);
+    pdfaAction->setEnabled(!blocked && document.wordCount() > 0);
     updatePageControls();
 }
 
@@ -514,7 +550,7 @@ void MainWindow::updatePageControls()
     const QSignalBlocker blocker(pageSpin);
     pageSpin->setMaximum(pageCount);
     pageSpin->setValue(currentPage);
-    const bool available = !processor.isBusy();
+    const bool available = !processor.isBusy() && !exportBusy;
     previousButton->setEnabled(available && currentPage > 1);
     nextButton->setEnabled(available && currentPage < pageCount);
     pageSpin->setEnabled(available && pageCount > 1);
@@ -552,7 +588,7 @@ void MainWindow::openFile()
 void MainWindow::loadSource(const QString &path)
 {
     if (path.isEmpty()) return;
-    if (processor.isBusy()) return;
+    if (processor.isBusy() || exportBusy) return;
     if (!maybeSave()) return;
     processor.resetSource();
     originalPath = QFileInfo(path).absoluteFilePath();
@@ -579,6 +615,8 @@ void MainWindow::loadSource(const QString &path)
     layoutAction->setEnabled(false);
     createRegionAction->setEnabled(false);
     batchAction->setEnabled(false);
+    pdfAction->setEnabled(false);
+    pdfaAction->setEnabled(false);
     currentPage = 1;
     pageCount = 1;
     updatePageControls();
@@ -592,7 +630,7 @@ void MainWindow::loadSource(const QString &path)
 
 void MainWindow::openProject()
 {
-    if (processor.isBusy()) return;
+    if (processor.isBusy() || exportBusy) return;
     const QString path = QFileDialog::getOpenFileName(this, tr("Open YAGF project"), {},
                                                      tr("YAGF projects (*.yagf.json);;JSON (*.json)"));
     if (path.isEmpty() || !maybeSave()) return;
@@ -627,6 +665,8 @@ void MainWindow::openProject()
     layoutAction->setEnabled(false);
     createRegionAction->setEnabled(false);
     batchAction->setEnabled(false);
+    pdfAction->setEnabled(false);
+    pdfaAction->setEnabled(false);
     currentPage = 1;
     pageCount = 1;
     updatePageControls();
@@ -758,7 +798,7 @@ void MainWindow::loadImage(const QString &path)
 
 void MainWindow::showPage(int number)
 {
-    if (number < 1 || number > pageCount || processor.isBusy()) return;
+    if (number < 1 || number > pageCount || processor.isBusy() || exportBusy) return;
     if (!maybeApplyEditor()) return;
     currentPage = number;
     updatePageControls();
@@ -911,6 +951,8 @@ void MainWindow::showDocument()
     QVector<int> all;
     for (int i = 0; i < displayedWords.size(); ++i) all.append(i);
     updateSelection(all);
+    pdfAction->setEnabled(!processor.isBusy() && !exportBusy && document.wordCount() > 0);
+    pdfaAction->setEnabled(!processor.isBusy() && !exportBusy && document.wordCount() > 0);
 }
 
 void MainWindow::selectWord(int index)
@@ -952,7 +994,7 @@ void MainWindow::selectRegion(const QRectF &bounds)
 void MainWindow::updateSelection(const QVector<int> &indices)
 {
     selectedWords = indices;
-    if (createRegionAction) createRegionAction->setEnabled(!processor.isBusy() && !indices.isEmpty() &&
+    if (createRegionAction) createRegionAction->setEnabled(!processor.isBusy() && !exportBusy && !indices.isEmpty() &&
         document.page(currentPage) && indices.size() < document.page(currentPage)->words.size());
     QSet<int> selectedSet;
     for (int index : indices) selectedSet.insert(index);
@@ -967,7 +1009,7 @@ void MainWindow::updateSelection(const QVector<int> &indices)
     const QSignalBlocker editorBlocker(selectionEditor);
     selectionEditor->clear();
     editorPending = false;
-    applyButton->setEnabled(!processor.isBusy() && !indices.isEmpty());
+    applyButton->setEnabled(!processor.isBusy() && !exportBusy && !indices.isEmpty());
     selectionLabel->setText(indices.isEmpty() ? tr("Recognized text") :
                             tr("Selected text (%1 words)").arg(indices.size()));
     QTextCursor cursor(selectionEditor->document());
@@ -1087,6 +1129,35 @@ void MainWindow::exportJson()
     QFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) { showError(file.errorString()); return; }
     file.write(QJsonDocument(document.toJson()).toJson(QJsonDocument::Indented));
+}
+
+void MainWindow::exportPdf(bool archive)
+{
+    if (processor.isBusy() || exportBusy || document.wordCount() == 0 || !maybeApplyEditor()) return;
+    if (document.pages.size() < document.totalPages &&
+        QMessageBox::question(this, tr("Pages without OCR"),
+            archive ? tr("Some pages have not been recognized in YAGF. OCRmyPDF may recognize them during PDF/A conversion without YAGF corrections. Export anyway?")
+                    : tr("Some pages have not been recognized and will have no searchable text. Export anyway?"),
+            QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Yes) return;
+    QString path = QFileDialog::getSaveFileName(this,
+        archive ? tr("Export archival PDF/A") : tr("Export searchable PDF"), {}, tr("PDF files (*.pdf)"));
+    if (path.isEmpty()) return;
+    if (!path.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive)) path += QStringLiteral(".pdf");
+    pdfExportPath = path;
+    pdfCancel = std::make_shared<std::atomic_bool>(false);
+    exportBusy = true;
+    setBusy(true);
+    status->setText(tr("Preparing PDF…"));
+    const OcrDocument snapshot = document;
+    const auto cancel = pdfCancel;
+    pdfWatcher.setFuture(QtConcurrent::run([this, snapshot, path, archive, cancel] {
+        return processing::PdfExporter::write(snapshot, path, archive, *cancel,
+            [this](int completed, int total) {
+                QMetaObject::invokeMethod(this, [this, completed, total] {
+                    if (exportBusy) status->setText(tr("PDF export: %1 of %2 pages").arg(completed).arg(total));
+                }, Qt::QueuedConnection);
+            });
+    }));
 }
 
 } // namespace yagf::ui
