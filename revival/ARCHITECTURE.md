@@ -19,7 +19,7 @@ revival/
 
 ## Data ownership
 
-The `OcrDocument` is the current in-memory source of truth. A word stores its source box, original reading, corrected reading, confidence, and review state. Both exports and the project file read from this document. The UI draws boxes and shows the word list from it. The next model change should introduce stable page/region/paragraph/line/word IDs and explicit reading order; the current flat `words` vector only carries grouping numbers from Tesseract TSV.
+The `OcrDocument` is the current in-memory source of truth. It contains numbered pages with regions, paragraphs, lines, and words. Stable IDs connect each line to its words; the project file also records an explicit word-ID reading order for each page. Each word stores its source box, original reading, corrected reading, confidence, and review state. Both exports and the project file read from this document. The UI draws the current page's boxes and word list from it. Tesseract TSV supplies the first hierarchy; editable layout geometry and order are future work.
 
 ## Processing boundary
 
@@ -27,6 +27,6 @@ The `OcrDocument` is the current in-memory source of truth. A word stores its so
 
 ## Next implementation slices
 
-1. Replace the flat word vector with the source-linked hierarchy and stable IDs before adding layout edits or multiple engines.
-2. Add all-page PDF import and page navigation, then searchable PDF export through OCRmyPDF.
+1. Add batch recognition and editable layout geometry/reading order.
+2. Add searchable PDF export through OCRmyPDF.
 3. Add optional neural and Jetson adapters behind the same processing boundary, with measured comparison data.

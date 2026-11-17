@@ -1,6 +1,9 @@
 #include "documentprocessor.h"
 
 #include <QStandardPaths>
+#include <QFileInfo>
+#include <QRegularExpression>
+#include <QUuid>
 
 DocumentProcessor::DocumentProcessor(QObject *parent) : QObject(parent)
 {
@@ -8,12 +11,24 @@ DocumentProcessor::DocumentProcessor(QObject *parent) : QObject(parent)
         const Job finishedJob = job;
         job = Job::None;
         emit busyChanged(false);
+        if (cancellationRequested) {
+            cancellationRequested = false;
+            emit cancelled();
+            return;
+        }
         if (status != QProcess::NormalExit || exitCode != 0) {
             emit failed(tr("Processing failed: %1").arg(QString::fromUtf8(process.readAllStandardError())));
             return;
         }
-        if (finishedJob == Job::Pdf)
-            emit pageRendered(temporaryDir.filePath(QStringLiteral("page.png")));
+        if (finishedJob == Job::PdfInfo) {
+            const QString info = QString::fromUtf8(process.readAllStandardOutput());
+            const QRegularExpression pagesPattern(QStringLiteral("(?:^|\\n)Pages:\\s*(\\d+)"));
+            const auto match = pagesPattern.match(info);
+            const int count = match.hasMatch() ? match.captured(1).toInt() : 0;
+            if (count < 1) emit failed(tr("Could not read PDF page count."));
+            else emit pdfOpened(count);
+        } else if (finishedJob == Job::PdfRender)
+            emit pageRendered(requestedPage, temporaryDir.filePath(renderPrefix + QString::number(requestedPage) + QStringLiteral(".png")));
         else if (finishedJob == Job::Ocr)
             emit recognized(process.readAllStandardOutput());
     });
@@ -36,16 +51,32 @@ void DocumentProcessor::start(Job requestedJob, const QString &program, const QS
         return;
     }
     job = requestedJob;
+    cancellationRequested = false;
     emit busyChanged(true);
     process.start(program, arguments);
 }
 
-void DocumentProcessor::renderFirstPdfPage(const QString &path)
+void DocumentProcessor::openPdf(const QString &path)
 {
-    start(Job::Pdf, QStringLiteral("pdftoppm"),
-          {QStringLiteral("-f"), QStringLiteral("1"), QStringLiteral("-l"), QStringLiteral("1"),
+    pdfSource = path;
+    renderPrefix = QUuid::createUuid().toString(QUuid::WithoutBraces) + QLatin1Char('-');
+    start(Job::PdfInfo, QStringLiteral("pdfinfo"), {path});
+}
+
+void DocumentProcessor::renderPdfPage(int pageNumber)
+{
+    if (isBusy() || pdfSource.isEmpty() || pageNumber < 1) return;
+    requestedPage = pageNumber;
+    const QString outputPrefix = temporaryDir.filePath(renderPrefix + QString::number(pageNumber));
+    const QString imagePath = outputPrefix + QStringLiteral(".png");
+    if (QFileInfo::exists(imagePath)) {
+        emit pageRendered(pageNumber, imagePath);
+        return;
+    }
+    start(Job::PdfRender, QStringLiteral("pdftoppm"),
+          {QStringLiteral("-f"), QString::number(pageNumber), QStringLiteral("-l"), QString::number(pageNumber),
            QStringLiteral("-singlefile"), QStringLiteral("-r"), QStringLiteral("150"),
-           QStringLiteral("-png"), path, temporaryDir.filePath(QStringLiteral("page"))});
+           QStringLiteral("-png"), pdfSource, outputPrefix});
 }
 
 void DocumentProcessor::recognize(const QString &imagePath, const QString &language)
@@ -56,5 +87,8 @@ void DocumentProcessor::recognize(const QString &imagePath, const QString &langu
 
 void DocumentProcessor::cancel()
 {
-    if (isBusy()) process.kill();
+    if (isBusy()) {
+        cancellationRequested = true;
+        process.kill();
+    }
 }

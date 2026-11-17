@@ -10,19 +10,26 @@ class DocumentProcessor : public QObject {
 public:
     explicit DocumentProcessor(QObject *parent = nullptr);
     bool isBusy() const;
-    void renderFirstPdfPage(const QString &path);
+    void openPdf(const QString &path);
+    void renderPdfPage(int pageNumber);
     void recognize(const QString &imagePath, const QString &language);
     void cancel();
 signals:
     void busyChanged(bool busy);
-    void pageRendered(const QString &imagePath);
+    void pdfOpened(int pageCount);
+    void pageRendered(int pageNumber, const QString &imagePath);
     void recognized(const QByteArray &tsv);
+    void cancelled();
     void failed(const QString &message);
 private:
-    enum class Job { None, Pdf, Ocr };
+    enum class Job { None, PdfInfo, PdfRender, Ocr };
     void start(Job job, const QString &program, const QStringList &arguments);
 
     QProcess process;
     QTemporaryDir temporaryDir;
     Job job = Job::None;
+    QString pdfSource;
+    QString renderPrefix;
+    int requestedPage = 1;
+    bool cancellationRequested = false;
 };

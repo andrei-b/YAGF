@@ -1,6 +1,7 @@
 #include "projectfile.h"
 
 #include <QFile>
+#include <QJsonArray>
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -17,10 +18,21 @@ int main()
     OcrDocument original;
     original.sourcePath = QStringLiteral("/tmp/source.png");
     original.language = QStringLiteral("eng+deu");
-    original.width = 200;
-    original.height = 100;
-    original.words.append({1, 1, 1, 1, QRect(10, 20, 30, 12),
+    OcrPage page;
+    page.number = 1;
+    page.width = 200;
+    page.height = 100;
+    page.words.append({1, 1, 1, 1, QRect(10, 20, 30, 12),
                            QStringLiteral("world"), QStringLiteral("earth"), 82.5, true});
+    original.replacePage(std::move(page));
+    OcrPage secondPage;
+    secondPage.number = 2;
+    secondPage.width = 200;
+    secondPage.height = 100;
+    secondPage.words.append({2, 1, 1, 1, QRect(20, 30, 40, 12),
+                             QStringLiteral("Hallo"), QStringLiteral("Hallo!"), 90, true});
+    original.totalPages = 2;
+    original.replacePage(std::move(secondPage));
     QString error;
     if (!ProjectFile::save(path, original, &error)) {
         std::fprintf(stderr, "Project save failed: %s path=%s dir=%d\n", error.toUtf8().constData(),
@@ -31,16 +43,19 @@ int main()
     assert(ProjectFile::load(path, &loaded, &error));
     assert(loaded.sourcePath == original.sourcePath);
     assert(loaded.language == original.language);
-    assert(loaded.words.size() == 1);
-    assert(loaded.words.at(0).text == QStringLiteral("earth"));
-    assert(loaded.words.at(0).originalText == QStringLiteral("world"));
-    assert(loaded.words.at(0).bounds == QRect(10, 20, 30, 12));
-    assert(loaded.words.at(0).reviewed);
+    assert(loaded.page(1)->words.size() == 1);
+    assert(loaded.page(1)->words.at(0).text == QStringLiteral("earth"));
+    assert(loaded.page(1)->words.at(0).originalText == QStringLiteral("world"));
+    assert(loaded.page(1)->words.at(0).bounds == QRect(10, 20, 30, 12));
+    assert(loaded.page(1)->words.at(0).reviewed);
+    assert(loaded.totalPages == 2);
+    assert(loaded.page(2)->words.at(0).text == QStringLiteral("Hallo!"));
+    assert(loaded.page(2)->regions.at(0).paragraphs.at(0).lines.at(0).wordIds.size() == 1);
 
-    original.words[0].text = QStringLiteral("planet");
+    original.page(1)->words[0].text = QStringLiteral("planet");
     assert(ProjectFile::save(path, original, &error));
     assert(ProjectFile::load(path, &loaded, &error));
-    assert(loaded.words.at(0).text == QStringLiteral("planet"));
+    assert(loaded.page(1)->words.at(0).text == QStringLiteral("planet"));
 
     QFile file(path);
     assert(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
@@ -49,4 +64,18 @@ int main()
     file.close();
     assert(!ProjectFile::load(path, &loaded, &error));
     assert(!error.isEmpty());
+
+    const QJsonObject legacyWord{{"page", 1}, {"block", 1}, {"paragraph", 1}, {"line", 1},
+        {"box", QJsonObject{{"x", 10}, {"y", 20}, {"width", 30}, {"height", 12}}},
+        {"original_text", "old"}, {"text", "fixed"}, {"confidence", 80}, {"reviewed", true}};
+    const QJsonObject legacyDocument{{"schema_version", 1}, {"source", "/tmp/source.png"},
+        {"engine", "tesseract"}, {"language", "eng"},
+        {"page", QJsonObject{{"width", 200}, {"height", 100}}},
+        {"words", QJsonArray{legacyWord}}};
+    assert(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    file.write(QJsonDocument(QJsonObject{{"project_version", 1}, {"document", legacyDocument}}).toJson());
+    file.close();
+    assert(ProjectFile::load(path, &loaded, &error));
+    assert(loaded.page(1)->words.at(0).text == QStringLiteral("fixed"));
+    assert(!loaded.page(1)->words.at(0).id.isEmpty());
 }

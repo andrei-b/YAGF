@@ -18,7 +18,7 @@ bool ProjectFile::save(const QString &path, const OcrDocument &document, QString
         if (error) *error = file.errorString();
         return false;
     }
-    const QJsonObject project{{"project_version", 1}, {"document", document.toJson()}};
+    const QJsonObject project{{"project_version", 2}, {"document", document.toJson()}};
     const QByteArray bytes = QJsonDocument(project).toJson(QJsonDocument::Indented);
     if (file.write(bytes) != bytes.size() || !file.flush() || ::fsync(file.handle()) != 0) {
         if (error) *error = file.error() == QFileDevice::NoError
@@ -53,7 +53,8 @@ bool ProjectFile::load(const QString &path, OcrDocument *document, QString *erro
     }
     const QJsonObject root = json.object();
     if (!root.value(QStringLiteral("project_version")).isDouble() ||
-        root.value(QStringLiteral("project_version")).toInt() != 1 ||
+        (root.value(QStringLiteral("project_version")).toInt() != 1 &&
+         root.value(QStringLiteral("project_version")).toInt() != 2) ||
         !root.value(QStringLiteral("document")).isObject()) {
         if (error) *error = QStringLiteral("Unsupported project version or missing document.");
         return false;

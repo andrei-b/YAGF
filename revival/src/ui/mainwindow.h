@@ -13,6 +13,8 @@ class QLineEdit;
 class QListWidget;
 class QPushButton;
 class QCloseEvent;
+class QSpinBox;
+class QTabWidget;
 
 class PageView : public QGraphicsView {
     Q_OBJECT
@@ -40,6 +42,8 @@ private:
     void markDirty();
     void updateTitle();
     void loadImage(const QString &path);
+    void showPage(int number);
+    void updatePageControls();
     void runOcr();
     void showDocument();
     void selectWord(int index);
@@ -51,15 +55,23 @@ private:
     PageView *view;
     QGraphicsScene *scene;
     QListWidget *wordList;
+    QListWidget *pageList = nullptr;
+    QTabWidget *sidebarTabs;
     QLineEdit *languageEdit;
     QLabel *status;
     QPushButton *ocrButton;
     QPushButton *cancelButton;
+    QPushButton *previousButton;
+    QPushButton *nextButton;
+    QSpinBox *pageSpin;
     DocumentProcessor processor;
     QVector<QGraphicsRectItem *> wordBoxes;
+    QVector<OcrWord *> displayedWords;
     OcrDocument document;
     QString imagePath;
     QString originalPath;
     QString projectPath;
     bool dirty = false;
+    int currentPage = 1;
+    int pageCount = 1;
 };

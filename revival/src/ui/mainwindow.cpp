@@ -10,6 +10,7 @@
 #include <QGraphicsScene>
 #include <QHBoxLayout>
 #include <QImageReader>
+#include <QIcon>
 #include <QJsonDocument>
 #include <QLabel>
 #include <QLineEdit>
@@ -19,8 +20,10 @@
 #include <QPushButton>
 #include <QSignalBlocker>
 #include <QSplitter>
+#include <QSpinBox>
 #include <QStatusBar>
 #include <QToolBar>
+#include <QTabWidget>
 #include <QVBoxLayout>
 
 #include <utility>
@@ -47,6 +50,20 @@ MainWindow::MainWindow()
     toolbar->addAction(tr("Save project"), this, &MainWindow::saveProject);
     toolbar->addAction(tr("Save project as…"), this, &MainWindow::saveProjectAs);
     toolbar->addSeparator();
+    previousButton = new QPushButton(tr("◀"), this);
+    nextButton = new QPushButton(tr("▶"), this);
+    pageSpin = new QSpinBox(this);
+    pageSpin->setRange(1, 1);
+    pageSpin->setToolTip(tr("PDF page number"));
+    pageSpin->setMaximumWidth(72);
+    toolbar->addWidget(previousButton);
+    toolbar->addWidget(pageSpin);
+    toolbar->addWidget(nextButton);
+    connect(previousButton, &QPushButton::clicked, this, [this] { showPage(currentPage - 1); });
+    connect(nextButton, &QPushButton::clicked, this, [this] { showPage(currentPage + 1); });
+    connect(pageSpin, &QSpinBox::valueChanged, this, &MainWindow::showPage);
+    updatePageControls();
+    toolbar->addSeparator();
     ocrButton = new QPushButton(tr("Recognize"), this);
     toolbar->addWidget(ocrButton);
     connect(ocrButton, &QPushButton::clicked, this, &MainWindow::runOcr);
@@ -70,22 +87,31 @@ MainWindow::MainWindow()
     view->setScene(scene);
     view->setDragMode(QGraphicsView::ScrollHandDrag);
     view->setRenderHint(QPainter::Antialiasing);
-    wordList = new QListWidget(splitter);
+    sidebarTabs = new QTabWidget(splitter);
+    pageList = new QListWidget(sidebarTabs);
+    pageList->setIconSize(QSize(80, 110));
+    wordList = new QListWidget(sidebarTabs);
     wordList->setToolTip(tr("Double-click a word to correct it. Click a word to locate it on the scan."));
+    sidebarTabs->addTab(pageList, tr("Pages"));
+    sidebarTabs->addTab(wordList, tr("Words"));
     splitter->addWidget(view);
-    splitter->addWidget(wordList);
+    splitter->addWidget(sidebarTabs);
     splitter->setStretchFactor(0, 3);
     splitter->setStretchFactor(1, 1);
     splitter->setSizes({900, 300});
     splitter->setChildrenCollapsible(false);
     setCentralWidget(splitter);
+    updatePageControls();
+    connect(pageList, &QListWidget::currentRowChanged, this, [this](int row) {
+        if (row >= 0) showPage(row + 1);
+    });
     connect(view, &PageView::wordClicked, this, &MainWindow::selectWord);
     connect(wordList, &QListWidget::currentRowChanged, this, &MainWindow::selectWord);
     connect(wordList, &QListWidget::itemChanged, this, [this](QListWidgetItem *item) {
         const int index = wordList->row(item);
-        if (index < 0 || index >= document.words.size()) return;
-        document.words[index].text = item->text();
-        document.words[index].reviewed = true;
+        if (index < 0 || index >= displayedWords.size()) return;
+        displayedWords[index]->text = item->text();
+        displayedWords[index]->reviewed = true;
         item->setForeground(QColor(0, 90, 20));
         markDirty();
         statusBar()->showMessage(tr("Correction changed; save the project to keep it."));
@@ -95,26 +121,53 @@ MainWindow::MainWindow()
 
     connect(&processor, &DocumentProcessor::busyChanged, this, &MainWindow::setBusy);
     connect(&processor, &DocumentProcessor::failed, this, &MainWindow::showError);
-    connect(&processor, &DocumentProcessor::pageRendered, this, &MainWindow::loadImage);
+    connect(&processor, &DocumentProcessor::cancelled, this, [this] { status->setText(tr("Cancelled")); });
+    connect(&processor, &DocumentProcessor::pdfOpened, this, [this](int count) {
+        if (!projectPath.isEmpty() && document.totalPages != count) {
+            // Version 1 projects described only the first rendered page.
+            if (document.totalPages == 1 && document.pages.size() == 1 && document.pages.first().number == 1)
+                markDirty();
+            else {
+                showError(tr("The source PDF page count changed since this project was saved."));
+                return;
+            }
+        }
+        pageCount = count;
+        document.totalPages = count;
+        showPage(1);
+    });
+    connect(&processor, &DocumentProcessor::pageRendered, this, [this](int number, const QString &path) {
+        if (number == currentPage) loadImage(path);
+    });
     connect(&processor, &DocumentProcessor::recognized, this, [this](const QByteArray &tsv) {
         QImageReader reader(imagePath);
         const QSize size = reader.size();
         OcrDocument result = OcrDocument::fromTsv(tsv, size.width(), size.height(),
-                                                  originalPath, languageEdit->text().trimmed());
+                                                  originalPath, languageEdit->text().trimmed(), currentPage);
+        OcrPage *newPage = result.page(currentPage);
+        const OcrPage *oldPage = document.page(currentPage);
         // Keep deliberate edits when OCR is rerun on the same page and geometry.
-        for (OcrWord &word : result.words) {
-            for (const OcrWord &old : document.words) {
-                if (old.reviewed && old.bounds == word.bounds && old.originalText == word.originalText) {
-                    word.text = old.text;
-                    word.reviewed = true;
+        for (OcrWord &word : newPage->words) {
+            if (!oldPage) break;
+            for (const OcrWord &old : oldPage->words) {
+                if (old.bounds == word.bounds && old.originalText == word.originalText) {
+                    word.id = old.id;
+                    if (old.reviewed) {
+                        word.text = old.text;
+                        word.reviewed = true;
+                    }
                     break;
                 }
             }
         }
-        document = std::move(result);
+        document.sourcePath = originalPath;
+        document.engine = result.engine;
+        document.language = result.language;
+        document.totalPages = pageCount;
+        document.replacePage(std::move(*newPage));
         showDocument();
         markDirty();
-        status->setText(tr("%1 words recognized").arg(document.words.size()));
+        status->setText(tr("Page %1: %2 words recognized").arg(currentPage).arg(document.page(currentPage)->words.size()));
     });
 }
 
@@ -122,6 +175,28 @@ void MainWindow::setBusy(bool busy)
 {
     ocrButton->setEnabled(!busy && !imagePath.isEmpty());
     cancelButton->setEnabled(busy);
+    updatePageControls();
+}
+
+void MainWindow::updatePageControls()
+{
+    const QSignalBlocker blocker(pageSpin);
+    pageSpin->setMaximum(pageCount);
+    pageSpin->setValue(currentPage);
+    const bool available = !processor.isBusy();
+    previousButton->setEnabled(available && currentPage > 1);
+    nextButton->setEnabled(available && currentPage < pageCount);
+    pageSpin->setEnabled(available && pageCount > 1);
+    if (pageList) {
+        const QSignalBlocker listBlocker(pageList);
+        if (pageList->count() != pageCount) {
+            pageList->clear();
+            for (int number = 1; number <= pageCount; ++number)
+                pageList->addItem(tr("Page %1").arg(number));
+        }
+        pageList->setCurrentRow(currentPage - 1);
+        pageList->setEnabled(available);
+    }
 }
 
 void MainWindow::showError(const QString &message)
@@ -142,21 +217,26 @@ void MainWindow::loadSource(const QString &path)
     if (path.isEmpty()) return;
     if (processor.isBusy()) return;
     if (!maybeSave()) return;
-    originalPath = path;
+    originalPath = QFileInfo(path).absoluteFilePath();
     projectPath.clear();
     document = {};
+    document.sourcePath = originalPath;
     dirty = false;
     updateTitle();
     wordList->clear();
+    displayedWords.clear();
     wordBoxes.clear();
     scene->clear();
     imagePath.clear();
     ocrButton->setEnabled(false);
-    if (path.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive)) {
-        status->setText(tr("Rendering first PDF page…"));
-        processor.renderFirstPdfPage(path);
+    currentPage = 1;
+    pageCount = 1;
+    updatePageControls();
+    if (originalPath.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive)) {
+        status->setText(tr("Reading PDF…"));
+        processor.openPdf(originalPath);
     } else {
-        loadImage(path);
+        loadImage(originalPath);
     }
 }
 
@@ -176,15 +256,20 @@ void MainWindow::openProject()
     originalPath = loaded.sourcePath;
     projectPath = path;
     document = std::move(loaded);
+    languageEdit->setText(document.language);
     dirty = false;
     updateTitle();
     wordList->clear();
+    displayedWords.clear();
     wordBoxes.clear();
     scene->clear();
     imagePath.clear();
+    currentPage = 1;
+    pageCount = 1;
+    updatePageControls();
     if (originalPath.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive)) {
-        status->setText(tr("Rendering project source…"));
-        processor.renderFirstPdfPage(originalPath);
+        status->setText(tr("Reading project source PDF…"));
+        processor.openPdf(originalPath);
     } else {
         loadImage(originalPath);
     }
@@ -192,7 +277,7 @@ void MainWindow::openProject()
 
 bool MainWindow::saveProject()
 {
-    if (document.sourcePath.isEmpty() || document.width <= 0) {
+    if (document.sourcePath.isEmpty() || document.pages.isEmpty()) {
         showError(tr("Recognize a document before saving a project."));
         return false;
     }
@@ -207,7 +292,7 @@ bool MainWindow::saveProject()
 
 bool MainWindow::saveProjectAs()
 {
-    if (document.sourcePath.isEmpty() || document.width <= 0) {
+    if (document.sourcePath.isEmpty() || document.pages.isEmpty()) {
         showError(tr("Recognize a document before saving a project."));
         return false;
     }
@@ -263,18 +348,45 @@ void MainWindow::loadImage(const QString &path)
         return;
     }
     imagePath = path;
-    if (document.width > 0 && (document.width != image.width() || document.height != image.height())) {
+    const OcrPage *page = document.page(currentPage);
+    if (page && (page->width != image.width() || page->height != image.height())) {
         imagePath.clear();
         showError(tr("The source image size changed since this project was saved."));
         return;
     }
+    wordBoxes.clear();
+    displayedWords.clear();
     scene->clear();
     scene->addPixmap(QPixmap::fromImage(image));
+    if (currentPage >= 1 && currentPage <= pageList->count())
+        pageList->item(currentPage - 1)->setIcon(QIcon(QPixmap::fromImage(
+            image.scaled(QSize(80, 110), Qt::KeepAspectRatio, Qt::SmoothTransformation))));
     scene->setSceneRect(QRectF(QPointF(0, 0), image.size()));
     view->fitInView(scene->sceneRect(), Qt::KeepAspectRatio);
-    if (!document.sourcePath.isEmpty()) showDocument();
+    showDocument();
     setBusy(false);
     status->setText(tr("Image loaded: %1 × %2").arg(image.width()).arg(image.height()));
+}
+
+void MainWindow::showPage(int number)
+{
+    if (number < 1 || number > pageCount || processor.isBusy()) return;
+    currentPage = number;
+    updatePageControls();
+    if (const OcrPage *page = document.page(number))
+        languageEdit->setText(page->language);
+    wordList->clear();
+    displayedWords.clear();
+    wordBoxes.clear();
+    scene->clear();
+    imagePath.clear();
+    ocrButton->setEnabled(false);
+    if (originalPath.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive)) {
+        status->setText(tr("Rendering page %1 of %2…").arg(number).arg(pageCount));
+        processor.renderPdfPage(number);
+    } else {
+        loadImage(originalPath);
+    }
 }
 
 void MainWindow::runOcr()
@@ -293,8 +405,12 @@ void MainWindow::showDocument()
         delete box;
     }
     wordBoxes.clear();
-    for (int i = 0; i < document.words.size(); ++i) {
-        const OcrWord &word = document.words.at(i);
+    displayedWords.clear();
+    OcrPage *page = document.page(currentPage);
+    if (!page) return;
+    for (OcrWord &word : page->words) {
+        const int i = displayedWords.size();
+        displayedWords.append(&word);
         auto *box = scene->addRect(word.bounds, QPen(QColor(20, 90, 220), 1.5));
         box->setBrush(QColor(20, 90, 220, 35));
         box->setData(0, i);
@@ -306,6 +422,9 @@ void MainWindow::showDocument()
         item->setToolTip(tr("Confidence: %1; box: %2, %3, %4 × %5")
                          .arg(word.confidence).arg(word.bounds.x()).arg(word.bounds.y())
                          .arg(word.bounds.width()).arg(word.bounds.height()));
+    }
+    if (!page->words.isEmpty()) {
+        sidebarTabs->setCurrentWidget(wordList);
     }
 }
 
@@ -322,7 +441,7 @@ void MainWindow::selectWord(int index)
 
 void MainWindow::exportText()
 {
-    if (document.words.isEmpty()) return;
+    if (document.wordCount() == 0) return;
     const QString path = QFileDialog::getSaveFileName(this, tr("Export text"), {}, tr("Text (*.txt)"));
     if (path.isEmpty()) return;
     QFile file(path);
@@ -332,7 +451,7 @@ void MainWindow::exportText()
 
 void MainWindow::exportJson()
 {
-    if (document.words.isEmpty()) return;
+    if (document.wordCount() == 0) return;
     const QString path = QFileDialog::getSaveFileName(this, tr("Export structured OCR"), {}, tr("JSON (*.json)"));
     if (path.isEmpty()) return;
     QFile file(path);

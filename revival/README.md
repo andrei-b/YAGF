@@ -4,7 +4,7 @@ This is the first vertical slice of the YAGF 2.0 proposal. The Qt 4 application 
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the source layout, dependency boundaries, and next implementation slices.
 
-![OCR prototype with linked word boxes](docs/preview.png)
+![Multi-page OCR prototype with linked word boxes](docs/preview.png)
 
 The screenshot uses a generated sample image.
 
@@ -23,9 +23,9 @@ Qt 6 development packages are required. Install Tesseract and language data to r
 
 ## Current workflow
 
-Open an image or PDF, press **Recognize**, then click a blue source box or its word in the list. Double-click a word in the list to correct it. **Save project** writes a versioned `.yagf.json` file with corrections; **Open project** restores the image, boxes, and edits. The title shows `*` for unsaved work, and opening another document or closing the window prompts to save. Export text or structured JSON; both use the corrected word. PDF import currently renders its first page at 150 DPI. OCR runs in a subprocess so the interface stays responsive, and **Cancel** stops the subprocess.
+Open an image or PDF, press **Recognize**, then click a blue source box or its word in the list. Double-click a word in the list to correct it. A PDF opens with a page selector and a Pages tab; rendered pages gain thumbnail previews. Recognize each page independently. **Save project** writes a versioned `.yagf.json` file with corrections for all recognized pages; **Open project** restores the pages, boxes, and edits. The title shows `*` for unsaved work, and opening another document or closing the window prompts to save. Export text or structured JSON; both use corrected words in page order. Pages are rendered on demand at 150 DPI. OCR runs in a subprocess so the interface stays responsive, and **Cancel** stops the subprocess.
 
-The JSON schema is version 1. It records the source path, page dimensions, Tesseract language, each word's geometry, original reading, current reading, confidence, and review state. Coordinates are pixels in the rendered image. Corrections survive a rerun when the recognized word and box match exactly. Projects reference their original source file by absolute path, so that file must remain available. Multiple pages, PDF output, and layout editing are next steps.
+The project and document JSON schemas are version 2. They record the source path, page dimensions, Tesseract language, stable page/region/paragraph/line/word IDs, reading order, each word's geometry, original reading, current reading, confidence, and review state. Version 1 project files still load. Coordinates are pixels in the rendered page image. Corrections survive a rerun when the recognized word and box match exactly. Projects reference their original source file by absolute path, so that file must remain available. Searchable PDF output, layout editing, and batch recognition are next steps.
 
 ## Audit and direction
 
