@@ -1,5 +1,11 @@
 For more information and system requirements see DESCRIPTION file.
 This is a beta version so many things are not yet implemented as they are supposed to.
+
+YAGF 2.0 revival work has started in the revival/ directory. See
+revival/README.md for the Qt 6 prototype, build instructions, current
+features, and known limitations. The root CMakeLists.txt still builds
+the historical Qt 4 application.
+
 The main things to do are
 - adding more image prepocessing features
 - adding packet recognition
