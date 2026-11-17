@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Qt6 6.2 REQUIRED COMPONENTS Core Gui Widgets)
 qt_standard_project_setup()
+set(CMAKE_AUTORCC ON)
 
 add_library(yagf_core STATIC
     src/core/ocrdocument.cpp src/core/ocrdocument.h
@@ -14,10 +15,10 @@ target_link_libraries(yagf_core PUBLIC Qt6::Core Qt6::Gui)
 target_include_directories(yagf_core PUBLIC src/core)
 
 add_library(yagf_processing STATIC src/processing/documentprocessor.cpp src/processing/documentprocessor.h)
-target_link_libraries(yagf_processing PUBLIC Qt6::Core)
+target_link_libraries(yagf_processing PUBLIC Qt6::Core Qt6::Gui)
 target_include_directories(yagf_processing PUBLIC src/processing)
 
-qt_add_executable(yagf-revival src/main.cpp src/ui/mainwindow.cpp src/ui/mainwindow.h)
+qt_add_executable(yagf-revival src/main.cpp src/ui/mainwindow.cpp src/ui/mainwindow.h resources/icons.qrc)
 target_link_libraries(yagf-revival PRIVATE yagf_core yagf_processing Qt6::Widgets)
 
 include(CTest)

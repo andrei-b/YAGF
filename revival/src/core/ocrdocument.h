@@ -17,6 +17,10 @@ struct OcrWord {
     double confidence = -1;
     bool reviewed = false;
     QString id;
+    bool bold = false;
+    bool italic = false;
+    int fontSizePt = 0;
+    int sourceFontSizePt = 0;
 };
 
 struct OcrLine {
@@ -66,5 +70,6 @@ public:
     void replacePage(OcrPage page);
     int wordCount() const;
     QString plainText() const;
+    QString layoutHtml() const;
     QJsonObject toJson() const;
 };

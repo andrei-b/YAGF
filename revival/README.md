@@ -4,7 +4,7 @@ This is the first vertical slice of the YAGF 2.0 proposal. The Qt 4 application 
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the source layout, dependency boundaries, and next implementation slices.
 
-![Multi-page OCR prototype with linked word boxes](docs/preview.png)
+![OCR studio with page miniatures, page preview, and rich text editor](docs/preview.png)
 
 The screenshot uses a generated sample image.
 
@@ -23,9 +23,11 @@ Qt 6 development packages are required. Install Tesseract and language data to r
 
 ## Current workflow
 
-Open an image or PDF, press **Recognize**, then click a blue source box or its word in the list. Double-click a word in the list to correct it. A PDF opens with a page selector and a Pages tab; rendered pages gain thumbnail previews. Recognize each page independently. **Save project** writes a versioned `.yagf.json` file with corrections for all recognized pages; **Open project** restores the pages, boxes, and edits. The title shows `*` for unsaved work, and opening another document or closing the window prompts to save. Export text or structured JSON; both use corrected words in page order. Pages are rendered on demand at 150 DPI. OCR runs in a subprocess so the interface stays responsive, and **Cancel** stops the subprocess.
+Open an image or PDF. The left navigation strip fills with page miniatures in the background; click one or use the arrow buttons to change pages. The center is a zoomable page preview, and the right pane is a rich text editor with the page's recognized words below it. Press **Recognize** for the full page. Switch to **Select region** and drag on the preview to select overlapping OCR words, or press **Recognize region** to OCR only the selected image area. Click a word box or a word in the list to edit just that word. Use **Bold** and **Italic** in the editor, then **Apply correction**. Edits are also applied when moving to another selection or page. The editor requires the same number of words as the selection so every correction keeps its source box.
 
-The project and document JSON schemas are version 2. They record the source path, page dimensions, Tesseract language, stable page/region/paragraph/line/word IDs, reading order, each word's geometry, original reading, current reading, confidence, and review state. Version 1 project files still load. Coordinates are pixels in the rendered page image. Corrections survive a rerun when the recognized word and box match exactly. Projects reference their original source file by absolute path, so that file must remain available. Searchable PDF output, layout editing, and batch recognition are next steps.
+**Save project** writes a versioned `.yagf.json` file with corrections for all recognized pages; **Open project** restores the pages, boxes, edits, and word formatting. The title shows `*` for unsaved work, and opening another document or closing the window prompts to save. The **File** menu exports plain text, structured JSON, or layout HTML with positioned words. Pages are rendered on demand at 150 DPI. OCR and thumbnail generation run in subprocesses so the interface stays responsive, and **Cancel** stops the current OCR or page rendering job.
+
+The project and document JSON schemas are version 2. They record the source path, page dimensions, Tesseract language, stable page/region/paragraph/line/word IDs, reading order, each word's geometry, original reading, current reading, confidence, review state, and basic formatting. Version 1 project files still load. Coordinates are pixels in the rendered page image. Corrections survive a rerun when the recognized word and box match exactly. Projects reference their original source file by absolute path, so that file must remain available. OCR does not recover exact fonts or complete column layout; the editor keeps detected line and paragraph breaks and estimates relative text size. Searchable PDF output, editable layout geometry, and batch recognition are next steps.
 
 ## Audit and direction
 

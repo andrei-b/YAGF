@@ -3,6 +3,9 @@
 #include <QJsonArray>
 #include <QJsonObject>
 
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <cassert>
 
 int main()
@@ -23,7 +26,11 @@ int main()
     assert(doc.plainText() == QStringLiteral("Hello world\nAgain"));
     doc.page(1)->words[1].text = QStringLiteral("earth");
     doc.page(1)->words[1].reviewed = true;
+    doc.page(1)->words[1].bold = true;
     assert(doc.plainText() == QStringLiteral("Hello earth\nAgain"));
+    assert(doc.layoutHtml().contains(QStringLiteral("earth")));
+    assert(doc.layoutHtml().contains(QStringLiteral("font-weight:bold")));
+    assert(doc.layoutHtml().contains(QStringLiteral("data-word-id")));
     const QJsonArray words = doc.toJson().value(QStringLiteral("pages")).toArray().at(0).toObject().value(QStringLiteral("words")).toArray();
     assert(words.at(1).toObject().value(QStringLiteral("text")) == QStringLiteral("earth"));
     assert(words.at(1).toObject().value(QStringLiteral("original_text")) == QStringLiteral("world"));

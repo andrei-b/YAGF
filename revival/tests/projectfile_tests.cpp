@@ -7,6 +7,9 @@
 #include <QJsonObject>
 #include <QTemporaryDir>
 
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <cassert>
 #include <cstdio>
 
@@ -25,6 +28,9 @@ int main()
     page.words.append({1, 1, 1, 1, QRect(10, 20, 30, 12),
                            QStringLiteral("world"), QStringLiteral("earth"), 82.5, true});
     original.replacePage(std::move(page));
+    original.page(1)->words[0].bold = true;
+    original.page(1)->words[0].italic = true;
+    original.page(1)->words[0].fontSizePt = 15;
     OcrPage secondPage;
     secondPage.number = 2;
     secondPage.width = 200;
@@ -48,6 +54,10 @@ int main()
     assert(loaded.page(1)->words.at(0).originalText == QStringLiteral("world"));
     assert(loaded.page(1)->words.at(0).bounds == QRect(10, 20, 30, 12));
     assert(loaded.page(1)->words.at(0).reviewed);
+    assert(loaded.page(1)->words.at(0).bold);
+    assert(loaded.page(1)->words.at(0).italic);
+    assert(loaded.page(1)->words.at(0).fontSizePt == 15);
+    assert(loaded.page(1)->words.at(0).sourceFontSizePt > 0);
     assert(loaded.totalPages == 2);
     assert(loaded.page(2)->words.at(0).text == QStringLiteral("Hallo!"));
     assert(loaded.page(2)->regions.at(0).paragraphs.at(0).lines.at(0).wordIds.size() == 1);

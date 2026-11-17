@@ -4,6 +4,7 @@
 #include <QFileInfo>
 #include <QRegularExpression>
 #include <QUuid>
+#include <QImage>
 
 DocumentProcessor::DocumentProcessor(QObject *parent) : QObject(parent)
 {
@@ -30,7 +31,7 @@ DocumentProcessor::DocumentProcessor(QObject *parent) : QObject(parent)
         } else if (finishedJob == Job::PdfRender)
             emit pageRendered(requestedPage, temporaryDir.filePath(renderPrefix + QString::number(requestedPage) + QStringLiteral(".png")));
         else if (finishedJob == Job::Ocr)
-            emit recognized(process.readAllStandardOutput());
+            emit recognized(process.readAllStandardOutput(), recognitionOffset, recognitionRegion);
     });
     connect(&process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
         if (error == QProcess::FailedToStart) {
@@ -39,6 +40,28 @@ DocumentProcessor::DocumentProcessor(QObject *parent) : QObject(parent)
             emit failed(tr("Could not start %1.").arg(process.program()));
         }
     });
+    connect(&thumbnailProcess, &QProcess::finished, this, [this](int exitCode, QProcess::ExitStatus status) {
+        if (nextThumbnail < 1 || nextThumbnail > thumbnailCount) return;
+        const int completed = nextThumbnail++;
+        const QString path = temporaryDir.filePath(renderPrefix + QStringLiteral("thumb-") +
+                                                   QString::number(completed) + QStringLiteral(".png"));
+        if (status == QProcess::NormalExit && exitCode == 0 && QFileInfo::exists(path))
+            emit thumbnailReady(completed, path);
+        startNextThumbnail();
+    });
+}
+
+DocumentProcessor::~DocumentProcessor()
+{
+    thumbnailCount = 0;
+    if (thumbnailProcess.state() != QProcess::NotRunning) {
+        thumbnailProcess.kill();
+        thumbnailProcess.waitForFinished(2000);
+    }
+    if (process.state() != QProcess::NotRunning) {
+        process.kill();
+        process.waitForFinished(2000);
+    }
 }
 
 bool DocumentProcessor::isBusy() const { return job != Job::None; }
@@ -58,9 +81,42 @@ void DocumentProcessor::start(Job requestedJob, const QString &program, const QS
 
 void DocumentProcessor::openPdf(const QString &path)
 {
+    resetSource();
     pdfSource = path;
     renderPrefix = QUuid::createUuid().toString(QUuid::WithoutBraces) + QLatin1Char('-');
     start(Job::PdfInfo, QStringLiteral("pdfinfo"), {path});
+}
+
+void DocumentProcessor::resetSource()
+{
+    thumbnailCount = 0;
+    nextThumbnail = 0;
+    if (thumbnailProcess.state() != QProcess::NotRunning) {
+        thumbnailProcess.kill();
+        thumbnailProcess.waitForFinished(2000);
+    }
+    pdfSource.clear();
+    renderPrefix.clear();
+}
+
+void DocumentProcessor::startThumbnails(int pageCount)
+{
+    thumbnailCount = pageCount;
+    nextThumbnail = 1;
+    startNextThumbnail();
+}
+
+void DocumentProcessor::startNextThumbnail()
+{
+    if (nextThumbnail < 1 || nextThumbnail > thumbnailCount ||
+        thumbnailProcess.state() != QProcess::NotRunning) return;
+    const QString output = temporaryDir.filePath(renderPrefix + QStringLiteral("thumb-") +
+                                                 QString::number(nextThumbnail));
+    thumbnailProcess.start(QStringLiteral("pdftoppm"),
+        {QStringLiteral("-f"), QString::number(nextThumbnail),
+         QStringLiteral("-l"), QString::number(nextThumbnail),
+         QStringLiteral("-singlefile"), QStringLiteral("-scale-to"), QStringLiteral("160"),
+         QStringLiteral("-png"), pdfSource, output});
 }
 
 void DocumentProcessor::renderPdfPage(int pageNumber)
@@ -81,8 +137,31 @@ void DocumentProcessor::renderPdfPage(int pageNumber)
 
 void DocumentProcessor::recognize(const QString &imagePath, const QString &language)
 {
+    recognitionOffset = {};
+    recognitionRegion = {};
     start(Job::Ocr, QStringLiteral("tesseract"),
           {imagePath, QStringLiteral("stdout"), QStringLiteral("-l"), language, QStringLiteral("tsv")});
+}
+
+void DocumentProcessor::recognizeRegion(const QString &imagePath, const QString &language, const QRect &region)
+{
+    if (isBusy()) return;
+    const QImage source(imagePath);
+    const QRect bounded = region.intersected(source.rect());
+    if (source.isNull() || bounded.isEmpty()) {
+        emit failed(tr("The selected region is outside the image."));
+        return;
+    }
+    const QString cropPath = temporaryDir.filePath(QUuid::createUuid().toString(QUuid::WithoutBraces) +
+                                                    QStringLiteral("-region.png"));
+    if (!source.copy(bounded).save(cropPath)) {
+        emit failed(tr("Could not prepare the selected region for OCR."));
+        return;
+    }
+    recognitionOffset = bounded.topLeft();
+    recognitionRegion = bounded;
+    start(Job::Ocr, QStringLiteral("tesseract"),
+          {cropPath, QStringLiteral("stdout"), QStringLiteral("-l"), language, QStringLiteral("tsv")});
 }
 
 void DocumentProcessor::cancel()

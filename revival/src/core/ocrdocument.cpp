@@ -50,7 +50,10 @@ QJsonObject wordJson(const OcrWord &word)
     return {{"id", word.id}, {"page", word.page}, {"block", word.block},
             {"paragraph", word.paragraph}, {"line", word.line}, {"box", boxJson(word.bounds)},
             {"original_text", word.originalText}, {"text", word.text},
-            {"confidence", word.confidence}, {"reviewed", word.reviewed}};
+            {"confidence", word.confidence}, {"reviewed", word.reviewed},
+            {"style", QJsonObject{{"bold", word.bold}, {"italic", word.italic},
+                                   {"font_size_pt", word.fontSizePt},
+                                   {"source_font_size_pt", word.sourceFontSizePt}}}};
 }
 
 bool parseWord(const QJsonObject &json, int pageNumber, int width, int height, OcrWord *word)
@@ -69,6 +72,15 @@ bool parseWord(const QJsonObject &json, int pageNumber, int width, int height, O
     word->confidence = json.value(QStringLiteral("confidence")).toDouble();
     word->reviewed = json.value(QStringLiteral("reviewed")).toBool();
     word->id = json.value(QStringLiteral("id")).toString();
+    const QJsonObject style = json.value(QStringLiteral("style")).toObject();
+    word->bold = style.value(QStringLiteral("bold")).toBool();
+    word->italic = style.value(QStringLiteral("italic")).toBool();
+    if (style.contains(QStringLiteral("font_size_pt")) &&
+        (!integer(style, QStringLiteral("font_size_pt"), &word->fontSizePt) ||
+         word->fontSizePt < 0 || word->fontSizePt > 72)) return false;
+    if (style.contains(QStringLiteral("source_font_size_pt")) &&
+        (!integer(style, QStringLiteral("source_font_size_pt"), &word->sourceFontSizePt) ||
+         word->sourceFontSizePt < 0 || word->sourceFontSizePt > 72)) return false;
     return std::isfinite(word->confidence);
 }
 }
@@ -110,6 +122,24 @@ void OcrPage::rebuildHierarchy()
         previousBlock = word.block;
         previousParagraph = word.paragraph;
         previousLine = word.line;
+    }
+    QVector<int> heights;
+    QHash<QString, int> lineHeights;
+    for (const OcrRegion &region : regions)
+        for (const OcrParagraph &paragraph : region.paragraphs)
+            for (const OcrLine &line : paragraph.lines) {
+                heights.append(line.bounds.height());
+                lineHeights.insert(line.id, line.bounds.height());
+            }
+    if (!heights.isEmpty()) {
+        std::sort(heights.begin(), heights.end());
+        const int median = qMax(1, heights.at(heights.size() / 2));
+        for (OcrWord &word : words) {
+            if (word.sourceFontSizePt <= 0)
+                word.sourceFontSizePt = qBound(8, qRound(11.0 * lineHeights.value(
+                    lineId(number, word.block, word.paragraph, word.line), median) / median), 30);
+            if (word.fontSizePt <= 0) word.fontSizePt = word.sourceFontSizePt;
+        }
     }
 }
 
@@ -208,6 +238,31 @@ QString OcrDocument::plainText() const
         }
     }
     return output;
+}
+
+QString OcrDocument::layoutHtml() const
+{
+    QString html = QStringLiteral("<!doctype html><html><head><meta charset=\"utf-8\"><title>YAGF OCR</title>"
+        "<style>body{margin:0;background:#ddd}.page{position:relative;background:white;margin:20px auto;"
+        "box-shadow:0 1px 8px #888;page-break-after:always}.word{position:absolute;white-space:pre}</style>"
+        "</head><body>");
+    for (const OcrPage &page : pages) {
+        html += QStringLiteral("<section class=\"page\" style=\"width:%1px;height:%2px\" aria-label=\"Page %3\">")
+                    .arg(page.width).arg(page.height).arg(page.number);
+        for (const OcrWord &word : page.words) {
+            const int visualFontPx = qBound(8, qRound(word.bounds.height() * 1.15 *
+                static_cast<double>(qMax(1, word.fontSizePt)) / qMax(1, word.sourceFontSizePt)), 180);
+            html += QStringLiteral("<span class=\"word\" data-word-id=\"%1\" style=\"left:%2px;top:%3px;"
+                                   "font-size:%4px;font-weight:%5;font-style:%6\">%7</span>")
+                        .arg(word.id.toHtmlEscaped()).arg(word.bounds.x()).arg(word.bounds.y())
+                        .arg(visualFontPx)
+                        .arg(word.bold ? QStringLiteral("bold") : QStringLiteral("normal"))
+                        .arg(word.italic ? QStringLiteral("italic") : QStringLiteral("normal"))
+                        .arg(word.text.toHtmlEscaped());
+        }
+        html += QStringLiteral("</section>");
+    }
+    return html + QStringLiteral("</body></html>");
 }
 
 QJsonObject OcrDocument::toJson() const

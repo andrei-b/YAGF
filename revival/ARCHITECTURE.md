@@ -19,11 +19,11 @@ revival/
 
 ## Data ownership
 
-The `OcrDocument` is the current in-memory source of truth. It contains numbered pages with regions, paragraphs, lines, and words. Stable IDs connect each line to its words; the project file also records an explicit word-ID reading order for each page. Each word stores its source box, original reading, corrected reading, confidence, and review state. Both exports and the project file read from this document. The UI draws the current page's boxes and word list from it. Tesseract TSV supplies the first hierarchy; editable layout geometry and order are future work.
+The `OcrDocument` is the current in-memory source of truth. It contains numbered pages with regions, paragraphs, lines, and words. Stable IDs connect each line to its words; the project file also records an explicit word-ID reading order for each page. Each word stores its source box, original reading, corrected reading, confidence, review state, and basic bold/italic/size styling. Plain text, layout HTML, JSON, and the project file read from this document. The UI draws the current page's boxes and word list from it. Tesseract TSV supplies the first hierarchy; editable layout geometry and order are future work.
 
 ## Processing boundary
 
-`DocumentProcessor` owns `QProcess` and the temporary directory for PDF rendering. It emits PDF image paths or Tesseract TSV and reports failures. The UI turns TSV into `OcrDocument`. Later engine adapters should return normalized OCR results through a common interface and identify engine version and capabilities. External commands must receive argument lists, never a shell command string.
+`DocumentProcessor` owns the subprocesses and temporary directory for PDF rendering, background miniature generation, full-page OCR, and region OCR. It emits image paths or Tesseract TSV and reports failures. The UI turns TSV into `OcrDocument`, translating region coordinates back to the page. Later engine adapters should return normalized OCR results through a common interface and identify engine version and capabilities. External commands must receive argument lists, never a shell command string.
 
 ## Next implementation slices
 
