@@ -19,7 +19,7 @@ ctest --test-dir build-revival --output-on-failure
 ./build-revival/yagf-revival /path/to/scan.png
 ```
 
-Qt 6 development packages are required. Install Tesseract and language data to recognize images. PDF import and searchable PDF export also require Poppler's `pdfinfo` and `pdftoppm` commands. PDF/A export additionally requires OCRmyPDF. Missing tools are reported in the app.
+Qt 6 development packages are required. Install Tesseract and language data to recognize images. PDF import and searchable PDF export also require Poppler's `pdfinfo` and `pdftoppm` commands. PDF/A export additionally requires OCRmyPDF. Scanning requires SANE's `scanimage` command and a configured scanner backend. Missing tools are reported in the app.
 
 ## Linux installation and AppImage
 
@@ -42,6 +42,8 @@ The result is written to `dist/`. The script downloads the official linuxdeploy 
 ## Current workflow
 
 Open an image or PDF. The left navigation strip fills with page miniatures in the background; click one or use the arrow buttons to change pages. The center is a zoomable page preview, and the right pane is a rich text editor with the page's recognized words below it. Press **Recognize** for the full page. Switch to **Select region** and drag on the preview to select overlapping OCR words, or press **Recognize region** to OCR only the selected image area. Click a word box or a word in the list to edit just that word. Use **Bold** and **Italic** in the editor, then **Apply correction**. Edits are also applied when moving to another selection or page. The editor requires the same number of words as the selection so every correction keeps its source box.
+
+Use **File → Scan a page…** to discover SANE scanners, choose a device, resolution, and color mode, and import a page. Scanning runs in the background and can be cancelled. You can also drop a local image or PDF onto the preview, or choose **File → Paste image from clipboard** (`Ctrl+Shift+V`) for a screenshot or image copied from another app. JPEG photo orientation metadata is applied consistently to preview, OCR, and PDF export. Scans and pasted images are saved under the app's data directory so saved projects can reopen them; keep those source files when moving a project to another computer. The scanner action currently imports one page per scan.
 
 Use **Improve page…** to inspect the original beside a processed preview. **Detect skew** estimates a correction angle, which you can adjust manually; **Auto contrast** stretches faded scans, and **Denoise (grayscale)** removes isolated specks. The settings apply to the current page and to its OCR input, including region OCR. They are saved in the project and reapplied when it opens. Changing the deskew angle moves the image, so the app asks before clearing that page's existing OCR boxes and corrections. Contrast and denoise keep the existing boxes. The source image is never overwritten.
 

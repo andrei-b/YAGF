@@ -119,6 +119,7 @@ PdfExportResult PdfExporter::write(const core::OcrDocument &document,
                 imagePath = prefix + QStringLiteral(".png");
             }
             QImageReader reader(imagePath);
+            reader.setAutoTransform(true);
             const QImage source = reader.read();
             if (source.isNull())
                 return failure(QStringLiteral("Could not read page %1: %2").arg(number).arg(reader.errorString()));

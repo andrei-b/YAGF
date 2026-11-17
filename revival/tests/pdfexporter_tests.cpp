@@ -3,6 +3,8 @@
 #include <QGuiApplication>
 #include <QFileInfo>
 #include <QImage>
+#include <QImageReader>
+#include <QFile>
 #include <QPageSize>
 #include <QPainter>
 #include <QPdfWriter>
@@ -44,6 +46,27 @@ int main(int argc, char **argv)
     const QByteArray text = extract.readAllStandardOutput();
     assert(text.contains("Corrected"));
     assert(!text.contains("Mistake"));
+    // A phone photo with EXIF orientation must keep the same geometry in OCR and export.
+    const QString photoPath = directory.filePath(QStringLiteral("rotated.jpg"));
+    QImage photo(40, 20, QImage::Format_RGB32);
+    photo.fill(Qt::white);
+    assert(photo.save(photoPath, "JPEG"));
+    QFile photoFile(photoPath);
+    assert(photoFile.open(QIODevice::ReadOnly));
+    const QByteArray jpeg = photoFile.readAll();
+    photoFile.close();
+    const QByteArray exif = QByteArray::fromHex(
+        "FFE100224578696600004D4D002A00000008000101120003000000010006000000000000");
+    assert(jpeg.startsWith(QByteArray::fromHex("FFD8")));
+    assert(photoFile.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    assert(photoFile.write(jpeg.left(2) + exif + jpeg.mid(2)) > 0);
+    photoFile.close();
+    QImageReader photoReader(photoPath);
+    photoReader.setAutoTransform(true);
+    assert(photoReader.read().size() == QSize(20, 40));
+    OcrDocument oriented = OcrDocument::fromTsv(tsv, 20, 40, photoPath, QStringLiteral("eng"));
+    assert(PdfExporter::write(oriented, directory.filePath(QStringLiteral("rotated.pdf")),
+                              false, cancelled).status == PdfExportResult::Status::Success);
     if (!QStandardPaths::findExecutable(QStringLiteral("ocrmypdf")).isEmpty()) {
         const QString archivePath = directory.filePath(QStringLiteral("archive.pdf"));
         const auto archived = PdfExporter::write(document, archivePath, true, cancelled);

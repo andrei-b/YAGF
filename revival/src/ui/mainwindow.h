@@ -27,6 +27,9 @@ class QTabWidget;
 class QTextEdit;
 class QRubberBand;
 class QAction;
+class QMimeData;
+class QDragEnterEvent;
+class QDropEvent;
 
 namespace yagf::ui {
 
@@ -46,6 +49,10 @@ protected:
     void mouseReleaseEvent(QMouseEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
+    void dragEnterEvent(QDragEnterEvent *event) override;
+    void dropEvent(QDropEvent *event) override;
+signals:
+    void inputDropped(const QMimeData *mime);
 private:
     QRubberBand *rubberBand;
     QPoint regionOrigin;
@@ -61,8 +68,14 @@ public:
     void loadSource(const QString &path);
 protected:
     void closeEvent(QCloseEvent *event) override;
+    void dragEnterEvent(QDragEnterEvent *event) override;
+    void dropEvent(QDropEvent *event) override;
 private:
     void openFile();
+    void scanPage();
+    void pasteImage();
+    void importMimeData(const QMimeData *mime);
+    QString saveImportedImage(const QImage &image);
     void openProject();
     bool saveProject();
     bool saveProjectAs();

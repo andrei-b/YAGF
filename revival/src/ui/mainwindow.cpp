@@ -3,8 +3,14 @@
 #include "preprocessdialog.h"
 #include "imageprocessor.h"
 #include "layoutdialog.h"
+#include "scannerdialog.h"
 
 #include <QCloseEvent>
+#include <QApplication>
+#include <QClipboard>
+#include <QDir>
+#include <QDragEnterEvent>
+#include <QDropEvent>
 #include <QActionGroup>
 #include <QFile>
 #include <QFileDialog>
@@ -14,6 +20,7 @@
 #include <QGraphicsScene>
 #include <QHBoxLayout>
 #include <QImageReader>
+#include <QImageIOHandler>
 #include <QIcon>
 #include <QJsonDocument>
 #include <QMetaObject>
@@ -23,6 +30,7 @@
 #include <QMessageBox>
 #include <QMouseEvent>
 #include <QMenuBar>
+#include <QMimeData>
 #include <QRegularExpression>
 #include <QSet>
 #include <QRubberBand>
@@ -33,12 +41,16 @@
 #include <QWheelEvent>
 #include <QPushButton>
 #include <QSignalBlocker>
+#include <QSaveFile>
 #include <QSplitter>
 #include <QSpinBox>
+#include <QStandardPaths>
 #include <QStatusBar>
 #include <QToolBar>
 #include <QVBoxLayout>
 #include <QtConcurrent>
+#include <QUuid>
+#include <QUrl>
 
 #include <utility>
 #include <cmath>
@@ -185,6 +197,21 @@ void PageView::wheelEvent(QWheelEvent *event)
     QGraphicsView::wheelEvent(event);
 }
 
+void PageView::dragEnterEvent(QDragEnterEvent *event)
+{
+    if (event->mimeData()->hasImage() || event->mimeData()->hasUrls())
+        event->acceptProposedAction();
+    else QGraphicsView::dragEnterEvent(event);
+}
+
+void PageView::dropEvent(QDropEvent *event)
+{
+    if (event->mimeData()->hasImage() || event->mimeData()->hasUrls()) {
+        emit inputDropped(event->mimeData());
+        event->acceptProposedAction();
+    } else QGraphicsView::dropEvent(event);
+}
+
 MainWindow::MainWindow()
 {
     updateTitle();
@@ -193,6 +220,9 @@ MainWindow::MainWindow()
     auto *toolsMenu = menuBar()->addMenu(tr("&Tools"));
     auto *toolbar = addToolBar(tr("Document"));
     fileMenu->addAction(toolbar->addAction(tr("Open image or PDF"), this, &MainWindow::openFile));
+    fileMenu->addAction(tr("Scan a page…"), this, &MainWindow::scanPage);
+    auto *pasteAction = fileMenu->addAction(tr("Paste image from clipboard"), this, &MainWindow::pasteImage);
+    pasteAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+V")));
     fileMenu->addAction(toolbar->addAction(tr("Open project"), this, &MainWindow::openProject));
     fileMenu->addAction(toolbar->addAction(tr("Save project"), this, &MainWindow::saveProject));
     fileMenu->addAction(tr("Save project as…"), this, &MainWindow::saveProjectAs);
@@ -289,6 +319,7 @@ MainWindow::MainWindow()
     view->setObjectName(QStringLiteral("pagePreview"));
     scene = new QGraphicsScene(this);
     view->setScene(scene);
+    view->setAcceptDrops(true);
     view->setRegionMode(false);
     view->setRenderHint(QPainter::Antialiasing);
     view->setBackgroundBrush(QColor(224, 228, 233));
@@ -348,6 +379,8 @@ MainWindow::MainWindow()
     splitter->setSizes({170, 710, 320});
     splitter->setChildrenCollapsible(false);
     setCentralWidget(splitter);
+    setAcceptDrops(true);
+    connect(view, &PageView::inputDropped, this, &MainWindow::importMimeData);
     updatePageControls();
     connect(pageList, &QListWidget::currentRowChanged, this, [this](int row) {
         if (row >= 0) showPage(row + 1);
@@ -581,14 +614,90 @@ void MainWindow::showError(const QString &message)
 void MainWindow::openFile()
 {
     const QString path = QFileDialog::getOpenFileName(this, tr("Open document"), {},
-                                                     tr("Documents (*.pdf *.png *.jpg *.jpeg *.tif *.tiff *.bmp);;All files (*)"));
+        tr("Documents (*.pdf *.png *.jpg *.jpeg *.tif *.tiff *.bmp *.webp *.avif *.heic);;All files (*)"));
     loadSource(path);
+}
+
+void MainWindow::scanPage()
+{
+    if (processor.isBusy() || exportBusy) return;
+    const QString directory = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+        + QStringLiteral("/imports");
+    if (!QDir().mkpath(directory)) { showError(tr("Could not create the image import folder.")); return; }
+    const QString path = directory + QLatin1Char('/') +
+        QUuid::createUuid().toString(QUuid::WithoutBraces) + QStringLiteral(".png");
+    ScannerDialog dialog(path, this);
+    if (dialog.exec() != QDialog::Accepted) return;
+    loadSource(path);
+    if (originalPath != path) QFile::remove(path);
+}
+
+void MainWindow::pasteImage()
+{
+    importMimeData(QApplication::clipboard()->mimeData());
+}
+
+void MainWindow::dragEnterEvent(QDragEnterEvent *event)
+{
+    if (event->mimeData()->hasImage() || event->mimeData()->hasUrls())
+        event->acceptProposedAction();
+    else QMainWindow::dragEnterEvent(event);
+}
+
+void MainWindow::dropEvent(QDropEvent *event)
+{
+    if (event->mimeData()->hasImage() || event->mimeData()->hasUrls()) {
+        importMimeData(event->mimeData());
+        event->acceptProposedAction();
+    } else QMainWindow::dropEvent(event);
+}
+
+void MainWindow::importMimeData(const QMimeData *mime)
+{
+    if (!mime || processor.isBusy() || exportBusy) return;
+    if (mime->hasUrls()) {
+        for (const QUrl &url : mime->urls()) {
+            if (url.isLocalFile()) { loadSource(url.toLocalFile()); return; }
+        }
+    }
+    if (mime->hasImage()) {
+        const QImage image = qvariant_cast<QImage>(mime->imageData());
+        if (image.isNull()) { showError(tr("The clipboard image could not be read.")); return; }
+        const QString path = saveImportedImage(image);
+        if (path.isEmpty()) return;
+        loadSource(path);
+        if (originalPath != path) QFile::remove(path);
+        return;
+    }
+    showError(tr("Drop a local image or PDF, or paste an image from the clipboard."));
+}
+
+QString MainWindow::saveImportedImage(const QImage &image)
+{
+    const QString directory = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+        + QStringLiteral("/imports");
+    if (!QDir().mkpath(directory)) { showError(tr("Could not create the image import folder.")); return {}; }
+    const QString path = directory + QLatin1Char('/') +
+        QUuid::createUuid().toString(QUuid::WithoutBraces) + QStringLiteral(".png");
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly) || !image.save(&file, "PNG") || !file.commit()) {
+        file.cancelWriting();
+        showError(tr("Could not save the imported image."));
+        return {};
+    }
+    return path;
 }
 
 void MainWindow::loadSource(const QString &path)
 {
     if (path.isEmpty()) return;
     if (processor.isBusy() || exportBusy) return;
+    const QFileInfo source(path);
+    if (!source.isFile() || (!path.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive) &&
+                              !QImageReader(path).canRead())) {
+        showError(tr("This file is not a readable image or PDF: %1").arg(path));
+        return;
+    }
     if (!maybeSave()) return;
     processor.resetSource();
     originalPath = QFileInfo(path).absoluteFilePath();
@@ -746,6 +855,8 @@ void MainWindow::closeEvent(QCloseEvent *event)
 void MainWindow::loadImage(const QString &path)
 {
     QImageReader reader(path);
+    reader.setAutoTransform(true);
+    const bool oriented = reader.transformation() != QImageIOHandler::TransformationNone;
     const QImage source = reader.read();
     if (source.isNull()) {
         showError(tr("Could not read image: %1").arg(reader.errorString()));
@@ -765,7 +876,7 @@ void MainWindow::loadImage(const QString &path)
         return;
     }
     QString recognitionPath = path;
-    if (!settings.isIdentity()) {
+    if (!settings.isIdentity() || oriented) {
         recognitionPath = preparedDir.filePath(QStringLiteral("page-%1-prepared.png").arg(currentPage));
         if (!image.save(recognitionPath, "PNG")) {
             showError(tr("Could not save the prepared page image."));

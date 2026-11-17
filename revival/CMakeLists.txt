@@ -26,6 +26,7 @@ qt_add_executable(yagf-revival
     src/main.cpp src/ui/mainwindow.cpp src/ui/mainwindow.h
     src/ui/preprocessdialog.cpp src/ui/preprocessdialog.h
     src/ui/layoutdialog.cpp src/ui/layoutdialog.h resources/icons.qrc)
+target_sources(yagf-revival PRIVATE src/ui/scannerdialog.cpp src/ui/scannerdialog.h)
 target_link_libraries(yagf-revival PRIVATE yagf_core yagf_processing Qt6::Widgets Qt6::Concurrent)
 
 install(TARGETS yagf-revival RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
@@ -50,6 +51,12 @@ if(BUILD_TESTING)
     qt_add_executable(imageprocessor_tests tests/imageprocessor_tests.cpp)
     target_link_libraries(imageprocessor_tests PRIVATE yagf_processing)
     add_test(NAME imageprocessor_tests COMMAND imageprocessor_tests)
+    qt_add_executable(scannerdialog_tests tests/scannerdialog_tests.cpp
+        src/ui/scannerdialog.cpp src/ui/scannerdialog.h)
+    target_link_libraries(scannerdialog_tests PRIVATE Qt6::Widgets)
+    target_include_directories(scannerdialog_tests PRIVATE src/ui)
+    add_test(NAME scannerdialog_tests COMMAND scannerdialog_tests)
+    set_tests_properties(scannerdialog_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     find_program(PDFTOTEXT_EXECUTABLE pdftotext)
     if(PDFTOTEXT_EXECUTABLE)
         qt_add_executable(pdfexporter_tests tests/pdfexporter_tests.cpp)
