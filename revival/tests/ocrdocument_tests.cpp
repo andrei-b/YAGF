@@ -188,6 +188,27 @@ int main()
     assert(multiple->words.at(2).sourceBoxes.first().united(
         multiple->words.at(3).sourceBoxes.first()) == phrase.words.at(3).bounds);
 
+    OcrPage hebrew;
+    hebrew.width = 200;
+    hebrew.height = 40;
+    const QString combined = QStringLiteral("יוםטוב");
+    const QString next = QStringLiteral("לכולם");
+    hebrew.words.append({1, 1, 1, 1, QRect(100, 10, 60, 15), combined, combined, 90});
+    hebrew.words.append({1, 1, 1, 1, QRect(20, 10, 40, 15), next, next, 90});
+    hebrew.rebuildHierarchy();
+    const auto rtlSplit = WordEditor::apply(hebrew, {0},
+        {{QStringLiteral("יום")}, {QStringLiteral("טוב")}});
+    assert(rtlSplit && rtlSplit->words[0].sourceBoxes == QVector<QRect>{QRect(130, 10, 30, 15)});
+    assert(rtlSplit->words[1].sourceBoxes == QVector<QRect>{QRect(100, 10, 30, 15)});
+    const auto rtlInsert = WordEditor::apply(hebrew, {0, 1},
+        {{QStringLiteral("א")}, {combined}, {QStringLiteral("ב")}, {QStringLiteral("ג")},
+         {next}, {QStringLiteral("ד")}});
+    assert(rtlInsert && rtlInsert->words.size() == 6);
+    assert(rtlInsert->words[0].bounds == QRect(160, 10, 40, 15));
+    assert(rtlInsert->words[2].bounds == QRect(80, 10, 20, 15));
+    assert(rtlInsert->words[3].bounds == QRect(60, 10, 20, 15));
+    assert(rtlInsert->words[5].bounds == QRect(0, 10, 20, 15));
+
     OcrPage acrossLines;
     acrossLines.number = 1;
     acrossLines.width = 250;

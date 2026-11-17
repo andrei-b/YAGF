@@ -40,19 +40,27 @@ QVector<OcrWord> changedSpan(const OcrPage &page, const QVector<OcrWord> &old,
         return result;
     }
     if (sourceCount == 0) {
-        const OcrWord *left = oldStart > 0 ? &old.at(oldStart - 1) :
+        const OcrWord *previous = oldStart > 0 ? &old.at(oldStart - 1) :
             firstSelected > 0 ? &page.words.at(firstSelected - 1) : nullptr;
-        const OcrWord *right = oldStart < old.size() ? &old.at(oldStart) :
+        const OcrWord *next = oldStart < old.size() ? &old.at(oldStart) :
             firstSelected + old.size() < page.words.size() ?
                 &page.words.at(firstSelected + old.size()) : nullptr;
-        const OcrWord *anchor = left ? left : right;
+        const OcrWord *anchor = previous ? previous : next;
         const int y = anchor ? anchor->bounds.y() : 0;
         const int height = anchor ? anchor->bounds.height() : qMin(12, page.height);
-        const int gapStart = left ? left->bounds.right() + 1 : 0;
-        const int gapEnd = !left && right ? right->bounds.x() :
-            right && left && left->block == right->block &&
-            left->paragraph == right->paragraph && left->line == right->line
-                ? right->bounds.x() : page.width;
+        const bool sameLine = previous && next && previous->block == next->block &&
+            previous->paragraph == next->paragraph && previous->line == next->line;
+        bool rtl = anchor && anchor->text.isRightToLeft();
+        if (sameLine && previous->bounds.left() > next->bounds.right())
+            rtl = true;
+        else if (sameLine && previous->bounds.right() < next->bounds.left())
+            rtl = false;
+        // Measure offsets from the leading edge of the page in reading direction.
+        int gapStart = 0, gapEnd = page.width;
+        if (previous)
+            gapStart = rtl ? page.width - previous->bounds.left() : previous->bounds.right() + 1;
+        if (next && (!previous || sameLine))
+            gapEnd = rtl ? page.width - next->bounds.right() - 1 : next->bounds.left();
         const int available = std::max(1, gapEnd - gapStart);
         qint64 totalCharacters = 0;
         for (int i = newStart; i < newEnd; ++i)
@@ -65,12 +73,12 @@ QVector<OcrWord> changedSpan(const OcrPage &page, const QVector<OcrWord> &old,
             word.sourceWordIds.clear();
             word.sourceBoxes.clear();
             word.confidence = -1;
-            const int x = qBound(0, gapStart + available * charactersBefore / totalCharacters,
-                                 page.width - 1);
+            const int start = qBound(0, gapStart + available * charactersBefore / totalCharacters,
+                                     page.width - 1);
             charactersBefore += std::max<qsizetype>(1, replacement.at(newStart + i).text.size());
-            const int end = qBound(x + 1, gapStart + available * charactersBefore / totalCharacters,
+            const int end = qBound(start + 1, gapStart + available * charactersBefore / totalCharacters,
                                    page.width);
-            word.bounds = QRect(x, y, end - x, height);
+            word.bounds = QRect(rtl ? page.width - end : start, y, end - start, height);
             setText(word, replacement.at(newStart + i));
             result.append(std::move(word));
         }
@@ -81,6 +89,7 @@ QVector<OcrWord> changedSpan(const OcrPage &page, const QVector<OcrWord> &old,
         QRect box;
         int sourceIndex;
         bool actual;
+        bool rtl;
         qint64 offset;
     };
     QVector<Fragment> fragments;
@@ -89,8 +98,9 @@ QVector<OcrWord> changedSpan(const OcrPage &page, const QVector<OcrWord> &old,
         const OcrWord &word = old.at(i);
         const bool actual = !word.sourceBoxes.isEmpty();
         const QVector<QRect> boxes = actual ? word.sourceBoxes : QVector<QRect>{word.bounds};
+        const bool rtl = word.text.isRightToLeft();
         for (const QRect &box : boxes) {
-            fragments.append({box, i, actual, totalWidth});
+            fragments.append({box, i, actual, rtl, totalWidth});
             totalWidth += box.width();
         }
     }
@@ -111,7 +121,9 @@ QVector<OcrWord> changedSpan(const OcrPage &page, const QVector<OcrWord> &old,
         QSet<QString> originalKeys;
         int firstContributor = -1;
         const auto addPiece = [&](const Fragment &fragment, qint64 begin, qint64 finish) {
-            const int x = fragment.box.x() + static_cast<int>(begin - fragment.offset);
+            const int x = fragment.rtl
+                ? fragment.box.right() + 1 - static_cast<int>(finish - fragment.offset)
+                : fragment.box.left() + static_cast<int>(begin - fragment.offset);
             const QRect piece(x, fragment.box.y(), static_cast<int>(finish - begin),
                               fragment.box.height());
             placement.append(piece);
