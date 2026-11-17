@@ -825,7 +825,8 @@ void MainWindow::loadProject(const QString &path)
     projectPath = path;
     document = std::move(loaded);
     externalDirty = false;
-    languageEdit->setText(document.language);
+    if (document.engine == processor.engineId() && !document.language.isEmpty())
+        languageEdit->setText(document.language);
     dirty = false;
     updateTitle();
     wordList->clear();
@@ -1106,10 +1107,16 @@ void MainWindow::configureOcrEngine()
     auto *provider = new QComboBox(&dialog);
     provider->addItem(tr("Tesseract (on this computer)"));
     provider->addItem(tr("PaddleOCR (remote service)"));
-    provider->setCurrentIndex(processor.engineId() == QStringLiteral("paddleocr-remote") ? 1 : 0);
-    auto *address = new QLineEdit(settings.value(QStringLiteral("ocr/remoteUrl"),
-        QStringLiteral("http://127.0.0.1:8765")).toString(), &dialog);
-    address->setPlaceholderText(QStringLiteral("http://127.0.0.1:8765"));
+    provider->addItem(tr("docTR (remote service)"));
+    provider->setCurrentIndex(processor.engineId() == QStringLiteral("paddleocr-remote") ? 1 :
+                              processor.engineId() == QStringLiteral("doctr-remote") ? 2 : 0);
+    const QString paddleUrl = settings.value(QStringLiteral("ocr/paddleUrl"),
+        settings.value(QStringLiteral("ocr/remoteUrl"),
+            QStringLiteral("http://127.0.0.1:8765"))).toString();
+    const QString doctrUrl = settings.value(QStringLiteral("ocr/doctrUrl"),
+        QStringLiteral("http://127.0.0.1:8766")).toString();
+    auto *address = new QLineEdit(provider->currentIndex() == 2 ? doctrUrl : paddleUrl, &dialog);
+    address->setPlaceholderText(tr("http://127.0.0.1:8765"));
     auto *token = new QLineEdit(&dialog);
     token->setEchoMode(QLineEdit::Password);
     token->setPlaceholderText(tr("Optional bearer token; held only for this session"));
@@ -1121,15 +1128,17 @@ void MainWindow::configureOcrEngine()
     connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
     connect(provider, &QComboBox::currentIndexChanged, &dialog, [=](int index) {
-        address->setEnabled(index == 1);
-        token->setEnabled(index == 1);
+        address->setEnabled(index != 0);
+        token->setEnabled(index != 0);
+        address->setText(index == 2 ? doctrUrl : paddleUrl);
     });
-    address->setEnabled(provider->currentIndex() == 1);
-    token->setEnabled(provider->currentIndex() == 1);
+    address->setEnabled(provider->currentIndex() != 0);
+    token->setEnabled(provider->currentIndex() != 0);
     if (dialog.exec() != QDialog::Accepted) return;
     if (provider->currentIndex() == 0) {
         processor.setEngine(std::make_unique<processing::TesseractEngine>());
-        if (languageEdit->text() == QStringLiteral("en")) languageEdit->setText(QStringLiteral("eng"));
+        if (languageEdit->text() == QStringLiteral("en") || languageEdit->text() == QStringLiteral("auto"))
+            languageEdit->setText(QStringLiteral("eng"));
     } else {
         const QUrl url = QUrl::fromUserInput(address->text().trimmed());
         if ((url.scheme() != QStringLiteral("http") && url.scheme() != QStringLiteral("https")) ||
@@ -1138,9 +1147,15 @@ void MainWindow::configureOcrEngine()
             showError(tr("Enter the service base URL, for example http://127.0.0.1:8765"));
             return;
         }
-        processor.setEngine(std::make_unique<processing::RemoteOcrEngine>(url, token->text()));
-        settings.setValue(QStringLiteral("ocr/remoteUrl"), url.toString());
-        if (languageEdit->text() == QStringLiteral("eng")) languageEdit->setText(QStringLiteral("en"));
+        const bool doctr = provider->currentIndex() == 2;
+        processor.setEngine(std::make_unique<processing::RemoteOcrEngine>(url, token->text(),
+            doctr ? processing::RemoteOcrEngine::Provider::DocTr
+                  : processing::RemoteOcrEngine::Provider::PaddleOcr));
+        settings.setValue(doctr ? QStringLiteral("ocr/doctrUrl") : QStringLiteral("ocr/paddleUrl"),
+                          url.toString());
+        if (doctr) languageEdit->setText(QStringLiteral("auto"));
+        else if (languageEdit->text() == QStringLiteral("eng") ||
+                 languageEdit->text() == QStringLiteral("auto")) languageEdit->setText(QStringLiteral("en"));
     }
     status->setText(tr("OCR engine: %1").arg(processor.engineId()));
 }
@@ -1160,7 +1175,7 @@ void MainWindow::runBatchOcr()
     for (int number = 1; number <= pageCount; ++number) {
         const OcrPage *page = document.page(number);
         options.append({.number = number,
-                        .language = processor.engineId() == QStringLiteral("paddleocr-remote")
+                        .language = processor.engineId().endsWith(QStringLiteral("-remote"))
                             ? languageEdit->text().trimmed()
                             : page && !page->language.isEmpty() ? page->language : languageEdit->text().trimmed(),
                         .preprocessing = page ? page->preprocessing : core::PreprocessSettings{}});

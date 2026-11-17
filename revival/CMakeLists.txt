@@ -79,7 +79,7 @@ if(BUILD_TESTING)
     add_test(NAME remoteocrengine_tests COMMAND remoteocrengine_tests)
     find_package(Python3 QUIET COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND)
-        add_test(NAME paddleocr_service_tests
+        add_test(NAME remote_ocr_service_tests
             COMMAND ${Python3_EXECUTABLE} -m unittest discover -s ${CMAKE_CURRENT_SOURCE_DIR}/service/tests)
     endif()
     qt_add_executable(scannerdialog_tests tests/scannerdialog_tests.cpp

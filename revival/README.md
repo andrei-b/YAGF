@@ -1,6 +1,6 @@
 # YAGF Revival prototype
 
-This is the Qt 6 and C++23 revival of YAGF. The Qt 4 application remains in the repository root. Tesseract runs locally by default; a PaddleOCR service is optional.
+This is the Qt 6 and C++23 revival of YAGF. The Qt 4 application remains in the repository root. Tesseract runs locally by default; PaddleOCR and docTR services are optional.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the source layout, dependency boundaries, and next implementation slices.
 
@@ -53,7 +53,7 @@ For a PDF, choose **Tools → Recognize all pages** to OCR every page in sequenc
 
 The project and document JSON schemas are version 2. They record the source path, source and processed page dimensions, per-page quality settings, engine ID and language, stable page/region/paragraph/line/word IDs, reading order, each word's source fragments and union box, original reading, current reading, source word IDs, confidence, review state, and basic formatting. Version 1 projects and earlier version 2 projects still load. Coordinates are pixels in the processed page image. Corrections survive a rerun when the recognized word and box match exactly. OCR does not recover exact fonts or complete column layout; the editor keeps detected line and paragraph breaks and estimates relative text size. The searchable PDF text layer currently uses each word's union box. Flatpak packaging and broader release testing remain before a complete 2.0 release.
 
-Recognition runs through `IOcrEngine` in `processing/`. Tesseract is the default provider. Choose **Tools → OCR engine…** to use the optional remote PaddleOCR service and enter its URL and optional bearer token. The token stays in memory for this session; only the service URL is saved in desktop settings. The service returns text-line boxes, so its capability reports confidence and regions but not word-level boxes. The correction editor can split a line into words with estimated sub-boxes. See [service/README.md](service/README.md) for Jetson setup and the HTTP protocol. `DocumentProcessor` runs engine work asynchronously and handles PDF rendering, batching, and cancellation. The `core` document model has no Python, PaddleOCR, or Jetson dependency.
+Recognition runs through `IOcrEngine` in `processing/`. Tesseract is the default provider. Choose **Tools → OCR engine…** to use a remote PaddleOCR or docTR service and enter its URL and optional bearer token. The token stays in memory for this session; each provider's URL is saved in desktop settings. PaddleOCR returns text-line boxes, which the correction editor can split into estimated word boxes. docTR returns word boxes with block and line structure. See [service/README.md](service/README.md) for setup and the HTTP protocol. `DocumentProcessor` runs engine work asynchronously and handles PDF rendering, batching, and cancellation. The `core` document model has no Python, PaddleOCR, docTR, or Jetson dependency.
 
 ## Audit and direction
 

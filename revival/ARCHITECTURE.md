@@ -14,14 +14,14 @@ revival/
     processing/documentprocessor.{h,cpp}  async OCR jobs, PDF rendering and batching
     processing/iocrengine.h          engine contract and capability flags
     processing/tesseractengine.{h,cpp}    Tesseract subprocess and TSV adapter
-    processing/remoteocrengine.{h,cpp}   HTTP client for PaddleOCR service
+    processing/remoteocrengine.{h,cpp}   HTTP client for PaddleOCR and docTR services
     processing/imageprocessor.{h,cpp}     deskew detection, contrast, denoise, rotation
     processing/pdfexporter.{h,cpp}       searchable PDF and optional PDF/A conversion
     ui/mainwindow.{h,cpp}            page view, selection, editing, user actions
     ui/preprocessdialog.{h,cpp}       before/after preview and quality controls
     ui/layoutdialog.{h,cpp}           region geometry, type, and reading order
     ui/documentcommands.{h,cpp}       undoable page and layout commands
-  service/server.py                  optional PaddleOCR inference service
+  service/server.py                  optional PaddleOCR or docTR inference service
   service/tests/test_server.py       protocol tests with fake inference
   tests/ocrdocument_tests.cpp
   tests/projectfile_tests.cpp
@@ -37,7 +37,7 @@ The `OcrDocument` is the current in-memory source of truth. It contains numbered
 
 ## Processing boundary
 
-`IOcrEngine` accepts a `QImage`, options, and `std::stop_token`, and returns a normalized `OcrPage` or error. `TesseractEngine` owns its subprocess and TSV parser. `RemoteOcrEngine` encodes a PNG, calls the versioned Python HTTP service, and validates its line geometry. `DocumentProcessor` runs the engine on a Qt Concurrent worker, owns PDF rendering and thumbnail subprocesses, schedules batch pages, and propagates cancellation. The UI receives normalized pages and translates region coordinates back to the source page. The core library has no recognition provider, widget, process, Python, or Jetson dependency. External commands receive argument lists, never shell command strings.
+`IOcrEngine` accepts a `QImage`, options, and `std::stop_token`, and returns a normalized `OcrPage` or error. `TesseractEngine` owns its subprocess and TSV parser. `RemoteOcrEngine` encodes a PNG, calls the versioned Python HTTP service, and validates PaddleOCR line geometry or docTR word geometry and reading order. `DocumentProcessor` runs the engine on a Qt Concurrent worker, owns PDF rendering and thumbnail subprocesses, schedules batch pages, and propagates cancellation. The UI receives normalized pages and translates region coordinates back to the source page. The core library has no recognition provider, widget, process, Python, or Jetson dependency. External commands receive argument lists, never shell command strings.
 
 `ImageProcessor` estimates page skew and luminance range, then applies optional denoise, contrast stretching, and rotation. `MainWindow` keeps the original image in memory, writes the processed page to a temporary PNG for recognition, and displays that same processed image. Project files store settings and both source and processed dimensions; reopening a project recreates the temporary image from the source. Changing rotation invalidates OCR geometry for that page.
 

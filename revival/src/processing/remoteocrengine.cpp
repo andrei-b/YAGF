@@ -20,7 +20,8 @@ constexpr qsizetype maxPngBytes = 32 * 1024 * 1024;
 constexpr qsizetype maxResponseBytes = 8 * 1024 * 1024;
 
 std::expected<core::OcrPage, OcrError> parseResponse(
-    const QByteArray &bytes, const QSize &imageSize, const OcrOptions &options)
+    const QByteArray &bytes, const QSize &imageSize, const OcrOptions &options,
+    RemoteOcrEngine::Provider provider)
 {
     if (bytes.size() > maxResponseBytes)
         return std::unexpected(OcrError{QStringLiteral("The OCR server response is too large.")});
@@ -29,25 +30,30 @@ std::expected<core::OcrPage, OcrError> parseResponse(
     if (parseError.error != QJsonParseError::NoError || !json.isObject())
         return std::unexpected(OcrError{QStringLiteral("The OCR server returned invalid JSON.")});
     const QJsonObject root = json.object();
+    const bool doctr = provider == RemoteOcrEngine::Provider::DocTr;
+    const QString itemKey = doctr ? QStringLiteral("words") : QStringLiteral("lines");
     if (root.value(QStringLiteral("protocol")).toString() != QLatin1String(protocol) ||
-        root.value(QStringLiteral("engine_id")).toString() != QStringLiteral("paddleocr") ||
+        root.value(QStringLiteral("engine_id")).toString() !=
+            (doctr ? QStringLiteral("doctr") : QStringLiteral("paddleocr")) ||
         root.value(QStringLiteral("width")).toInt(-1) != imageSize.width() ||
         root.value(QStringLiteral("height")).toInt(-1) != imageSize.height() ||
-        !root.value(QStringLiteral("lines")).isArray())
+        !root.value(itemKey).isArray())
         return std::unexpected(OcrError{QStringLiteral("The OCR server response has an incompatible schema or image size.")});
-    const QJsonArray lines = root.value(QStringLiteral("lines")).toArray();
-    if (lines.size() > 10000)
-        return std::unexpected(OcrError{QStringLiteral("The OCR server returned too many text lines.")});
+    const QJsonArray items = root.value(itemKey).toArray();
+    if (items.size() > 10000)
+        return std::unexpected(OcrError{QStringLiteral("The OCR server returned too many text items.")});
     core::OcrPage page;
     page.id = QStringLiteral("page-%1").arg(options.pageNumber);
     page.number = options.pageNumber;
     page.width = page.sourceWidth = imageSize.width();
     page.height = page.sourceHeight = imageSize.height();
-    page.engineId = QStringLiteral("paddleocr-remote");
+    page.engineId = doctr ? QStringLiteral("doctr-remote") : QStringLiteral("paddleocr-remote");
     page.language = root.value(QStringLiteral("language")).toString(options.language);
-    for (const QJsonValue &value : lines) {
+    int previousBlock = 0;
+    int previousLine = 0;
+    for (const QJsonValue &value : items) {
         if (!value.isObject())
-            return std::unexpected(OcrError{QStringLiteral("The OCR server returned an invalid line.")});
+            return std::unexpected(OcrError{QStringLiteral("The OCR server returned an invalid text item.")});
         const QJsonObject line = value.toObject();
         const QJsonArray box = line.value(QStringLiteral("box")).toArray();
         const QString text = line.value(QStringLiteral("text")).toString().trimmed();
@@ -68,9 +74,15 @@ std::expected<core::OcrPage, OcrError> parseResponse(
             return std::unexpected(OcrError{QStringLiteral("The OCR server returned out-of-bounds text geometry.")});
         core::OcrWord word;
         word.page = options.pageNumber;
-        word.block = 1;
+        word.block = doctr ? line.value(QStringLiteral("block")).toInt(-1) : 1;
         word.paragraph = 1;
-        word.line = page.words.size() + 1;
+        word.line = doctr ? line.value(QStringLiteral("line")).toInt(-1) : page.words.size() + 1;
+        if (word.block < 1 || word.line < 1 ||
+            (doctr && (word.block < previousBlock ||
+                       (word.block == previousBlock && word.line < previousLine))))
+            return std::unexpected(OcrError{QStringLiteral("The OCR server returned invalid reading order.")});
+        previousBlock = word.block;
+        previousLine = word.line;
         word.bounds = bounds;
         word.originalText = word.text = text;
         word.confidence = score.toDouble() * 100.0;
@@ -81,8 +93,21 @@ std::expected<core::OcrPage, OcrError> parseResponse(
 }
 }
 
-RemoteOcrEngine::RemoteOcrEngine(QUrl server, QString bearerToken)
-    : server(std::move(server)), bearerToken(std::move(bearerToken)) {}
+RemoteOcrEngine::RemoteOcrEngine(QUrl server, QString bearerToken, Provider provider)
+    : server(std::move(server)), bearerToken(std::move(bearerToken)), provider(provider) {}
+
+QString RemoteOcrEngine::id() const
+{
+    return provider == Provider::DocTr ? QStringLiteral("doctr-remote") : QStringLiteral("paddleocr-remote");
+}
+
+EngineCapabilities RemoteOcrEngine::capabilities() const
+{
+    return provider == Provider::DocTr
+        ? EngineCapabilities{.supportsRegions = true, .supportsWordBoxes = true,
+                             .supportsConfidence = true, .supportsLayout = true}
+        : EngineCapabilities{.supportsRegions = true, .supportsConfidence = true};
+}
 
 std::expected<core::OcrPage, OcrError> RemoteOcrEngine::recognize(
     const QImage &image, const OcrOptions &options, std::stop_token stop)
@@ -145,7 +170,7 @@ std::expected<core::OcrPage, OcrError> RemoteOcrEngine::recognize(
         return std::unexpected(OcrError{message.isEmpty()
             ? QStringLiteral("Remote OCR failed: %1").arg(reply->errorString()) : message});
     }
-    return parseResponse(response, image.size(), options);
+    return parseResponse(response, image.size(), options, provider);
 }
 
 } // namespace yagf::processing

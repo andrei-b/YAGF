@@ -2,14 +2,19 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QComboBox>
+#include <QDialog>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QImage>
+#include <QLineEdit>
 #include <QListWidget>
 #include <QPushButton>
+#include <QSettings>
 #include <QTemporaryDir>
 #include <QTextEdit>
 #include <QThread>
+#include <QTimer>
 
 #ifdef NDEBUG
 #undef NDEBUG
@@ -21,6 +26,8 @@ int main(int argc, char **argv)
     QApplication app(argc, argv);
     QTemporaryDir directory;
     assert(directory.isValid());
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, directory.path());
     const QString sourcePath = directory.filePath(QStringLiteral("source.png"));
     QImage image(200, 100, QImage::Format_RGB32);
     image.fill(Qt::white);
@@ -104,4 +111,28 @@ int main(int argc, char **argv)
     assert(words->count() == 0);
     redo->trigger();
     assert(words->count() == 2);
+
+    QAction *engineAction = nullptr;
+    for (QAction *action : window.findChildren<QAction *>())
+        if (action->text() == QStringLiteral("OCR engine…")) engineAction = action;
+    assert(engineAction);
+    bool selectedDocTr = false;
+    QTimer::singleShot(0, &window, [&] {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        assert(dialog);
+        auto *choice = dialog->findChild<QComboBox *>();
+        assert(choice && choice->count() == 3);
+        choice->setCurrentIndex(2);
+        auto *address = dialog->findChild<QLineEdit *>();
+        assert(address);
+        address->setText(QStringLiteral("http://127.0.0.1:8766"));
+        selectedDocTr = true;
+        dialog->accept();
+    });
+    engineAction->trigger();
+    assert(selectedDocTr);
+    bool hasAutoLanguage = false;
+    for (QLineEdit *edit : window.findChildren<QLineEdit *>())
+        hasAutoLanguage |= edit->text() == QStringLiteral("auto");
+    assert(hasAutoLanguage);
 }
