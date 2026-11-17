@@ -49,9 +49,12 @@ bool parseBox(const QJsonObject &json, int pageWidth, int pageHeight, QRect *box
 
 QJsonObject wordJson(const OcrWord &word)
 {
+    QJsonArray sources;
+    for (const QString &id : word.sourceWordIds) sources.append(id);
     return {{"id", word.id}, {"page", word.page}, {"block", word.block},
             {"paragraph", word.paragraph}, {"line", word.line}, {"box", boxJson(word.bounds)},
             {"original_text", word.originalText}, {"text", word.text},
+            {"source_word_ids", sources},
             {"confidence", word.confidence}, {"reviewed", word.reviewed},
             {"style", QJsonObject{{"bold", word.bold}, {"italic", word.italic},
                                    {"font_size_pt", word.fontSizePt},
@@ -74,6 +77,14 @@ bool parseWord(const QJsonObject &json, int pageNumber, int width, int height, O
     word->confidence = json.value(QStringLiteral("confidence")).toDouble();
     word->reviewed = json.value(QStringLiteral("reviewed")).toBool();
     word->id = json.value(QStringLiteral("id")).toString();
+    if (json.contains(QStringLiteral("source_word_ids"))) {
+        const QJsonValue sources = json.value(QStringLiteral("source_word_ids"));
+        if (!sources.isArray()) return false;
+        for (const QJsonValue &value : sources.toArray()) {
+            if (!value.isString() || value.toString().isEmpty()) return false;
+            word->sourceWordIds.append(value.toString());
+        }
+    } else if (!word->id.isEmpty()) word->sourceWordIds.append(word->id);
     const QJsonObject style = json.value(QStringLiteral("style")).toObject();
     word->bold = style.value(QStringLiteral("bold")).toBool();
     word->italic = style.value(QStringLiteral("italic")).toBool();
@@ -98,6 +109,8 @@ void OcrPage::rebuildHierarchy()
         word.page = number;
         if (word.id.isEmpty())
             word.id = QStringLiteral("%1/word-%2").arg(lineId(number, word.block, word.paragraph, word.line)).arg(i + 1);
+        if (word.sourceWordIds.isEmpty() && !word.originalText.isEmpty())
+            word.sourceWordIds.append(word.id);
         if (regions.isEmpty() || word.block != previousBlock) {
             OcrRegion region;
             region.id = regionId(number, word.block);
@@ -206,53 +219,6 @@ bool OcrPage::extractRegion(const QVector<int> &wordIndices)
     return true;
 }
 
-OcrDocument OcrDocument::fromTsv(const QByteArray &tsv, int width, int height,
-                                 const QString &path, const QString &lang, int pageNumber)
-{
-    OcrDocument document;
-    document.sourcePath = path;
-    document.language = lang;
-    document.totalPages = pageNumber;
-    OcrPage page;
-    page.id = pageId(pageNumber);
-    page.number = pageNumber;
-    page.width = width;
-    page.height = height;
-    page.sourceWidth = width;
-    page.sourceHeight = height;
-    page.engineId = document.engine;
-    page.language = lang;
-    const QStringList rows = QString::fromUtf8(tsv).split(QLatin1Char('\n'));
-    if (!rows.isEmpty() && rows.first().startsWith(QStringLiteral("level\t"))) {
-        for (int i = 1; i < rows.size(); ++i) {
-            const QStringList fields = rows.at(i).trimmed().split(QLatin1Char('\t'));
-            if (fields.size() < 12 || fields.at(0) != QStringLiteral("5")) continue;
-            bool ok[8] = {};
-            OcrWord word;
-            word.page = pageNumber;
-            word.block = fields.at(2).toInt(&ok[0]);
-            word.paragraph = fields.at(3).toInt(&ok[1]);
-            word.line = fields.at(4).toInt(&ok[2]);
-            const int x = fields.at(6).toInt(&ok[3]);
-            const int y = fields.at(7).toInt(&ok[4]);
-            const int w = fields.at(8).toInt(&ok[5]);
-            const int h = fields.at(9).toInt(&ok[6]);
-            word.confidence = fields.at(10).toDouble(&ok[7]);
-            word.originalText = fields.mid(11).join(QLatin1Char('\t')).trimmed();
-            word.text = word.originalText;
-            bool valid = !word.text.isEmpty() && x >= 0 && y >= 0 && w > 0 && h > 0 &&
-                static_cast<qint64>(x) + w <= width && static_cast<qint64>(y) + h <= height;
-            for (bool value : ok) valid = valid && value;
-            if (!valid) continue;
-            word.bounds = QRect(x, y, w, h);
-            page.words.append(word);
-        }
-    }
-    page.rebuildHierarchy();
-    document.pages.append(std::move(page));
-    return document;
-}
-
 OcrPage *OcrDocument::page(int number)
 {
     for (OcrPage &item : pages) if (item.number == number) return &item;
@@ -273,6 +239,12 @@ void OcrDocument::replacePage(OcrPage replacement)
     }
     pages.append(std::move(replacement));
     std::sort(pages.begin(), pages.end(), [](const OcrPage &a, const OcrPage &b) { return a.number < b.number; });
+}
+
+void OcrDocument::removePage(int number)
+{
+    for (int i = 0; i < pages.size(); ++i)
+        if (pages.at(i).number == number) { pages.removeAt(i); return; }
 }
 
 int OcrDocument::wordCount() const

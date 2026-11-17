@@ -11,6 +11,7 @@
 #include <QPoint>
 #include <QRectF>
 #include <QTemporaryDir>
+#include <QUndoStack>
 
 #include <atomic>
 #include <memory>
@@ -82,6 +83,7 @@ private:
     bool maybeSave();
     void markDirty();
     void updateTitle();
+    void refreshDirty();
     void loadImage(const QString &path);
     void showPage(int number);
     void updatePageControls();
@@ -90,6 +92,7 @@ private:
     void selectWord(int index);
     void selectRegion(const QRectF &bounds);
     void updateSelection(const QVector<int> &indices);
+    QVector<int> indicesForIds(const QStringList &ids) const;
     bool applyCorrection();
     bool maybeApplyEditor();
     void runRegionOcr();
@@ -124,6 +127,8 @@ private:
     QAction *createRegionAction = nullptr;
     QAction *pdfAction = nullptr;
     QAction *pdfaAction = nullptr;
+    QAction *undoAction = nullptr;
+    QAction *redoAction = nullptr;
     QSpinBox *pageSpin;
     processing::DocumentProcessor processor;
     QVector<QGraphicsRectItem *> wordBoxes;
@@ -135,10 +140,13 @@ private:
     QString imagePath;
     QString rawImagePath;
     QImage rawImage;
+    core::PreprocessSettings displayedPreprocessing;
     QTemporaryDir preparedDir;
     QString originalPath;
     QString projectPath;
     bool dirty = false;
+    bool externalDirty = false;
+    QUndoStack undoStack;
     bool editorPending = false;
     bool exportBusy = false;
     QString pdfExportPath;

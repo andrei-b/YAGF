@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QProcess>
+#include <QFutureWatcher>
 #include <QRect>
 #include <QPoint>
 #include <QTemporaryDir>
@@ -9,6 +10,10 @@
 #include <QSize>
 
 #include "preprocesssettings.h"
+#include "iocrengine.h"
+
+#include <memory>
+#include <stop_token>
 
 namespace yagf::processing {
 
@@ -25,12 +30,16 @@ public:
     explicit DocumentProcessor(QObject *parent = nullptr);
     ~DocumentProcessor() override;
     bool isBusy() const;
+    QString engineId() const;
+    EngineCapabilities engineCapabilities() const;
+    void setEngine(std::unique_ptr<IOcrEngine> replacement);
     void resetSource();
     void openPdf(const QString &path);
     void renderPdfPage(int pageNumber);
     void startThumbnails(int pageCount);
-    void recognize(const QString &imagePath, const QString &language);
-    void recognizeRegion(const QString &imagePath, const QString &language, const QRect &region);
+    void recognize(const QString &imagePath, const QString &language, int pageNumber);
+    void recognizeRegion(const QString &imagePath, const QString &language,
+                         int pageNumber, const QRect &region);
     void recognizePages(const QVector<BatchPageOptions> &pages);
     void cancel();
 signals:
@@ -38,9 +47,8 @@ signals:
     void pdfOpened(int pageCount);
     void pageRendered(int pageNumber, const QString &imagePath);
     void thumbnailReady(int pageNumber, const QString &imagePath);
-    void recognized(const QByteArray &tsv, const QPoint &offset, const QRect &region);
-    void batchPageRecognized(int pageNumber, const QByteArray &tsv, const QSize &sourceSize,
-                             const QSize &processedSize, const QString &language);
+    void recognized(core::OcrPage page, const QPoint &offset, const QRect &region);
+    void batchPageRecognized(core::OcrPage page, const QSize &sourceSize);
     void batchProgress(int completed, int total);
     void batchFinished();
     void cancelled();
@@ -52,9 +60,20 @@ private:
     void startNextBatchPage();
     void prepareBatchImage(const QString &path);
     void finishBatchError(const QString &message);
+    void startOcrImage(const QString &path, const QImage &image, const OcrOptions &options,
+                       const QRect &region, bool batch);
+
+    struct OcrJobResult {
+        std::expected<core::OcrPage, OcrError> outcome;
+        QPoint offset;
+        QRect region;
+    };
 
     QProcess process;
     QProcess thumbnailProcess;
+    QFutureWatcher<OcrJobResult> ocrWatcher;
+    std::stop_source ocrStop;
+    std::unique_ptr<IOcrEngine> engine;
     QTemporaryDir temporaryDir;
     Job job = Job::None;
     QString pdfSource;
@@ -63,12 +82,9 @@ private:
     bool cancellationRequested = false;
     int nextThumbnail = 0;
     int thumbnailCount = 0;
-    QPoint recognitionOffset;
-    QRect recognitionRegion;
     QVector<BatchPageOptions> batchPages;
     int batchIndex = 0;
     QSize batchSourceSize;
-    QSize batchProcessedSize;
 };
 
 } // namespace yagf::processing

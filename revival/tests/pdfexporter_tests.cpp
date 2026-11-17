@@ -21,6 +21,24 @@ using yagf::core::OcrDocument;
 using yagf::processing::PdfExportResult;
 using yagf::processing::PdfExporter;
 
+static OcrDocument sampleDocument(int width, int height, const QString &path, int number = 1)
+{
+    OcrDocument document;
+    document.sourcePath = path;
+    document.language = QStringLiteral("eng");
+    document.totalPages = number;
+    yagf::core::OcrPage page;
+    page.number = number;
+    page.width = page.sourceWidth = width;
+    page.height = page.sourceHeight = height;
+    page.language = QStringLiteral("eng");
+    const QRect box(2, 2, qMin(110, width - 2), qMin(30, height - 2));
+    page.words.append({number, 1, 1, 1, box,
+                       QStringLiteral("Mistake"), QStringLiteral("Mistake"), 90});
+    document.replacePage(std::move(page));
+    return document;
+}
+
 int main(int argc, char **argv)
 {
     QGuiApplication app(argc, argv);
@@ -30,10 +48,7 @@ int main(int argc, char **argv)
     QImage image(400, 120, QImage::Format_RGB32);
     image.fill(Qt::white);
     assert(image.save(imagePath));
-    const QByteArray tsv =
-        "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n"
-        "5\t1\t1\t1\t1\t1\t20\t20\t110\t30\t90\tMistake\n";
-    OcrDocument document = OcrDocument::fromTsv(tsv, 400, 120, imagePath, QStringLiteral("eng"));
+    OcrDocument document = sampleDocument(400, 120, imagePath);
     document.page(1)->words[0].text = QStringLiteral("Corrected");
     const QString pdfPath = directory.filePath(QStringLiteral("output.pdf"));
     std::atomic_bool cancelled = false;
@@ -64,7 +79,7 @@ int main(int argc, char **argv)
     QImageReader photoReader(photoPath);
     photoReader.setAutoTransform(true);
     assert(photoReader.read().size() == QSize(20, 40));
-    OcrDocument oriented = OcrDocument::fromTsv(tsv, 20, 40, photoPath, QStringLiteral("eng"));
+    OcrDocument oriented = sampleDocument(20, 40, photoPath);
     assert(PdfExporter::write(oriented, directory.filePath(QStringLiteral("rotated.pdf")),
                               false, cancelled).status == PdfExportResult::Status::Success);
     if (!QStandardPaths::findExecutable(QStringLiteral("ocrmypdf")).isEmpty()) {
@@ -104,11 +119,9 @@ int main(int argc, char **argv)
         const QImage first(firstPrefix + QStringLiteral(".png"));
         const QImage second(secondPrefix + QStringLiteral(".png"));
         assert(!first.isNull() && !second.isNull());
-        OcrDocument pages = OcrDocument::fromTsv(tsv, first.width(), first.height(), inputPdf,
-                                                  QStringLiteral("eng"));
+        OcrDocument pages = sampleDocument(first.width(), first.height(), inputPdf);
         pages.page(1)->words[0].text = QStringLiteral("FirstFix");
-        OcrDocument next = OcrDocument::fromTsv(tsv, second.width(), second.height(), inputPdf,
-                                                 QStringLiteral("eng"), 2);
+        OcrDocument next = sampleDocument(second.width(), second.height(), inputPdf, 2);
         next.page(2)->words[0].text = QStringLiteral("SecondFix");
         pages.totalPages = 2;
         pages.replacePage(*next.page(2));

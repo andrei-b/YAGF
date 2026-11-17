@@ -1,7 +1,10 @@
 #include "ocrdocument.h"
+#include "wordeditor.h"
 
 #include <QJsonArray>
 #include <QJsonObject>
+
+#include <tuple>
 
 #ifdef NDEBUG
 #undef NDEBUG
@@ -12,14 +15,21 @@ using namespace yagf::core;
 
 int main()
 {
-    const QByteArray tsv =
-        "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n"
-        "1\t1\t0\t0\t0\t0\t0\t0\t200\t100\t-1\t\n"
-        "5\t1\t1\t1\t1\t1\t10\t20\t30\t12\t91.2\tHello\n"
-        "5\t1\t1\t1\t1\t2\t50\t20\t40\t12\t75\tworld\n"
-        "5\t1\t1\t1\t2\t1\t10\t40\t30\t12\t80\tAgain\n"
-        "5\t1\t1\t1\t2\t2\t190\t40\t30\t12\t80\tOutside\n";
-    OcrDocument doc = OcrDocument::fromTsv(tsv, 200, 100, QStringLiteral("scan.png"), QStringLiteral("eng"));
+    OcrDocument doc;
+    doc.sourcePath = QStringLiteral("scan.png");
+    doc.language = QStringLiteral("eng");
+    OcrPage source;
+    source.number = 1;
+    source.width = source.sourceWidth = 200;
+    source.height = source.sourceHeight = 100;
+    source.language = QStringLiteral("eng");
+    source.words.append({1, 1, 1, 1, QRect(10, 20, 30, 12),
+                         QStringLiteral("Hello"), QStringLiteral("Hello"), 91.2});
+    source.words.append({1, 1, 1, 1, QRect(50, 20, 40, 12),
+                         QStringLiteral("world"), QStringLiteral("world"), 75});
+    source.words.append({1, 1, 1, 2, QRect(10, 40, 30, 12),
+                         QStringLiteral("Again"), QStringLiteral("Again"), 80});
+    doc.replacePage(source);
     assert(doc.page(1)->words.size() == 3);
     assert(doc.page(1)->words.at(0).bounds == QRect(10, 20, 30, 12));
     assert(doc.page(1)->regions.size() == 1);
@@ -41,19 +51,27 @@ int main()
         .value(QStringLiteral("reading_order")).toArray();
     assert(order.size() == 3);
     assert(order.at(0).toString() == doc.page(1)->words.at(0).id);
-    OcrDocument second = OcrDocument::fromTsv(tsv, 200, 100, QStringLiteral("scan.png"), QStringLiteral("eng"), 2);
+    OcrPage second = source;
+    second.number = 2;
+    second.id.clear();
+    for (OcrWord &word : second.words) { word.page = 2; word.id.clear(); word.sourceWordIds.clear(); }
     doc.totalPages = 2;
-    doc.replacePage(std::move(*second.page(2)));
+    doc.replacePage(std::move(second));
     assert(doc.page(2)->words.at(0).page == 2);
     assert(doc.wordCount() == 6);
     assert(doc.plainText().contains(QStringLiteral("\f")));
 
-    const QByteArray layoutTsv =
-        "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n"
-        "5\t1\t1\t1\t1\t1\t10\t20\t30\t12\t90\tLeft\n"
-        "5\t1\t2\t1\t1\t1\t110\t20\t40\t12\t90\tRight\n";
-    OcrDocument layout = OcrDocument::fromTsv(layoutTsv, 200, 100,
-                                               QStringLiteral("scan.png"), QStringLiteral("eng"));
+    OcrDocument layout;
+    layout.sourcePath = QStringLiteral("scan.png");
+    OcrPage layoutPage;
+    layoutPage.number = 1;
+    layoutPage.width = layoutPage.sourceWidth = 200;
+    layoutPage.height = layoutPage.sourceHeight = 100;
+    layoutPage.words.append({1, 1, 1, 1, QRect(10, 20, 30, 12),
+                             QStringLiteral("Left"), QStringLiteral("Left"), 90});
+    layoutPage.words.append({1, 2, 1, 1, QRect(110, 20, 40, 12),
+                             QStringLiteral("Right"), QStringLiteral("Right"), 90});
+    layout.replacePage(std::move(layoutPage));
     assert(layout.page(1)->regions.size() == 2);
     layout.page(1)->regions[1].type = QStringLiteral("column");
     layout.page(1)->regions[1].bounds = QRect(100, 10, 70, 50);
@@ -74,4 +92,74 @@ int main()
     assert(extracted.words.last().text == QStringLiteral("earth"));
     assert(extracted.words.last().reviewed);
     assert(extracted.regions.last().bounds == QRect(50, 20, 40, 12));
+
+    const auto split = WordEditor::apply(*doc.page(1), {0},
+        {{QStringLiteral("Hel")}, {QStringLiteral("lo")}});
+    assert(split && split->words.size() == 4);
+    assert(split->words.at(0).text == QStringLiteral("Hel"));
+    assert(split->words.at(1).text == QStringLiteral("lo"));
+    assert(split->words.at(0).id != split->words.at(1).id);
+    assert(split->words.at(0).sourceWordIds == split->words.at(1).sourceWordIds);
+    assert(split->words.at(0).bounds.united(split->words.at(1).bounds) == doc.page(1)->words.at(0).bounds);
+    const auto joined = WordEditor::apply(*split, {0, 1}, {{QStringLiteral("Hello")}});
+    assert(joined && joined->words.size() == 3);
+    assert(joined->words.at(0).bounds == doc.page(1)->words.at(0).bounds);
+    const auto inserted = WordEditor::apply(*joined, {0, 1},
+        {{QStringLiteral("Hello")}, {QStringLiteral("new")}, {QStringLiteral("earth")}});
+    assert(inserted && inserted->words.size() == 4);
+    assert(inserted->words.at(1).originalText.isEmpty());
+    assert(inserted->words.at(1).sourceWordIds.isEmpty());
+    assert(inserted->words.at(1).bounds.isValid());
+    const auto deleted = WordEditor::apply(*inserted, {1}, {});
+    assert(deleted && deleted->words.size() == 3);
+    assert(deleted->words.at(1).text == QStringLiteral("earth"));
+    const auto merged = WordEditor::apply(*doc.page(1), {0, 1}, {{QStringLiteral("Helloearth")}});
+    assert(merged && merged->words.at(0).sourceWordIds.size() == 2);
+    OcrDocument editedDocument = doc;
+    editedDocument.replacePage(*merged);
+    OcrDocument reloaded;
+    assert(OcrDocument::fromJson(editedDocument.toJson(), &reloaded, &error));
+    assert(reloaded.page(1)->words.at(0).sourceWordIds == merged->words.at(0).sourceWordIds);
+    editedDocument.replacePage(*inserted);
+    assert(OcrDocument::fromJson(editedDocument.toJson(), &reloaded, &error));
+    assert(reloaded.page(1)->words.at(1).sourceWordIds.isEmpty());
+    assert(!WordEditor::apply(*doc.page(1), {0, 2}, {{QStringLiteral("bad")}}));
+
+    OcrPage phrase;
+    phrase.number = 1;
+    phrase.width = 300;
+    phrase.height = 80;
+    for (const auto &[text, x, width] :
+         {std::tuple{QStringLiteral("mod"), 10, 30},
+          std::tuple{QStringLiteral("ernization"), 41, 80},
+          std::tuple{QStringLiteral("and"), 130, 30},
+          std::tuple{QStringLiteral("ofthe"), 170, 50}})
+        phrase.words.append({1, 1, 1, 1, QRect(x, 20, width, 12), text, text, 90});
+    phrase.rebuildHierarchy();
+    const auto multiple = WordEditor::apply(phrase, {0, 1, 2, 3},
+        {{QStringLiteral("modernization")}, {QStringLiteral("and")},
+         {QStringLiteral("of")}, {QStringLiteral("the")}});
+    assert(multiple && multiple->words.size() == 4);
+    assert(multiple->words.at(1).bounds == phrase.words.at(2).bounds);
+    assert(multiple->words.at(0).sourceWordIds.size() == 2);
+    assert(multiple->words.at(2).sourceWordIds == multiple->words.at(3).sourceWordIds);
+
+    OcrPage longPage;
+    longPage.number = 1;
+    longPage.width = 3200;
+    longPage.height = 20;
+    QVector<int> longSelection;
+    QVector<EditedWord> longReplacement;
+    for (int i = 0; i < 1500; ++i) {
+        const QString word = QStringLiteral("word%1").arg(i);
+        longPage.words.append({1, 1, 1, 1, QRect(i * 2, 0, 1, 10), word, word, 90});
+        longSelection.append(i);
+        longReplacement.append({word});
+    }
+    longPage.rebuildHierarchy();
+    longReplacement.last().text = QStringLiteral("lastpart");
+    longReplacement.append({QStringLiteral("two")});
+    const auto longEdit = WordEditor::apply(longPage, longSelection, longReplacement);
+    assert(longEdit && longEdit->words.size() == 1501);
+    assert(longEdit->words.at(0).bounds == longPage.words.at(0).bounds);
 }

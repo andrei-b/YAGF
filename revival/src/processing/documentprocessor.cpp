@@ -1,17 +1,21 @@
 #include "documentprocessor.h"
 
-#include <QStandardPaths>
-#include <QFileInfo>
-#include <QRegularExpression>
-#include <QUuid>
-#include <QImage>
-#include <QTimer>
-
 #include "imageprocessor.h"
+#include "tesseractengine.h"
+
+#include <QFileInfo>
+#include <QImageReader>
+#include <QRegularExpression>
+#include <QSet>
+#include <QStandardPaths>
+#include <QTimer>
+#include <QUuid>
+#include <QtConcurrent>
 
 namespace yagf::processing {
 
-DocumentProcessor::DocumentProcessor(QObject *parent) : QObject(parent)
+DocumentProcessor::DocumentProcessor(QObject *parent)
+    : QObject(parent), engine(std::make_unique<TesseractEngine>())
 {
     connect(&process, &QProcess::finished, this, [this](int exitCode, QProcess::ExitStatus status) {
         const Job finishedJob = job;
@@ -25,24 +29,15 @@ DocumentProcessor::DocumentProcessor(QObject *parent) : QObject(parent)
             return;
         }
         if (status != QProcess::NormalExit || exitCode != 0) {
-            const QString message = tr("Processing failed: %1").arg(QString::fromUtf8(process.readAllStandardError()));
-            if (finishedJob == Job::BatchRender || finishedJob == Job::BatchOcr) finishBatchError(message);
+            const QString message = tr("Processing failed: %1")
+                .arg(QString::fromUtf8(process.readAllStandardError()).trimmed());
+            if (finishedJob == Job::BatchRender) finishBatchError(message);
             else { job = Job::None; emit busyChanged(false); emit failed(message); }
             return;
         }
         if (finishedJob == Job::BatchRender) {
             prepareBatchImage(temporaryDir.filePath(renderPrefix +
                 QString::number(batchPages.at(batchIndex).number) + QStringLiteral(".png")));
-            return;
-        }
-        if (finishedJob == Job::BatchOcr) {
-            const BatchPageOptions completed = batchPages.at(batchIndex);
-            emit batchPageRecognized(completed.number, process.readAllStandardOutput(),
-                                     batchSourceSize, batchProcessedSize, completed.language);
-            if (batchPages.isEmpty()) return;
-            ++batchIndex;
-            emit batchProgress(batchIndex, batchPages.size());
-            QTimer::singleShot(0, this, &DocumentProcessor::startNextBatchPage);
             return;
         }
         job = Job::None;
@@ -55,9 +50,8 @@ DocumentProcessor::DocumentProcessor(QObject *parent) : QObject(parent)
             if (count < 1) emit failed(tr("Could not read PDF page count."));
             else emit pdfOpened(count);
         } else if (finishedJob == Job::PdfRender)
-            emit pageRendered(requestedPage, temporaryDir.filePath(renderPrefix + QString::number(requestedPage) + QStringLiteral(".png")));
-        else if (finishedJob == Job::Ocr)
-            emit recognized(process.readAllStandardOutput(), recognitionOffset, recognitionRegion);
+            emit pageRendered(requestedPage,
+                temporaryDir.filePath(renderPrefix + QString::number(requestedPage) + QStringLiteral(".png")));
     });
     connect(&process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
         if (error == QProcess::FailedToStart) {
@@ -65,6 +59,39 @@ DocumentProcessor::DocumentProcessor(QObject *parent) : QObject(parent)
             job = Job::None;
             emit busyChanged(false);
             emit failed(tr("Could not start %1.").arg(process.program()));
+        }
+    });
+    connect(&ocrWatcher, &QFutureWatcher<OcrJobResult>::finished, this, [this] {
+        if (job != Job::Ocr && job != Job::BatchOcr) return;
+        OcrJobResult result = ocrWatcher.result();
+        const bool batch = job == Job::BatchOcr;
+        if (cancellationRequested || (!result.outcome && result.outcome.error().cancelled)) {
+            cancellationRequested = false;
+            batchPages.clear();
+            job = Job::None;
+            emit busyChanged(false);
+            emit cancelled();
+            return;
+        }
+        if (!result.outcome) {
+            if (batch) finishBatchError(result.outcome.error().message);
+            else {
+                job = Job::None;
+                emit busyChanged(false);
+                emit failed(result.outcome.error().message);
+            }
+            return;
+        }
+        if (batch) {
+            emit batchPageRecognized(std::move(*result.outcome), batchSourceSize);
+            if (batchPages.isEmpty() || job != Job::BatchOcr) return;
+            ++batchIndex;
+            emit batchProgress(batchIndex, batchPages.size());
+            QTimer::singleShot(0, this, &DocumentProcessor::startNextBatchPage);
+        } else {
+            job = Job::None;
+            emit busyChanged(false);
+            emit recognized(std::move(*result.outcome), result.offset, result.region);
         }
     });
     connect(&thumbnailProcess, &QProcess::finished, this, [this](int exitCode, QProcess::ExitStatus status) {
@@ -80,18 +107,25 @@ DocumentProcessor::DocumentProcessor(QObject *parent) : QObject(parent)
 
 DocumentProcessor::~DocumentProcessor()
 {
+    ocrStop.request_stop();
+    if (ocrWatcher.isRunning()) ocrWatcher.waitForFinished();
     thumbnailCount = 0;
-    if (thumbnailProcess.state() != QProcess::NotRunning) {
-        thumbnailProcess.kill();
-        thumbnailProcess.waitForFinished(2000);
-    }
-    if (process.state() != QProcess::NotRunning) {
-        process.kill();
-        process.waitForFinished(2000);
+    for (QProcess *running : {&thumbnailProcess, &process}) {
+        if (running->state() != QProcess::NotRunning) {
+            running->kill();
+            running->waitForFinished(2000);
+        }
     }
 }
 
 bool DocumentProcessor::isBusy() const { return job != Job::None; }
+QString DocumentProcessor::engineId() const { return engine->id(); }
+EngineCapabilities DocumentProcessor::engineCapabilities() const { return engine->capabilities(); }
+
+void DocumentProcessor::setEngine(std::unique_ptr<IOcrEngine> replacement)
+{
+    if (!isBusy() && replacement) engine = std::move(replacement);
+}
 
 void DocumentProcessor::start(Job requestedJob, const QString &program, const QStringList &arguments)
 {
@@ -162,47 +196,93 @@ void DocumentProcessor::renderPdfPage(int pageNumber)
            QStringLiteral("-png"), pdfSource, outputPrefix});
 }
 
-void DocumentProcessor::recognize(const QString &imagePath, const QString &language)
+void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
+                                      const OcrOptions &options, const QRect &region, bool batch)
 {
-    recognitionOffset = {};
-    recognitionRegion = {};
-    start(Job::Ocr, QStringLiteral("tesseract"),
-          {imagePath, QStringLiteral("stdout"), QStringLiteral("-l"), language, QStringLiteral("tsv")});
+    if ((!batch && isBusy()) || (batch && batchPages.isEmpty())) return;
+    const bool wasBusy = isBusy();
+    job = batch ? Job::BatchOcr : Job::Ocr;
+    cancellationRequested = false;
+    ocrStop = std::stop_source{};
+    const std::stop_token token = ocrStop.get_token();
+    if (!wasBusy) emit busyChanged(true);
+    ocrWatcher.setFuture(QtConcurrent::run([this, path, image, options, region, token] {
+        OcrJobResult result;
+        QImage input = image;
+        if (input.isNull()) {
+            QImageReader reader(path);
+            reader.setAutoTransform(true);
+            input = reader.read();
+            if (input.isNull()) {
+                result.outcome = std::unexpected(OcrError{
+                    QStringLiteral("Could not read OCR image: %1").arg(reader.errorString())});
+                return result;
+            }
+        }
+        if (!region.isEmpty()) {
+            const QRect bounded = region.intersected(input.rect());
+            if (bounded.isEmpty()) {
+                result.outcome = std::unexpected(OcrError{
+                    QStringLiteral("The selected region is outside the image.")});
+                return result;
+            }
+            result.offset = bounded.topLeft();
+            result.region = bounded;
+            input = input.copy(bounded);
+        }
+        result.outcome = engine->recognize(input, options, token);
+        if (result.outcome) {
+            core::OcrPage &page = *result.outcome;
+            page.engineId = engine->id();
+            if (page.number != options.pageNumber || page.width != input.width() ||
+                page.height != input.height()) {
+                result.outcome = std::unexpected(OcrError{
+                    QStringLiteral("The OCR engine returned inconsistent page geometry.")});
+                return result;
+            }
+            page.rebuildHierarchy();
+            QSet<QString> ids;
+            for (const core::OcrWord &word : page.words) {
+                if (!input.rect().contains(word.bounds) || word.bounds.isEmpty() ||
+                    word.id.isEmpty() || ids.contains(word.id)) {
+                    result.outcome = std::unexpected(OcrError{
+                        QStringLiteral("The OCR engine returned invalid word geometry or IDs.")});
+                    return result;
+                }
+                ids.insert(word.id);
+            }
+        }
+        return result;
+    }));
 }
 
-void DocumentProcessor::recognizeRegion(const QString &imagePath, const QString &language, const QRect &region)
+void DocumentProcessor::recognize(const QString &imagePath, const QString &language, int pageNumber)
 {
-    if (isBusy()) return;
-    const QImage source(imagePath);
-    const QRect bounded = region.intersected(source.rect());
-    if (source.isNull() || bounded.isEmpty()) {
-        emit failed(tr("The selected region is outside the image."));
+    startOcrImage(imagePath, {}, {.language = language, .pageNumber = pageNumber}, {}, false);
+}
+
+void DocumentProcessor::recognizeRegion(const QString &imagePath, const QString &language,
+                                        int pageNumber, const QRect &region)
+{
+    if (region.isEmpty()) { emit failed(tr("Select an image region first.")); return; }
+    if (!engineCapabilities().supportsRegions) {
+        emit failed(tr("The selected OCR engine does not support region recognition."));
         return;
     }
-    const QString cropPath = temporaryDir.filePath(QUuid::createUuid().toString(QUuid::WithoutBraces) +
-                                                    QStringLiteral("-region.png"));
-    if (!source.copy(bounded).save(cropPath)) {
-        emit failed(tr("Could not prepare the selected region for OCR."));
-        return;
-    }
-    recognitionOffset = bounded.topLeft();
-    recognitionRegion = bounded;
-    start(Job::Ocr, QStringLiteral("tesseract"),
-          {cropPath, QStringLiteral("stdout"), QStringLiteral("-l"), language, QStringLiteral("tsv")});
+    startOcrImage(imagePath, {}, {.language = language, .pageNumber = pageNumber}, region, false);
 }
 
 void DocumentProcessor::recognizePages(const QVector<BatchPageOptions> &pages)
 {
     if (isBusy() || pages.isEmpty() || pdfSource.isEmpty()) return;
-    for (const QString &program : {QStringLiteral("pdftoppm"), QStringLiteral("tesseract")}) {
-        if (QStandardPaths::findExecutable(program).isEmpty()) {
-            emit failed(tr("%1 is not installed or is not on PATH.").arg(program));
-            return;
-        }
+    if (QStandardPaths::findExecutable(QStringLiteral("pdftoppm")).isEmpty()) {
+        emit failed(tr("pdftoppm is not installed or is not on PATH."));
+        return;
     }
     batchPages = pages;
     batchIndex = 0;
     job = Job::BatchRender;
+    cancellationRequested = false;
     emit busyChanged(true);
     emit batchProgress(0, batchPages.size());
     startNextBatchPage();
@@ -234,25 +314,19 @@ void DocumentProcessor::startNextBatchPage()
 
 void DocumentProcessor::prepareBatchImage(const QString &path)
 {
-    const QImage source(path);
-    if (source.isNull()) { finishBatchError(tr("Could not read rendered page %1.").arg(batchPages.at(batchIndex).number)); return; }
+    QImageReader reader(path);
+    reader.setAutoTransform(true);
+    const QImage source = reader.read();
+    if (source.isNull()) {
+        finishBatchError(tr("Could not read rendered page %1.").arg(batchPages.at(batchIndex).number));
+        return;
+    }
     const auto processed = ImageProcessor::apply(source, batchPages.at(batchIndex).preprocessing);
     if (!processed) { finishBatchError(processed.error()); return; }
     batchSourceSize = source.size();
-    batchProcessedSize = processed->size();
-    QString ocrPath = path;
-    if (!batchPages.at(batchIndex).preprocessing.isIdentity()) {
-        ocrPath = temporaryDir.filePath(renderPrefix + QStringLiteral("batch-") +
-                                        QString::number(batchPages.at(batchIndex).number) + QStringLiteral(".png"));
-        if (!processed->save(ocrPath, "PNG")) {
-            finishBatchError(tr("Could not save prepared page %1.").arg(batchPages.at(batchIndex).number));
-            return;
-        }
-    }
-    job = Job::BatchOcr;
-    process.start(QStringLiteral("tesseract"),
-        {ocrPath, QStringLiteral("stdout"), QStringLiteral("-l"),
-         batchPages.at(batchIndex).language, QStringLiteral("tsv")});
+    startOcrImage({}, *processed,
+        {.language = batchPages.at(batchIndex).language,
+         .pageNumber = batchPages.at(batchIndex).number}, {}, true);
 }
 
 void DocumentProcessor::finishBatchError(const QString &message)
@@ -265,17 +339,20 @@ void DocumentProcessor::finishBatchError(const QString &message)
 
 void DocumentProcessor::cancel()
 {
-    if (isBusy()) {
-        cancellationRequested = true;
-        if (process.state() != QProcess::NotRunning) process.kill();
-        else {
-            cancellationRequested = false;
-            batchPages.clear();
-            job = Job::None;
-            emit busyChanged(false);
-            emit cancelled();
-        }
+    if (!isBusy()) return;
+    cancellationRequested = true;
+    if (job == Job::Ocr || job == Job::BatchOcr) {
+        ocrStop.request_stop();
+        if (!ocrWatcher.isFinished()) return;
+    } else if (process.state() != QProcess::NotRunning) {
+        process.kill();
+        return;
     }
+    cancellationRequested = false;
+    batchPages.clear();
+    job = Job::None;
+    emit busyChanged(false);
+    emit cancelled();
 }
 
 } // namespace yagf::processing

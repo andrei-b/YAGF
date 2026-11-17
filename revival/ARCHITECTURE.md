@@ -7,15 +7,19 @@ revival/
   CMakeLists.txt
   src/
     main.cpp                         application entry point
-    core/ocrdocument.{h,cpp}         OCR data, TSV normalization, text/JSON export
+    core/ocrdocument.{h,cpp}         OCR data, text/JSON export
+    core/wordeditor.{h,cpp}          source-linked split, merge, insert, delete
     core/projectfile.{h,cpp}         versioned project save/load, atomic write
     core/preprocesssettings.h         per-page, persisted quality options
-    processing/documentprocessor.{h,cpp}  subprocesses and temporary PDF rendering
+    processing/documentprocessor.{h,cpp}  async OCR jobs, PDF rendering and batching
+    processing/iocrengine.h          engine contract and capability flags
+    processing/tesseractengine.{h,cpp}    Tesseract subprocess and TSV adapter
     processing/imageprocessor.{h,cpp}     deskew detection, contrast, denoise, rotation
     processing/pdfexporter.{h,cpp}       searchable PDF and optional PDF/A conversion
     ui/mainwindow.{h,cpp}            page view, selection, editing, user actions
     ui/preprocessdialog.{h,cpp}       before/after preview and quality controls
     ui/layoutdialog.{h,cpp}           region geometry, type, and reading order
+    ui/documentcommands.{h,cpp}       undoable page and layout commands
   tests/ocrdocument_tests.cpp
   tests/projectfile_tests.cpp
   tests/imageprocessor_tests.cpp
@@ -26,18 +30,17 @@ Types live in `yagf::core`, `yagf::processing`, and `yagf::ui`. `ui` depends on 
 
 ## Data ownership
 
-The `OcrDocument` is the current in-memory source of truth. It contains numbered pages with regions, paragraphs, lines, and words. Stable IDs connect each line to its words; the project file also records an explicit word-ID reading order for each page. Each word stores its source box, original reading, corrected reading, confidence, review state, and basic bold/italic/size styling. Plain text, layout HTML, JSON, and the project file read from this document. The UI draws the current page's boxes and word list from it. Tesseract TSV supplies the first hierarchy; editable layout geometry and order are future work.
+The `OcrDocument` is the current in-memory source of truth. It contains numbered pages with regions, paragraphs, lines, and words. Stable IDs connect each line to its words; the project file also records an explicit word-ID reading order for each page. Each word stores its source box, original reading, corrected reading, source word IDs, confidence, review state, and basic bold/italic/size styling. Plain text, layout HTML, JSON, and the project file read from this document. The UI draws the current page's boxes and word list from it. `WordEditor` aligns unchanged words and maps split, merged, inserted, and deleted text onto page geometry. Qt undo commands keep before/after page snapshots and restore hierarchy and reading order together.
 
 ## Processing boundary
 
-`DocumentProcessor` owns the subprocesses and temporary directory for PDF rendering, background miniature generation, full-page OCR, region OCR, and sequential batch OCR. It emits image paths or Tesseract TSV and reports failures. The batch queue keeps the processor busy across pages and reports per-page progress; cancellation stops the queue. The UI turns TSV into `OcrDocument`, translating region coordinates back to the page. Later engine adapters should return normalized OCR results through a common interface and identify engine version and capabilities. External commands must receive argument lists, never a shell command string.
+`IOcrEngine` accepts a `QImage`, options, and `std::stop_token`, and returns a normalized `OcrPage` or error. `TesseractEngine` owns its subprocess and TSV parser. `DocumentProcessor` runs the engine on a Qt Concurrent worker, owns PDF rendering and thumbnail subprocesses, schedules batch pages, and propagates cancellation. The UI receives normalized pages and only translates region coordinates back to the source page. The core library has no recognition provider, widget, process, Python, or Jetson dependency. External commands receive argument lists, never shell command strings.
 
-`ImageProcessor` estimates page skew and luminance range, then applies optional denoise, contrast stretching, and rotation. `MainWindow` keeps the original image in memory, writes the processed page to a temporary PNG for Tesseract, and displays that same processed image. Project files store settings and both source and processed dimensions; reopening a project recreates the temporary image from the source. Changing rotation invalidates OCR geometry for that page.
+`ImageProcessor` estimates page skew and luminance range, then applies optional denoise, contrast stretching, and rotation. `MainWindow` keeps the original image in memory, writes the processed page to a temporary PNG for recognition, and displays that same processed image. Project files store settings and both source and processed dimensions; reopening a project recreates the temporary image from the source. Changing rotation invalidates OCR geometry for that page.
 
 `PdfExporter` renders each source page at the editor's 150 DPI, applies its saved image settings, and draws an invisible text layer from corrected words. It writes to a temporary file and atomically replaces the destination on success. The UI runs it through Qt Concurrent and can cancel between pages or during external commands. For PDF/A it calls OCRmyPDF in skip-text mode, preserving the edited text layer while converting the document.
 
 ## Next implementation slices
 
-1. Complete editing polish, especially undo/redo and richer layout controls.
-2. Add Flatpak packaging and test releases on supported Linux distributions.
-3. Add optional neural and Jetson adapters behind the same processing boundary, with measured comparison data.
+1. Add Flatpak packaging and test releases on supported Linux distributions.
+2. Add optional neural and Jetson adapters behind `IOcrEngine`, with measured comparison data.

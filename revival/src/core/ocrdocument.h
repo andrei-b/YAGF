@@ -21,6 +21,7 @@ struct OcrWord {
     double confidence = -1;
     bool reviewed = false;
     QString id;
+    QStringList sourceWordIds;
     bool bold = false;
     bool italic = false;
     int fontSizePt = 0;
@@ -54,7 +55,7 @@ struct OcrPage {
     int sourceWidth = 0;
     int sourceHeight = 0;
     PreprocessSettings preprocessing;
-    QString engineId = QStringLiteral("tesseract");
+    QString engineId;
     QString language;
     QVector<OcrWord> words;
     QVector<OcrRegion> regions;
@@ -66,17 +67,16 @@ struct OcrPage {
 class OcrDocument {
 public:
     QString sourcePath;
-    QString engine = QStringLiteral("tesseract");
+    QString engine;
     QString language;
     int totalPages = 1;
     QVector<OcrPage> pages;
 
-    static OcrDocument fromTsv(const QByteArray &tsv, int width, int height,
-                               const QString &sourcePath, const QString &language, int pageNumber = 1);
     static bool fromJson(const QJsonObject &json, OcrDocument *document, QString *error);
     OcrPage *page(int number);
     const OcrPage *page(int number) const;
     void replacePage(OcrPage page);
+    void removePage(int number);
     int wordCount() const;
     QString plainText() const;
     QString layoutHtml() const;

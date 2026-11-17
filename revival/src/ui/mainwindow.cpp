@@ -4,6 +4,8 @@
 #include "imageprocessor.h"
 #include "layoutdialog.h"
 #include "scannerdialog.h"
+#include "documentcommands.h"
+#include "wordeditor.h"
 
 #include <QCloseEvent>
 #include <QApplication>
@@ -60,6 +62,7 @@
 namespace yagf::ui {
 using core::OcrDocument;
 using core::OcrPage;
+using core::OcrRegion;
 using core::OcrWord;
 using core::ProjectFile;
 using processing::DocumentProcessor;
@@ -86,6 +89,7 @@ void carryCorrections(OcrPage &fresh, const OcrPage *oldPage)
             word.id = old.id;
             word.bold = old.bold;
             word.italic = old.italic;
+            word.sourceWordIds = old.sourceWordIds;
             word.fontSizePt = old.fontSizePt;
             word.sourceFontSizePt = old.sourceFontSizePt;
             if (old.reviewed) { word.text = old.text; word.reviewed = true; }
@@ -217,7 +221,18 @@ MainWindow::MainWindow()
     updateTitle();
     resize(1200, 800);
     auto *fileMenu = menuBar()->addMenu(tr("&File"));
+    auto *editMenu = menuBar()->addMenu(tr("&Edit"));
     auto *toolsMenu = menuBar()->addMenu(tr("&Tools"));
+    undoAction = editMenu->addAction(tr("Undo"), this, [this] {
+        if (!processor.isBusy() && !exportBusy && maybeApplyEditor()) undoStack.undo();
+    });
+    undoAction->setShortcut(QKeySequence::Undo);
+    redoAction = editMenu->addAction(tr("Redo"), this, [this] {
+        if (!processor.isBusy() && !exportBusy && maybeApplyEditor()) undoStack.redo();
+    });
+    redoAction->setShortcut(QKeySequence::Redo);
+    undoAction->setEnabled(false);
+    redoAction->setEnabled(false);
     auto *toolbar = addToolBar(tr("Document"));
     fileMenu->addAction(toolbar->addAction(tr("Open image or PDF"), this, &MainWindow::openFile));
     fileMenu->addAction(tr("Scan a page…"), this, &MainWindow::scanPage);
@@ -390,7 +405,15 @@ MainWindow::MainWindow()
     connect(regionOcrButton, &QPushButton::clicked, this, &MainWindow::runRegionOcr);
     connect(selectionEditor, &QTextEdit::textChanged, this, [this] { editorPending = true; });
     connect(view, &PageView::wordClicked, this, &MainWindow::selectWord);
-    connect(wordList, &QListWidget::currentRowChanged, this, &MainWindow::selectWord);
+    connect(wordList, &QListWidget::itemSelectionChanged, this, [this] {
+        QStringList ids;
+        for (QListWidgetItem *item : wordList->selectedItems()) {
+            const int row = wordList->row(item);
+            if (row >= 0 && row < displayedWords.size()) ids.append(displayedWords.at(row)->id);
+        }
+        if (!maybeApplyEditor()) { updateSelection(selectedWords); return; }
+        updateSelection(indicesForIds(ids));
+    });
     status = new QLabel(tr("Open an image or PDF to begin."), this);
     statusBar()->addPermanentWidget(status);
 
@@ -427,34 +450,31 @@ MainWindow::MainWindow()
         if (number == currentPage) loadImage(path);
     });
     connect(&processor, &DocumentProcessor::recognized, this,
-            [this](const QByteArray &tsv, const QPoint &offset, const QRect &region) {
+            [this](OcrPage newPage, const QPoint &offset, const QRect &region) {
         QImageReader reader(imagePath);
         const QSize size = reader.size();
-        const QSize recognizedSize = region.isEmpty() ? size : region.size();
-        OcrDocument result = OcrDocument::fromTsv(tsv, recognizedSize.width(), recognizedSize.height(),
-                                                  originalPath, languageEdit->text().trimmed(), currentPage);
-        OcrPage *newPage = result.page(currentPage);
         const OcrPage *oldPage = document.page(currentPage);
         if (oldPage) {
-            newPage->sourceWidth = oldPage->sourceWidth;
-            newPage->sourceHeight = oldPage->sourceHeight;
-            newPage->preprocessing = oldPage->preprocessing;
+            newPage.sourceWidth = oldPage->sourceWidth;
+            newPage.sourceHeight = oldPage->sourceHeight;
+            newPage.preprocessing = oldPage->preprocessing;
         } else {
-            newPage->sourceWidth = rawImage.width();
-            newPage->sourceHeight = rawImage.height();
+            newPage.sourceWidth = rawImage.width();
+            newPage.sourceHeight = rawImage.height();
         }
-        for (OcrWord &word : newPage->words) {
+        for (OcrWord &word : newPage.words) {
             word.bounds.translate(offset);
-            if (!region.isEmpty()) word.id.clear();
+            if (!region.isEmpty()) { word.id.clear(); word.sourceWordIds.clear(); }
         }
-        if (region.isEmpty()) carryCorrections(*newPage, oldPage);
+        if (region.isEmpty()) carryCorrections(newPage, oldPage);
         else if (oldPage) {
-            for (OcrWord &word : newPage->words) {
+            for (OcrWord &word : newPage.words) {
                 for (const OcrWord &old : oldPage->words) {
                     if (old.bounds == word.bounds && old.originalText == word.originalText) {
                         word.id = old.id;
                         word.bold = old.bold;
                         word.italic = old.italic;
+                        word.sourceWordIds = old.sourceWordIds;
                         word.fontSizePt = old.fontSizePt;
                         word.sourceFontSizePt = old.sourceFontSizePt;
                         if (old.reviewed) { word.text = old.text; word.reviewed = true; }
@@ -464,11 +484,11 @@ MainWindow::MainWindow()
             }
         }
         document.sourcePath = originalPath;
-        document.engine = result.engine;
-        document.language = result.language;
+        document.engine = newPage.engineId;
+        document.language = newPage.language;
         document.totalPages = pageCount;
         if (region.isEmpty()) {
-            document.replacePage(std::move(*newPage));
+            undoStack.push(new ReplacePageCommand(document, currentPage, std::move(newPage), tr("Recognize page")));
         } else {
             OcrPage merged;
             if (oldPage) merged = *oldPage;
@@ -480,11 +500,11 @@ MainWindow::MainWindow()
                 merged.sourceWidth = rawImage.width();
                 merged.sourceHeight = rawImage.height();
             }
-            merged.engineId = result.engine;
-            merged.language = result.language;
+            merged.engineId = newPage.engineId;
+            merged.language = newPage.language;
             int maxBlock = 0;
             for (const OcrWord &old : merged.words) maxBlock = qMax(maxBlock, old.block);
-            for (OcrWord &word : newPage->words) {
+            for (OcrWord &word : newPage.words) {
                 word.block += maxBlock;
             }
             QVector<OcrWord> kept;
@@ -500,37 +520,35 @@ MainWindow::MainWindow()
                 insertion = 0;
                 while (insertion < kept.size() && kept.at(insertion).bounds.top() < region.top()) ++insertion;
             }
-            for (const OcrWord &word : newPage->words) kept.insert(insertion++, word);
+            for (const OcrWord &word : newPage.words) kept.insert(insertion++, word);
             merged.words = std::move(kept);
-            document.replacePage(std::move(merged));
+            undoStack.push(new ReplacePageCommand(document, currentPage, std::move(merged), tr("Recognize region")));
         }
         showDocument();
         if (!region.isEmpty()) selectRegion(region);
-        markDirty();
         status->setText(tr("Page %1: %2 words recognized").arg(currentPage).arg(document.page(currentPage)->words.size()));
     });
     connect(&processor, &DocumentProcessor::batchPageRecognized, this,
-            [this](int number, const QByteArray &tsv, const QSize &sourceSize,
-                   const QSize &processedSize, const QString &language) {
+            [this](OcrPage page, const QSize &sourceSize) {
+        const int number = page.number;
         const OcrPage *oldPage = document.page(number);
         if (oldPage && (oldPage->sourceWidth != sourceSize.width() ||
                         oldPage->sourceHeight != sourceSize.height() ||
-                        oldPage->width != processedSize.width() || oldPage->height != processedSize.height())) {
+                        oldPage->width != page.width || oldPage->height != page.height)) {
             processor.cancel();
             showError(tr("Page %1 no longer matches its saved source or processing geometry.").arg(number));
             return;
         }
-        OcrDocument result = OcrDocument::fromTsv(tsv, processedSize.width(), processedSize.height(),
-                                                  originalPath, language, number);
-        OcrPage page = std::move(*result.page(number));
         page.sourceWidth = sourceSize.width();
         page.sourceHeight = sourceSize.height();
         if (oldPage) page.preprocessing = oldPage->preprocessing;
         carryCorrections(page, oldPage);
-        document.replacePage(std::move(page));
+        const QString language = page.language;
+        const QString engineId = page.engineId;
+        undoStack.push(new ReplacePageCommand(document, number, std::move(page), tr("Recognize page")));
+        document.engine = engineId;
         document.language = language;
         document.totalPages = pageCount;
-        markDirty();
         if (number == currentPage) showDocument();
     });
     connect(&processor, &DocumentProcessor::batchProgress, this, [this](int completed, int total) {
@@ -550,6 +568,15 @@ MainWindow::MainWindow()
             status->setText(tr("PDF export cancelled"));
         else showError(result.error);
     });
+    connect(&undoStack, &QUndoStack::indexChanged, this, [this] {
+        const OcrPage *page = document.page(currentPage);
+        if (page && !rawImagePath.isEmpty() && page->preprocessing != displayedPreprocessing)
+            loadImage(rawImagePath);
+        else showDocument();
+        refreshDirty();
+        undoAction->setEnabled(!processor.isBusy() && !exportBusy && undoStack.canUndo());
+        redoAction->setEnabled(!processor.isBusy() && !exportBusy && undoStack.canRedo());
+    });
 }
 
 MainWindow::~MainWindow()
@@ -563,6 +590,8 @@ MainWindow::~MainWindow()
 void MainWindow::setBusy(bool busy)
 {
     const bool blocked = busy || exportBusy;
+    undoAction->setEnabled(!blocked && undoStack.canUndo());
+    redoAction->setEnabled(!blocked && undoStack.canRedo());
     ocrButton->setEnabled(!blocked && !imagePath.isEmpty());
     cancelButton->setEnabled(blocked);
     selectionEditor->setEnabled(!blocked);
@@ -704,6 +733,8 @@ void MainWindow::loadSource(const QString &path)
     projectPath.clear();
     document = {};
     document.sourcePath = originalPath;
+    undoStack.clear();
+    externalDirty = false;
     dirty = false;
     updateTitle();
     wordList->clear();
@@ -751,9 +782,11 @@ void MainWindow::openProject()
         return;
     }
     processor.resetSource();
+    undoStack.clear();
     originalPath = loaded.sourcePath;
     projectPath = path;
     document = std::move(loaded);
+    externalDirty = false;
     languageEdit->setText(document.language);
     dirty = false;
     updateTitle();
@@ -796,6 +829,8 @@ bool MainWindow::saveProject()
     if (projectPath.isEmpty()) return saveProjectAs();
     QString error;
     if (!ProjectFile::save(projectPath, document, &error)) { showError(error); return false; }
+    externalDirty = false;
+    undoStack.setClean();
     dirty = false;
     updateTitle();
     statusBar()->showMessage(tr("Project saved: %1").arg(projectPath));
@@ -816,6 +851,8 @@ bool MainWindow::saveProjectAs()
     QString error;
     if (!ProjectFile::save(path, document, &error)) { showError(error); return false; }
     projectPath = path;
+    externalDirty = false;
+    undoStack.setClean();
     dirty = false;
     updateTitle();
     statusBar()->showMessage(tr("Project saved: %1").arg(projectPath));
@@ -836,7 +873,13 @@ bool MainWindow::maybeSave()
 
 void MainWindow::markDirty()
 {
-    dirty = true;
+    externalDirty = true;
+    refreshDirty();
+}
+
+void MainWindow::refreshDirty()
+{
+    dirty = externalDirty || !undoStack.isClean();
     updateTitle();
 }
 
@@ -884,6 +927,7 @@ void MainWindow::loadImage(const QString &path)
         }
     }
     rawImage = source;
+    displayedPreprocessing = settings;
     rawImagePath = path;
     imagePath = recognitionPath;
     wordBoxes.clear();
@@ -973,10 +1017,7 @@ void MainWindow::improveCurrentPage()
         page.words.clear();
         page.regions.clear();
     }
-    document.replacePage(std::move(page));
-    markDirty();
-    const QString sourcePath = rawImagePath;
-    loadImage(sourcePath);
+    undoStack.push(new ReplacePageCommand(document, currentPage, std::move(page), tr("Improve page")));
     status->setText(tr("Improvement applied to page %1. Recognize it to update OCR.").arg(currentPage));
 }
 
@@ -985,7 +1026,7 @@ void MainWindow::runOcr()
     if (imagePath.isEmpty() || processor.isBusy()) return;
     if (!maybeApplyEditor()) return;
     status->setText(tr("Recognizing…"));
-    processor.recognize(imagePath, languageEdit->text().trimmed());
+    processor.recognize(imagePath, languageEdit->text().trimmed(), currentPage);
 }
 
 void MainWindow::runBatchOcr()
@@ -1011,25 +1052,55 @@ void MainWindow::runBatchOcr()
 
 void MainWindow::editLayout()
 {
+    if (imagePath.isEmpty() || processor.isBusy() || !maybeApplyEditor()) return;
     OcrPage *page = document.page(currentPage);
-    if (!page || page->regions.isEmpty() || imagePath.isEmpty() || processor.isBusy() || !maybeApplyEditor()) return;
+    if (!page || page->regions.isEmpty()) return;
     LayoutDialog dialog(*page, QImage(imagePath), this);
     if (dialog.exec() != QDialog::Accepted || !dialog.hasChanges()) return;
-    document.replacePage(dialog.editedPage());
-    showDocument();
-    markDirty();
+    const OcrPage target = dialog.editedPage();
+    bool changed = false;
+    for (int i = 0; i < target.regions.size(); ++i) {
+        const OcrRegion &wanted = target.regions.at(i);
+        const OcrRegion &current = page->regions.at(i);
+        changed |= wanted.id != current.id || wanted.type != current.type || wanted.bounds != current.bounds;
+    }
+    if (!changed) return;
+    undoStack.beginMacro(tr("Edit layout"));
+    for (int desired = 0; desired < target.regions.size(); ++desired) {
+        const QString id = target.regions.at(desired).id;
+        int actual = -1;
+        for (int j = 0; j < document.page(currentPage)->regions.size(); ++j)
+            if (document.page(currentPage)->regions.at(j).id == id) { actual = j; break; }
+        while (actual > desired) {
+            undoStack.push(new ChangeReadingOrderCommand(document, currentPage, actual, -1));
+            --actual;
+        }
+    }
+    for (const OcrRegion &wanted : target.regions) {
+        const OcrRegion *current = nullptr;
+        for (const OcrRegion &region : document.page(currentPage)->regions)
+            if (region.id == wanted.id) { current = &region; break; }
+        if (!current) continue;
+        if (current->type != wanted.type)
+            undoStack.push(new ChangeRegionTypeCommand(document, currentPage, wanted.id, wanted.type));
+        current = nullptr;
+        for (const OcrRegion &region : document.page(currentPage)->regions)
+            if (region.id == wanted.id) { current = &region; break; }
+        if (current && current->bounds != wanted.bounds)
+            undoStack.push(new MoveRegionCommand(document, currentPage, wanted.id, wanted.bounds));
+    }
+    undoStack.endMacro();
     status->setText(tr("Page %1 layout and reading order updated").arg(currentPage));
 }
 
 void MainWindow::createRegionFromSelection()
 {
+    if (selectedWords.isEmpty() || processor.isBusy() || !maybeApplyEditor()) return;
     OcrPage *page = document.page(currentPage);
-    if (!page || selectedWords.isEmpty() || processor.isBusy() || !maybeApplyEditor()) return;
+    if (!page) return;
     OcrPage edited = *page;
     if (!edited.extractRegion(selectedWords)) return;
-    document.replacePage(std::move(edited));
-    showDocument();
-    markDirty();
+    undoStack.push(new ExtractRegionCommand(document, currentPage, std::move(edited)));
     status->setText(tr("Created a region from selected words. Use Edit layout to set its type and order."));
 }
 
@@ -1044,7 +1115,13 @@ void MainWindow::showDocument()
     wordBoxes.clear();
     displayedWords.clear();
     OcrPage *page = document.page(currentPage);
-    if (!page) { updateSelection({}); return; }
+    if (!page) {
+        updateSelection({});
+        layoutAction->setEnabled(false);
+        pdfAction->setEnabled(false);
+        pdfaAction->setEnabled(false);
+        return;
+    }
     for (OcrWord &word : page->words) {
         const int i = displayedWords.size();
         displayedWords.append(&word);
@@ -1069,7 +1146,11 @@ void MainWindow::showDocument()
 void MainWindow::selectWord(int index)
 {
     if (index < 0 || index >= wordBoxes.size()) return;
+    const QString id = displayedWords.at(index)->id;
     if (!maybeApplyEditor()) return;
+    const QVector<int> matches = indicesForIds({id});
+    if (matches.isEmpty()) return;
+    index = matches.first();
     if (regionOutline) {
         scene->removeItem(regionOutline);
         delete regionOutline;
@@ -1144,56 +1225,54 @@ void MainWindow::updateSelection(const QVector<int> &indices)
     selectionEditor->moveCursor(QTextCursor::Start);
 }
 
+QVector<int> MainWindow::indicesForIds(const QStringList &ids) const
+{
+    QVector<int> result;
+    for (int i = 0; i < displayedWords.size(); ++i)
+        if (ids.contains(displayedWords.at(i)->id)) result.append(i);
+    return result;
+}
+
 bool MainWindow::applyCorrection()
 {
     if (selectedWords.isEmpty()) { editorPending = false; return true; }
     const QString plain = selectionEditor->toPlainText();
     QRegularExpression wordPattern(QStringLiteral("\\S+"));
     auto matches = wordPattern.globalMatch(plain);
-    QVector<QRegularExpressionMatch> tokens;
-    while (matches.hasNext()) tokens.append(matches.next());
-    if (tokens.size() != selectedWords.size()) {
-        QMessageBox::information(this, tr("Keep source boxes aligned"),
-            tr("This selection has %1 source words. Edit their text and formatting while keeping %1 words, then apply.")
-                .arg(selectedWords.size()));
-        return false;
-    }
-    const QSignalBlocker listBlocker(wordList);
-    for (int i = 0; i < tokens.size(); ++i) {
-        const int index = selectedWords.at(i);
-        OcrWord *word = displayedWords.at(index);
-        word->text = tokens.at(i).captured();
-        word->reviewed = true;
+    QVector<core::EditedWord> tokens;
+    while (matches.hasNext()) {
+        const QRegularExpressionMatch match = matches.next();
         QTextCursor cursor(selectionEditor->document());
-        cursor.setPosition(tokens.at(i).capturedStart() + 1);
+        cursor.setPosition(match.capturedStart());
+        cursor.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor);
         const QTextCharFormat format = cursor.charFormat();
-        word->bold = format.fontWeight() >= QFont::Bold;
-        word->italic = format.fontItalic();
-        if (format.fontPointSize() > 0) word->fontSizePt = qRound(format.fontPointSize());
-        wordList->item(index)->setText(word->text);
-        wordList->item(index)->setForeground(QColor(0, 90, 20));
+        tokens.append({.text = match.captured(),
+                       .bold = format.fontWeight() >= QFont::Bold,
+                       .italic = format.fontItalic(),
+                       .fontSizePt = format.fontPointSize() > 0 ? qRound(format.fontPointSize()) : 0});
     }
-    markDirty();
+    const OcrPage *page = document.page(currentPage);
+    if (!page) return false;
+    auto edited = core::WordEditor::apply(*page, selectedWords, tokens);
+    if (!edited) { showError(edited.error()); return false; }
+    const int originalCount = selectedWords.size();
+    QStringList selectedIds;
+    for (int index : selectedWords) selectedIds.append(displayedWords.at(index)->id);
     editorPending = false;
-    statusBar()->showMessage(tr("Text and formatting applied to source-linked words."));
+    if (originalCount == 1 && tokens.size() > 1)
+        undoStack.push(new SplitWordCommand(document, currentPage, std::move(*edited)));
+    else if (originalCount > 1 && tokens.size() == 1)
+        undoStack.push(new MergeWordsCommand(document, currentPage, std::move(*edited)));
+    else undoStack.push(new ReplaceTextCommand(document, currentPage, std::move(*edited)));
+    updateSelection(indicesForIds(selectedIds));
+    statusBar()->showMessage(tr("Correction applied. Use Edit → Undo to reverse it."));
     return true;
 }
 
 bool MainWindow::maybeApplyEditor()
 {
     if (!editorPending) return true;
-    const QRegularExpression wordPattern(QStringLiteral("\\S+"));
-    int count = 0;
-    auto matches = wordPattern.globalMatch(selectionEditor->toPlainText());
-    while (matches.hasNext()) { matches.next(); ++count; }
-    if (count == selectedWords.size()) return applyCorrection();
-    const auto choice = QMessageBox::warning(this, tr("Unapplied text"),
-        tr("The edited text has %1 words, but the selection has %2 source boxes. Discard these unapplied edits?")
-            .arg(count).arg(selectedWords.size()), QMessageBox::Discard | QMessageBox::Cancel,
-        QMessageBox::Cancel);
-    if (choice != QMessageBox::Discard) return false;
-    updateSelection(selectedWords);
-    return true;
+    return applyCorrection();
 }
 
 void MainWindow::runRegionOcr()
@@ -1207,7 +1286,7 @@ void MainWindow::runRegionOcr()
         tr("This region contains corrected words. New OCR may replace unmatched corrections. Continue?"))
         != QMessageBox::Yes) return;
     status->setText(tr("Recognizing selected region…"));
-    processor.recognizeRegion(imagePath, languageEdit->text().trimmed(), selectedRegion);
+    processor.recognizeRegion(imagePath, languageEdit->text().trimmed(), currentPage, selectedRegion);
 }
 
 void MainWindow::exportText()

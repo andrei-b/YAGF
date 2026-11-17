@@ -11,15 +11,18 @@ set(CMAKE_AUTORCC ON)
 
 add_library(yagf_core STATIC
     src/core/ocrdocument.cpp src/core/ocrdocument.h src/core/preprocesssettings.h
-    src/core/projectfile.cpp src/core/projectfile.h)
+    src/core/projectfile.cpp src/core/projectfile.h
+    src/core/wordeditor.cpp src/core/wordeditor.h)
 target_link_libraries(yagf_core PUBLIC Qt6::Core Qt6::Gui)
 target_include_directories(yagf_core PUBLIC src/core)
 
 add_library(yagf_processing STATIC
     src/processing/documentprocessor.cpp src/processing/documentprocessor.h
     src/processing/imageprocessor.cpp src/processing/imageprocessor.h
+    src/processing/iocrengine.h
+    src/processing/tesseractengine.cpp src/processing/tesseractengine.h
     src/processing/pdfexporter.cpp src/processing/pdfexporter.h)
-target_link_libraries(yagf_processing PUBLIC yagf_core Qt6::Core Qt6::Gui)
+target_link_libraries(yagf_processing PUBLIC yagf_core Qt6::Core Qt6::Gui Qt6::Concurrent)
 target_include_directories(yagf_processing PUBLIC src/processing)
 
 qt_add_executable(yagf-revival
@@ -27,6 +30,7 @@ qt_add_executable(yagf-revival
     src/ui/preprocessdialog.cpp src/ui/preprocessdialog.h
     src/ui/layoutdialog.cpp src/ui/layoutdialog.h resources/icons.qrc)
 target_sources(yagf-revival PRIVATE src/ui/scannerdialog.cpp src/ui/scannerdialog.h)
+target_sources(yagf-revival PRIVATE src/ui/documentcommands.cpp src/ui/documentcommands.h)
 target_link_libraries(yagf-revival PRIVATE yagf_core yagf_processing Qt6::Widgets Qt6::Concurrent)
 
 install(TARGETS yagf-revival RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
@@ -45,12 +49,30 @@ if(BUILD_TESTING)
     qt_add_executable(ocrdocument_tests tests/ocrdocument_tests.cpp)
     target_link_libraries(ocrdocument_tests PRIVATE yagf_core)
     add_test(NAME ocrdocument_tests COMMAND ocrdocument_tests)
+    qt_add_executable(documentcommands_tests tests/documentcommands_tests.cpp
+        src/ui/documentcommands.cpp src/ui/documentcommands.h)
+    target_link_libraries(documentcommands_tests PRIVATE yagf_core Qt6::Gui)
+    target_include_directories(documentcommands_tests PRIVATE src/ui)
+    add_test(NAME documentcommands_tests COMMAND documentcommands_tests)
+    qt_add_executable(mainwindow_tests tests/mainwindow_tests.cpp
+        src/ui/mainwindow.cpp src/ui/mainwindow.h
+        src/ui/preprocessdialog.cpp src/ui/preprocessdialog.h
+        src/ui/layoutdialog.cpp src/ui/layoutdialog.h
+        src/ui/scannerdialog.cpp src/ui/scannerdialog.h
+        src/ui/documentcommands.cpp src/ui/documentcommands.h resources/icons.qrc)
+    target_link_libraries(mainwindow_tests PRIVATE yagf_processing Qt6::Widgets Qt6::Concurrent)
+    target_include_directories(mainwindow_tests PRIVATE src/ui)
+    add_test(NAME mainwindow_tests COMMAND mainwindow_tests)
+    set_tests_properties(mainwindow_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     qt_add_executable(projectfile_tests tests/projectfile_tests.cpp)
     target_link_libraries(projectfile_tests PRIVATE yagf_core)
     add_test(NAME projectfile_tests COMMAND projectfile_tests)
     qt_add_executable(imageprocessor_tests tests/imageprocessor_tests.cpp)
     target_link_libraries(imageprocessor_tests PRIVATE yagf_processing)
     add_test(NAME imageprocessor_tests COMMAND imageprocessor_tests)
+    qt_add_executable(ocrengine_tests tests/ocrengine_tests.cpp)
+    target_link_libraries(ocrengine_tests PRIVATE yagf_processing)
+    add_test(NAME ocrengine_tests COMMAND ocrengine_tests)
     qt_add_executable(scannerdialog_tests tests/scannerdialog_tests.cpp
         src/ui/scannerdialog.cpp src/ui/scannerdialog.h)
     target_link_libraries(scannerdialog_tests PRIVATE Qt6::Widgets)
