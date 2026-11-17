@@ -5,4 +5,7 @@
     <file>larger.png</file>
     <file>smaller.png</file>
   </qresource>
+  <qresource prefix="/theme">
+    <file>app.qss</file>
+  </qresource>
 </RCC>

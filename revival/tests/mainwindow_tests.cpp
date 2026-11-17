@@ -167,8 +167,9 @@ int main(int argc, char **argv)
     assert(regions->count() == 2);
     assert(std::abs(regionBox(0).x() - 5) <= 2 && std::abs(regionBox(0).width() - 85) <= 3);
     assert(std::abs(regionBox(1).x() - 105) <= 2 && std::abs(regionBox(1).width() - 90) <= 3);
+    const QRect original = regionBox(0);
     drag({30, 40}, {40, 45});
-    assert(regionBox(0).left() >= 14);
+    assert(regionBox(0).left() > original.left() && regionBox(0).top() > original.top());
     const QRect moved = regionBox(0);
     drag({qreal(moved.right()), qreal(moved.center().y())},
          {moved.right() - 10.0, qreal(moved.center().y())});

@@ -57,7 +57,9 @@
 #include <QSpinBox>
 #include <QStandardPaths>
 #include <QStatusBar>
+#include <QStyle>
 #include <QToolBar>
+#include <QToolButton>
 #include <QVBoxLayout>
 #include <QtConcurrent>
 #include <QUuid>
@@ -345,7 +347,8 @@ void PageView::dropEvent(QDropEvent *event)
 MainWindow::MainWindow()
 {
     updateTitle();
-    resize(1200, 800);
+    resize(1280, 820);
+    setObjectName(QStringLiteral("yagfWindow"));
     auto *fileMenu = menuBar()->addMenu(tr("&File"));
     auto *editMenu = menuBar()->addMenu(tr("&Edit"));
     auto *toolsMenu = menuBar()->addMenu(tr("&Tools"));
@@ -360,26 +363,39 @@ MainWindow::MainWindow()
     undoAction->setEnabled(false);
     redoAction->setEnabled(false);
     auto *toolbar = addToolBar(tr("Document"));
-    fileMenu->addAction(toolbar->addAction(tr("Open image or PDF"), this, &MainWindow::openFile));
+    toolbar->setObjectName(QStringLiteral("mainToolbar"));
+    toolbar->setMovable(false);
+    toolbar->setIconSize(QSize(18, 18));
+    toolbar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    fileMenu->addAction(tr("Open image or PDF…"), this, &MainWindow::openFile);
+    auto *openAction = toolbar->addAction(style()->standardIcon(QStyle::SP_DialogOpenButton),
+                                          tr("Open"), this, &MainWindow::openFile);
+    openAction->setToolTip(tr("Open an image or PDF"));
     fileMenu->addAction(tr("Scan a page…"), this, &MainWindow::scanPage);
     auto *pasteAction = fileMenu->addAction(tr("Paste image from clipboard"), this, &MainWindow::pasteImage);
     pasteAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+V")));
-    fileMenu->addAction(toolbar->addAction(tr("Open project"), this, &MainWindow::openProject));
+    fileMenu->addAction(tr("Open project"), this, &MainWindow::openProject);
     fileMenu->addAction(tr("Open portable project folder…"), this, &MainWindow::openPortableProject);
-    fileMenu->addAction(toolbar->addAction(tr("Save project"), this, &MainWindow::saveProject));
+    fileMenu->addAction(tr("Save project"), this, &MainWindow::saveProject);
+    auto *saveAction = toolbar->addAction(style()->standardIcon(QStyle::SP_DialogSaveButton),
+                                          tr("Save"), this, &MainWindow::saveProject);
+    saveAction->setToolTip(tr("Save the current project"));
     fileMenu->addAction(tr("Save project as…"), this, &MainWindow::saveProjectAs);
     fileMenu->addAction(tr("Save portable project folder…"), this, &MainWindow::savePortableProject);
     toolbar->addSeparator();
     previousButton = new QPushButton(QIcon(QStringLiteral(":/legacy/back.png")), {}, this);
+    previousButton->setObjectName(QStringLiteral("pageNavButton"));
     previousButton->setToolTip(tr("Previous page"));
     nextButton = new QPushButton(QIcon(QStringLiteral(":/legacy/forward.png")), {}, this);
+    nextButton->setObjectName(QStringLiteral("pageNavButton"));
     nextButton->setToolTip(tr("Next page"));
-    previousButton->setIconSize(QSize(24, 24));
-    nextButton->setIconSize(QSize(24, 24));
+    previousButton->setIconSize(QSize(20, 20));
+    nextButton->setIconSize(QSize(20, 20));
     pageSpin = new QSpinBox(this);
     pageSpin->setRange(1, 1);
     pageSpin->setToolTip(tr("PDF page number"));
-    pageSpin->setMaximumWidth(72);
+    pageSpin->setObjectName(QStringLiteral("pageNumber"));
+    pageSpin->setMaximumWidth(58);
     toolbar->addWidget(previousButton);
     toolbar->addWidget(pageSpin);
     toolbar->addWidget(nextButton);
@@ -399,11 +415,15 @@ MainWindow::MainWindow()
     regionAction->setChecked(true);
     regionAction->setToolTip(tr("Drag on the image to add OCR regions; drag an area to move it or its edges to resize it."));
     connect(regionAction, &QAction::toggled, this, [this](bool enabled) { view->setRegionMode(enabled); });
-    toolbar->addAction(QIcon(QStringLiteral(":/legacy/smaller.png")), tr("Zoom out"), this,
-                       [this] { view->zoomBy(1.0 / 1.25); });
+    auto *zoomOut = toolbar->addAction(QIcon(QStringLiteral(":/legacy/smaller.png")),
+                                      tr("Zoom out"), this, [this] { view->zoomBy(1.0 / 1.25); });
+    zoomOut->setToolTip(tr("Zoom out"));
+    qobject_cast<QToolButton *>(toolbar->widgetForAction(zoomOut))->setToolButtonStyle(Qt::ToolButtonIconOnly);
     toolbar->addAction(tr("Fit page"), this, [this] { view->fitPage(); });
-    toolbar->addAction(QIcon(QStringLiteral(":/legacy/larger.png")), tr("Zoom in"), this,
-                       [this] { view->zoomBy(1.25); });
+    auto *zoomIn = toolbar->addAction(QIcon(QStringLiteral(":/legacy/larger.png")),
+                                     tr("Zoom in"), this, [this] { view->zoomBy(1.25); });
+    zoomIn->setToolTip(tr("Zoom in"));
+    qobject_cast<QToolButton *>(toolbar->widgetForAction(zoomIn))->setToolButtonStyle(Qt::ToolButtonIconOnly);
     toolbar->addSeparator();
     improveAction = toolbar->addAction(tr("Improve page…"), this, &MainWindow::improveCurrentPage);
     improveAction->setObjectName(QStringLiteral("improvePageAction"));
@@ -418,9 +438,11 @@ MainWindow::MainWindow()
     createRegionAction->setEnabled(false);
     batchAction->setEnabled(false);
     ocrButton = new QPushButton(tr("Recognize"), this);
+    ocrButton->setObjectName(QStringLiteral("primaryButton"));
     toolbar->addWidget(ocrButton);
     connect(ocrButton, &QPushButton::clicked, this, &MainWindow::runOcr);
     cancelButton = new QPushButton(tr("Cancel"), this);
+    cancelButton->setObjectName(QStringLiteral("secondaryButton"));
     cancelButton->setEnabled(false);
     toolbar->addWidget(cancelButton);
     connect(cancelButton, &QPushButton::clicked, &processor, &DocumentProcessor::cancel);
@@ -432,12 +454,14 @@ MainWindow::MainWindow()
         }
     });
     toolbar->addSeparator();
-    toolbar->addWidget(new QLabel(tr("Language: "), this));
+    auto *languageLabel = new QLabel(tr("Language"), this);
+    languageLabel->setObjectName(QStringLiteral("toolbarCaption"));
+    toolbar->addWidget(languageLabel);
     languageEdit = new QLineEdit(QStringLiteral("eng"), this);
     languageEdit->setToolTip(tr("Language code for the selected OCR engine"));
-    languageEdit->setMaximumWidth(120);
+    languageEdit->setObjectName(QStringLiteral("languageField"));
+    languageEdit->setMaximumWidth(82);
     toolbar->addWidget(languageEdit);
-    toolbar->addSeparator();
     fileMenu->addSeparator();
     fileMenu->addAction(tr("Export text"), this, &MainWindow::exportText);
     fileMenu->addAction(tr("Export layout HTML"), this, &MainWindow::exportHtml);
@@ -449,9 +473,16 @@ MainWindow::MainWindow()
     pdfaAction->setEnabled(false);
 
     auto *splitter = new QSplitter(this);
+    splitter->setObjectName(QStringLiteral("workspaceSplitter"));
+    splitter->setHandleWidth(1);
     auto *navigationPane = new QWidget(splitter);
+    navigationPane->setObjectName(QStringLiteral("navigationPane"));
     auto *navigationLayout = new QVBoxLayout(navigationPane);
-    navigationLayout->setContentsMargins(0, 0, 0, 0);
+    navigationLayout->setContentsMargins(14, 16, 14, 14);
+    navigationLayout->setSpacing(10);
+    auto *pagesHeading = new QLabel(tr("PAGES"), navigationPane);
+    pagesHeading->setObjectName(QStringLiteral("sectionHeading"));
+    navigationLayout->addWidget(pagesHeading);
     pageList = new QListWidget(navigationPane);
     pageList->setObjectName(QStringLiteral("pageMiniatures"));
     pageList->setViewMode(QListView::IconMode);
@@ -459,18 +490,22 @@ MainWindow::MainWindow()
     pageList->setWrapping(false);
     pageList->setMovement(QListView::Static);
     pageList->setResizeMode(QListView::Adjust);
-    pageList->setGridSize(QSize(146, 190));
-    pageList->setIconSize(QSize(118, 156));
-    pageList->setMinimumWidth(150);
-    navigationPane->setMinimumWidth(150);
-    navigationPane->setMaximumWidth(205);
-    navigationLayout->addWidget(pageList, 3);
-    navigationLayout->addWidget(new QLabel(tr("Image regions"), navigationPane));
+    pageList->setGridSize(QSize(170, 190));
+    pageList->setIconSize(QSize(126, 156));
+    pageList->setMinimumHeight(220);
+    pageList->setMaximumHeight(330);
+    navigationPane->setMinimumWidth(195);
+    navigationPane->setMaximumWidth(245);
+    navigationLayout->addWidget(pageList);
+    auto *regionsHeading = new QLabel(tr("IMAGE REGIONS"), navigationPane);
+    regionsHeading->setObjectName(QStringLiteral("sectionHeading"));
+    navigationLayout->addWidget(regionsHeading);
     regionList = new QListWidget(navigationPane);
     regionList->setObjectName(QStringLiteral("imageRegions"));
     regionList->setToolTip(tr("Select an OCR area. Drag its edge on the image to resize it; press Delete to remove it."));
     navigationLayout->addWidget(regionList, 2);
     deleteRegionButton = new QPushButton(tr("Delete region"), navigationPane);
+    deleteRegionButton->setObjectName(QStringLiteral("deleteRegionButton"));
     deleteRegionButton->setEnabled(false);
     navigationLayout->addWidget(deleteRegionButton);
     pageList->setToolTip(tr("Select a page miniature to preview it."));
@@ -481,14 +516,19 @@ MainWindow::MainWindow()
     view->setAcceptDrops(true);
     view->setRegionMode(true);
     view->setRenderHint(QPainter::Antialiasing);
-    view->setBackgroundBrush(QColor(224, 228, 233));
+    view->setBackgroundBrush(QColor(QStringLiteral("#e9eef5")));
     auto *textPanel = new QWidget(splitter);
+    textPanel->setObjectName(QStringLiteral("textPanel"));
     auto *textLayout = new QVBoxLayout(textPanel);
-    textLayout->setContentsMargins(6, 6, 6, 6);
+    textLayout->setContentsMargins(16, 16, 16, 14);
+    textLayout->setSpacing(10);
     selectionLabel = new QLabel(tr("Recognized text"), textPanel);
+    selectionLabel->setObjectName(QStringLiteral("editorHeading"));
     textLayout->addWidget(selectionLabel);
     auto *formatToolbar = new QToolBar(textPanel);
+    formatToolbar->setObjectName(QStringLiteral("formatToolbar"));
     formatToolbar->setMovable(false);
+    formatToolbar->setIconSize(QSize(16, 16));
     textLayout->addWidget(formatToolbar);
     selectionEditor = new QTextEdit(textPanel);
     selectionEditor->setObjectName(QStringLiteral("recognizedTextEditor"));
@@ -498,6 +538,7 @@ MainWindow::MainWindow()
     textLayout->addWidget(selectionEditor, 2);
     auto *editButtons = new QHBoxLayout();
     applyButton = new QPushButton(tr("Apply correction"), textPanel);
+    applyButton->setObjectName(QStringLiteral("applyButton"));
     applyButton->setEnabled(false);
     regionOcrButton = new QPushButton(tr("Recognize region"), textPanel);
     regionOcrButton->setObjectName(QStringLiteral("recognizeRegionButton"));
@@ -505,7 +546,9 @@ MainWindow::MainWindow()
     editButtons->addWidget(applyButton);
     editButtons->addWidget(regionOcrButton);
     textLayout->addLayout(editButtons);
-    textLayout->addWidget(new QLabel(tr("Words on this page"), textPanel));
+    auto *wordsHeading = new QLabel(tr("WORDS ON THIS PAGE"), textPanel);
+    wordsHeading->setObjectName(QStringLiteral("sectionHeading"));
+    textLayout->addWidget(wordsHeading);
     wordList = new QListWidget(textPanel);
     wordList->setObjectName(QStringLiteral("recognizedWords"));
     wordList->setSelectionMode(QAbstractItemView::ExtendedSelection);
@@ -535,9 +578,11 @@ MainWindow::MainWindow()
     splitter->addWidget(textPanel);
     splitter->setStretchFactor(1, 3);
     splitter->setStretchFactor(2, 1);
-    splitter->setSizes({170, 710, 320});
+    splitter->setSizes({220, 690, 370});
     splitter->setChildrenCollapsible(false);
     setCentralWidget(splitter);
+    QFile styleFile(QStringLiteral(":/theme/app.qss"));
+    if (styleFile.open(QIODevice::ReadOnly)) setStyleSheet(QString::fromUtf8(styleFile.readAll()));
     setAcceptDrops(true);
     connect(view, &PageView::inputDropped, this, &MainWindow::importMimeData);
     updatePageControls();
