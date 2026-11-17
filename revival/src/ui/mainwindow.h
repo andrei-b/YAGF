@@ -20,6 +20,8 @@ class QTabWidget;
 class QTextEdit;
 class QRubberBand;
 
+namespace yagf::ui {
+
 class PageView : public QGraphicsView {
     Q_OBJECT
 public:
@@ -90,13 +92,13 @@ private:
     QPushButton *previousButton;
     QPushButton *nextButton;
     QSpinBox *pageSpin;
-    DocumentProcessor processor;
+    processing::DocumentProcessor processor;
     QVector<QGraphicsRectItem *> wordBoxes;
-    QVector<OcrWord *> displayedWords;
+    QVector<core::OcrWord *> displayedWords;
     QVector<int> selectedWords;
     QRect selectedRegion;
     QGraphicsRectItem *regionOutline = nullptr;
-    OcrDocument document;
+    core::OcrDocument document;
     QString imagePath;
     QString originalPath;
     QString projectPath;
@@ -105,3 +107,5 @@ private:
     int currentPage = 1;
     int pageCount = 1;
 };
+
+} // namespace yagf::ui

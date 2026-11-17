@@ -6,6 +6,8 @@
 #include <QStringList>
 #include <QVector>
 
+namespace yagf::core {
+
 struct OcrWord {
     int page = 1;
     int block = 0;
@@ -73,3 +75,5 @@ public:
     QString layoutHtml() const;
     QJsonObject toJson() const;
 };
+
+} // namespace yagf::core

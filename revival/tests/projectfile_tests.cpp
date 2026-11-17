@@ -13,6 +13,8 @@
 #include <cassert>
 #include <cstdio>
 
+using namespace yagf::core;
+
 int main()
 {
     QTemporaryDir directory;

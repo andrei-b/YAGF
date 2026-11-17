@@ -37,6 +37,13 @@
 
 #include <utility>
 
+namespace yagf::ui {
+using core::OcrDocument;
+using core::OcrPage;
+using core::OcrWord;
+using core::ProjectFile;
+using processing::DocumentProcessor;
+
 namespace {
 bool overlapsWord(const QRect &box, const QRect &selection)
 {
@@ -843,3 +850,5 @@ void MainWindow::exportJson()
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) { showError(file.errorString()); return; }
     file.write(QJsonDocument(document.toJson()).toJson(QJsonDocument::Indented));
 }
+
+} // namespace yagf::ui

@@ -6,6 +6,8 @@
 #include <QPoint>
 #include <QTemporaryDir>
 
+namespace yagf::processing {
+
 // Owns external programs and their temporary files. The UI never calls them directly.
 class DocumentProcessor : public QObject {
     Q_OBJECT
@@ -46,3 +48,5 @@ private:
     QPoint recognitionOffset;
     QRect recognitionRegion;
 };
+
+} // namespace yagf::processing

@@ -8,6 +8,8 @@
 #endif
 #include <cassert>
 
+using namespace yagf::core;
+
 int main()
 {
     const QByteArray tsv =

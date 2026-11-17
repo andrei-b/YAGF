@@ -9,6 +9,8 @@
 #include <cstdio>
 #include <unistd.h>
 
+namespace yagf::core {
+
 bool ProjectFile::save(const QString &path, const OcrDocument &document, QString *error)
 {
     const QString temporaryPath = path + QLatin1Char('.') +
@@ -61,3 +63,5 @@ bool ProjectFile::load(const QString &path, OcrDocument *document, QString *erro
     }
     return OcrDocument::fromJson(root.value(QStringLiteral("document")).toObject(), document, error);
 }
+
+} // namespace yagf::core

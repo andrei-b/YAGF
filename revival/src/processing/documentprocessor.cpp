@@ -6,6 +6,8 @@
 #include <QUuid>
 #include <QImage>
 
+namespace yagf::processing {
+
 DocumentProcessor::DocumentProcessor(QObject *parent) : QObject(parent)
 {
     connect(&process, &QProcess::finished, this, [this](int exitCode, QProcess::ExitStatus status) {
@@ -171,3 +173,5 @@ void DocumentProcessor::cancel()
         process.kill();
     }
 }
+
+} // namespace yagf::processing

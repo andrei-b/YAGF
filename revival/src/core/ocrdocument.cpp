@@ -10,6 +10,8 @@
 #include <limits>
 #include <utility>
 
+namespace yagf::core {
+
 namespace {
 bool integer(const QJsonObject &object, const QString &key, int *value)
 {
@@ -376,3 +378,5 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
     *result = std::move(parsed);
     return true;
 }
+
+} // namespace yagf::core
