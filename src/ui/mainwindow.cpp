@@ -48,6 +48,7 @@
 #include <QLocale>
 #include <QMessageBox>
 #include <QMouseEvent>
+#include <QPainter>
 #include <QMenuBar>
 #include <QMenu>
 #include <QMimeData>
@@ -104,6 +105,24 @@ QIcon removeBlockIcon()
 {
     return QIcon::fromTheme(QStringLiteral("edit-delete"),
                            QApplication::style()->standardIcon(QStyle::SP_TrashIcon));
+}
+
+QIcon textStyleActionIcon(bool bold)
+{
+    QPixmap pixmap(32, 32);
+    pixmap.fill(Qt::transparent);
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::TextAntialiasing);
+    QFont font = QApplication::font();
+    font.setPixelSize(30);
+    font.setBold(bold);
+    font.setItalic(!bold);
+    painter.setFont(font);
+    painter.setPen(QApplication::palette().color(QPalette::ButtonText));
+    painter.drawText(pixmap.rect(), Qt::AlignCenter, bold ? QStringLiteral("B") : QStringLiteral("I"));
+    painter.end();
+    return QIcon::fromTheme(bold ? QStringLiteral("format-text-bold") : QStringLiteral("format-text-italic"),
+                            QIcon(pixmap));
 }
 
 bool overlapsBox(const QRect &box, const QRect &selection)
@@ -717,9 +736,10 @@ MainWindow::MainWindow()
     editorSplitter->setStretchFactor(0, 4);
     editorSplitter->setStretchFactor(1, 1);
     editorSplitter->setSizes({480, 200});
-    auto *boldAction = formatToolbar->addAction(tr("Bold"));
+    auto *boldAction = formatToolbar->addAction(textStyleActionIcon(true), tr("Bold"));
     boldAction->setShortcut(QKeySequence::Bold);
-    boldAction->setToolTip(tr("Format selected editor text as bold"));
+    boldAction->setToolTip(tr("Bold"));
+    qobject_cast<QToolButton *>(formatToolbar->widgetForAction(boldAction))->setToolButtonStyle(Qt::ToolButtonIconOnly);
     connect(boldAction, &QAction::triggered, this, [this] {
         QTextCharFormat format;
         const bool bold = selectionEditor->currentCharFormat().fontWeight() >= QFont::Bold;
@@ -727,9 +747,10 @@ MainWindow::MainWindow()
         selectionEditor->mergeCurrentCharFormat(format);
         editorPending = true;
     });
-    auto *italicAction = formatToolbar->addAction(tr("Italic"));
+    auto *italicAction = formatToolbar->addAction(textStyleActionIcon(false), tr("Italic"));
     italicAction->setShortcut(QKeySequence::Italic);
-    italicAction->setToolTip(tr("Format selected editor text as italic"));
+    italicAction->setToolTip(tr("Italic"));
+    qobject_cast<QToolButton *>(formatToolbar->widgetForAction(italicAction))->setToolButtonStyle(Qt::ToolButtonIconOnly);
     connect(italicAction, &QAction::triggered, this, [this] {
         QTextCharFormat format;
         format.setFontItalic(!selectionEditor->currentCharFormat().fontItalic());
