@@ -1,6 +1,8 @@
 #include "pdfexporter.h"
 
 #include <QGuiApplication>
+#include <QFontDatabase>
+#include <QFontMetricsF>
 #include <QFileInfo>
 #include <QImage>
 #include <QImageReader>
@@ -12,7 +14,9 @@
 #include <QPdfWriter>
 #include <QProcess>
 #include <QStandardPaths>
+#include <QSet>
 #include <QTemporaryDir>
+#include <QXmlStreamReader>
 
 #ifdef NDEBUG
 #undef NDEBUG
@@ -39,6 +43,169 @@ static OcrDocument sampleDocument(int width, int height, const QString &path, in
                        QStringLiteral("Mistake"), QStringLiteral("Mistake"), 90});
     document.replacePage(std::move(page));
     return document;
+}
+
+static void formattedPdfChecks(const QTemporaryDir &directory)
+{
+    const QString source = directory.filePath("formatted-source.png");
+    QImage scan(600, 500, QImage::Format_RGB32);
+    scan.fill(QColor(250, 246, 232));
+    const QRect photograph(460, 30, 90, 60);
+    const QRect table(325, 370, 240, 85);
+    QPainter sourcePainter(&scan);
+    sourcePainter.setRenderHint(QPainter::TextAntialiasing);
+    sourcePainter.fillRect(photograph, Qt::blue);
+    sourcePainter.setPen(Qt::darkGreen);
+    sourcePainter.drawRect(table.adjusted(1, 1, -1, -1));
+    OcrDocument book;
+    book.sourcePath = source;
+    yagf::core::OcrPage page;
+    page.width = page.sourceWidth = scan.width();
+    page.height = page.sourceHeight = scan.height();
+    const auto add = [&](QRect box, QString original, QString corrected, QString family, int pixels,
+                         bool bold = false, bool italic = false) {
+        QFont font(family);
+        font.setPixelSize(pixels); font.setBold(bold); font.setItalic(italic);
+        sourcePainter.setFont(font);
+        sourcePainter.setPen(QColor(180, 20, 20));
+        QFontMetricsF metrics(font);
+        qreal y = box.top();
+        for (const auto &line : original.split('\n')) {
+            const auto ink = metrics.tightBoundingRect(line);
+            sourcePainter.drawText(QPointF(box.left() - ink.left(), y - ink.top()), line);
+            y += metrics.height();
+        }
+        yagf::core::OcrWord word;
+        word.block = page.words.size() + 1;
+        word.paragraph = word.line = 1;
+        word.bounds = box;
+        word.originalText = original; word.text = corrected;
+        word.fontFamily = family; word.sourceFontSizePx = pixels;
+        word.fontSizePt = word.sourceFontSizePt = qRound(pixels * 72.0 / 150);
+        word.bold = bold; word.italic = italic;
+        word.layoutBlock = original.contains('\n');
+        page.words.append(word);
+    };
+    add(QRect(35, 30, 350, 55), "OriginalHeading", "CorrectedHeading", "Liberation Serif", 32, true);
+    add(QRect(35, 120, 240, 200), "LeftOriginal\nLeftBeta\nLeftGamma", "LeftAlpha\nLeftBeta\nLeftGamma", "Liberation Serif", 24);
+    add(QRect(325, 120, 240, 200), "RightAlpha\nRightBeta", "RightAlpha\nRightBeta", "Liberation Mono", 24, true, true);
+    add(QRect(35, 380, 240, 40), "InferredText", "InferredText", "Liberation Sans", 24);
+    page.words.last().fontFamily.clear();
+    page.words.last().sourceFontSizePx = 0;
+    sourcePainter.end();
+    assert(scan.save(source));
+    page.rebuildHierarchy();
+    // Protect a picture even when a broad text region encloses it.
+    page.regions.first().bounds = QRect(35, 30, 520, 65);
+    page.imageRegions.append({"photo", photograph, {}, true});
+    yagf::core::OcrRegion tableRegion;
+    tableRegion.id = "table"; tableRegion.type = "table"; tableRegion.bounds = table;
+    page.regions.append(tableRegion);
+    book.replacePage(page);
+    const auto snapshot = book.toJson();
+    const QString destination = directory.filePath("formatted.pdf");
+    std::atomic_bool cancel{false};
+    assert(PdfExporter::write(book, destination, false, cancel, {}, PdfExporter::Mode::FormattedText).status ==
+           PdfExportResult::Status::Success);
+    assert(book.toJson() == snapshot); // Export estimates never change the project.
+    QProcess command;
+    command.start("pdftotext", {"-bbox", destination, "-"});
+    assert(command.waitForFinished(10000) && command.exitCode() == 0);
+    const auto xml = command.readAllStandardOutput();
+    assert(!xml.contains("OriginalHeading") && !xml.contains("LeftOriginal"));
+    QXmlStreamReader boxes(xml);
+    QSet<QString> found;
+    while (!boxes.atEnd()) {
+        boxes.readNext();
+        if (!boxes.isStartElement() || boxes.name() != QLatin1String("word")) continue;
+        const auto attributes = boxes.attributes();
+        const QRectF box(attributes.value("xMin").toDouble() * 150 / 72,
+                         attributes.value("yMin").toDouble() * 150 / 72,
+                         (attributes.value("xMax").toDouble() - attributes.value("xMin").toDouble()) * 150 / 72,
+                         (attributes.value("yMax").toDouble() - attributes.value("yMin").toDouble()) * 150 / 72);
+        const QString text = boxes.readElementText();
+        found.insert(text);
+        const QRectF expected = text.startsWith("Left") ? page.words[1].bounds : text.startsWith("Right") ?
+            page.words[2].bounds : text == "CorrectedHeading" ? page.words[0].bounds : page.words[3].bounds;
+        assert(expected.adjusted(-2, -8, 2, 8).contains(box));
+    }
+    assert(!boxes.hasError());
+    assert(found.contains("CorrectedHeading") && found.contains("LeftAlpha") && found.contains("LeftBeta") &&
+           found.contains("LeftGamma") && found.contains("RightAlpha") && found.contains("RightBeta") && found.contains("InferredText"));
+    if (!QStandardPaths::findExecutable("pdffonts").isEmpty() && QFontDatabase::families().contains("Liberation Serif")) {
+        command.start("pdffonts", {destination});
+        assert(command.waitForFinished(10000) && command.exitCode() == 0);
+        const auto fonts = command.readAllStandardOutput();
+        assert(fonts.contains("LiberationSerif-Bold") && fonts.contains("LiberationMono-BoldItalic"));
+    }
+    if (!QStandardPaths::findExecutable("pdftoppm").isEmpty()) {
+        const QString prefix = directory.filePath("formatted-render");
+        command.start("pdftoppm", {"-singlefile", "-r", "150", "-png", destination, prefix});
+        assert(command.waitForFinished(10000) && command.exitCode() == 0);
+        const QImage rendered(prefix + ".png");
+        assert(!rendered.isNull());
+        assert(rendered.pixelColor(500, 60).blue() > 240 && rendered.pixelColor(500, 60).red() < 15);
+        int blackPixels = 0, greenPixels = 0;
+        for (int y = 0; y < 500; ++y) for (int x = 0; x < 600; ++x) {
+            const QColor pixel = rendered.pixelColor(x, y);
+            assert(!(pixel.red() > 100 && pixel.red() > pixel.green() * 2 && pixel.red() > pixel.blue() * 2));
+            if (pixel.red() < 70 && pixel.green() < 70 && pixel.blue() < 70) {
+                ++blackPixels;
+                bool inText = false;
+                for (const auto &word : page.words) inText |= word.bounds.adjusted(-1, -1, 1, 1).contains(x, y);
+                assert(inText);
+            }
+            greenPixels += table.contains(x, y) && pixel.green() > pixel.red() + 20 && pixel.green() > pixel.blue() + 20;
+        }
+        assert(blackPixels > 100 && greenPixels > 100);
+    }
+}
+
+static void coarseBlockChecks(const QTemporaryDir &directory)
+{
+    if (QStandardPaths::findExecutable("tesseract").isEmpty()) return;
+    QProcess available;
+    available.start("tesseract", {"--list-langs"});
+    if (!available.waitForFinished(10000) || !available.readAllStandardOutput().split('\n').contains("eng")) return;
+    QImage image(700, 400, QImage::Format_RGB32);
+    image.fill(Qt::white);
+    QPainter painter(&image);
+    painter.setPen(Qt::black);
+    QFont font(QStringLiteral("Liberation Serif"));
+    font.setPixelSize(32); font.setBold(true); painter.setFont(font);
+    painter.drawText(QPoint(90, 70), "Original Printed Heading");
+    font.setPixelSize(24); font.setBold(false); painter.setFont(font);
+    const QStringList lines{"The original document contains several words", "This paragraph remains at its source position",
+                            "Common fonts preserve readable printed text"};
+    int baseline = 150;
+    for (const auto &line : lines) { painter.drawText(QPoint(35, baseline), line); baseline += 40; }
+    painter.end();
+    const QString source = directory.filePath("coarse-source.png");
+    assert(image.save(source));
+    auto document = sampleDocument(image.width(), image.height(), source);
+    auto &word = document.page(1)->words[0];
+    word.layoutBlock = true; word.bounds = image.rect(); word.sourceBoxes = {word.bounds};
+    word.originalText = QStringLiteral("Original Printed Heading\n") + lines.join('\n');
+    word.text = word.originalText; word.text.replace("Original", "Corrected");
+    const QString path = directory.filePath("coarse-formatted.pdf");
+    std::atomic_bool cancel{false};
+    assert(PdfExporter::write(document, path, false, cancel, {}, PdfExporter::Mode::FormattedText).status ==
+           PdfExportResult::Status::Success);
+    QProcess extract;
+    extract.start("pdftotext", {"-bbox", path, "-"});
+    assert(extract.waitForFinished(10000) && extract.exitCode() == 0);
+    QXmlStreamReader xml(extract.readAllStandardOutput());
+    bool title = false, body = false;
+    while (!xml.atEnd()) {
+        xml.readNext();
+        if (!xml.isStartElement() || xml.name() != QLatin1String("word")) continue;
+        const double y = xml.attributes().value("yMin").toDouble() * 150 / 72;
+        const double x = xml.attributes().value("xMin").toDouble() * 150 / 72;
+        const auto text = xml.readElementText();
+        if (text == "Corrected") { title = true; assert(x >= 85 && x < 100 && y > 35 && y < 75); }
+        if (text == "The") { body = true; assert(x >= 30 && x < 45 && y > 115 && y < 155); }
+    }
+    assert(title && body && !xml.hasError());
 }
 
 int main(int argc, char **argv)
@@ -108,6 +275,14 @@ int main(int argc, char **argv)
     for (const auto word : {"first", "fire", "flight", "flow", "office", "affinity"})
         assert(passageText.count(word) == 40);
     assert(QString::fromUtf8(passageText).simplified() == block.text.simplified());
+    const QString formattedPassage = directory.filePath("formatted-passage.pdf");
+    assert(PdfExporter::write(passage, formattedPassage, false, cancelled, {}, PdfExporter::Mode::FormattedText).status ==
+           PdfExportResult::Status::Success);
+    extract.start("pdftotext", {formattedPassage, "-"});
+    assert(extract.waitForFinished(10000) && extract.exitCode() == 0);
+    assert(QString::fromUtf8(extract.readAllStandardOutput()).simplified() == block.text.simplified());
+    formattedPdfChecks(directory);
+    coarseBlockChecks(directory);
     // A phone photo with EXIF orientation must keep the same geometry in OCR and export.
     const QString photoPath = directory.filePath(QStringLiteral("rotated.jpg"));
     QImage photo(40, 20, QImage::Format_RGB32);
@@ -187,12 +362,27 @@ int main(int argc, char **argv)
         const QByteArray multiText = extract.readAllStandardOutput();
         assert(multiText.contains("FirstFix"));
         assert(multiText.contains("SecondFix"));
+        const QString formattedMulti = directory.filePath("formatted-multi.pdf");
+        assert(PdfExporter::write(pages, formattedMulti, false, cancelled, {}, PdfExporter::Mode::FormattedText).status ==
+               PdfExportResult::Status::Success);
+        extract.start("pdftotext", {formattedMulti, "-"});
+        assert(extract.waitForFinished(10000) && extract.exitCode() == 0);
+        const auto formattedText = extract.readAllStandardOutput();
+        assert(formattedText.contains("FirstFix") && formattedText.contains("SecondFix"));
         std::atomic_bool stopAfterFirst = false;
         const QString cancelledPath = directory.filePath(QStringLiteral("cancelled.pdf"));
         const auto interrupted = PdfExporter::write(pages, cancelledPath, false, stopAfterFirst,
             [&stopAfterFirst](int completed, int) { if (completed == 1) stopAfterFirst = true; });
         assert(interrupted.status == PdfExportResult::Status::Cancelled);
         assert(!QFileInfo::exists(cancelledPath));
+        QFile previous(cancelledPath);
+        assert(previous.open(QIODevice::WriteOnly));
+        previous.write("Existing destination"); previous.close();
+        stopAfterFirst = false;
+        assert(PdfExporter::write(pages, cancelledPath, false, stopAfterFirst,
+            [&stopAfterFirst](int completed, int) { if (completed == 1) stopAfterFirst = true; },
+            PdfExporter::Mode::FormattedText).status == PdfExportResult::Status::Cancelled);
+        assert(previous.open(QIODevice::ReadOnly) && previous.readAll() == "Existing destination");
     }
     cancelled = true;
     assert(PdfExporter::write(document, pdfPath, false, cancelled).status == PdfExportResult::Status::Cancelled);

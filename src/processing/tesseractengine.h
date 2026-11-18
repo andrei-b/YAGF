@@ -1,6 +1,7 @@
 #pragma once
 
 #include "iocrengine.h"
+#include <atomic>
 
 namespace yagf::processing {
 
@@ -12,6 +13,9 @@ public:
               .supportsConfidence = true, .supportsLayout = true}; }
     std::expected<core::OcrPage, OcrError> recognize(
         const QImage &image, const OcrOptions &options, std::stop_token stop) override;
+    std::expected<core::OcrPage, OcrError> recognize(
+        const QImage &image, const OcrOptions &options, std::stop_token stop,
+        const std::atomic_bool *cancelled);
 
     static std::expected<core::OcrPage, OcrError> parseTsv(
         const QByteArray &tsv, const QSize &imageSize, const OcrOptions &options);

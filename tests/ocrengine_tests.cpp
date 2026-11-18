@@ -3,6 +3,7 @@
 
 #include <QCoreApplication>
 #include <QEventLoop>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QImage>
 #include <QTemporaryDir>
@@ -93,6 +94,18 @@ int main(int argc, char **argv)
     stopped.request_stop();
     auto cancelled = engine.recognize(image, {.language = QStringLiteral("eng")}, stopped.get_token());
     assert(!cancelled && cancelled.error().cancelled);
+    // PDF layout recovery uses an atomic cancellation flag while Tesseract runs.
+    assert(script.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    script.write("#!/bin/sh\nexec sleep 5\n"); script.close();
+    std::atomic_bool exportCancelled{false};
+    std::jthread interruptExport([&] {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        exportCancelled = true;
+    });
+    QElapsedTimer elapsed;
+    elapsed.start();
+    auto cancelledExport = engine.recognize(image, {.language = QStringLiteral("eng")}, {}, &exportCancelled);
+    assert(!cancelledExport && cancelledExport.error().cancelled && elapsed.elapsed() < 2000);
 
     const QString imagePath = directory.filePath(QStringLiteral("source.png"));
     assert(image.save(imagePath));

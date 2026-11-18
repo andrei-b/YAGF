@@ -11,7 +11,14 @@ namespace yagf::processing {
 std::expected<core::OcrPage, OcrError> TesseractEngine::recognize(
     const QImage &image, const OcrOptions &options, std::stop_token stop)
 {
-    if (stop.stop_requested()) return std::unexpected(OcrError{{}, true});
+    return recognize(image, options, stop, nullptr);
+}
+
+std::expected<core::OcrPage, OcrError> TesseractEngine::recognize(
+    const QImage &image, const OcrOptions &options, std::stop_token stop, const std::atomic_bool *cancelled)
+{
+    const auto interrupted = [&] { return stop.stop_requested() || (cancelled && cancelled->load()); };
+    if (interrupted()) return std::unexpected(OcrError{{}, true});
     if (image.isNull() || options.language.trimmed().isEmpty() || options.pageNumber < 1)
         return std::unexpected(OcrError{QStringLiteral("Invalid OCR image or options.")});
     if (QStandardPaths::findExecutable(QStringLiteral("tesseract")).isEmpty())
@@ -22,7 +29,7 @@ std::expected<core::OcrPage, OcrError> TesseractEngine::recognize(
     const QString imagePath = temporary.filePath(QStringLiteral("input.png"));
     if (!image.save(imagePath, "PNG"))
         return std::unexpected(OcrError{QStringLiteral("Could not prepare the OCR image.")});
-    if (stop.stop_requested()) return std::unexpected(OcrError{{}, true});
+    if (interrupted()) return std::unexpected(OcrError{{}, true});
     QStringList arguments{imagePath, QStringLiteral("stdout"), QStringLiteral("-l"), options.language};
     if (!options.userWords.isEmpty()) {
         QFile vocabulary(temporary.filePath(QStringLiteral("book-words.txt")));
@@ -40,15 +47,15 @@ std::expected<core::OcrPage, OcrError> TesseractEngine::recognize(
     QElapsedTimer timer;
     timer.start();
     while (process.state() != QProcess::NotRunning) {
-        if (stop.stop_requested() || timer.elapsed() > 300'000) {
+        if (interrupted() || timer.elapsed() > 300'000) {
             process.kill();
             process.waitForFinished(2000);
-            if (stop.stop_requested()) return std::unexpected(OcrError{{}, true});
+            if (interrupted()) return std::unexpected(OcrError{{}, true});
             return std::unexpected(OcrError{QStringLiteral("Tesseract timed out.")});
         }
         process.waitForFinished(100);
     }
-    if (stop.stop_requested()) return std::unexpected(OcrError{{}, true});
+    if (interrupted()) return std::unexpected(OcrError{{}, true});
     if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0)
         return std::unexpected(OcrError{QStringLiteral("Tesseract failed: %1")
             .arg(QString::fromUtf8(process.readAllStandardError()).trimmed())});

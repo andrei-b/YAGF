@@ -18,12 +18,14 @@ using PdfExportResult = ExportResult;
 
 class PdfExporter {
 public:
+    enum class Mode : quint8 { SearchableScan, FormattedText };
     using Progress = std::function<void(qsizetype completed, qsizetype total)>;
 
     [[nodiscard]] static PdfExportResult write(const core::OcrDocument &document,
                                                const QString &destination, bool archive,
                                                const std::atomic_bool &cancelled,
-                                               const Progress &progress = {});
+                                               const Progress &progress = {},
+                                               Mode mode = Mode::SearchableScan);
 };
 
 class ScientificBookExporter {

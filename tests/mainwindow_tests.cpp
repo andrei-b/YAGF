@@ -525,6 +525,24 @@ int main(int argc, char **argv)
     assert(contextualBook.context.description == "A Qt programming manual");
     assert(!contextualBook.context.inferFromRecognizedText);
     assert(contextualBook.preserveFormatting);
+    auto *formattedPdf = contextWindow.findChild<QAction *>("exportFormattedPdfAction");
+    assert(formattedPdf && formattedPdf->isEnabled());
+    const QString formattedPath = directory.filePath("formatted-from-ui.pdf");
+    QApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
+    QTimer::singleShot(0, &contextWindow, [&] {
+        auto *dialog = qobject_cast<QFileDialog *>(QApplication::activeModalWidget());
+        assert(dialog && dialog->windowTitle() == "Export formatted PDF");
+        dialog->selectFile(formattedPath);
+        QMetaObject::invokeMethod(dialog, "accept", Qt::DirectConnection);
+    });
+    formattedPdf->trigger();
+    timer.restart();
+    while ((!QFileInfo::exists(formattedPath) || !formattedPdf->isEnabled()) && timer.elapsed() < 5000) {
+        QApplication::processEvents();
+        QThread::msleep(5);
+    }
+    QFile formattedFile(formattedPath);
+    assert(formattedFile.open(QIODevice::ReadOnly) && formattedFile.read(5) == "%PDF-");
     // Loading a different source resets the book-specific description and inference setting.
     contextWindow.loadSource(sourcePath);
     inspectContext({}, true, false, false);

@@ -618,6 +618,10 @@ MainWindow::MainWindow()
     fileMenu->addAction(tr("Export JSON"), this, &MainWindow::exportJson);
     fileMenu->addSeparator();
     pdfAction = fileMenu->addAction(tr("Export searchable PDF…"), this, [this] { exportPdf(false); });
+    formattedPdfAction = fileMenu->addAction(tr("Export formatted PDF…"), this, [this] { exportPdf(false, true); });
+    formattedPdfAction->setObjectName(QStringLiteral("exportFormattedPdfAction"));
+    formattedPdfAction->setToolTip(tr("Recreate corrected text using matching fonts in the original page blocks."));
+    formattedPdfAction->setEnabled(false);
     pdfaAction = fileMenu->addAction(tr("Export archival PDF/A…"), this, [this] { exportPdf(true); });
     convertDjVuAction = fileMenu->addAction(tr("Convert DjVu to PDF…"), this, &MainWindow::convertDjVuToPdf);
     convertDjVuAction->setObjectName(QStringLiteral("convertDjVuAction"));
@@ -1104,6 +1108,7 @@ void MainWindow::updatePageControls()
     pageSpin->setValue(currentPage);
     const bool available = !processor.isBusy() && !exportBusy;
     if (preserveFormattingAction) preserveFormattingAction->setEnabled(available);
+    if (formattedPdfAction) formattedPdfAction->setEnabled(available && document.wordCount() > 0);
     if (convertDjVuAction) convertDjVuAction->setEnabled(available && !imagePath.isEmpty() &&
         processing::pageSourceKind(originalPath) == processing::PageSourceKind::DjVu);
     previousButton->setEnabled(available && currentPage > 1);
@@ -2008,6 +2013,7 @@ void MainWindow::showDocument()
     imageRegionBoxes.clear();
     displayedWords.clear();
     OcrPage *page = document.page(currentPage);
+    formattedPdfAction->setEnabled(!processor.isBusy() && !exportBusy && document.wordCount() > 0);
     nextSpecialistAction->setEnabled(!processor.isBusy() && !exportBusy && !imagePath.isEmpty() &&
         page && !page->words.isEmpty());
     if (!page) {
@@ -2561,7 +2567,7 @@ void MainWindow::convertDjVuToPdf()
     chooseExportPath(tr("Convert DjVu to PDF"), tr("PDF files (*.pdf)"), QStringLiteral("pdf"), ExportFormat::Pdf);
 }
 
-void MainWindow::exportPdf(bool archive)
+void MainWindow::exportPdf(bool archive, bool formatted)
 {
     if (processor.isBusy() || exportBusy || document.wordCount() == 0 || !maybeApplyEditor()) return;
     if (document.pages.size() < document.totalPages &&
@@ -2569,11 +2575,9 @@ void MainWindow::exportPdf(bool archive)
             archive ? tr("Some pages have not been recognized in YAGF. OCRmyPDF may recognize them during PDF/A conversion without YAGF corrections. Export anyway?")
                     : tr("Some pages have not been recognized and will have no searchable text. Export anyway?"),
             QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Yes) return;
-    QString path = QFileDialog::getSaveFileName(this,
-        archive ? tr("Export archival PDF/A") : tr("Export searchable PDF"), {}, tr("PDF files (*.pdf)"));
-    if (path.isEmpty()) return;
-    if (!path.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive)) path += QStringLiteral(".pdf");
-    startExport(path, archive ? ExportFormat::ArchivalPdf : ExportFormat::Pdf);
+    chooseExportPath(archive ? tr("Export archival PDF/A") : formatted ? tr("Export formatted PDF") : tr("Export searchable PDF"),
+        tr("PDF files (*.pdf)"), QStringLiteral("pdf"),
+        archive ? ExportFormat::ArchivalPdf : formatted ? ExportFormat::FormattedPdf : ExportFormat::Pdf);
 }
 
 void MainWindow::exportScientificBook()
@@ -2629,7 +2633,9 @@ void MainWindow::startExport(const QString &path, ExportFormat format)
             return processing::ScientificBookExporter::write(snapshot, path, *cancel, progress);
         if (format == ExportFormat::Samples)
             return processing::VerifiedSampleExporter::write(snapshot, path, *cancel, progress);
-        return processing::PdfExporter::write(snapshot, path, format == ExportFormat::ArchivalPdf, *cancel, progress);
+        return processing::PdfExporter::write(snapshot, path, format == ExportFormat::ArchivalPdf, *cancel, progress,
+            format == ExportFormat::FormattedPdf ? processing::PdfExporter::Mode::FormattedText :
+                                                  processing::PdfExporter::Mode::SearchableScan);
     }));
 }
 

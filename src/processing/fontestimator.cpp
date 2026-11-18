@@ -131,8 +131,10 @@ void apply(core::OcrWord &word, const Style &style)
 }
 }
 
-void estimateTextFormatting(core::OcrPage &page, const QImage &image, std::stop_token stop)
+void estimateTextFormatting(core::OcrPage &page, const QImage &image, std::stop_token stop,
+                            const std::atomic_bool *cancelled)
 {
+    const auto interrupted = [&] { return stop.stop_requested() || (cancelled && cancelled->load()); };
     // Font rendering requires a GUI application, including for command-line tests.
     if (image.isNull() || !qobject_cast<QGuiApplication *>(QCoreApplication::instance())) return;
     const QStringList candidates = families();
@@ -140,7 +142,7 @@ void estimateTextFormatting(core::OcrPage &page, const QImage &image, std::stop_
     const int stride = std::max(1, int((page.words.size() + 255) / 256));
     const double dpi = image.dotsPerMeterY() > 0 ? image.dotsPerMeterY() * 0.0254 : 150.0;
     for (int index = 0; index < page.words.size(); index += stride) {
-        if (stop.stop_requested()) return;
+        if (interrupted()) return;
         const auto &word = page.words[index];
         if (word.reviewed || !image.rect().contains(word.bounds)) continue;
         QString text = word.originalText.trimmed();
@@ -164,7 +166,7 @@ void estimateTextFormatting(core::OcrPage &page, const QImage &image, std::stop_
         Style style;
         for (const auto &family : candidates) {
             for (bool bold : {false, true}) for (bool italic : {false, true}) {
-                if (stop.stop_requested()) return;
+                if (interrupted()) return;
                 QFont font(family);
                 font.setBold(bold);
                 font.setItalic(italic);
@@ -182,7 +184,7 @@ void estimateTextFormatting(core::OcrPage &page, const QImage &image, std::stop_
         if (best < 0.32 && !style.family.isEmpty()) estimates.append({index, style});
     }
     for (int index = 0; index < page.words.size(); ++index) {
-        if (stop.stop_requested()) return;
+        if (interrupted()) return;
         auto &word = page.words[index];
         if (word.reviewed) continue;
         const QPair<int, Style> *nearest = nullptr;
