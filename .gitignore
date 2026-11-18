@@ -1,3 +1,6 @@
 /build-appimage/
 /dist/
-/revival/service/**/__pycache__/
+/service/**/__pycache__/
+/build/
+cmake-build-*/
+.idea/

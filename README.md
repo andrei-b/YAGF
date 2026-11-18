@@ -1,6 +1,6 @@
-# YAGF Revival prototype
+# YAGF (pre-2.0)
 
-This is the Qt 6 and C++23 revival of YAGF. The Qt 4 application remains in the repository root. Tesseract runs locally by default; PaddleOCR, docTR, RapidOCR, Surya, and Kraken services are optional.
+This is the Qt 6 and C++23 revival of YAGF. The historical Qt 4 application is available on the `legacy` branch. Tesseract runs locally by default; PaddleOCR, docTR, RapidOCR, Surya, and Kraken services are optional.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the source layout, dependency boundaries, and next implementation slices.
 
@@ -11,12 +11,12 @@ The screenshot uses a generated sample image.
 ## Build
 
 ```sh
-cmake -S revival -B build-revival -G Ninja
-cmake --build build-revival
-ctest --test-dir build-revival --output-on-failure
-./build-revival/yagf-revival
+cmake -S . -B build -G Ninja
+cmake --build build
+ctest --test-dir build --output-on-failure
+./build/yagf-revival
 # Or open a source document immediately:
-./build-revival/yagf-revival /path/to/scan.png
+./build/yagf-revival /path/to/scan.png
 ```
 
 Qt 6 development packages are required. Install Tesseract and language data to recognize images. PDF import and searchable PDF export also require Poppler's `pdfinfo` and `pdftoppm` commands. PDF/A export additionally requires OCRmyPDF. Scanning requires SANE's `scanimage` command and a configured scanner backend. Missing tools are reported in the app.
@@ -26,7 +26,7 @@ Qt 6 development packages are required. Install Tesseract and language data to r
 For a local desktop install:
 
 ```sh
-cmake --install build-revival --prefix "$HOME/.local"
+cmake --install build --prefix "$HOME/.local"
 ```
 
 This installs the executable, desktop entry, icon, and AppStream metadata. Make sure `$HOME/.local/bin` is on your `PATH`.
@@ -34,7 +34,7 @@ This installs the executable, desktop entry, icon, and AppStream metadata. Make 
 To build an x86-64 or AArch64 AppImage, install Ninja, `curl`, `qmake6`, and the Qt 6 Wayland platform plugins, then run:
 
 ```sh
-./revival/packaging/build-appimage.sh
+./packaging/build-appimage.sh
 ```
 
 The result is written to `dist/`. The script downloads the official linuxdeploy and Qt plugin AppImages on first use; set `LINUXDEPLOY` and `LINUXDEPLOY_QT_PLUGIN` to use existing copies. The AppImage bundles the Qt desktop dependencies. The Tesseract engine and PDF tools remain external commands on the host; install OCRmyPDF if you need PDF/A export. The current AppImage was built and smoke tested on Ubuntu 24.04; compatibility with older distributions has not yet been verified.
@@ -73,4 +73,4 @@ Both memory and export use reviewed single-token text changes with one source wo
 
 ## Audit and direction
 
-The original root CMake build requires Qt 4 and Aspell. The old UI is oriented around image regions and free text rather than persistent word geometry. Its sources are GPL-3.0-or-later (see `COPYING`). Reusing selected image tools may be useful later, but directly porting the full UI would delay the proposal's defining source-linked correction workflow. The new code therefore starts as an independent Qt 6 frontend in this directory.
+The build on the `legacy` branch requires Qt 4 and Aspell. The old UI is oriented around image regions and free text rather than persistent word geometry. Its sources are GPL-3.0-or-later (see `COPYING`). Reusing selected image tools may be useful later, but directly porting the full UI would delay the proposal's defining source-linked correction workflow. The new code therefore starts as an independent Qt 6 frontend in `src/`.

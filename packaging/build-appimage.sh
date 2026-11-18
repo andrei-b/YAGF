@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 build_dir="${YAGF_APPIMAGE_BUILD_DIR:-${project_dir}/build-appimage}"
 dist_dir="${YAGF_DIST_DIR:-${project_dir}/dist}"
 arch="$(uname -m)"
@@ -39,16 +39,16 @@ else
         "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-${arch}.AppImage" >/dev/null
 fi
 
-cmake -S "${project_dir}/revival" -B "${build_dir}/cmake" -G Ninja \
+cmake -S "${project_dir}" -B "${build_dir}/qt6-build" -G Ninja \
     -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_TESTING=OFF
-cmake --build "${build_dir}/cmake" --parallel
+cmake --build "${build_dir}/qt6-build" --parallel
 appdir="${build_dir}/YAGF.AppDir"
 rm -rf "${appdir}"
-DESTDIR="${appdir}" cmake --install "${build_dir}/cmake"
+DESTDIR="${appdir}" cmake --install "${build_dir}/qt6-build"
 
 export APPIMAGE_EXTRACT_AND_RUN=1
 export QMAKE="${QMAKE:-$(command -v qmake6)}"
-export LINUXDEPLOY_OUTPUT_VERSION="2.0.0"
+export LINUXDEPLOY_OUTPUT_VERSION="pre-2.0"
 export ARCH="${arch}"
 export EXTRA_PLATFORM_PLUGINS="libqoffscreen.so;libqwayland-egl.so;libqwayland-generic.so"
 export PATH="${tools_dir}:${PATH}"

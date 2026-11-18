@@ -12,7 +12,7 @@ From this repository on the inference computer:
 python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install paddleocr
-python revival/service/server.py --engine paddleocr --host 127.0.0.1 --port 8765 --device gpu --language en
+python service/server.py --engine paddleocr --host 127.0.0.1 --port 8765 --device gpu --language en
 ```
 
 The service loads its model at startup; the first launch may download model files. The language is fixed for the service process. Use PaddleOCR language codes such as `en` in YAGF. If you need another language, restart with `--language CODE` and set the same code in YAGF.
@@ -25,7 +25,7 @@ docTR currently [requires Python 3.11 or newer](https://mindee.github.io/doctr/g
 python3 -m venv .venv-doctr
 . .venv-doctr/bin/activate
 python -m pip install python-doctr
-python revival/service/server.py --engine doctr --host 127.0.0.1 --port 8766 --device cpu
+python service/server.py --engine doctr --host 127.0.0.1 --port 8766 --device cpu
 ```
 
 Use `--device gpu` where a compatible PyTorch CUDA build is available. The service moves the predictor to CUDA as described in the [docTR GPU guide](https://mindee.github.io/doctr/using_doctr/using_models.html). In YAGF, select **docTR (remote service)** and use `http://127.0.0.1:8766`. docTR returns individual word rectangles, so corrected text starts with more precise source mapping than PaddleOCR line output.
@@ -38,7 +38,7 @@ The adapter uses the [current RapidOCR Python API](https://rapidai.github.io/Rap
 python3 -m venv .venv-rapidocr
 . .venv-rapidocr/bin/activate
 python -m pip install rapidocr onnxruntime
-python revival/service/server.py --engine rapidocr --host 127.0.0.1 --port 8767 --device cpu
+python service/server.py --engine rapidocr --host 127.0.0.1 --port 8767 --device cpu
 ```
 
 Select **RapidOCR (remote service)** with `http://127.0.0.1:8767` and language `auto`. The language is determined by the models configured in RapidOCR, not by YAGF's language field. The Python adapter is available now; a native C++ RapidOCR build and ARM64/TensorRT deployment are separate work and are not claimed by this integration.
@@ -51,7 +51,7 @@ The adapter targets [Surya 2.x's current `RecognitionPredictor` API](https://git
 python3 -m venv .venv-surya
 . .venv-surya/bin/activate
 python -m pip install surya-ocr
-python revival/service/server.py --engine surya --host 127.0.0.1 --port 8768
+python service/server.py --engine surya --host 127.0.0.1 --port 8768
 ```
 
 Select **Surya (remote service)** with `http://127.0.0.1:8768` and language `auto`. Surya also needs its [inference backend](https://github.com/datalab-to/surya#inference-backend-prerequisites), such as vLLM or llama.cpp. YAGF currently keeps block order and type, including table regions, but flattens HTML table cells into editable text; it does not yet export Surya's full table structure. Surya's [code and model weights have different licenses](https://github.com/datalab-to/surya#commercial-usage). YAGF does not redistribute those weights.
@@ -64,7 +64,7 @@ The adapter uses Kraken's [task API](https://kraken.re/main/user_guide/api.html)
 python3 -m venv .venv-kraken
 . .venv-kraken/bin/activate
 python -m pip install kraken
-python revival/service/server.py --engine kraken --model /path/to/recognition-model.safetensors \
+python service/server.py --engine kraken --model /path/to/recognition-model.safetensors \
   --host 127.0.0.1 --port 8769 --device cpu
 ```
 
@@ -85,7 +85,7 @@ Forward the matching service port for other providers. Test a service with `curl
 Run the protocol and adapter tests without installing inference frameworks:
 
 ```sh
-python3 -m unittest discover -s revival/service/tests
+python3 -m unittest discover -s service/tests
 ```
 
 The service is not bundled into the desktop application or AppImage. The three new adapters have contract tests, but real model inference and Jetson performance have not yet been verified in this repository.

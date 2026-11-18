@@ -1,79 +1,111 @@
-project(yagf C CXX)
-cmake_minimum_required(VERSION 2.6.0)
-set(SOURCES src/main.cpp src/mainform.cpp src/qgraphicsinput.cpp src/utils.cpp src/qxtunixsignalcatcher.cpp src/spellchecker.cpp src/BlockAnalysis.cpp src/PageAnalysis.cpp
-    src/SkewAnalysis.cpp src/CCAnalysis.cpp src/qxtgraphicsproxywidget.cpp src/popplerdialog.cpp src/pdfextractor.cpp src/pdf2ppt.cpp src/ghostscr.cpp 
-    src/configdialog.cpp src/advancedconfigdialog.cpp src/ccbuilder.cpp src/analysis.cpp src/qsnippet.cpp src/sidebar.cpp src/droplabel.cpp src/projectmanager.cpp src/settings.cpp)
-set (HEADERS src/settings.h)
-set(INT_SOURCES src/preload.c)
-set(UIS src/mainform.ui src/popplerdialog.ui src/configdialog.ui src/advancedconfigdialog.ui)
-set(MOC_HEADERS src/mainform.h src/qxtunixsignalcatcher.h src/qxtunixscinternal.h src/qgraphicsinput.h src/qxtgraphicsproxywidget.h src/qxtgraphicsview.h
-    src/popplerdialog.h src/pdfextractor.h src/pdf2ppt.h src/configdialog.h src/advancedconfigdialog.h src/ccbuilder.h src/qsnippet.h src/sidebar.h
-    src/droplabel.h src/projectmanager.h)
-set (yagf_RCCS src/yagf.qrc)
-set(QM_FILES ${CMAKE_BINARY_DIR}/yagf_ru.qm ${CMAKE_BINARY_DIR}/yagf_lt.qm ${CMAKE_BINARY_DIR}/yagf_de.qm ${CMAKE_BINARY_DIR}/yagf_pl.qm ${CMAKE_BINARY_DIR}/yagf_uk.qm)
-set (LIB_PATH_SUFFIX )
-add_definitions(-Wall -g)
-find_package(Qt4 4.6 REQUIRED)
-find_package(ASPELL REQUIRED)
-include(${QT_USE_FILE})
-qt4_wrap_ui(UI_HEADERS ${UIS})
-qt4_wrap_cpp(MOC_SRCS ${MOC_HEADERS})
-qt4_add_resources(yagf_RCC_SRCS ${yagf_RCCS})
-include_directories( ${CMAKE_BINARY_DIR} ${PROJECT_SOURCE_DIR})
-add_executable(yagf ${SOURCES} ${UI_HEADERS} ${MOC_SRCS} ${yagf_RCC_SRCS} ${QM_FILES})
-add_library(xspreload SHARED ${INT_SOURCES})
-target_link_libraries(xspreload dl)
-target_link_libraries(yagf ${QT_LIBRARIES} ${ASPELL_LIBRARIES})
-add_custom_target(translations DEPENDS ${QM_FILES})
-qt4_add_translation(${CMAKE_BINARY_DIR}/yagf_ru.qm ${PROJECT_SOURCE_DIR}/src/mainform.cpp ${PROJECT_SOURCE_DIR}/src/popplerdialog.cpp ${MOC_SRCS} ${UI_HEADERS} ${PROJECT_SOURCE_DIR}/src/translations/yagf_ru.ts)
-qt4_add_translation(${CMAKE_BINARY_DIR}/yagf_lt.qm ${PROJECT_SOURCE_DIR}/src/mainform.cpp ${PROJECT_SOURCE_DIR}/src/popplerdialog.cpp ${MOC_SRCS} ${UI_HEADERS} ${PROJECT_SOURCE_DIR}/src/translations/yagf_lt.ts)
-qt4_add_translation(${CMAKE_BINARY_DIR}/yagf_de.qm ${PROJECT_SOURCE_DIR}/src/mainform.cpp ${PROJECT_SOURCE_DIR}/src/popplerdialog.cpp ${MOC_SRCS} ${UI_HEADERS} ${PROJECT_SOURCE_DIR}/src/translations/yagf_de.ts)
-qt4_add_translation(${CMAKE_BINARY_DIR}/yagf_pl.qm ${PROJECT_SOURCE_DIR}/src/mainform.cpp ${PROJECT_SOURCE_DIR}/src/popplerdialog.cpp ${MOC_SRCS} ${UI_HEADERS} ${PROJECT_SOURCE_DIR}/src/translations/yagf_pl.ts)
-qt4_add_translation(${CMAKE_BINARY_DIR}/yagf_uk.qm ${PROJECT_SOURCE_DIR}/src/mainform.cpp ${PROJECT_SOURCE_DIR}/src/popplerdialog.cpp ${MOC_SRCS} ${UI_HEADERS} ${PROJECT_SOURCE_DIR}/src/translations/yagf_uk.ts)
-#QT4_CREATE_TRANSLATION(yagf_ru.qm src/mainform.cpp ${MOC_SRCS} ${UI_HEADERS} src/yagf_ru.ts)
-#set(CMAKE_INSTALL_PREFIX /usr/)
-if (NOT DEFINED  ${CMAKE_INSTALL_PREFIX})
-set(CPACK_INSTALL_PREFIX /usr/)
-set (CMAKE_INSTALL_PREFIX /usr/)
+cmake_minimum_required(VERSION 3.21)
+project(yagf_revival VERSION 2.0.0 LANGUAGES CXX)
+include(GNUInstallDirs)
+
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+find_package(Qt6 6.2 REQUIRED COMPONENTS Core Gui Widgets Concurrent Network)
+qt_standard_project_setup()
+set(CMAKE_AUTORCC ON)
+
+add_library(yagf_core STATIC
+    src/core/ocrdocument.cpp src/core/ocrdocument.h src/core/preprocesssettings.h
+    src/core/correctionmemory.cpp src/core/correctionmemory.h
+    src/core/projectfile.cpp src/core/projectfile.h
+    src/core/wordeditor.cpp src/core/wordeditor.h)
+target_link_libraries(yagf_core PUBLIC Qt6::Core Qt6::Gui)
+target_include_directories(yagf_core PUBLIC src/core)
+
+add_library(yagf_processing STATIC
+    src/processing/documentprocessor.cpp src/processing/documentprocessor.h
+    src/processing/imageprocessor.cpp src/processing/imageprocessor.h
+    src/processing/iocrengine.h
+    src/processing/tesseractengine.cpp src/processing/tesseractengine.h
+    src/processing/remoteocrengine.cpp src/processing/remoteocrengine.h
+    src/processing/pdfexporter.cpp src/processing/pdfexporter.h)
+target_link_libraries(yagf_processing PUBLIC yagf_core Qt6::Core Qt6::Gui Qt6::Concurrent Qt6::Network)
+target_include_directories(yagf_processing PUBLIC src/processing)
+
+qt_add_executable(yagf-revival
+    src/main.cpp src/ui/mainwindow.cpp src/ui/mainwindow.h
+    src/ui/preprocessdialog.cpp src/ui/preprocessdialog.h
+    src/ui/layoutdialog.cpp src/ui/layoutdialog.h resources/icons.qrc)
+target_sources(yagf-revival PRIVATE src/ui/scannerdialog.cpp src/ui/scannerdialog.h)
+target_sources(yagf-revival PRIVATE src/ui/documentcommands.cpp src/ui/documentcommands.h)
+target_sources(yagf-revival PRIVATE src/ui/aireviewdialog.cpp src/ui/aireviewdialog.h)
+target_link_libraries(yagf-revival PRIVATE yagf_core yagf_processing Qt6::Widgets Qt6::Concurrent)
+
+install(TARGETS yagf-revival RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES packaging/io.github.andrei_b.YAGF.desktop
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+install(FILES resources/yagf.png
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/96x96/apps
+        RENAME io.github.andrei_b.YAGF.png)
+install(FILES packaging/io.github.andrei_b.YAGF.appdata.xml
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo)
+install(FILES COPYING
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/io.github.andrei_b.YAGF)
+
+include(CTest)
+if(BUILD_TESTING)
+    find_package(Qt6 6.2 REQUIRED COMPONENTS Test)
+    qt_add_executable(correctionmemory_tests tests/correctionmemory_tests.cpp)
+    target_link_libraries(correctionmemory_tests PRIVATE yagf_core)
+    add_test(NAME correctionmemory_tests COMMAND correctionmemory_tests)
+    qt_add_executable(ocrdocument_tests tests/ocrdocument_tests.cpp)
+    target_link_libraries(ocrdocument_tests PRIVATE yagf_core)
+    add_test(NAME ocrdocument_tests COMMAND ocrdocument_tests)
+    qt_add_executable(documentcommands_tests tests/documentcommands_tests.cpp
+        src/ui/documentcommands.cpp src/ui/documentcommands.h)
+    target_link_libraries(documentcommands_tests PRIVATE yagf_core Qt6::Gui)
+    target_include_directories(documentcommands_tests PRIVATE src/ui)
+    add_test(NAME documentcommands_tests COMMAND documentcommands_tests)
+    qt_add_executable(mainwindow_tests tests/mainwindow_tests.cpp
+        src/ui/mainwindow.cpp src/ui/mainwindow.h
+        src/ui/preprocessdialog.cpp src/ui/preprocessdialog.h
+        src/ui/layoutdialog.cpp src/ui/layoutdialog.h
+        src/ui/scannerdialog.cpp src/ui/scannerdialog.h
+        src/ui/documentcommands.cpp src/ui/documentcommands.h resources/icons.qrc)
+    target_sources(mainwindow_tests PRIVATE src/ui/aireviewdialog.cpp src/ui/aireviewdialog.h)
+    target_link_libraries(mainwindow_tests PRIVATE yagf_processing Qt6::Widgets Qt6::Concurrent Qt6::Test)
+    target_include_directories(mainwindow_tests PRIVATE src/ui)
+    add_test(NAME mainwindow_tests COMMAND mainwindow_tests)
+    set_tests_properties(mainwindow_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    qt_add_executable(aireviewdialog_tests tests/aireviewdialog_tests.cpp
+        src/ui/aireviewdialog.cpp src/ui/aireviewdialog.h)
+    target_link_libraries(aireviewdialog_tests PRIVATE yagf_processing Qt6::Widgets Qt6::Network Qt6::Test)
+    target_include_directories(aireviewdialog_tests PRIVATE src/ui)
+    add_test(NAME aireviewdialog_tests COMMAND aireviewdialog_tests)
+    set_tests_properties(aireviewdialog_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    qt_add_executable(projectfile_tests tests/projectfile_tests.cpp)
+    target_link_libraries(projectfile_tests PRIVATE yagf_core)
+    add_test(NAME projectfile_tests COMMAND projectfile_tests)
+    qt_add_executable(imageprocessor_tests tests/imageprocessor_tests.cpp)
+    target_link_libraries(imageprocessor_tests PRIVATE yagf_processing)
+    add_test(NAME imageprocessor_tests COMMAND imageprocessor_tests)
+    qt_add_executable(ocrengine_tests tests/ocrengine_tests.cpp)
+    target_link_libraries(ocrengine_tests PRIVATE yagf_processing)
+    add_test(NAME ocrengine_tests COMMAND ocrengine_tests)
+    qt_add_executable(remoteocrengine_tests tests/remoteocrengine_tests.cpp)
+    target_link_libraries(remoteocrengine_tests PRIVATE yagf_processing Qt6::Network)
+    add_test(NAME remoteocrengine_tests COMMAND remoteocrengine_tests)
+    find_package(Python3 QUIET COMPONENTS Interpreter)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME remote_ocr_service_tests
+            COMMAND ${Python3_EXECUTABLE} -m unittest discover -s ${CMAKE_CURRENT_SOURCE_DIR}/service/tests)
+    endif()
+    qt_add_executable(scannerdialog_tests tests/scannerdialog_tests.cpp
+        src/ui/scannerdialog.cpp src/ui/scannerdialog.h)
+    target_link_libraries(scannerdialog_tests PRIVATE Qt6::Widgets)
+    target_include_directories(scannerdialog_tests PRIVATE src/ui)
+    add_test(NAME scannerdialog_tests COMMAND scannerdialog_tests)
+    set_tests_properties(scannerdialog_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    find_program(PDFTOTEXT_EXECUTABLE pdftotext)
+    if(PDFTOTEXT_EXECUTABLE)
+        qt_add_executable(pdfexporter_tests tests/pdfexporter_tests.cpp)
+        target_link_libraries(pdfexporter_tests PRIVATE yagf_processing Qt6::Gui)
+        add_test(NAME pdfexporter_tests COMMAND pdfexporter_tests)
+        set_tests_properties(pdfexporter_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    endif()
 endif()
-install_targets(/bin/ yagf)
-if (CMAKE_SIZEOF_VOID_P EQUAL 8)
-        set (LIB_PATH_SUFFIX 64)
-        set_property (GLOBAL PROPERTY FIND_LIBRARY_USE_LIB64_PATHS TRUE)
-endif(CMAKE_SIZEOF_VOID_P EQUAL 8)
-install_targets(/lib${LIB_PATH_SUFFIX}/yagf xspreload)
-install(FILES ${QM_FILES} DESTINATION share/yagf/translations/)
-#install(FILES COPYING DESCRIPTION README AUTHORS ChangeLog DESTINATION share/yagf/)
-install(FILES yagf.png DESTINATION share/pixmaps/)
-install(FILES yagf.png DESTINATION share/icons/hicolor/96x96/apps/)
-install(FILES YAGF.desktop DESTINATION share/applications/)
-
-#set(CPACK_PACKAGE_FILE_NAME yagf)
-set(CPACK_PACKAGE_VENDOR "Andrei Borovsky, anb@symmetrica.net")
-set(CPACK_PACKAGE_CONTACT ${CPACK_PACKAGE_VENDOR})
-set(CPACK_SYSTEM_NAME "i586")
-set(CPACK_BINARY_DEB ON)
-set(CPACK_BINARY_RPM ON)
-set(CPACK_BINARY_STGZ ON)
-set(CPACK_BINARY_TGZ OFF)
-set(CPACK_BINARY_TZ OFF)
-set(CPACK_BINARY_TBZ2 OFF)
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Graphical front-end for cuneiform and tesseract OCR tools")
-set(CPACK_PACKAGE_VERSION 0.9.1)
-set(CPACK_PACKAGE_VERSION_MAJOR "0")
-set(CPACK_PACKAGE_VERSION_MINOR "9")
-set(CPACK_PACKAGE_VERSION_PATCH "1")
-set(CPACK_STRIP_FILES bin/yagf bin/libyagfpreload)
-set(CPACK_SOURCE_TBZ2 "OFF")
-set(CPACK_SOURCE_TGZ "ON")
-set(CPACK_SOURCE_TZ "OFF")
-set(CPACK_SOURCE_INSTALLED_DIRECTORIES "${CMAKE_SOURCE_DIR}/yagf-${CPACK_PACKAGE_VERSION}/;/")
-set(CPACK_RESOURCE_FILE_LICENSE ${CMAKE_SOURCE_DIR}/COPYING)
-set(CPACK_PACKAGE_DESCRIPTION_FILE ${CMAKE_SOURCE_DIR}/DESCRIPTION)
-set(CPACK_RESOURCE_FILE_README ${CMAKE_SOURCE_DIR}/README)
-set(DEBIAN_PACKAGE_SECTION "text processing")
-set(CPACK_RPM_PACKAGE_LICENSE "GPL v.3.0")
-set (CPACK_RPM_PACKAGE_REQUIRES "libqt > 4.5")
-include(CPack)
-
-

@@ -1,9 +1,9 @@
 # Code organization
 
-The historical YAGF application stays at the repository root. `revival/` is the Qt 6 application under active development.
+The Qt 6 application builds from the repository root. The `legacy` branch preserves the Qt 4 application and its build system.
 
 ```text
-revival/
+YAGF/
   CMakeLists.txt
   src/
     main.cpp                         application entry point
