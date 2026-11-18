@@ -1,4 +1,4 @@
-#include "pdfexporter.h"
+#include "scientificbookexporter.h"
 #include "projectfile.h"
 
 #include <QCoreApplication>

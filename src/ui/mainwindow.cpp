@@ -1,3 +1,6 @@
+#include "pdfexporter.h"
+#include "scientificbookexporter.h"
+#include "verifiedsampleexporter.h"
 #include "mainwindow.h"
 #include "projectfile.h"
 #include "preprocessdialog.h"

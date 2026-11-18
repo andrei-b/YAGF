@@ -1,3 +1,4 @@
+#include "scientificbookexporter.h"
 #include "exportpage.h"
 
 #include <QBuffer>
@@ -67,7 +68,7 @@ ExportResult failure(const QString &message)
 } // namespace
 
 ExportResult ScientificBookExporter::write(const core::OcrDocument &document, const QString &destination,
-                                           const std::atomic_bool &cancelled, const PdfExporter::Progress &progress)
+                                           const std::atomic_bool &cancelled, const ExportProgress &progress)
 {
     QSaveFile file(destination);
     if (!file.open(QIODevice::WriteOnly)) return failure(file.errorString());

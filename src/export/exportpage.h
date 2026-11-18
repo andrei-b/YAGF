@@ -1,6 +1,7 @@
 #pragma once
 
-#include "pdfexporter.h"
+#include "exporttypes.h"
+#include "ocrdocument.h"
 
 #include <QImage>
 #include <QTemporaryDir>

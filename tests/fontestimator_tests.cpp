@@ -1,3 +1,4 @@
+#include "scientificbookexporter.h"
 #include "fontestimator.h"
 #include "documentprocessor.h"
 #include "projectfile.h"

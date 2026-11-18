@@ -18,23 +18,45 @@ add_library(yagf_core STATIC
     src/core/correctionmemory.cpp src/core/correctionmemory.h
     src/core/projectfile.cpp src/core/projectfile.h
     src/core/wordeditor.cpp src/core/wordeditor.h)
-target_link_libraries(yagf_core PUBLIC Qt6::Core Qt6::Gui)
+target_link_libraries(yagf_core PUBLIC Qt6::Core)
 target_include_directories(yagf_core PUBLIC src/core)
 
-add_library(yagf_processing STATIC
-    src/processing/fontestimator.cpp src/processing/fontestimator.h
+# Image/source operations have no OCR, network, or job-controller dependency.
+add_library(yagf_imaging STATIC
     src/processing/pagesource.cpp src/processing/pagesource.h
-    src/processing/specialistocr.cpp src/processing/specialistocr.h
-    src/processing/symbolshape.cpp src/processing/symbolshape.h
-    src/processing/documentprocessor.cpp src/processing/documentprocessor.h
     src/processing/imageprocessor.cpp src/processing/imageprocessor.h
+    src/processing/symbolshape.cpp src/processing/symbolshape.h)
+target_link_libraries(yagf_imaging PUBLIC yagf_core Qt6::Gui)
+target_include_directories(yagf_imaging PUBLIC src/processing)
+
+# Providers and recognition analysis can be used without the async document controller.
+add_library(yagf_ocr STATIC
+    src/processing/fontestimator.cpp src/processing/fontestimator.h
+    src/processing/specialistocr.cpp src/processing/specialistocr.h
     src/processing/iocrengine.h
     src/processing/tesseractengine.cpp src/processing/tesseractengine.h
-    src/processing/remoteocrengine.cpp src/processing/remoteocrengine.h
-    src/processing/scientificbookexporter.cpp src/processing/exportpage.h
-    src/processing/pdfexporter.cpp src/processing/pdfexporter.h)
-target_link_libraries(yagf_processing PUBLIC yagf_core Qt6::Core Qt6::Gui Qt6::Concurrent Qt6::Network)
+    src/processing/remoteocrengine.cpp src/processing/remoteocrengine.h)
+target_link_libraries(yagf_ocr PUBLIC yagf_core Qt6::Gui PRIVATE Qt6::Network)
+target_include_directories(yagf_ocr PUBLIC src/processing)
+
+add_library(yagf_processing STATIC
+    src/processing/documentprocessor.cpp src/processing/documentprocessor.h)
+target_link_libraries(yagf_processing PUBLIC yagf_imaging yagf_ocr Qt6::Concurrent)
 target_include_directories(yagf_processing PUBLIC src/processing)
+
+# Export consumes snapshots and OCR support, never the DocumentProcessor or UI.
+add_library(yagf_export STATIC
+    src/export/exporttypes.h
+    src/export/exportpage.cpp src/export/exportpage.h
+    src/export/pdfexporter.cpp src/export/pdfexporter.h
+    src/export/scientificbookexporter.cpp src/export/scientificbookexporter.h
+    src/export/verifiedsampleexporter.cpp src/export/verifiedsampleexporter.h
+    src/export/detail/exportcommand.cpp src/export/detail/exportcommand.h
+    src/export/detail/pagebackground.cpp src/export/detail/pagebackground.h
+    src/export/detail/pdfpagelayout.cpp src/export/detail/pdfpagelayout.h
+    src/export/detail/pdfpagepainter.cpp src/export/detail/pdfpagepainter.h)
+target_link_libraries(yagf_export PUBLIC yagf_core Qt6::Gui PRIVATE yagf_imaging yagf_ocr)
+target_include_directories(yagf_export PUBLIC src/export)
 
 qt_add_executable(yagf2
     src/main.cpp src/ui/mainwindow.cpp src/ui/mainwindow.h
@@ -44,7 +66,7 @@ target_sources(yagf2 PRIVATE src/ui/scannerdialog.cpp src/ui/scannerdialog.h)
 target_sources(yagf2 PRIVATE src/ui/documentcommands.cpp src/ui/documentcommands.h)
 target_sources(yagf2 PRIVATE src/ui/aireviewdialog.cpp src/ui/aireviewdialog.h)
 target_sources(yagf2 PRIVATE src/ui/spellhighlighter.cpp src/ui/spellhighlighter.h)
-target_link_libraries(yagf2 PRIVATE yagf_core yagf_processing Qt6::Widgets Qt6::Concurrent)
+target_link_libraries(yagf2 PRIVATE yagf_core yagf_processing yagf_export Qt6::Widgets Qt6::Concurrent Qt6::Network)
 
 install(TARGETS yagf2 RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(FILES packaging/io.github.andrei_b.YAGF.desktop
@@ -63,12 +85,16 @@ install(FILES COPYING
 include(CTest)
 if(BUILD_TESTING)
     find_package(Qt6 6.2 REQUIRED COMPONENTS Test)
+    qt_add_executable(pdfpagelayout_tests tests/pdfpagelayout_tests.cpp)
+    target_link_libraries(pdfpagelayout_tests PRIVATE yagf_export)
+    add_test(NAME pdfpagelayout_tests COMMAND pdfpagelayout_tests)
+    set_tests_properties(pdfpagelayout_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     qt_add_executable(fontestimator_tests tests/fontestimator_tests.cpp)
-    target_link_libraries(fontestimator_tests PRIVATE yagf_processing Qt6::Gui)
+    target_link_libraries(fontestimator_tests PRIVATE yagf_processing yagf_export Qt6::Gui)
     add_test(NAME fontestimator_tests COMMAND fontestimator_tests)
     set_tests_properties(fontestimator_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" SKIP_RETURN_CODE 77)
     qt_add_executable(djvu_tests tests/djvu_tests.cpp)
-    target_link_libraries(djvu_tests PRIVATE yagf_processing)
+    target_link_libraries(djvu_tests PRIVATE yagf_processing yagf_export)
     target_compile_definitions(djvu_tests PRIVATE YAGF_APP_PATH="$<TARGET_FILE:yagf2>")
     add_dependencies(djvu_tests yagf2)
     add_test(NAME djvu_tests COMMAND djvu_tests)
@@ -104,13 +130,13 @@ if(BUILD_TESTING)
         src/ui/documentcommands.cpp src/ui/documentcommands.h resources/icons.qrc)
     target_sources(mainwindow_tests PRIVATE src/ui/aireviewdialog.cpp src/ui/aireviewdialog.h)
     target_sources(mainwindow_tests PRIVATE src/ui/spellhighlighter.cpp src/ui/spellhighlighter.h)
-    target_link_libraries(mainwindow_tests PRIVATE yagf_processing Qt6::Widgets Qt6::Concurrent Qt6::Test)
+    target_link_libraries(mainwindow_tests PRIVATE yagf_processing yagf_export Qt6::Widgets Qt6::Concurrent Qt6::Network Qt6::Test)
     target_include_directories(mainwindow_tests PRIVATE src/ui)
     add_test(NAME mainwindow_tests COMMAND mainwindow_tests)
     set_tests_properties(mainwindow_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     qt_add_executable(aireviewdialog_tests tests/aireviewdialog_tests.cpp
         src/ui/aireviewdialog.cpp src/ui/aireviewdialog.h)
-    target_link_libraries(aireviewdialog_tests PRIVATE yagf_processing Qt6::Widgets Qt6::Network Qt6::Test)
+    target_link_libraries(aireviewdialog_tests PRIVATE yagf_imaging Qt6::Widgets Qt6::Network Qt6::Test)
     target_include_directories(aireviewdialog_tests PRIVATE src/ui)
     add_test(NAME aireviewdialog_tests COMMAND aireviewdialog_tests)
     set_tests_properties(aireviewdialog_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
@@ -118,10 +144,10 @@ if(BUILD_TESTING)
     target_link_libraries(projectfile_tests PRIVATE yagf_core)
     add_test(NAME projectfile_tests COMMAND projectfile_tests)
     qt_add_executable(imageprocessor_tests tests/imageprocessor_tests.cpp)
-    target_link_libraries(imageprocessor_tests PRIVATE yagf_processing)
+    target_link_libraries(imageprocessor_tests PRIVATE yagf_imaging)
     add_test(NAME imageprocessor_tests COMMAND imageprocessor_tests)
     qt_add_executable(scientificbook_tests tests/scientificbook_tests.cpp)
-    target_link_libraries(scientificbook_tests PRIVATE yagf_processing)
+    target_link_libraries(scientificbook_tests PRIVATE yagf_export)
     add_test(NAME scientificbook_tests COMMAND scientificbook_tests)
     qt_add_executable(specialistocr_tests tests/specialistocr_tests.cpp)
     target_link_libraries(specialistocr_tests PRIVATE yagf_processing)
@@ -133,7 +159,7 @@ if(BUILD_TESTING)
     target_link_libraries(ocrengine_tests PRIVATE yagf_processing)
     add_test(NAME ocrengine_tests COMMAND ocrengine_tests)
     qt_add_executable(remoteocrengine_tests tests/remoteocrengine_tests.cpp)
-    target_link_libraries(remoteocrengine_tests PRIVATE yagf_processing Qt6::Network)
+    target_link_libraries(remoteocrengine_tests PRIVATE yagf_ocr Qt6::Network)
     add_test(NAME remoteocrengine_tests COMMAND remoteocrengine_tests)
     find_package(Python3 QUIET COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND)
@@ -149,7 +175,7 @@ if(BUILD_TESTING)
     find_program(PDFTOTEXT_EXECUTABLE pdftotext)
     if(PDFTOTEXT_EXECUTABLE)
         qt_add_executable(pdfexporter_tests tests/pdfexporter_tests.cpp)
-        target_link_libraries(pdfexporter_tests PRIVATE yagf_processing Qt6::Gui)
+        target_link_libraries(pdfexporter_tests PRIVATE yagf_export Qt6::Gui)
         add_test(NAME pdfexporter_tests COMMAND pdfexporter_tests)
         set_tests_properties(pdfexporter_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     endif()

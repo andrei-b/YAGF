@@ -5,7 +5,7 @@
 
 #include <optional>
 #include "documentprocessor.h"
-#include "pdfexporter.h"
+#include "exporttypes.h"
 
 #include <QFutureWatcher>
 #include <QGraphicsView>

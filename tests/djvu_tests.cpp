@@ -1,4 +1,5 @@
 #include "documentprocessor.h"
+#include "pdfexporter.h"
 #include "exportpage.h"
 #include "pagesource.h"
 #include "projectfile.h"

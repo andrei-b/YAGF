@@ -1,3 +1,4 @@
+#include "verifiedsampleexporter.h"
 #include "pdfexporter.h"
 
 #include <QGuiApplication>
