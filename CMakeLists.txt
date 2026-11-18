@@ -22,6 +22,7 @@ target_link_libraries(yagf_core PUBLIC Qt6::Core Qt6::Gui)
 target_include_directories(yagf_core PUBLIC src/core)
 
 add_library(yagf_processing STATIC
+    src/processing/pagesource.cpp src/processing/pagesource.h
     src/processing/specialistocr.cpp src/processing/specialistocr.h
     src/processing/symbolshape.cpp src/processing/symbolshape.h
     src/processing/documentprocessor.cpp src/processing/documentprocessor.h
@@ -58,6 +59,12 @@ install(FILES COPYING
 include(CTest)
 if(BUILD_TESTING)
     find_package(Qt6 6.2 REQUIRED COMPONENTS Test)
+    qt_add_executable(djvu_tests tests/djvu_tests.cpp)
+    target_link_libraries(djvu_tests PRIVATE yagf_processing)
+    target_compile_definitions(djvu_tests PRIVATE YAGF_APP_PATH="$<TARGET_FILE:yagf-revival>")
+    add_dependencies(djvu_tests yagf-revival)
+    add_test(NAME djvu_tests COMMAND djvu_tests)
+    set_tests_properties(djvu_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" SKIP_RETURN_CODE 77)
     qt_add_executable(spellhighlighter_tests tests/spellhighlighter_tests.cpp
         src/ui/spellhighlighter.cpp src/ui/spellhighlighter.h)
     target_link_libraries(spellhighlighter_tests PRIVATE Qt6::Widgets)

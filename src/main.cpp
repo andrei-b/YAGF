@@ -18,22 +18,22 @@ int main(int argc, char **argv)
     parser.addHelpOption();
     parser.addOption({QStringLiteral("paddleocr-vl-url"),
         QStringLiteral("Use a PaddleOCR-VL YAGF bridge as the page OCR backend."), QStringLiteral("url")});
-    parser.addPositionalArgument(QStringLiteral("document"), QStringLiteral("Image, PDF or YAGF project to open."),
+    parser.addPositionalArgument(QStringLiteral("document"), QStringLiteral("Image, PDF, DjVu or YAGF project to open."),
                                  QStringLiteral("[document]"));
     parser.process(app);
     if (parser.positionalArguments().size() > 1) parser.showHelp(2);
 
     yagf::ui::MainWindow window;
+    if (parser.isSet(QStringLiteral("paddleocr-vl-url")) &&
+        !window.usePaddleVlService(QUrl(parser.value(QStringLiteral("paddleocr-vl-url"))))) {
+        qCritical("Enter a valid HTTP(S) base URL for --paddleocr-vl-url.");
+        return 2;
+    }
     if (!parser.positionalArguments().isEmpty()) {
         const QString path = parser.positionalArguments().first();
         if (QFileInfo(path).isDir() || path.endsWith(QStringLiteral(".yagf.json"), Qt::CaseInsensitive))
             window.loadProject(path);
         else window.loadSource(path);
-    }
-    if (parser.isSet(QStringLiteral("paddleocr-vl-url")) &&
-        !window.usePaddleVlService(QUrl(parser.value(QStringLiteral("paddleocr-vl-url"))))) {
-        qCritical("Enter a valid HTTP(S) base URL for --paddleocr-vl-url.");
-        return 2;
     }
     window.show();
     return QApplication::exec();

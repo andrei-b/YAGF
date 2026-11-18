@@ -10,6 +10,8 @@
 #include <QContextMenuEvent>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QFileDialog>
+#include <QFileInfo>
 #include <QGraphicsRectItem>
 #include <QGraphicsScene>
 #include <QImage>
@@ -631,5 +633,53 @@ int main(int argc, char **argv)
     for (auto *label : scientificWindow.findChildren<QLabel *>())
         vlStatus |= label->text().contains("OCR engine: PaddleOCR-VL");
     assert(vlStatus);
+
+    // Opening DjVu enables direct PDF conversion before OCR and multipage navigation.
+    const QString ppmPath = directory.filePath("djvu-page.ppm");
+    assert(image.save(ppmPath, "PPM"));
+    qputenv("YAGF_TEST_PPM", QFile::encodeName(ppmPath));
+    const auto helperScript = [&](const QString &name, const QByteArray &body) {
+        QFile helper(directory.filePath(name));
+        assert(helper.open(QIODevice::WriteOnly));
+        assert(helper.write(body) == body.size());
+        helper.close();
+        assert(helper.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+    };
+    helperScript("djvused", "#!/bin/sh\necho 2\n");
+    helperScript("ddjvu", "#!/bin/sh\nfor arg do last=$arg; done\ncp \"$YAGF_TEST_PPM\" \"$last\"\n");
+    const QString djvuPath = directory.filePath("source book.DJV");
+    QFile djvu(djvuPath);
+    assert(djvu.open(QIODevice::WriteOnly));
+    djvu.write("DjVu fixture handled by test helpers");
+    djvu.close();
+    yagf::ui::MainWindow djvuWindow;
+    djvuWindow.loadSource(djvuPath);
+    auto *convert = djvuWindow.findChild<QAction *>("convertDjVuAction");
+    auto *pages = djvuWindow.findChild<QListWidget *>("pageMiniatures");
+    assert(convert && pages);
+    timer.restart();
+    while (!convert->isEnabled() && timer.elapsed() < 5000) {
+        QApplication::processEvents();
+        QThread::msleep(5);
+    }
+    assert(convert->isEnabled() && pages->count() == 2);
+    auto *djvuWords = djvuWindow.findChild<QListWidget *>("recognizedWords");
+    assert(djvuWords->count() == 0);
+    const QString converted = directory.filePath("converted-before-ocr.pdf");
+    QTimer::singleShot(0, &djvuWindow, [&] {
+        auto *dialog = qobject_cast<QFileDialog *>(QApplication::activeModalWidget());
+        assert(dialog && dialog->windowTitle() == "Convert DjVu to PDF");
+        dialog->selectFile(converted);
+        QMetaObject::invokeMethod(dialog, "accept", Qt::DirectConnection);
+    });
+    convert->trigger();
+    timer.restart();
+    while ((!QFileInfo::exists(converted) || !convert->isEnabled()) && timer.elapsed() < 5000) {
+        QApplication::processEvents();
+        QThread::msleep(5);
+    }
+    QFile convertedPdf(converted);
+    assert(convertedPdf.open(QIODevice::ReadOnly) && convertedPdf.read(5) == "%PDF-");
+    assert(djvuWords->count() == 0);
 
 }

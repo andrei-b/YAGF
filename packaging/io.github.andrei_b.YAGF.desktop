@@ -8,4 +8,4 @@ Icon=io.github.andrei_b.YAGF
 Terminal=false
 StartupNotify=true
 Categories=Office;
-MimeType=application/pdf;image/png;image/jpeg;image/tiff;image/bmp;
+MimeType=application/pdf;image/vnd.djvu;image/vnd.djvu+multipage;image/png;image/jpeg;image/tiff;image/bmp;

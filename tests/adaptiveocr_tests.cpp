@@ -204,7 +204,7 @@ printf '5\t1\t1\t1\t1\t2\t25\t2\t30\t20\t97\tEigenmode\n'
     processing::DocumentProcessor processor(nullptr, &book);
     QEventLoop loop;
     int completed = 0;
-    QObject::connect(&processor, &processing::DocumentProcessor::pdfOpened, &loop, [&](int count) {
+    QObject::connect(&processor, &processing::DocumentProcessor::documentOpened, &loop, [&](int count) {
         assert(count == 5);
         processor.recognizePages({{2, "eng", {}}, {4, "eng", {}}, {5, "eng", {}}});
     });
@@ -217,7 +217,7 @@ printf '5\t1\t1\t1\t1\t2\t25\t2\t30\t20\t97\tEigenmode\n'
         });
     QObject::connect(&processor, &processing::DocumentProcessor::batchFinished, &loop, &QEventLoop::quit);
     QTimer::singleShot(10000, &loop, &QEventLoop::quit);
-    processor.openPdf(directory.filePath("book.pdf"));
+    processor.openDocument(directory.filePath("book.pdf"));
     loop.exec();
     assert(completed == 3 && !processor.isBusy());
     QFile log(directory.filePath("hints"));

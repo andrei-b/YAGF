@@ -36,8 +36,8 @@ public:
     void setEngine(std::unique_ptr<IOcrEngine> replacement);
     void setSpecialists(std::unique_ptr<IOcrEngine> formulas, std::unique_ptr<IOcrEngine> prose);
     void resetSource();
-    void openPdf(const QString &path);
-    void renderPdfPage(int pageNumber);
+    void openDocument(const QString &path);
+    void renderDocumentPage(int pageNumber);
     void startThumbnails(int pageCount);
     void recognize(const QString &imagePath, const QString &language, int pageNumber);
     void recognizeRegion(const QString &imagePath, const QString &language,
@@ -46,7 +46,7 @@ public:
     void cancel();
 signals:
     void busyChanged(bool busy);
-    void pdfOpened(int pageCount);
+    void documentOpened(int pageCount);
     void pageRendered(int pageNumber, const QString &imagePath);
     void thumbnailReady(int pageNumber, const QString &imagePath);
     void recognized(core::OcrPage page, const QPoint &offset, const QRect &region);
@@ -57,7 +57,8 @@ signals:
     void failed(const QString &message);
     void specialistWarning(const QString &message);
 private:
-    enum class Job : quint8 { None, PdfInfo, PdfRender, Ocr, BatchRender, BatchOcr };
+    enum class Job : quint8 { None, DocumentInfo, DocumentRender, Ocr, BatchRender, BatchOcr };
+    void discardRenderedPage(Job finishedJob);
     void start(Job job, const QString &program, const QStringList &arguments);
     void startNextThumbnail();
     void startNextBatchPage();
@@ -85,7 +86,7 @@ private:
     std::unique_ptr<IOcrEngine> formulaEngine, proseEngine;
     QTemporaryDir temporaryDir;
     Job job = Job::None;
-    QString pdfSource;
+    QString documentSource;
     QString renderPrefix;
     int requestedPage = 1;
     bool cancellationRequested = false;

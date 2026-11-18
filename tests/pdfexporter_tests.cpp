@@ -87,6 +87,27 @@ int main(int argc, char **argv)
     const QByteArray text = extract.readAllStandardOutput();
     assert(text.contains("Corrected"));
     assert(!text.contains("Mistake"));
+    // Real vision OCR returns whole multiline blocks. Their PDF text must not
+    // lose spaces or letters when paragraphs wrap inside one source rectangle.
+    OcrDocument passage = sampleDocument(400, 120, imagePath);
+    auto &block = passage.page(1)->words[0];
+    block.bounds = QRect(0, 0, 400, 120);
+    block.sourceBoxes = {block.bounds};
+    block.layoutBlock = true;
+    block.text = "Executive Mansion\nWashington, August 23, 1864.\n\n";
+    for (int i = 0; i < 40; ++i)
+        block.text += QStringLiteral("election%1 Administration Union first fire flight flow office affinity ").arg(i);
+    const QString passagePdf = directory.filePath("passage.pdf");
+    assert(PdfExporter::write(passage, passagePdf, false, cancelled).status == PdfExportResult::Status::Success);
+    extract.start("pdftotext", {passagePdf, "-"});
+    assert(extract.waitForFinished(10000) && extract.exitCode() == 0);
+    const auto passageText = extract.readAllStandardOutput();
+    assert(passageText.contains("Executive Mansion") && passageText.contains("Washington"));
+    for (int i = 0; i < 40; ++i) assert(passageText.contains("election" + QByteArray::number(i)));
+    assert(passageText.count("Administration") == 40 && passageText.count("Union") == 40);
+    for (const auto word : {"first", "fire", "flight", "flow", "office", "affinity"})
+        assert(passageText.count(word) == 40);
+    assert(QString::fromUtf8(passageText).simplified() == block.text.simplified());
     // A phone photo with EXIF orientation must keep the same geometry in OCR and export.
     const QString photoPath = directory.filePath(QStringLiteral("rotated.jpg"));
     QImage photo(40, 20, QImage::Format_RGB32);

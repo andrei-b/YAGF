@@ -4,7 +4,9 @@
 #include "tesseractengine.h"
 #include "symbolshape.h"
 #include "specialistocr.h"
+#include "pagesource.h"
 
+#include <QFile>
 #include <QFileInfo>
 #include <QImageReader>
 #include <QRegularExpression>
@@ -23,6 +25,7 @@ DocumentProcessor::DocumentProcessor(QObject *parent, const core::OcrDocument *s
         const Job finishedJob = job;
         if (finishedJob == Job::None) return;
         if (cancellationRequested) {
+            discardRenderedPage(finishedJob);
             cancellationRequested = false;
             job = Job::None;
             batchPages.clear();
@@ -31,6 +34,7 @@ DocumentProcessor::DocumentProcessor(QObject *parent, const core::OcrDocument *s
             return;
         }
         if (status != QProcess::NormalExit || exitCode != 0) {
+            discardRenderedPage(finishedJob);
             const QString message = tr("Processing failed: %1")
                 .arg(QString::fromUtf8(process.readAllStandardError()).trimmed());
             if (finishedJob == Job::BatchRender) finishBatchError(message);
@@ -38,22 +42,24 @@ DocumentProcessor::DocumentProcessor(QObject *parent, const core::OcrDocument *s
             return;
         }
         if (finishedJob == Job::BatchRender) {
-            prepareBatchImage(temporaryDir.filePath(renderPrefix +
-                QString::number(batchPages.at(batchIndex).number) + QStringLiteral(".png")));
+            prepareBatchImage(pageRenderCommand(documentSource, batchPages.at(batchIndex).number,
+                temporaryDir.filePath(renderPrefix + QString::number(batchPages.at(batchIndex).number))).outputPath);
             return;
         }
         job = Job::None;
         emit busyChanged(false);
-        if (finishedJob == Job::PdfInfo) {
+        if (finishedJob == Job::DocumentInfo) {
             const QString info = QString::fromUtf8(process.readAllStandardOutput());
             const QRegularExpression pagesPattern(QStringLiteral("(?:^|\\n)Pages:\\s*(\\d+)"));
             const auto match = pagesPattern.match(info);
-            const int count = match.hasMatch() ? match.captured(1).toInt() : 0;
-            if (count < 1) emit failed(tr("Could not read PDF page count."));
-            else emit pdfOpened(count);
-        } else if (finishedJob == Job::PdfRender)
+            const int count = pageSourceKind(documentSource) == PageSourceKind::DjVu
+                ? info.trimmed().toInt() : match.hasMatch() ? match.captured(1).toInt() : 0;
+            if (count < 1 || count > 100000) emit failed(tr("Could not read a valid document page count."));
+            else emit documentOpened(count);
+        } else if (finishedJob == Job::DocumentRender)
             emit pageRendered(requestedPage,
-                temporaryDir.filePath(renderPrefix + QString::number(requestedPage) + QStringLiteral(".png")));
+                pageRenderCommand(documentSource, requestedPage,
+                    temporaryDir.filePath(renderPrefix + QString::number(requestedPage))).outputPath);
     });
     connect(&process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
         if (error == QProcess::FailedToStart) {
@@ -102,8 +108,8 @@ DocumentProcessor::DocumentProcessor(QObject *parent, const core::OcrDocument *s
     connect(&thumbnailProcess, &QProcess::finished, this, [this](int exitCode, QProcess::ExitStatus status) {
         if (nextThumbnail < 1 || nextThumbnail > thumbnailCount) return;
         const int completed = nextThumbnail++;
-        const QString path = temporaryDir.filePath(renderPrefix + QStringLiteral("thumb-") +
-                                                   QString::number(completed) + QStringLiteral(".png"));
+        const QString path = pageRenderCommand(documentSource, completed,
+            temporaryDir.filePath(renderPrefix + QStringLiteral("thumb-") + QString::number(completed)), true).outputPath;
         if (status == QProcess::NormalExit && exitCode == 0 && QFileInfo::exists(path))
             emit thumbnailReady(completed, path);
         startNextThumbnail();
@@ -152,12 +158,19 @@ void DocumentProcessor::start(Job requestedJob, const QString &program, const QS
     process.start(program, arguments);
 }
 
-void DocumentProcessor::openPdf(const QString &path)
+void DocumentProcessor::openDocument(const QString &path)
 {
+    if (isBusy()) return;
     resetSource();
-    pdfSource = path;
+    if (pageSourceKind(path) == PageSourceKind::DjVu &&
+        (QStandardPaths::findExecutable("djvused").isEmpty() || QStandardPaths::findExecutable("ddjvu").isEmpty())) {
+        emit failed(tr("DjVu support requires the DjVuLibre tools djvused and ddjvu."));
+        return;
+    }
+    documentSource = path;
     renderPrefix = QUuid::createUuid().toString(QUuid::WithoutBraces) + QLatin1Char('-');
-    start(Job::PdfInfo, QStringLiteral("pdfinfo"), {path});
+    const auto command = pageCountCommand(path);
+    start(Job::DocumentInfo, command.program, command.arguments);
 }
 
 void DocumentProcessor::resetSource()
@@ -170,7 +183,7 @@ void DocumentProcessor::resetSource()
         thumbnailProcess.kill();
         thumbnailProcess.waitForFinished(2000);
     }
-    pdfSource.clear();
+    documentSource.clear();
     renderPrefix.clear();
 }
 
@@ -187,27 +200,30 @@ void DocumentProcessor::startNextThumbnail()
         thumbnailProcess.state() != QProcess::NotRunning) return;
     const QString output = temporaryDir.filePath(renderPrefix + QStringLiteral("thumb-") +
                                                  QString::number(nextThumbnail));
-    thumbnailProcess.start(QStringLiteral("pdftoppm"),
-        {QStringLiteral("-f"), QString::number(nextThumbnail),
-         QStringLiteral("-l"), QString::number(nextThumbnail),
-         QStringLiteral("-singlefile"), QStringLiteral("-scale-to"), QStringLiteral("160"),
-         QStringLiteral("-png"), pdfSource, output});
+    const auto command = pageRenderCommand(documentSource, nextThumbnail, output, true);
+    thumbnailProcess.start(command.program, command.arguments);
 }
 
-void DocumentProcessor::renderPdfPage(int pageNumber)
+void DocumentProcessor::renderDocumentPage(int pageNumber)
 {
-    if (isBusy() || pdfSource.isEmpty() || pageNumber < 1) return;
+    if (isBusy() || documentSource.isEmpty() || pageNumber < 1) return;
     requestedPage = pageNumber;
     const QString outputPrefix = temporaryDir.filePath(renderPrefix + QString::number(pageNumber));
-    const QString imagePath = outputPrefix + QStringLiteral(".png");
+    const auto command = pageRenderCommand(documentSource, pageNumber, outputPrefix);
+    const QString imagePath = command.outputPath;
     if (QFileInfo::exists(imagePath)) {
         emit pageRendered(pageNumber, imagePath);
         return;
     }
-    start(Job::PdfRender, QStringLiteral("pdftoppm"),
-          {QStringLiteral("-f"), QString::number(pageNumber), QStringLiteral("-l"), QString::number(pageNumber),
-           QStringLiteral("-singlefile"), QStringLiteral("-r"), QStringLiteral("150"),
-           QStringLiteral("-png"), pdfSource, outputPrefix});
+    start(Job::DocumentRender, command.program, command.arguments);
+}
+
+void DocumentProcessor::discardRenderedPage(Job finishedJob)
+{
+    if (finishedJob != Job::DocumentRender && finishedJob != Job::BatchRender) return;
+    const int number = finishedJob == Job::BatchRender ? batchPages.value(batchIndex).number : requestedPage;
+    QFile::remove(pageRenderCommand(documentSource, number,
+        temporaryDir.filePath(renderPrefix + QString::number(number))).outputPath);
 }
 
 void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
@@ -324,9 +340,10 @@ void DocumentProcessor::recognizeRegion(const QString &imagePath, const QString 
 
 void DocumentProcessor::recognizePages(const QVector<BatchPageOptions> &pages)
 {
-    if (isBusy() || pages.isEmpty() || pdfSource.isEmpty()) return;
-    if (QStandardPaths::findExecutable(QStringLiteral("pdftoppm")).isEmpty()) {
-        emit failed(tr("pdftoppm is not installed or is not on PATH."));
+    if (isBusy() || pages.isEmpty() || documentSource.isEmpty()) return;
+    const QString renderer = pageRenderCommand(documentSource, 1, {}).program;
+    if (QStandardPaths::findExecutable(renderer).isEmpty()) {
+        emit failed(tr("%1 is not installed or is not on PATH.").arg(renderer));
         return;
     }
     batchPages = pages;
@@ -350,16 +367,14 @@ void DocumentProcessor::startNextBatchPage()
     }
     const int number = batchPages.at(batchIndex).number;
     const QString outputPrefix = temporaryDir.filePath(renderPrefix + QString::number(number));
-    const QString imagePath = outputPrefix + QStringLiteral(".png");
+    const auto command = pageRenderCommand(documentSource, number, outputPrefix);
+    const QString imagePath = command.outputPath;
     if (QFileInfo::exists(imagePath)) {
         prepareBatchImage(imagePath);
         return;
     }
     job = Job::BatchRender;
-    process.start(QStringLiteral("pdftoppm"),
-        {QStringLiteral("-f"), QString::number(number), QStringLiteral("-l"), QString::number(number),
-         QStringLiteral("-singlefile"), QStringLiteral("-r"), QStringLiteral("150"),
-         QStringLiteral("-png"), pdfSource, outputPrefix});
+    process.start(command.program, command.arguments);
 }
 
 void DocumentProcessor::prepareBatchImage(const QString &path)

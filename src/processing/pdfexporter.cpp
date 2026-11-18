@@ -1,5 +1,6 @@
 #include "pdfexporter.h"
 #include "exportpage.h"
+#include "pagesource.h"
 
 #include "imageprocessor.h"
 #include "correctionmemory.h"
@@ -22,6 +23,8 @@
 #include <QProcess>
 #include <QStandardPaths>
 #include <QTemporaryDir>
+#include <QTextLayout>
+#include <QTextOption>
 #include <QUuid>
 
 #include <algorithm>
@@ -71,9 +74,40 @@ void drawWord(QPainter &painter, const core::OcrWord &word)
 {
     if (word.text.isEmpty() || word.bounds.isEmpty()) return;
     QFont font = painter.font();
+    // Optional ligature glyphs can lose their Unicode mapping in the PDF text layer.
+    font.setStyleStrategy(QFont::StyleStrategy(font.styleStrategy() | QFont::PreferNoShaping));
     font.setPixelSize(std::clamp(word.bounds.height(), 6, 180));
     font.setBold(word.bold);
     font.setItalic(word.italic);
+    if (word.layoutBlock || word.text.contains('\n') || word.text.contains('\t')) {
+        // Reflow passages with normal character spacing inside their source block.
+        font.setPixelSize(std::clamp(word.fontSizePt > 0 ? qRound(word.fontSizePt * 150.0 / 72.0) : 18, 8, 48));
+        QString text = word.text;
+        text.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+        text.replace('\r', '\n');
+        text.replace('\n', QChar(0x2028));
+        QTextLayout layout(text, font);
+        QTextOption option;
+        option.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
+        layout.setTextOption(option);
+        qreal height = 0;
+        layout.beginLayout();
+        while (true) {
+            auto line = layout.createLine();
+            if (!line.isValid()) break;
+            line.setLineWidth(word.bounds.width());
+            line.setPosition(QPointF(0, height));
+            height += line.height();
+        }
+        layout.endLayout();
+        const qreal scale = std::min<qreal>(1, word.bounds.height() / std::max<qreal>(1, height));
+        painter.save();
+        painter.translate(word.bounds.topLeft());
+        painter.scale(scale, scale);
+        layout.draw(&painter, QPointF(0, 0));
+        painter.restore();
+        return;
+    }
     painter.setFont(font);
     const QFontMetricsF metrics(font);
     const qreal naturalWidth = std::max<qreal>(1.0, metrics.horizontalAdvance(word.text));
@@ -98,17 +132,13 @@ std::expected<QImage, ExportResult> readExportPage(const core::OcrDocument &docu
                                                    const QTemporaryDir &temporary,
                                                    const std::atomic_bool &cancelled)
 {
-    const bool sourceIsPdf = document.sourcePath.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive);
     QString imagePath = document.sourcePath;
-    if (sourceIsPdf) {
+    if (isPagedSource(document.sourcePath)) {
         const QString prefix = temporary.filePath(QStringLiteral("page"));
-        const auto rendered = runProcess(QStringLiteral("pdftoppm"),
-            {QStringLiteral("-f"), QString::number(number),
-             QStringLiteral("-l"), QString::number(number),
-             QStringLiteral("-singlefile"), QStringLiteral("-r"), QStringLiteral("150"),
-             QStringLiteral("-png"), document.sourcePath, prefix}, cancelled);
+        const auto command = pageRenderCommand(document.sourcePath, number, prefix);
+        const auto rendered = runProcess(command.program, command.arguments, cancelled);
         if (rendered.status != PdfExportResult::Status::Success) return std::unexpected(rendered);
-        imagePath = prefix + QStringLiteral(".png");
+        imagePath = command.outputPath;
     }
     QImageReader reader(imagePath);
     reader.setAutoTransform(true);

@@ -156,6 +156,7 @@ private:
     void exportJson();
     enum class ExportFormat : quint8 { Pdf, ArchivalPdf, Samples, ScientificBook };
     void exportPdf(bool archive);
+    void convertDjVuToPdf();
     void exportVerifiedSamples();
     void exportScientificBook();
     void chooseExportPath(const QString &title, const QString &filter, const QString &suffix, ExportFormat format);
@@ -191,6 +192,7 @@ private:
     QAction *createRegionAction = nullptr;
     QAction *pdfAction = nullptr;
     QAction *pdfaAction = nullptr;
+    QAction *convertDjVuAction = nullptr;
     QAction *undoAction = nullptr;
     QAction *redoAction = nullptr;
     QAction *languagePickerAction = nullptr;

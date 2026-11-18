@@ -11,6 +11,7 @@
 #include "aireviewdialog.h"
 #include "regiongeometry.h"
 #include "spellhighlighter.h"
+#include "pagesource.h"
 
 #include <QCloseEvent>
 #include <QApplication>
@@ -454,10 +455,10 @@ MainWindow::MainWindow()
     toolbar->setMovable(false);
     toolbar->setIconSize(QSize(18, 18));
     toolbar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    fileMenu->addAction(tr("Open image or PDF…"), this, &MainWindow::openFile);
+    fileMenu->addAction(tr("Open image, PDF or DjVu…"), this, &MainWindow::openFile);
     auto *openAction = toolbar->addAction(style()->standardIcon(QStyle::SP_DialogOpenButton),
                                           tr("Open"), this, &MainWindow::openFile);
-    openAction->setToolTip(tr("Open an image or PDF"));
+    openAction->setToolTip(tr("Open an image, PDF or DjVu"));
     fileMenu->addAction(tr("Scan a page…"), this, &MainWindow::scanPage);
     auto *pasteAction = fileMenu->addAction(tr("Paste image from clipboard"), this, &MainWindow::pasteImage);
     pasteAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+V")));
@@ -480,7 +481,7 @@ MainWindow::MainWindow()
     nextButton->setIconSize(QSize(20, 20));
     pageSpin = new QSpinBox(this);
     pageSpin->setRange(1, 1);
-    pageSpin->setToolTip(tr("PDF page number"));
+    pageSpin->setToolTip(tr("Document page number"));
     pageSpin->setObjectName(QStringLiteral("pageNumber"));
     pageSpin->setMaximumWidth(58);
     toolbar->addWidget(previousButton);
@@ -585,6 +586,9 @@ MainWindow::MainWindow()
     fileMenu->addSeparator();
     pdfAction = fileMenu->addAction(tr("Export searchable PDF…"), this, [this] { exportPdf(false); });
     pdfaAction = fileMenu->addAction(tr("Export archival PDF/A…"), this, [this] { exportPdf(true); });
+    convertDjVuAction = fileMenu->addAction(tr("Convert DjVu to PDF…"), this, &MainWindow::convertDjVuToPdf);
+    convertDjVuAction->setObjectName(QStringLiteral("convertDjVuAction"));
+    convertDjVuAction->setEnabled(false);
     pdfAction->setEnabled(false);
     pdfaAction->setEnabled(false);
 
@@ -796,7 +800,7 @@ MainWindow::MainWindow()
         if (!maybeApplyEditor()) { updateSelection(selectedWords); return; }
         updateSelection(indicesForIds(ids));
     });
-    status = new QLabel(tr("Open an image or PDF to begin."), this);
+    status = new QLabel(tr("Open an image, PDF or DjVu to begin."), this);
     statusBar()->addPermanentWidget(status);
 
     connect(&processor, &DocumentProcessor::busyChanged, this, &MainWindow::setBusy);
@@ -808,13 +812,13 @@ MainWindow::MainWindow()
         queuedImageRegions.clear();
         status->setText(tr("Cancelled"));
     });
-    connect(&processor, &DocumentProcessor::pdfOpened, this, [this](int count) {
+    connect(&processor, &DocumentProcessor::documentOpened, this, [this](int count) {
         if (!projectPath.isEmpty() && document.totalPages != count) {
             // Version 1 projects described only the first rendered page.
             if (document.totalPages == 1 && document.pages.size() == 1 && document.pages.first().number == 1)
                 markDirty();
             else {
-                showError(tr("The source PDF page count changed since this project was saved."));
+                showError(tr("The source document page count changed since this project was saved."));
                 return;
             }
         }
@@ -1029,7 +1033,7 @@ void MainWindow::setBusy(bool busy)
     regionList->setEnabled(!blocked);
     deleteRegionButton->setEnabled(!blocked && selectedImageRegion >= 0);
     improveAction->setEnabled(!blocked && !rawImage.isNull());
-    batchAction->setEnabled(!blocked && pageCount > 1 && originalPath.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive));
+    batchAction->setEnabled(!blocked && pageCount > 1 && processing::isPagedSource(originalPath));
     layoutAction->setEnabled(!blocked && document.page(currentPage) && !document.page(currentPage)->regions.isEmpty());
     createRegionAction->setEnabled(!blocked && !selectedWords.isEmpty() &&
         document.page(currentPage) && selectedWords.size() < document.page(currentPage)->words.size());
@@ -1044,6 +1048,8 @@ void MainWindow::updatePageControls()
     pageSpin->setMaximum(pageCount);
     pageSpin->setValue(currentPage);
     const bool available = !processor.isBusy() && !exportBusy;
+    if (convertDjVuAction) convertDjVuAction->setEnabled(available && !imagePath.isEmpty() &&
+        processing::pageSourceKind(originalPath) == processing::PageSourceKind::DjVu);
     previousButton->setEnabled(available && currentPage > 1);
     nextButton->setEnabled(available && currentPage < pageCount);
     pageSpin->setEnabled(available && pageCount > 1);
@@ -1058,7 +1064,7 @@ void MainWindow::updatePageControls()
         pageList->setEnabled(available);
     }
     if (batchAction) batchAction->setEnabled(available && pageCount > 1 &&
-        originalPath.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive));
+        processing::isPagedSource(originalPath));
     if (remainingAction) remainingAction->setEnabled(batchAction->isEnabled());
     if (documentContextAction) documentContextAction->setEnabled(available && !originalPath.isEmpty());
     if (nextSpecialistAction) nextSpecialistAction->setEnabled(available && !imagePath.isEmpty() &&
@@ -1078,7 +1084,7 @@ void MainWindow::showError(const QString &message)
 void MainWindow::openFile()
 {
     const QString path = QFileDialog::getOpenFileName(this, tr("Open document"), {},
-        tr("Documents (*.pdf *.png *.jpg *.jpeg *.tif *.tiff *.bmp *.webp *.avif *.heic);;All files (*)"));
+        tr("Documents (*.pdf *.djvu *.djv *.png *.jpg *.jpeg *.tif *.tiff *.bmp *.webp *.avif *.heic);;All files (*)"));
     loadSource(path);
 }
 
@@ -1133,7 +1139,7 @@ void MainWindow::importMimeData(const QMimeData *mime)
         if (originalPath != path) QFile::remove(path);
         return;
     }
-    showError(tr("Drop a local image or PDF, or paste an image from the clipboard."));
+    showError(tr("Drop a local image, PDF or DjVu, or paste an image from the clipboard."));
 }
 
 QString MainWindow::saveImportedImage(const QImage &image)
@@ -1157,9 +1163,9 @@ void MainWindow::loadSource(const QString &path)
     if (path.isEmpty()) return;
     if (processor.isBusy() || exportBusy) return;
     const QFileInfo source(path);
-    if (!source.isFile() || (!path.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive) &&
+    if (!source.isFile() || (!processing::isPagedSource(path) &&
                               !QImageReader(path).canRead())) {
-        showError(tr("This file is not a readable image or PDF: %1").arg(path));
+        showError(tr("This file is not a readable image, PDF or DjVu: %1").arg(path));
         return;
     }
     if (!maybeSave()) return;
@@ -1199,9 +1205,9 @@ void MainWindow::loadSource(const QString &path)
     currentPage = 1;
     pageCount = 1;
     updatePageControls();
-    if (originalPath.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive)) {
-        status->setText(tr("Reading PDF…"));
-        processor.openPdf(originalPath);
+    if (processing::isPagedSource(originalPath)) {
+        status->setText(tr("Reading document…"));
+        processor.openDocument(originalPath);
     } else {
         loadImage(originalPath);
     }
@@ -1272,9 +1278,9 @@ void MainWindow::loadProject(const QString &path)
     currentPage = 1;
     pageCount = 1;
     updatePageControls();
-    if (originalPath.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive)) {
-        status->setText(tr("Reading project source PDF…"));
-        processor.openPdf(originalPath);
+    if (processing::isPagedSource(originalPath)) {
+        status->setText(tr("Reading project source document…"));
+        processor.openDocument(originalPath);
     } else {
         loadImage(originalPath);
     }
@@ -1468,9 +1474,9 @@ void MainWindow::showPage(int number)
     improveAction->setEnabled(false);
     layoutAction->setEnabled(false);
     createRegionAction->setEnabled(false);
-    if (originalPath.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive)) {
+    if (processing::isPagedSource(originalPath)) {
         status->setText(tr("Rendering page %1 of %2…").arg(number).arg(pageCount));
-        processor.renderPdfPage(number);
+        processor.renderDocumentPage(number);
     } else {
         loadImage(originalPath);
     }
@@ -1844,7 +1850,7 @@ void MainWindow::chooseOcrLanguages()
 void MainWindow::runBatchOcr(bool remainingOnly)
 {
     if (processor.isBusy() || pageCount < 2 ||
-        !originalPath.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive) || !maybeApplyEditor()) return;
+        !processing::isPagedSource(originalPath) || !maybeApplyEditor()) return;
     bool hasCorrections = false;
     if (!remainingOnly) {
         for (const OcrPage &page : document.pages)
@@ -2481,6 +2487,13 @@ void MainWindow::exportJson()
     QFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) { showError(file.errorString()); return; }
     file.write(QJsonDocument(document.toJson()).toJson(QJsonDocument::Indented));
+}
+
+void MainWindow::convertDjVuToPdf()
+{
+    if (processor.isBusy() || exportBusy || imagePath.isEmpty() ||
+        processing::pageSourceKind(originalPath) != processing::PageSourceKind::DjVu || !maybeApplyEditor()) return;
+    chooseExportPath(tr("Convert DjVu to PDF"), tr("PDF files (*.pdf)"), QStringLiteral("pdf"), ExportFormat::Pdf);
 }
 
 void MainWindow::exportPdf(bool archive)
