@@ -1,6 +1,7 @@
 #include "wordeditor.h"
 
 #include <QSet>
+#include <QRegularExpression>
 #include <QUuid>
 
 #include <algorithm>
@@ -15,6 +16,10 @@ QString newId()
 
 void setText(OcrWord &word, const EditedWord &edit, bool reviewed = true)
 {
+    if (word.text != edit.text) {
+        word.alternative = {};
+        word.readingEngine.clear();
+    }
     word.text = edit.text;
     word.bold = edit.bold;
     word.italic = edit.italic;
@@ -73,6 +78,8 @@ QVector<OcrWord> changedSpan(const OcrPage &page, const QVector<OcrWord> &old,
             word.sourceWordIds.clear();
             word.sourceBoxes.clear();
             word.symbolShape.clear();
+            word.alternative = {};
+            word.readingEngine.clear();
             word.confidence = -1;
             const int start = qBound(0, gapStart + available * charactersBefore / totalCharacters,
                                      page.width - 1);
@@ -161,6 +168,8 @@ QVector<OcrWord> changedSpan(const OcrPage &page, const QVector<OcrWord> &old,
         word.originalText = originalTexts.join(QLatin1Char(' '));
         word.sourceBoxes = std::move(sourceBoxes);
         word.symbolShape.clear();
+        word.alternative = {};
+        word.readingEngine.clear();
         word.confidence = -1;
         word.bounds = placement.first();
         for (int j = 1; j < placement.size(); ++j)
@@ -171,6 +180,87 @@ QVector<OcrWord> changedSpan(const OcrPage &page, const QVector<OcrWord> &old,
     return result;
 }
 } // namespace
+
+std::expected<OcrPage, QString> WordEditor::acceptSpecialist(const OcrPage &page, int anchor,
+                                                            const QString &reading)
+{
+    const auto span = page.specialistSpan(anchor);
+    const QString text = reading.trimmed();
+    if (span.isEmpty() || text.isEmpty() || text.size() > 16384)
+        return std::unexpected(QStringLiteral("This reading is empty, too long or no longer matches the page."));
+    OcrPage edited = page;
+    const auto &alternative = page.words[anchor].alternative;
+    const QString engine = text == alternative.text ? alternative.engine : QString{};
+    edited.words[anchor].alternative = {};
+    if (alternative.formula && text != alternative.sourceTokens.join(' ')) {
+        auto &block = edited.words[anchor];
+        block.originalText = alternative.sourceTokens.join(' ');
+        block.text = text;
+        block.layoutBlock = true;
+        block.reviewed = true;
+        block.symbolShape.clear();
+        block.readingEngine = engine;
+        block.confidence = -1;
+        for (int i : span.sliced(1)) {
+            const auto &word = page.words[i];
+            block.bounds |= word.bounds;
+            block.sourceBoxes += word.sourceBoxes;
+            block.sourceWordIds += word.sourceWordIds;
+        }
+        const QString id = block.id;
+        edited.words.remove(anchor + 1, span.size() - 1);
+        edited.rebuildHierarchy();
+        for (auto &region : edited.regions) {
+            if (region.type == "text" && region.paragraphs.size() == 1 &&
+                region.paragraphs.first().lines.size() == 1 &&
+                region.paragraphs.first().lines.first().wordIds == QStringList{id}) {
+                region.type = "equation";
+                break;
+            }
+        }
+        return edited;
+    }
+    auto result = acceptPassage(edited, span, text);
+    if (result && !engine.isEmpty()) {
+        const int after = result->words.size() - (page.words.size() - span.last() - 1);
+        for (int i = anchor; i < after; ++i) result->words[i].readingEngine = engine;
+    }
+    return result;
+}
+
+std::expected<OcrPage, QString> WordEditor::acceptPassage(const OcrPage &page, const QVector<int> &span,
+                                                         const QString &reading)
+{
+    if (span.isEmpty() || reading.trimmed().isEmpty() || reading.size() > 16384)
+        return std::unexpected(QStringLiteral("Select a passage and enter a nonempty reading of up to 16384 characters."));
+    for (int i = 0; i < span.size(); ++i) {
+        if (span[i] < 0 || span[i] >= page.words.size() || (i && span[i] != span[i - 1] + 1))
+            return std::unexpected(QStringLiteral("Select consecutive words in reading order."));
+    }
+    const auto pieces = reading.split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
+    QVector<EditedWord> tokens;
+    for (int i = 0; i < pieces.size(); ++i) {
+        const auto &style = page.words[span[qMin<qsizetype>(i, span.size() - 1)]];
+        tokens.append({pieces[i], style.bold, style.italic, style.fontSizePt});
+    }
+    auto result = apply(page, span, tokens);
+    if (result) {
+        QHash<QString, int> sources;
+        for (int i : span) sources.insert(page.words[i].id, i);
+        for (int i = 0; i < tokens.size(); ++i) {
+            auto &word = result->words[span.first() + i];
+            const int source = sources.value(word.id, -1);
+            if (source >= 0 && page.words[source].text == word.text) {
+                word.bold = page.words[source].bold;
+                word.italic = page.words[source].italic;
+                word.fontSizePt = page.words[source].fontSizePt;
+            }
+            word.alternative = {};
+            word.reviewed = true;
+        }
+    }
+    return result;
+}
 
 std::expected<OcrPage, QString> WordEditor::apply(const OcrPage &page,
     const QVector<int> &selection, const QVector<EditedWord> &replacement)

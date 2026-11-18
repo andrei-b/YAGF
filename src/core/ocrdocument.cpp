@@ -62,6 +62,12 @@ QJsonObject wordJson(const OcrWord &word)
             {"style", QJsonObject{{"bold", word.bold}, {"italic", word.italic},
                                    {"font_size_pt", word.fontSizePt},
                                    {"source_font_size_pt", word.sourceFontSizePt}}}};
+    if (!word.readingEngine.isEmpty()) result.insert("reading_engine", word.readingEngine);
+    if (!word.alternative.sourceTokens.isEmpty()) {
+        const auto &a = word.alternative;
+        result.insert("specialist_reading", QJsonObject{{"engine", a.engine}, {"text", a.text},
+            {"source_tokens", QJsonArray::fromStringList(a.sourceTokens)}, {"formula", a.formula}});
+    }
     if (!word.symbolShape.isEmpty()) result.insert("symbol_shape", QString::fromLatin1(word.symbolShape.toHex()));
     if (word.layoutBlock) result.insert("layout_block", true);
     return result;
@@ -78,6 +84,21 @@ bool parseWord(const QJsonObject &json, int pageNumber, int width, int height, O
         !json.value(QStringLiteral("text")).isString() ||
         !json.value(QStringLiteral("confidence")).isDouble() ||
         !json.value(QStringLiteral("reviewed")).isBool()) return false;
+    word->readingEngine = json.value("reading_engine").toString();
+    if (json.contains("specialist_reading")) {
+        const auto obj = json.value("specialist_reading").toObject();
+        auto &a = word->alternative;
+        a.engine = obj.value("engine").toString();
+        a.text = obj.value("text").toString();
+        a.formula = obj.value("formula").toBool();
+        const auto tokens = obj.value("source_tokens").toArray();
+        if (tokens.isEmpty() || tokens.size() > 1024 || a.text.trimmed().isEmpty() ||
+            a.text.size() > 16384 || a.engine.isEmpty() || !obj.value("formula").isBool()) return false;
+        for (const auto &token : tokens) {
+            if (!token.isString() || token.toString().isEmpty()) return false;
+            a.sourceTokens.append(token.toString());
+        }
+    }
     if (json.contains("layout_block") && !json.value("layout_block").isBool()) return false;
     word->layoutBlock = json.value("layout_block").toBool();
     if (json.contains("symbol_shape")) {
@@ -144,6 +165,23 @@ bool OcrRegion::validTableLayout(const QJsonValue &value)
         }
     }
     return true;
+}
+
+QVector<int> OcrPage::specialistSpan(int start) const
+{
+    if (start < 0 || start >= words.size()) return {};
+    const auto &first = words[start];
+    const auto &tokens = first.alternative.sourceTokens;
+    if (tokens.size() > words.size() - start) return {};
+    QVector<int> indices;
+    for (int i = 0; i < tokens.size(); ++i) {
+        const auto &word = words[start + i];
+        if (word.reviewed || word.originalText != tokens[i] || word.text != tokens[i] ||
+            word.block != first.block || word.paragraph != first.paragraph || word.line != first.line)
+            return {};
+        indices.append(start + i);
+    }
+    return indices;
 }
 
 void OcrPage::rebuildHierarchy()

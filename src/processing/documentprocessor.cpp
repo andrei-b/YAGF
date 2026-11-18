@@ -3,6 +3,7 @@
 #include "imageprocessor.h"
 #include "tesseractengine.h"
 #include "symbolshape.h"
+#include "specialistocr.h"
 
 #include <QFileInfo>
 #include <QImageReader>
@@ -83,6 +84,9 @@ DocumentProcessor::DocumentProcessor(QObject *parent, const core::OcrDocument *s
             }
             return;
         }
+        if (!result.warnings.isEmpty())
+            emit specialistWarning(tr("Page %1, specialist OCR: %2").arg(result.outcome->number)
+                                   .arg(result.warnings.join(QStringLiteral(" / "))));
         if (batch) {
             emit batchPageRecognized(std::move(*result.outcome), batchSourceSize);
             if (batchPages.isEmpty() || job != Job::BatchOcr) return;
@@ -122,6 +126,13 @@ DocumentProcessor::~DocumentProcessor()
 bool DocumentProcessor::isBusy() const { return job != Job::None; }
 QString DocumentProcessor::engineId() const { return engine->id(); }
 EngineCapabilities DocumentProcessor::engineCapabilities() const { return engine->capabilities(); }
+
+void DocumentProcessor::setSpecialists(std::unique_ptr<IOcrEngine> formulas, std::unique_ptr<IOcrEngine> prose)
+{
+    if (isBusy()) return;
+    formulaEngine = std::move(formulas);
+    proseEngine = std::move(prose);
+}
 
 void DocumentProcessor::setEngine(std::unique_ptr<IOcrEngine> replacement)
 {
@@ -218,13 +229,21 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
         nextEvidencePage = options.pageNumber;
         options.userWords = batchVocabulary.terms();
     }
+    QVector<QRect> formulaRegions;
+    if (book && formulaEngine && engine->id() == "tesseract") {
+        if (const auto *previous = book->page(options.pageNumber)) {
+            for (const auto &area : previous->regions)
+                if (area.type == "equation" || area.type == "formula")
+                    formulaRegions.append(area.bounds);
+        }
+    }
     const bool wasBusy = isBusy();
     job = batch ? Job::BatchOcr : Job::Ocr;
     cancellationRequested = false;
     ocrStop = std::stop_source{};
     const std::stop_token token = ocrStop.get_token();
     if (!wasBusy) emit busyChanged(true);
-    ocrWatcher.setFuture(QtConcurrent::run([this, path, image, options, region, token] {
+    ocrWatcher.setFuture(QtConcurrent::run([this, path, image, options, region, token, formulaRegions] {
         OcrJobResult result;
         QImage input = image;
         if (input.isNull()) {
@@ -274,6 +293,13 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
                 if (engine->capabilities().supportsWordBoxes && core::isSingleSymbol(word.originalText))
                     word.symbolShape = symbolShape(input, word.bounds);
                 ids.insert(word.id);
+            }
+            if (engine->id() == "tesseract" && (formulaEngine || proseEngine)) {
+                QVector<QRect> localAreas = formulaRegions;
+                for (auto &area : localAreas) area.translate(-result.offset);
+                result.warnings = collectSpecialistReadings(page, input, localAreas,
+                    formulaEngine.get(), proseEngine.get(), token);
+                if (token.stop_requested()) result.outcome = std::unexpected(OcrError{{}, true});
             }
         }
         return result;

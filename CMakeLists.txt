@@ -20,6 +20,7 @@ target_link_libraries(yagf_core PUBLIC Qt6::Core Qt6::Gui)
 target_include_directories(yagf_core PUBLIC src/core)
 
 add_library(yagf_processing STATIC
+    src/processing/specialistocr.cpp src/processing/specialistocr.h
     src/processing/symbolshape.cpp src/processing/symbolshape.h
     src/processing/documentprocessor.cpp src/processing/documentprocessor.h
     src/processing/imageprocessor.cpp src/processing/imageprocessor.h
@@ -91,6 +92,9 @@ if(BUILD_TESTING)
     qt_add_executable(scientificbook_tests tests/scientificbook_tests.cpp)
     target_link_libraries(scientificbook_tests PRIVATE yagf_processing)
     add_test(NAME scientificbook_tests COMMAND scientificbook_tests)
+    qt_add_executable(specialistocr_tests tests/specialistocr_tests.cpp)
+    target_link_libraries(specialistocr_tests PRIVATE yagf_processing)
+    add_test(NAME specialistocr_tests COMMAND specialistocr_tests)
     qt_add_executable(adaptiveocr_tests tests/adaptiveocr_tests.cpp)
     target_link_libraries(adaptiveocr_tests PRIVATE yagf_processing)
     add_test(NAME adaptiveocr_tests COMMAND adaptiveocr_tests)

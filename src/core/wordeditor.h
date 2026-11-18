@@ -15,6 +15,10 @@ struct EditedWord {
 
 class WordEditor {
 public:
+    static std::expected<OcrPage, QString> acceptSpecialist(const OcrPage &page, int anchor,
+                                                           const QString &reading);
+    static std::expected<OcrPage, QString> acceptPassage(const OcrPage &page, const QVector<int> &span,
+                                                        const QString &reading);
     // The selected words must be consecutive in reading order. Unchanged text anchors
     // retain its original box; changed spans share or divide the source geometry.
     static std::expected<OcrPage, QString> apply(const OcrPage &page,

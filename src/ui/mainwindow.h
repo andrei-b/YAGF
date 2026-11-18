@@ -110,7 +110,10 @@ private:
     void updatePageControls();
     void runOcr();
     void configureOcrEngine();
+    void configureSpecialists();
+    void reviewNextSpecialist();
     void chooseOcrLanguages();
+    bool canReviewSelection() const;
     void reviewSelectedWord();
     void showDocument();
     void selectWord(int index);
@@ -195,6 +198,9 @@ private:
     bool exportBusy = false;
     QString exportPath;
     QString aiReviewToken;
+    struct SpecialistService { bool enabled = false; QString url; QString token; };
+    SpecialistService formulaService, proseService;
+    QAction *nextSpecialistAction = nullptr;
     QAction *similarSymbolsAction = nullptr;
     std::optional<core::CorrectionMemory> correctionMemory;
     std::shared_ptr<std::atomic_bool> exportCancel;

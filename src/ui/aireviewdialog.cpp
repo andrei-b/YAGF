@@ -15,6 +15,7 @@
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QPainter>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QScrollArea>
@@ -29,7 +30,7 @@
 namespace yagf::ui {
 namespace {
 
-QStringList candidatesFromContent(QString content)
+QStringList candidatesFromContent(QString content, bool passage)
 {
     content = content.trimmed();
     if (content.startsWith(QStringLiteral("```"))) {
@@ -37,19 +38,20 @@ QStringList candidatesFromContent(QString content)
         const int end = content.lastIndexOf(QStringLiteral("```"));
         if (start >= 0 && end > start) content = content.mid(start + 1, end - start - 1).trimmed();
     }
+    const int limit = passage ? 16384 : 120;
     QStringList candidates;
     const QJsonObject object = QJsonDocument::fromJson(content.toUtf8()).object();
     for (const QJsonValue &value : object.value(QStringLiteral("candidates")).toArray()) {
         const QString reading = value.toString().trimmed();
-        if (!reading.isEmpty() && reading.size() <= 120 && !candidates.contains(reading))
+        if (!reading.isEmpty() && reading.size() <= limit && !candidates.contains(reading))
             candidates.append(reading);
         if (candidates.size() == 3) break;
     }
     if (candidates.isEmpty()) {
         const QString reading = object.value(QStringLiteral("candidate")).toString().trimmed();
-        if (!reading.isEmpty() && reading.size() <= 120) candidates.append(reading);
+        if (!reading.isEmpty() && reading.size() <= limit) candidates.append(reading);
     }
-    if (candidates.isEmpty()) {
+    if (!passage && candidates.isEmpty()) {
         const QString first = content.split(QLatin1Char('\n'), Qt::SkipEmptyParts).value(0).trimmed()
             .remove(QRegularExpression(QStringLiteral("^([0-9]+[.)]|[-*])\\s*")));
         if (!first.isEmpty() && first.size() <= 120 && !first.startsWith(QLatin1Char('{')))
@@ -74,10 +76,16 @@ QImage markedImage(const QImage &image, const QRect &target, qreal scale)
 } // namespace
 
 AiReviewDialog::AiReviewDialog(QString recognized, QString context, QImage crop, QRect target,
-                               QString sessionToken, QWidget *parent)
-    : QDialog(parent), recognized(std::move(recognized)), context(std::move(context)),
+                               QString sessionToken, QWidget *parent,
+                               const core::SpecialistReading *specialist, bool reviewPassage)
+    : QDialog(parent), passage(specialist || reviewPassage), recognized(std::move(recognized)), context(std::move(context)),
       crop(std::move(crop)), target(target)
 {
+    if (specialist) {
+        secondEngine = specialist->engine;
+        secondReading = specialist->text;
+        formula = specialist->formula;
+    }
     setObjectName(QStringLiteral("aiReviewDialog"));
     setWindowTitle(tr("Review uncertain reading"));
     resize(850, 650);
@@ -96,7 +104,19 @@ AiReviewDialog::AiReviewDialog(QString recognized, QString context, QImage crop,
     auto *reading = new QLabel(tr("OCR reading: %1").arg(this->recognized), this);
     reading->setObjectName(QStringLiteral("reviewReading"));
     reading->setTextFormat(Qt::PlainText);
+    reading->setWordWrap(true);
     layout->addWidget(reading);
+    if (specialist) {
+        auto *other = new QPlainTextEdit(secondReading, this);
+        other->setReadOnly(true);
+        other->setMaximumHeight(75);
+        layout->addWidget(new QLabel(tr("Alternative from %1").arg(secondEngine.toHtmlEscaped()), this));
+        layout->addWidget(other);
+        auto *use = new QPushButton(tr("Copy specialist reading to editor"), this);
+        use->setObjectName("copySpecialist");
+        layout->addWidget(use);
+        connect(use, &QPushButton::clicked, this, [this] { setCandidate(secondReading); });
+    }
     auto *surrounding = new QLabel(tr("Context: %1").arg(this->context), this);
     surrounding->setWordWrap(true);
     surrounding->setTextFormat(Qt::PlainText);
@@ -158,22 +178,34 @@ AiReviewDialog::AiReviewDialog(QString recognized, QString context, QImage crop,
     bookSuggestions->hide();
     layout->addWidget(bookSuggestions);
     connect(bookSuggestions, &QComboBox::activated, this, [this](int index) {
-        candidate->setText(bookSuggestions->itemData(index).toString());
+        setCandidate(bookSuggestions->itemData(index).toString());
     });
-    candidate = new QLineEdit(this->recognized, this);
-    candidate->setObjectName(QStringLiteral("verifiedCorrection"));
     form = new QFormLayout();
-    form->addRow(tr("Verified reading"), candidate);
+    if (passage) {
+        passageEditor = new QPlainTextEdit(this->recognized, this);
+        passageEditor->setObjectName("verifiedPassage");
+        passageEditor->setMaximumHeight(90);
+        form->addRow(tr("Verified reading"), passageEditor);
+    } else {
+        candidate = new QLineEdit(this->recognized, this);
+        candidate->setObjectName(QStringLiteral("verifiedCorrection"));
+        form->addRow(tr("Verified reading"), candidate);
+    }
     layout->addLayout(form);
     connect(suggestions, &QListWidget::currentTextChanged, this, [this](const QString &value) {
-        if (!value.isEmpty()) candidate->setText(value);
+        if (!value.isEmpty()) setCandidate(value);
     });
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
-    buttons->button(QDialogButtonBox::Ok)->setText(tr("Use correction"));
+    auto *ok = buttons->button(QDialogButtonBox::Ok);
+    ok->setText(tr("Use correction"));
     layout->addWidget(buttons);
-    connect(candidate, &QLineEdit::textChanged, this, [buttons](const QString &value) {
-        buttons->button(QDialogButtonBox::Ok)->setEnabled(!value.trimmed().isEmpty());
-    });
+    const auto validate = [this, ok] {
+        const auto value = correction();
+        ok->setEnabled(!value.isEmpty() && (!passage || value.size() <= 16384));
+    };
+    if (passage) connect(passageEditor, &QPlainTextEdit::textChanged, this, validate);
+    else connect(candidate, &QLineEdit::textChanged, this, validate);
+    validate();
     connect(buttons, &QDialogButtonBox::accepted, this, [this] {
         QSettings settings(QStringLiteral("YAGF"), QStringLiteral("YAGF Revival"));
         settings.setValue(QStringLiteral("ai/endpoint"), endpoint->text().trimmed());
@@ -208,7 +240,16 @@ void AiReviewDialog::setBookSuggestions(const QVector<core::CorrectionSuggestion
     bookSuggestions->setVisible(!items.isEmpty());
 }
 
-QString AiReviewDialog::correction() const { return candidate->text().trimmed(); }
+void AiReviewDialog::setCandidate(const QString &text)
+{
+    if (passage) passageEditor->setPlainText(text);
+    else candidate->setText(text);
+}
+
+QString AiReviewDialog::correction() const
+{
+    return (passage ? passageEditor->toPlainText() : candidate->text()).trimmed();
+}
 QString AiReviewDialog::sessionToken() const { return token->text(); }
 
 void AiReviewDialog::refreshPreviews()
@@ -241,7 +282,15 @@ void AiReviewDialog::askAi()
         message->setText(tr("Could not prepare the review image crop."));
         return;
     }
-    const QString prompt = tr("Read only the word inside the red rectangle. Current OCR reading: %1. "
+    const QString prompt = passage
+        ? tr("Transcribe only the passage inside the red rectangle. Use the surrounding text to resolve "
+             "visually ambiguous readings. Preserve identifiers, numbers, language and punctuation. "
+             "Do not paraphrase or fill in missing facts. If the pixels are insufficient return an empty list. "
+             "%1 Return up to three readings as JSON: {\"candidates\":[\"reading\"]}. "
+             "Primary OCR: %2. Specialist %3: %4. Surrounding passage: %5")
+              .arg(formula ? tr("Transcribe the mathematics as LaTeX.") : QString(),
+                   recognized.left(16384), secondEngine, secondReading.left(16384), context.left(2000))
+        : tr("Read only the word inside the red rectangle. Current OCR reading: %1. "
         "Nearby text: %2. Use the image and context together. Return at most three visually plausible "
         "readings as JSON: {\"candidates\":[\"reading\"]}. Preserve the script and diacritics. "
         "Do not change neighboring words.").arg(recognized, context.left(500));
@@ -249,7 +298,7 @@ void AiReviewDialog::askAi()
         {QStringLiteral("model"), model->text().trimmed()},
         {QStringLiteral("stream"), false},
         {QStringLiteral("temperature"), 0.1},
-        {QStringLiteral("max_tokens"), 160},
+        {QStringLiteral("max_tokens"), passage ? 2048 : 160},
         {QStringLiteral("messages"), QJsonArray{
             QJsonObject{{QStringLiteral("role"), QStringLiteral("system")},
                         {QStringLiteral("content"), QStringLiteral("Suggest OCR readings only. "
@@ -299,7 +348,7 @@ void AiReviewDialog::finishAi()
         .value(QStringLiteral("choices")).toArray();
     const QString content = choices.isEmpty() ? QString() : choices.first().toObject()
         .value(QStringLiteral("message")).toObject().value(QStringLiteral("content")).toString();
-    const QStringList readings = candidatesFromContent(content);
+    const QStringList readings = candidatesFromContent(content, passage);
     if (readings.isEmpty()) {
         message->setText(tr("The AI did not return a usable reading. Inspect the crop and type your correction."));
         return;

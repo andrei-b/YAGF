@@ -13,6 +13,7 @@
 #include <QCloseEvent>
 #include <QApplication>
 #include <QClipboard>
+#include <QCheckBox>
 #include <QDir>
 #include <QDragEnterEvent>
 #include <QDropEvent>
@@ -122,7 +123,12 @@ void carryCorrections(OcrPage &fresh, const OcrPage *oldPage)
             word.sourceBoxes = old.sourceBoxes;
             word.fontSizePt = old.fontSizePt;
             word.sourceFontSizePt = old.sourceFontSizePt;
-            if (old.reviewed) { word.text = old.text; word.reviewed = true; }
+            if (old.reviewed) {
+                word.text = old.text;
+                word.reviewed = true;
+                word.readingEngine = old.readingEngine;
+                word.alternative = {};
+            }
             break;
         }
     }
@@ -471,6 +477,8 @@ MainWindow::MainWindow()
         refreshReviewLabel();
     });
     toolsMenu->addAction(tr("OCR engine…"), this, &MainWindow::configureOcrEngine);
+    toolsMenu->addAction(tr("Specialist OCR…"), this, &MainWindow::configureSpecialists);
+    nextSpecialistAction = toolsMenu->addAction(tr("Review next specialist reading…"), this, &MainWindow::reviewNextSpecialist);
     languagePickerAction = toolsMenu->addAction(tr("Choose OCR languages…"), this,
                                                 &MainWindow::chooseOcrLanguages);
     layoutAction->setEnabled(false);
@@ -705,6 +713,9 @@ MainWindow::MainWindow()
     connect(&processor, &DocumentProcessor::pageRendered, this, [this](int number, const QString &path) {
         if (number == currentPage) loadImage(path);
     });
+    connect(&processor, &DocumentProcessor::specialistWarning, this, [this](const QString &message) {
+        statusBar()->showMessage(message, 30000);
+    });
     connect(&processor, &DocumentProcessor::recognized, this,
             [this](OcrPage newPage, const QPoint &offset, const QRect &region) {
         QImageReader reader(imagePath);
@@ -735,7 +746,12 @@ MainWindow::MainWindow()
                         word.sourceBoxes = old.sourceBoxes;
                         word.fontSizePt = old.fontSizePt;
                         word.sourceFontSizePt = old.sourceFontSizePt;
-                        if (old.reviewed) { word.text = old.text; word.reviewed = true; }
+                        if (old.reviewed) {
+                            word.text = old.text;
+                            word.reviewed = true;
+                            word.readingEngine = old.readingEngine;
+                            word.alternative = {};
+                        }
                         break;
                     }
                 }
@@ -879,7 +895,7 @@ void MainWindow::setBusy(bool busy)
     selectionEditor->setEnabled(!blocked);
     applyButton->setEnabled(!blocked && !selectedWords.isEmpty() && !selectionEditor->isReadOnly());
     regionOcrButton->setEnabled(!blocked && !imagePath.isEmpty() && !selectedRegion.isEmpty());
-    reviewWordButton->setEnabled(!blocked && !imagePath.isEmpty() && selectedWords.size() == 1);
+    reviewWordButton->setEnabled(!blocked && !imagePath.isEmpty() && canReviewSelection());
     regionList->setEnabled(!blocked);
     deleteRegionButton->setEnabled(!blocked && selectedImageRegion >= 0);
     improveAction->setEnabled(!blocked && !rawImage.isNull());
@@ -914,6 +930,8 @@ void MainWindow::updatePageControls()
     if (batchAction) batchAction->setEnabled(available && pageCount > 1 &&
         originalPath.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive));
     if (remainingAction) remainingAction->setEnabled(batchAction->isEnabled());
+    if (nextSpecialistAction) nextSpecialistAction->setEnabled(available && !imagePath.isEmpty() &&
+        document.page(currentPage) && !document.page(currentPage)->words.isEmpty());
     if (layoutAction) layoutAction->setEnabled(available && document.page(currentPage) &&
         !document.page(currentPage)->regions.isEmpty());
     if (createRegionAction) createRegionAction->setEnabled(available && !selectedWords.isEmpty() &&
@@ -1493,6 +1511,81 @@ void MainWindow::configureOcrEngine()
     status->setText(tr("OCR engine: %1").arg(processor.engineId()));
 }
 
+void MainWindow::configureSpecialists()
+{
+    if (processor.isBusy() || exportBusy) return;
+    QSettings settings(QStringLiteral("YAGF"), QStringLiteral("YAGF Revival"));
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Specialist OCR"));
+    auto *form = new QFormLayout(&dialog);
+    auto *info = new QLabel(tr("During Tesseract OCR, send matching line images to these services. "
+                               "You can review each alternative against the scan."), &dialog);
+    info->setWordWrap(true);
+    form->addRow(info);
+    struct Fields { QCheckBox *enabled; QLineEdit *address; QLineEdit *token; };
+    const auto addService = [&](const QString &label, const QString &key, const QString &fallback,
+                                const SpecialistService &service) {
+        Fields fields{new QCheckBox(label, &dialog),
+                      new QLineEdit(service.url.isEmpty() ? settings.value(key, fallback).toString() : service.url, &dialog),
+                      new QLineEdit(service.token, &dialog)};
+        connect(fields.address, &QLineEdit::textEdited, fields.token, &QLineEdit::clear);
+        fields.enabled->setChecked(service.enabled);
+        fields.token->setEchoMode(QLineEdit::Password);
+        fields.token->setPlaceholderText(tr("Optional session token"));
+        form->addRow(fields.enabled);
+        form->addRow(tr("Service URL"), fields.address);
+        form->addRow(tr("Bearer token"), fields.token);
+        return fields;
+    };
+    const auto math = addService(tr("Formulas with Surya"), "ocr/suryaUrl", "http://127.0.0.1:8768", formulaService);
+    const auto prose = addService(tr("Uncertain text with docTR"), "ocr/doctrUrl", "http://127.0.0.1:8766", proseService);
+    auto *error = new QLabel(&dialog);
+    form->addRow(error);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    form->addRow(buttons);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, [&] {
+        for (const auto &fields : {math, prose}) {
+            const QUrl url(fields.address->text().trimmed());
+            if (fields.enabled->isChecked() && ((url.scheme() != "http" && url.scheme() != "https") ||
+                url.host().isEmpty() || !url.userInfo().isEmpty() || url.hasQuery() || url.hasFragment() ||
+                (!url.path().isEmpty() && url.path() != "/"))) {
+                error->setText(tr("Enter an HTTP(S) service base URL for each enabled engine."));
+                return;
+            }
+        }
+        dialog.accept();
+    });
+    if (dialog.exec() != QDialog::Accepted) return;
+    using Remote = processing::RemoteOcrEngine;
+    const auto service = [&](const Fields &fields, SpecialistService &state, const QString &key,
+                             Remote::Provider provider) -> std::unique_ptr<Remote> {
+        state = {fields.enabled->isChecked(), fields.address->text().trimmed(), fields.token->text()};
+        if (!state.enabled) return {};
+        const QUrl url(state.url);
+        settings.setValue(key, url.toString());
+        return std::make_unique<Remote>(url, state.token, provider);
+    };
+    processor.setSpecialists(service(math, formulaService, "ocr/suryaUrl", Remote::Provider::Surya),
+                             service(prose, proseService, "ocr/doctrUrl", Remote::Provider::DocTr));
+}
+
+void MainWindow::reviewNextSpecialist()
+{
+    if (processor.isBusy() || exportBusy || !maybeApplyEditor()) return;
+    const auto *page = document.page(currentPage);
+    if (!page || page->words.isEmpty()) return;
+    const int after = selectedWords.isEmpty() ? 0 : selectedWords.last() + 1;
+    for (int n = 0; n < page->words.size(); ++n) {
+        const int index = (after + n) % page->words.size();
+        if (page->specialistSpan(index).isEmpty()) continue;
+        selectWord(index);
+        reviewSelectedWord();
+        return;
+    }
+    statusBar()->showMessage(tr("No specialist readings to review on this page."), 5000);
+}
+
 void MainWindow::chooseOcrLanguages()
 {
     if (processor.engineId() != QStringLiteral("tesseract") || processor.isBusy()) return;
@@ -1650,6 +1743,8 @@ void MainWindow::showDocument()
     imageRegionBoxes.clear();
     displayedWords.clear();
     OcrPage *page = document.page(currentPage);
+    nextSpecialistAction->setEnabled(!processor.isBusy() && !exportBusy && !imagePath.isEmpty() &&
+        page && !page->words.isEmpty());
     if (!page) {
         ocrButton->setText(tr("Recognize"));
         selectedImageRegion = -1;
@@ -1684,6 +1779,10 @@ void MainWindow::showDocument()
         item->setToolTip(tr("Confidence: %1; box: %2, %3, %4 × %5; source fragments: %6")
                          .arg(word.confidence).arg(word.bounds.x()).arg(word.bounds.y())
                          .arg(word.bounds.width()).arg(word.bounds.height()).arg(word.sourceBoxes.size()));
+        if (!page->specialistSpan(i).isEmpty()) {
+            item->setIcon(style()->standardIcon(QStyle::SP_FileDialogContentsView));
+            item->setToolTip(item->toolTip() + tr("\nReview an alternative from %1").arg(word.alternative.engine));
+        }
     }
     for (int i = 0; i < page->imageRegions.size(); ++i) {
         const ImageRegion &region = page->imageRegions.at(i);
@@ -1806,7 +1905,7 @@ void MainWindow::deleteImageRegion(int index)
 
 void MainWindow::refreshReviewLabel()
 {
-    QString reviewLabel = tr("Review word…");
+    QString reviewLabel = selectedWords.size() > 1 ? tr("Review passage…") : tr("Review word…");
     if (selectedWords.size() == 1) {
         if (const auto *page = document.page(currentPage)) {
             if (!correctionMemory) correctionMemory.emplace(document, similarSymbolsAction->isChecked());
@@ -1818,6 +1917,10 @@ void MainWindow::refreshReviewLabel()
             }
         }
     }
+    if (selectedWords.size() == 1) {
+        const auto *page = document.page(currentPage);
+        if (page && !page->specialistSpan(selectedWords.first()).isEmpty()) reviewLabel = tr("Review specialist reading…");
+    }
     reviewWordButton->setText(reviewLabel);
 }
 
@@ -1825,8 +1928,7 @@ void MainWindow::updateSelection(const QVector<int> &indices)
 {
     selectedWords = indices;
     refreshReviewLabel();
-    reviewWordButton->setEnabled(!processor.isBusy() && !exportBusy && !imagePath.isEmpty() &&
-                               indices.size() == 1);
+    reviewWordButton->setEnabled(!processor.isBusy() && !exportBusy && !imagePath.isEmpty() && canReviewSelection());
     if (createRegionAction) createRegionAction->setEnabled(!processor.isBusy() && !exportBusy && !indices.isEmpty() &&
         document.page(currentPage) && indices.size() < document.page(currentPage)->words.size());
     QSet<int> selectedSet;
@@ -1875,32 +1977,66 @@ void MainWindow::updateSelection(const QVector<int> &indices)
     selectionEditor->moveCursor(QTextCursor::Start);
 }
 
+bool MainWindow::canReviewSelection() const
+{
+    if (selectedWords.isEmpty()) return false;
+    const auto *page = document.page(currentPage);
+    if (!page) return false;
+    for (int i = 0; i < selectedWords.size(); ++i) {
+        const int index = selectedWords[i];
+        if (index < 0 || index >= page->words.size() || (i && index != selectedWords[i - 1] + 1) ||
+            (selectedWords.size() > 1 && page->words[index].layoutBlock)) return false;
+    }
+    return true;
+}
+
 void MainWindow::reviewSelectedWord()
 {
-    if (processor.isBusy() || exportBusy || imagePath.isEmpty() || selectedWords.size() != 1 ||
-        !maybeApplyEditor() || selectedWords.size() != 1) return;
+    if (processor.isBusy() || exportBusy || imagePath.isEmpty() || !canReviewSelection() ||
+        !maybeApplyEditor() || !canReviewSelection()) return;
     const OcrPage *page = document.page(currentPage);
     if (!page || selectedWords.first() < 0 || selectedWords.first() >= page->words.size()) return;
     const int index = selectedWords.first();
     const OcrWord &word = page->words.at(index);
-    const QImage image(imagePath);
+    auto span = selectedWords.size() == 1 ? page->specialistSpan(index) : QVector<int>{};
+    const bool specialist = !span.isEmpty();
+    if (!specialist) span = selectedWords;
+    const int last = span.last();
+    QImageReader reader(imagePath);
+    reader.setAutoTransform(true);
+    const QImage image = reader.read();
     if (image.isNull()) { showError(tr("Could not load the page image for review.")); return; }
-    const QRect bounds = word.bounds.intersected(image.rect());
-    if (bounds.isEmpty()) { showError(tr("This word has no usable source image box.")); return; }
+    QRect bounds = word.bounds;
+    for (int i : span) bounds |= page->words[i].bounds;
+    bounds = bounds.intersected(image.rect());
+    if (bounds.isEmpty()) { showError(tr("This reading has no usable source image box.")); return; }
     const QRect cropRect = bounds.adjusted(-qMax(45, bounds.width() / 2),
         -qMax(25, bounds.height()), qMax(45, bounds.width() / 2),
         qMax(25, bounds.height())).intersected(image.rect());
     QStringList context;
-    for (int i = qMax(0, index - 6); i <= qMin(page->words.size() - 1, index + 6); ++i)
-        context.append(i == index ? QStringLiteral("[%1]").arg(page->words.at(i).text)
-                                  : page->words.at(i).text);
-    AiReviewDialog dialog(word.text, context.join(QLatin1Char(' ')), image.copy(cropRect),
-                          bounds.translated(-cropRect.topLeft()), aiReviewToken, this);
-    if (!correctionMemory) correctionMemory.emplace(document, similarSymbolsAction->isChecked());
-    dialog.setBookSuggestions(correctionMemory->suggestions(*page, index));
+    for (int i = qMax(0, index - 8); i < index; ++i) context.append(page->words[i].text);
+    context.append(QStringLiteral("[…]"));
+    for (int i = last + 1; i < page->words.size() && i <= last + 8; ++i) context.append(page->words[i].text);
+    QStringList primary;
+    for (int i : span) primary.append(page->words[i].text);
+    const QString baseline = primary.join(' ');
+    AiReviewDialog dialog(baseline, context.join(' '), image.copy(cropRect),
+                          bounds.translated(-cropRect.topLeft()), aiReviewToken, this,
+                          specialist ? &word.alternative : nullptr, span.size() > 1 || word.layoutBlock);
+    if (!specialist && span.size() == 1) {
+        if (!correctionMemory) correctionMemory.emplace(document, similarSymbolsAction->isChecked());
+        dialog.setBookSuggestions(correctionMemory->suggestions(*page, index));
+    }
     const int result = dialog.exec();
     aiReviewToken = dialog.sessionToken();
     if (result != QDialog::Accepted) return;
+    if (specialist || span.size() > 1) {
+        auto edited = specialist ? core::WordEditor::acceptSpecialist(*page, index, dialog.correction())
+                                 : core::WordEditor::acceptPassage(*page, span, dialog.correction());
+        if (!edited) { showError(edited.error()); return; }
+        undoStack.push(new ReplacePageCommand(document, currentPage, std::move(*edited), tr("Review passage")));
+        return;
+    }
     QTextCursor cursor(selectionEditor->document());
     cursor.select(QTextCursor::Document);
     cursor.insertText(dialog.correction(), selectionEditor->currentCharFormat());
@@ -1924,6 +2060,8 @@ bool MainWindow::applyCorrection()
         !plain.trimmed().isEmpty()) {
         auto edited = *document.page(currentPage);
         auto &block = edited.words[selectedWords.first()];
+        if (block.text != plain) block.readingEngine.clear();
+        block.alternative = {};
         block.text = plain;
         block.reviewed = true;
         QTextCursor cursor(selectionEditor->document());

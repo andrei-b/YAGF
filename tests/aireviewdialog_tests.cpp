@@ -11,6 +11,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPushButton>
+#include <QPlainTextEdit>
 #include <QSettings>
 #include <QTcpServer>
 #include <QTcpSocket>
@@ -61,6 +62,11 @@ int main(int argc, char **argv)
             assert(content.size() == 2);
             assert(content.at(0).toObject().value(QStringLiteral("text")).toString()
                 .contains(QStringLiteral("nearby context")));
+            if (requests == 2) {
+                const QString prompt = content[0].toObject().value("text").toString();
+                assert(prompt.contains("Primary OCR: E = rnc2") && prompt.contains("surya-remote: E=mc^2") &&
+                       prompt.contains("LaTeX") && prompt.contains("visually ambiguous"));
+            }
             assert(content.at(1).toObject().value(QStringLiteral("image_url")).toObject()
                 .value(QStringLiteral("url")).toString().startsWith(QStringLiteral("data:image/png;base64,")));
             const QJsonObject message{{QStringLiteral("content"),
@@ -112,4 +118,18 @@ int main(int argc, char **argv)
     assert(buttons);
     buttons->button(QDialogButtonBox::Ok)->click();
     assert(dialog.result() == QDialog::Accepted && dialog.sessionToken() == QStringLiteral("secret"));
+    const yagf::core::SpecialistReading formula{"surya-remote", "E=mc^2", {"E", "=", "rnc2"}, true};
+    yagf::ui::AiReviewDialog passage("E = rnc2", "nearby context", crop, QRect(20, 5, 30, 15),
+                                      "secret", nullptr, &formula);
+    passage.findChild<QLineEdit *>("aiEndpoint")->setText(endpoint->text());
+    passage.findChild<QLineEdit *>("aiModel")->setText("vision-test");
+    auto *choices = passage.findChild<QListWidget *>("aiSuggestions");
+    passage.findChild<QPushButton *>("askAiButton")->click();
+    timer.restart();
+    while (choices->count() != 2 && timer.elapsed() < 3000) {
+        app.processEvents();
+        QThread::msleep(10);
+    }
+    assert(requests == 2 && choices->count() == 2 && passage.correction() == "E = rnc2");
+
 }

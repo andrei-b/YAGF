@@ -14,6 +14,7 @@ class QLineEdit;
 class QListWidget;
 class QPushButton;
 class QSpinBox;
+class QPlainTextEdit;
 class QNetworkReply;
 
 namespace yagf::ui {
@@ -22,16 +23,21 @@ namespace yagf::ui {
 class AiReviewDialog final : public QDialog {
 public:
     AiReviewDialog(QString recognized, QString context, QImage crop, QRect target,
-                   QString sessionToken = {}, QWidget *parent = nullptr);
+                   QString sessionToken = {}, QWidget *parent = nullptr,
+                   const core::SpecialistReading *specialist = nullptr, bool passage = false);
     void setBookSuggestions(const QVector<core::CorrectionSuggestion> &items);
     [[nodiscard]] QString correction() const;
     [[nodiscard]] QString sessionToken() const;
 
 private:
+    void setCandidate(const QString &text);
     void refreshPreviews();
     void askAi();
     void finishAi();
 
+    bool passage;
+    QString secondEngine, secondReading;
+    bool formula = false;
     QString recognized;
     QString context;
     QImage crop;
@@ -45,6 +51,7 @@ private:
     QLineEdit *token = nullptr;
     QComboBox *bookSuggestions = nullptr;
     QLineEdit *candidate = nullptr;
+    QPlainTextEdit *passageEditor = nullptr;
     QListWidget *suggestions = nullptr;
     QLabel *message = nullptr;
     QPushButton *askButton = nullptr;

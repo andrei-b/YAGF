@@ -13,6 +13,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPushButton>
+#include <QPlainTextEdit>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QTextEdit>
@@ -315,6 +316,49 @@ int main(int argc, char **argv)
         if (action->text() == "Undo") action->trigger();
     bookWords->setCurrentRow(1, QItemSelectionModel::ClearAndSelect);
     assert(reviewBook->text().contains("QWidget"));
+
+    page.words[1].alternative = {"doctr-remote", "QWidget", {"QWldget"}, false};
+    book.replacePage(page);
+    assert(yagf::core::ProjectFile::save(bookPath, book, &error));
+    yagf::ui::MainWindow hybrid;
+    hybrid.loadProject(bookPath);
+    auto *hybridWords = hybrid.findChild<QListWidget *>("recognizedWords");
+    QAction *nextReading = nullptr;
+    for (auto *action : hybrid.findChildren<QAction *>())
+        if (action->text() == "Review next specialist reading…") nextReading = action;
+    assert(hybridWords && nextReading && nextReading->isEnabled());
+    for (bool accept : {false, true}) {
+        QTimer::singleShot(0, &hybrid, [accept] {
+            auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+            assert(dialog);
+            auto *copy = dialog->findChild<QPushButton *>("copySpecialist");
+            auto *editor = dialog->findChild<QPlainTextEdit *>("verifiedPassage");
+            assert(copy && editor && editor->toPlainText() == "QWldget");
+            copy->click();
+            assert(editor->toPlainText() == "QWidget");
+            if (accept) dialog->accept(); else dialog->reject();
+        });
+        nextReading->trigger();
+        assert(hybridWords->item(1)->text() == (accept ? "QWidget" : "QWldget"));
+    }
+    for (auto *action : hybrid.findChildren<QAction *>())
+        if (action->text() == "Undo") action->trigger();
+    assert(hybridWords->item(1)->text() == "QWldget");
+
+    hybridWords->setCurrentRow(0, QItemSelectionModel::ClearAndSelect);
+    hybridWords->item(1)->setSelected(true);
+    auto *reviewPassage = hybrid.findChild<QPushButton *>("reviewWordButton");
+    assert(reviewPassage && reviewPassage->isEnabled() && reviewPassage->text() == "Review passage…");
+    QTimer::singleShot(0, &hybrid, [] {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        assert(dialog && !dialog->findChild<QPushButton *>("copySpecialist"));
+        auto *editor = dialog->findChild<QPlainTextEdit *>("verifiedPassage");
+        assert(editor && editor->toPlainText() == "QWidget QWldget");
+        editor->setPlainText("QWidget QObject");
+        dialog->accept();
+    });
+    reviewPassage->click();
+    assert(hybridWords->item(1)->text() == "QObject");
 
     // A structured table stays one editable block when its cells contain spaces or tabs.
     page.words[0].text = page.words[0].originalText = "Name\tValue\nRate constant\t42";

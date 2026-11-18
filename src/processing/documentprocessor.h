@@ -34,6 +34,7 @@ public:
     QString engineId() const;
     EngineCapabilities engineCapabilities() const;
     void setEngine(std::unique_ptr<IOcrEngine> replacement);
+    void setSpecialists(std::unique_ptr<IOcrEngine> formulas, std::unique_ptr<IOcrEngine> prose);
     void resetSource();
     void openPdf(const QString &path);
     void renderPdfPage(int pageNumber);
@@ -54,6 +55,7 @@ signals:
     void batchFinished();
     void cancelled();
     void failed(const QString &message);
+    void specialistWarning(const QString &message);
 private:
     enum class Job { None, PdfInfo, PdfRender, Ocr, BatchRender, BatchOcr };
     void start(Job job, const QString &program, const QStringList &arguments);
@@ -66,6 +68,7 @@ private:
 
     struct OcrJobResult {
         std::expected<core::OcrPage, OcrError> outcome;
+        QStringList warnings;
         QPoint offset;
         QRect region;
     };
@@ -79,6 +82,7 @@ private:
     QFutureWatcher<OcrJobResult> ocrWatcher;
     std::stop_source ocrStop;
     std::unique_ptr<IOcrEngine> engine;
+    std::unique_ptr<IOcrEngine> formulaEngine, proseEngine;
     QTemporaryDir temporaryDir;
     Job job = Job::None;
     QString pdfSource;

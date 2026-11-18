@@ -11,6 +11,13 @@
 
 namespace yagf::core {
 
+struct SpecialistReading {
+    QString engine;
+    QString text;
+    QStringList sourceTokens;
+    bool formula = false;
+};
+
 struct OcrWord {
     int page = 1;
     int block = 0;
@@ -30,6 +37,8 @@ struct OcrWord {
     QVector<QRect> sourceBoxes; // Exact image fragments; empty for inserted text.
     bool layoutBlock = false; // A single OCR item can contain paragraphs, LaTeX or a table.
     QByteArray symbolShape; // 16 by 16 normalized ink mask for isolated OCR symbols.
+    SpecialistReading alternative;
+    QString readingEngine; // Specialist credited for a verbatim, accepted reading.
 };
 
 struct OcrLine {
@@ -74,6 +83,7 @@ struct OcrPage {
     QVector<OcrWord> words;
     QVector<OcrRegion> regions;
     QVector<ImageRegion> imageRegions;
+    QVector<int> specialistSpan(int start) const;
     void rebuildHierarchy();
     bool moveRegion(int index, int direction);
     bool extractRegion(const QVector<int> &wordIndices);
