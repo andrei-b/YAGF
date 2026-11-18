@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(yagf_revival VERSION 2.0.0 LANGUAGES CXX)
+project(yagf2 VERSION 2.0.0 LANGUAGES CXX)
 include(GNUInstallDirs)
 
 set(CMAKE_CXX_STANDARD 23)
@@ -35,21 +35,24 @@ add_library(yagf_processing STATIC
 target_link_libraries(yagf_processing PUBLIC yagf_core Qt6::Core Qt6::Gui Qt6::Concurrent Qt6::Network)
 target_include_directories(yagf_processing PUBLIC src/processing)
 
-qt_add_executable(yagf-revival
+qt_add_executable(yagf2
     src/main.cpp src/ui/mainwindow.cpp src/ui/mainwindow.h
     src/ui/preprocessdialog.cpp src/ui/preprocessdialog.h
     src/ui/layoutdialog.cpp src/ui/layoutdialog.h resources/icons.qrc)
-target_sources(yagf-revival PRIVATE src/ui/scannerdialog.cpp src/ui/scannerdialog.h)
-target_sources(yagf-revival PRIVATE src/ui/documentcommands.cpp src/ui/documentcommands.h)
-target_sources(yagf-revival PRIVATE src/ui/aireviewdialog.cpp src/ui/aireviewdialog.h)
-target_sources(yagf-revival PRIVATE src/ui/spellhighlighter.cpp src/ui/spellhighlighter.h)
-target_link_libraries(yagf-revival PRIVATE yagf_core yagf_processing Qt6::Widgets Qt6::Concurrent)
+target_sources(yagf2 PRIVATE src/ui/scannerdialog.cpp src/ui/scannerdialog.h)
+target_sources(yagf2 PRIVATE src/ui/documentcommands.cpp src/ui/documentcommands.h)
+target_sources(yagf2 PRIVATE src/ui/aireviewdialog.cpp src/ui/aireviewdialog.h)
+target_sources(yagf2 PRIVATE src/ui/spellhighlighter.cpp src/ui/spellhighlighter.h)
+target_link_libraries(yagf2 PRIVATE yagf_core yagf_processing Qt6::Widgets Qt6::Concurrent)
 
-install(TARGETS yagf-revival RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS yagf2 RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(FILES packaging/io.github.andrei_b.YAGF.desktop
         DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
 install(FILES resources/yagf.png
         DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/96x96/apps
+        RENAME io.github.andrei_b.YAGF.png)
+install(FILES resources/yagf-48.png
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/48x48/apps
         RENAME io.github.andrei_b.YAGF.png)
 install(FILES packaging/io.github.andrei_b.YAGF.appdata.xml
         DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo)
@@ -61,8 +64,8 @@ if(BUILD_TESTING)
     find_package(Qt6 6.2 REQUIRED COMPONENTS Test)
     qt_add_executable(djvu_tests tests/djvu_tests.cpp)
     target_link_libraries(djvu_tests PRIVATE yagf_processing)
-    target_compile_definitions(djvu_tests PRIVATE YAGF_APP_PATH="$<TARGET_FILE:yagf-revival>")
-    add_dependencies(djvu_tests yagf-revival)
+    target_compile_definitions(djvu_tests PRIVATE YAGF_APP_PATH="$<TARGET_FILE:yagf2>")
+    add_dependencies(djvu_tests yagf2)
     add_test(NAME djvu_tests COMMAND djvu_tests)
     set_tests_properties(djvu_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" SKIP_RETURN_CODE 77)
     qt_add_executable(spellhighlighter_tests tests/spellhighlighter_tests.cpp

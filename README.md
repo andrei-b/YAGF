@@ -1,6 +1,6 @@
-# YAGF (pre-2.0)
+# YAGF 2
 
-This is the Qt 6 and C++23 revival of YAGF. The historical Qt 4 application is available on the `legacy` branch. Tesseract runs locally by default; PaddleOCR, docTR, RapidOCR, Surya, and Kraken services are optional.
+YAGF 2 is the Qt 6 and C++23 version of YAGF. The historical Qt 4 application is available on the `legacy` branch. Tesseract runs locally by default; PaddleOCR, docTR, RapidOCR, Surya, and Kraken services are optional.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the source layout, dependency boundaries, and next implementation slices.
 
@@ -14,9 +14,9 @@ The screenshot uses a generated sample image.
 cmake -S . -B build -G Ninja
 cmake --build build
 ctest --test-dir build --output-on-failure
-./build/yagf-revival
+./build/yagf2
 # Or open a source document immediately:
-./build/yagf-revival /path/to/scan.png
+./build/yagf2 /path/to/scan.png
 ```
 
 Qt 6 development packages are required. Install Tesseract and language data to recognize images. PDF import and searchable PDF export also require Poppler's `pdfinfo` and `pdftoppm` commands. PDF/A export additionally requires OCRmyPDF. Scanning requires SANE's `scanimage` command and a configured scanner backend. Missing tools are reported in the app.

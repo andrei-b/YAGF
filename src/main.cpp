@@ -9,12 +9,14 @@
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
+    QApplication::setApplicationName(QStringLiteral("yagf2"));
+    QApplication::setApplicationDisplayName(QStringLiteral("YAGF 2"));
     QApplication::setDesktopFileName(QStringLiteral("io.github.andrei_b.YAGF"));
     QIcon icon(QStringLiteral(":/legacy/yagf-48.png"));
     icon.addFile(QStringLiteral(":/legacy/yagf.png"));
     QApplication::setWindowIcon(icon);
     QCommandLineParser parser;
-    parser.setApplicationDescription(QStringLiteral("YAGF OCR studio"));
+    parser.setApplicationDescription(QStringLiteral("YAGF 2 OCR studio"));
     parser.addHelpOption();
     parser.addOption({QStringLiteral("paddleocr-vl-url"),
         QStringLiteral("Use a PaddleOCR-VL YAGF bridge as the page OCR backend."), QStringLiteral("url")});

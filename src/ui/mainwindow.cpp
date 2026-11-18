@@ -1078,7 +1078,7 @@ void MainWindow::updatePageControls()
 void MainWindow::showError(const QString &message)
 {
     status->setText(message);
-    QMessageBox::warning(this, tr("YAGF Revival"), message);
+    QMessageBox::warning(this, tr("YAGF 2"), message);
 }
 
 void MainWindow::openFile()
@@ -1380,7 +1380,7 @@ void MainWindow::refreshDirty()
 void MainWindow::updateTitle()
 {
     const QString name = projectPath.isEmpty() ? tr("Untitled") : QFileInfo(projectPath).fileName();
-    setWindowTitle(tr("YAGF Revival — %1%2").arg(name, dirty ? QStringLiteral(" *") : QString()));
+    setWindowTitle(tr("YAGF 2 — %1%2").arg(name, dirty ? QStringLiteral(" *") : QString()));
 }
 
 void MainWindow::closeEvent(QCloseEvent *event)

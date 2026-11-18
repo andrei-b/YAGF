@@ -173,7 +173,7 @@ PdfExportResult PdfExporter::write(const core::OcrDocument &document,
         writer.setResolution(150);
         writer.setPageMargins(QMarginsF(0, 0, 0, 0));
         writer.setTitle(QStringLiteral("YAGF searchable document"));
-        writer.setCreator(QStringLiteral("YAGF Revival"));
+        writer.setCreator(QStringLiteral("YAGF 2"));
         QPainter painter;
         for (int number = 1; number <= document.totalPages; ++number) {
             if (cancelled.load()) return {.status = PdfExportResult::Status::Cancelled};
