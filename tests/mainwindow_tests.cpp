@@ -293,7 +293,7 @@ int main(int argc, char **argv)
     regionUndo->trigger();
     assert(regions->count() == 2);
 
-    auto blockMenu = [&](int index, const QString &choice) {
+    auto blockMenu = [&](int index, const QString &choice, bool miniature = false, bool keyboard = false) {
         QTimer::singleShot(0, &regionWindow, [choice] {
             auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
             assert(menu && menu->objectName() == "blockContextMenu");
@@ -315,12 +315,25 @@ int main(int argc, char **argv)
             selected->trigger();
             menu->close();
         });
-        const QPoint point = pageView->mapFromScene(regionBox(index).center());
-        QContextMenuEvent event(QContextMenuEvent::Mouse, point, pageView->viewport()->mapToGlobal(point));
-        QApplication::sendEvent(pageView->viewport(), &event);
+        if (miniature) {
+            if (keyboard) regions->setCurrentRow(index);
+            regions->scrollToItem(regions->item(index));
+            regions->doItemsLayout();
+            const QRect bounds = regions->visualItemRect(regions->item(index));
+            const QPoint point(regions->viewport()->width() - 3, bounds.center().y());
+            QContextMenuEvent event(keyboard ? QContextMenuEvent::Keyboard : QContextMenuEvent::Mouse,
+                                   point, regions->viewport()->mapToGlobal(point));
+            QApplication::sendEvent(regions->viewport(), &event);
+        } else {
+            const QPoint point = pageView->mapFromScene(regionBox(index).center());
+            QContextMenuEvent event(QContextMenuEvent::Mouse, point, pageView->viewport()->mapToGlobal(point));
+            QApplication::sendEvent(pageView->viewport(), &event);
+        }
     };
-    blockMenu(1, "German");
+    regions->setCurrentRow(0);
+    blockMenu(1, "German", true);
     assert(regions->item(1)->text().contains("deu"));
+    assert(regions->currentRow() == 1 && !regions->item(0)->text().contains("deu"));
     auto *regionSpelling = regionWindow.findChild<QComboBox *>("spellLanguage");
     assert(regionSpelling);
     if (regionSpelling->findData("de_DE") >= 0) assert(regionSpelling->toolTip().contains("de_DE"));
@@ -340,7 +353,7 @@ int main(int argc, char **argv)
     assert(args.readAll().split('\n').contains("deu"));
     args.close();
     assert(QFile::remove(argsPath));
-    blockMenu(1, "Recognize block");
+    blockMenu(1, "Recognize block", true);
     timer.restart();
     while (!recognizeRegions->isEnabled() && timer.elapsed() < 3000) {
         QApplication::processEvents();
@@ -352,8 +365,8 @@ int main(int argc, char **argv)
                       pageView->mapFromScene(QPointF(30, 35)));
     auto *regionEditor = regionWindow.findChild<QTextEdit *>(QStringLiteral("recognizedTextEditor"));
     assert(regionEditor && regionEditor->toPlainText() == QStringLiteral("mod"));
-    blockMenu(0, "Not a text");
-    blockMenu(0, "Check disabled");
+    blockMenu(0, "Not a text", true, true);
+    blockMenu(0, "Check disabled", true);
     assert(regions->item(0)->text().contains("Not a text"));
     assert(regionWords->count() == 1);
     recognizeRegions->click();
@@ -373,7 +386,7 @@ int main(int argc, char **argv)
     args.close();
     assert(args.open(QIODevice::ReadOnly));
     assert(args.readAll() == beforeSkip); // No fallback to full-page OCR for excluded blocks.
-    blockMenu(0, "Remove block");
+    blockMenu(0, "Remove block", true);
     assert(regions->count() == 1);
     regionUndo->trigger();
     assert(regions->count() == 2 && regions->item(0)->text().contains("Not a text"));

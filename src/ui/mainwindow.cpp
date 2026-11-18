@@ -2,6 +2,7 @@
 #include "scientificbookexporter.h"
 #include "verifiedsampleexporter.h"
 #include "mainwindow.h"
+#include "blockminiaturelist.h"
 #include "projectfile.h"
 #include "preprocessdialog.h"
 #include "imageprocessor.h"
@@ -660,17 +661,11 @@ MainWindow::MainWindow()
     auto *regionsHeading = new QLabel(tr("IMAGE REGIONS"), navigationPane);
     regionsHeading->setObjectName(QStringLiteral("sectionHeading"));
     navigationLayout->addWidget(regionsHeading);
-    regionList = new QListWidget(navigationPane);
+    auto *blockMiniatures = new BlockMiniatureList(navigationPane);
+    regionList = blockMiniatures;
     regionList->setObjectName(QStringLiteral("imageRegions"));
-    regionList->setViewMode(QListView::IconMode);
-    regionList->setFlow(QListView::TopToBottom);
-    regionList->setWrapping(false);
-    regionList->setMovement(QListView::Static);
-    regionList->setResizeMode(QListView::Adjust);
-    regionList->setGridSize(QSize(168, 142));
-    regionList->setIconSize(QSize(146, 92));
-    regionList->setContextMenuPolicy(Qt::CustomContextMenu);
-    regionList->setToolTip(tr("Select an OCR area. Drag its edge on the image to resize it; press Delete to remove it."));
+    regionList->setToolTip(tr("Right-click a block miniature for recognition, language selection, or removal. "
+        "Select a block and press Shift+F10 to open its menu from the keyboard."));
     navigationLayout->addWidget(regionList, 2);
     deleteRegionButton = new QPushButton(tr("Delete region"), navigationPane);
     deleteRegionButton->setIcon(removeBlockIcon());
@@ -836,10 +831,7 @@ MainWindow::MainWindow()
     connect(view, &PageView::regionChanged, this, &MainWindow::moveImageRegion);
     connect(view, &PageView::regionDeleteRequested, this, &MainWindow::deleteImageRegion);
     connect(view, &PageView::regionContextMenuRequested, this, &MainWindow::showBlockContextMenu);
-    connect(regionList, &QListWidget::customContextMenuRequested, this, [this](const QPoint &point) {
-        if (const auto *item = regionList->itemAt(point))
-            showBlockContextMenu(regionList->row(item), regionList->viewport()->mapToGlobal(point));
-    });
+    connect(blockMiniatures, &BlockMiniatureList::blockContextMenuRequested, this, &MainWindow::showBlockContextMenu);
     connect(regionList, &QListWidget::currentRowChanged, this, &MainWindow::activateImageRegion);
     connect(deleteRegionButton, &QPushButton::clicked, this, [this] {
         deleteImageRegion(selectedImageRegion);

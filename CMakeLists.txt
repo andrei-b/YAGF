@@ -59,6 +59,7 @@ target_link_libraries(yagf_export PUBLIC yagf_core Qt6::Gui PRIVATE yagf_imaging
 target_include_directories(yagf_export PUBLIC src/export)
 
 qt_add_executable(yagf2
+    src/ui/blockminiaturelist.cpp src/ui/blockminiaturelist.h
     src/main.cpp src/ui/mainwindow.cpp src/ui/mainwindow.h
     src/ui/preprocessdialog.cpp src/ui/preprocessdialog.h
     src/ui/layoutdialog.cpp src/ui/layoutdialog.h resources/icons.qrc)
@@ -123,6 +124,7 @@ if(BUILD_TESTING)
     target_include_directories(documentcommands_tests PRIVATE src/ui)
     add_test(NAME documentcommands_tests COMMAND documentcommands_tests)
     qt_add_executable(mainwindow_tests tests/mainwindow_tests.cpp
+        src/ui/blockminiaturelist.cpp src/ui/blockminiaturelist.h
         src/ui/mainwindow.cpp src/ui/mainwindow.h
         src/ui/preprocessdialog.cpp src/ui/preprocessdialog.h
         src/ui/layoutdialog.cpp src/ui/layoutdialog.h
