@@ -39,6 +39,8 @@ int main()
     original.page(1)->sourceWidth = 198;
     original.page(1)->sourceHeight = 98;
     original.page(1)->imageRegions = {{QStringLiteral("selected-area"), QRect(5, 8, 95, 60)}};
+    original.page(1)->imageRegions[0].language = QStringLiteral("deu");
+    original.page(1)->imageRegions[0].notText = true;
     OcrPage secondPage;
     secondPage.number = 2;
     secondPage.width = 200;
@@ -72,6 +74,8 @@ int main()
     assert(loaded.page(1)->sourceWidth == 198);
     assert(loaded.page(1)->imageRegions.size() == 1);
     assert(loaded.page(1)->imageRegions.first().bounds == QRect(5, 8, 95, 60));
+    assert(loaded.page(1)->imageRegions.first().language == "deu");
+    assert(loaded.page(1)->imageRegions.first().notText);
     assert(loaded.totalPages == 2);
     assert(loaded.page(2)->words.at(0).text == QStringLiteral("Hallo!"));
     assert(loaded.page(2)->regions.at(0).paragraphs.at(0).lines.at(0).wordIds.size() == 1);
@@ -146,6 +150,8 @@ int main()
     assert(copied.readAll() == imageBytes);
     assert(relocated.page(1)->words.at(0).text == original.page(1)->words.at(0).text);
     assert(relocated.page(1)->imageRegions.first().bounds == QRect(5, 8, 95, 60));
+    assert(relocated.page(1)->imageRegions.first().language == "deu");
+    assert(relocated.page(1)->imageRegions.first().notText);
     assert(relocated.context == original.context);
     copied.close();
     relocated.page(1)->words[0].text = QStringLiteral("portable edit");

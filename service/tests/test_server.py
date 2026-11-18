@@ -1,5 +1,6 @@
 import base64
 import http.client
+import io
 import json
 import struct
 import sys
@@ -12,10 +13,42 @@ from types import ModuleType
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from server import (PROTOCOL, DocTrBackend, RapidOcrBackend, SuryaBackend, KrakenBackend,
+from server import (PROTOCOL, DocTrBackend, RapidOcrBackend, SuryaBackend, KrakenBackend, PaddleVlBackend,
                     handler_for, normalize_paddle_result,
                     normalize_doctr_result, normalize_rapid_result,
                     normalize_surya_result, normalize_kraken_records)
+
+
+class PaddleVlTests(unittest.TestCase):
+    def response(self, text="First line\nSecond line", finish="stop"):
+        return io.BytesIO(json.dumps({"choices": [{"finish_reason": finish,
+            "message": {"content": text}}]}).encode())
+
+    def test_transcription_retains_block_and_unknown_confidence(self):
+        backend = PaddleVlBackend("http://localhost:8082/v1/chat/completions", "PaddleOCR-VL-1.6")
+        with patch("server.urllib.request.urlopen", return_value=self.response()) as send:
+            result = backend.recognize(b"image", 200, 100, "auto")
+        self.assertEqual(result, [{"text": "First line\nSecond line", "confidence": None,
+                                  "box": [0, 0, 200, 100], "layout_block": True}])
+        payload = json.loads(send.call_args.args[0].data)
+        self.assertEqual(payload["model"], "PaddleOCR-VL-1.6")
+        self.assertEqual(payload["messages"][0]["content"][1]["text"], "OCR:")
+        with patch("server.urllib.request.urlopen", return_value=self.response()) as send:
+            backend.recognize(b"image", 200, 100, "de")
+        self.assertIn("Document language: de", json.loads(send.call_args.args[0].data)["messages"][0]["content"][1]["text"])
+
+    def test_empty_image_and_truncated_or_invalid_responses(self):
+        backend = PaddleVlBackend("http://localhost:8082/v1/chat/completions", "PaddleOCR-VL-1.6")
+        with patch("server.urllib.request.urlopen", return_value=self.response("  ")):
+            self.assertEqual(backend.recognize(b"image", 20, 10, "auto"), [])
+        for response in (self.response("unfinished", "length"), self.response(None), io.BytesIO(b"{}")):
+            with patch("server.urllib.request.urlopen", return_value=response), self.assertRaises(ValueError):
+                backend.recognize(b"image", 20, 10, "auto")
+
+    def test_invalid_endpoint(self):
+        for endpoint in ("file:///tmp/model", "http://user:pass@localhost/v1/chat/completions", "http://"):
+            with self.assertRaises(ValueError):
+                PaddleVlBackend(endpoint, "model")
 
 
 class FakeBackend:

@@ -7,20 +7,26 @@
 #include <QCheckBox>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QContextMenuEvent>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QGraphicsRectItem>
 #include <QGraphicsScene>
 #include <QImage>
 #include <QLineEdit>
+#include <QLabel>
 #include <QListWidget>
+#include <QMenu>
 #include <QPushButton>
+#include <QRubberBand>
+#include <QSignalSpy>
 #include <QPlainTextEdit>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QTextEdit>
 #include <QThread>
 #include <QTimer>
+#include <QUrl>
 #include <QTest>
 
 #ifdef NDEBUG
@@ -226,6 +232,7 @@ int main(int argc, char **argv)
     drag({5, 5}, {90, 75});
     drag({105, 5}, {195, 75});
     assert(regions->count() == 2);
+    assert(!regions->item(0)->icon().isNull() && !regions->item(1)->icon().isNull());
     assert(std::abs(regionBox(0).x() - 5) <= 2 && std::abs(regionBox(0).width() - 85) <= 3);
     assert(std::abs(regionBox(1).x() - 105) <= 2 && std::abs(regionBox(1).width() - 90) <= 3);
     const QRect original = regionBox(0);
@@ -252,9 +259,60 @@ int main(int argc, char **argv)
     assert(std::abs(regionBox(0).x() - 5) <= 2);
     regionRedo->trigger();
     regionRedo->trigger();
+    const QRect beforeCollision = regionBox(0);
+    const QPoint resizeStart = pageView->mapFromScene(beforeCollision.right(), beforeCollision.center().y());
+    const QPoint resizeEnd = pageView->mapFromScene(180, beforeCollision.center().y());
+    QTest::mousePress(pageView->viewport(), Qt::LeftButton, {}, resizeStart);
+    QTest::mouseMove(pageView->viewport(), resizeEnd);
+    QApplication::processEvents();
+    const QRect allowedResize = regionBox(0);
+    QTest::mouseRelease(pageView->viewport(), Qt::LeftButton, {}, resizeEnd);
+    QApplication::processEvents();
+    assert(regionBox(0) == allowedResize);
+    assert(!regionBox(0).intersects(regionBox(1)));
+    assert(regionBox(0).right() + 1 == regionBox(1).left());
+    regionUndo->trigger();
+    assert(regionBox(0) == beforeCollision);
+    drag({qreal(beforeCollision.center().x()), qreal(beforeCollision.center().y())},
+         {180, qreal(beforeCollision.center().y())});
+    assert(!regionBox(0).intersects(regionBox(1)));
+    assert(regionBox(0).right() + 1 == regionBox(1).left());
+    regionUndo->trigger();
+    drag({95, 0}, {195, 80});
+    assert(regions->count() == 3); // The new block keeps the permitted part of the drag.
+    assert(!regionBox(2).intersects(regionBox(0)) && !regionBox(2).intersects(regionBox(1)));
+    regionUndo->trigger();
+    assert(regions->count() == 2);
+
+    auto blockMenu = [&](int index, const QString &choice) {
+        QTimer::singleShot(0, &regionWindow, [choice] {
+            auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+            assert(menu && menu->objectName() == "blockContextMenu");
+            assert(menu->actions().first()->text() == "Recognize block");
+            assert(menu->actions().at(1)->text() == "Select block language");
+            if (choice == "Check disabled") {
+                assert(!menu->actions().first()->isEnabled());
+                menu->close();
+                return;
+            }
+            QAction *selected = nullptr;
+            if (choice == "Remove block") selected = menu->actions().last();
+            else if (choice == "Recognize block") selected = menu->actions().first();
+            else for (auto *action : menu->actions().at(1)->menu()->actions())
+                if (action->text() == choice) selected = action;
+            assert(selected);
+            selected->trigger();
+            menu->close();
+        });
+        const QPoint point = pageView->mapFromScene(regionBox(index).center());
+        QContextMenuEvent event(QContextMenuEvent::Mouse, point, pageView->viewport()->mapToGlobal(point));
+        QApplication::sendEvent(pageView->viewport(), &event);
+    };
+    blockMenu(1, "German");
+    assert(regions->item(1)->text().contains("deu"));
     QPushButton *recognizeRegions = nullptr;
     for (QPushButton *button : regionWindow.findChildren<QPushButton *>())
-        if (button->text() == QStringLiteral("Recognize regions")) recognizeRegions = button;
+        if (button->text() == QStringLiteral("Recognize")) recognizeRegions = button;
     assert(recognizeRegions);
     recognizeRegions->click();
     timer.restart();
@@ -263,10 +321,104 @@ int main(int argc, char **argv)
         QThread::msleep(10);
     }
     assert(regionWords->count() == 2);
+    args.close();
+    assert(args.open(QIODevice::ReadOnly));
+    assert(args.readAll().split('\n').contains("deu"));
+    args.close();
+    assert(QFile::remove(argsPath));
+    blockMenu(1, "Recognize block");
+    timer.restart();
+    while (!recognizeRegions->isEnabled() && timer.elapsed() < 3000) {
+        QApplication::processEvents();
+        QThread::msleep(10);
+    }
+    assert(args.open(QIODevice::ReadOnly));
+    assert(args.readAll().split('\n').contains("deu"));
     QTest::mouseClick(pageView->viewport(), Qt::LeftButton, Qt::ControlModifier,
                       pageView->mapFromScene(QPointF(30, 35)));
     auto *regionEditor = regionWindow.findChild<QTextEdit *>(QStringLiteral("recognizedTextEditor"));
     assert(regionEditor && regionEditor->toPlainText() == QStringLiteral("mod"));
+    blockMenu(0, "Not a text");
+    blockMenu(0, "Check disabled");
+    assert(regions->item(0)->text().contains("Not a text"));
+    assert(regionWords->count() == 1);
+    recognizeRegions->click();
+    timer.restart();
+    while (recognizeRegions->isEnabled() == false && timer.elapsed() < 3000) {
+        QApplication::processEvents();
+        QThread::msleep(10);
+    }
+    assert(regionWords->count() == 1);
+    blockMenu(1, "Not a text");
+    assert(regionWords->count() == 0);
+    args.close();
+    assert(args.open(QIODevice::ReadOnly));
+    const auto beforeSkip = args.readAll();
+    recognizeRegions->click();
+    QApplication::processEvents();
+    args.close();
+    assert(args.open(QIODevice::ReadOnly));
+    assert(args.readAll() == beforeSkip); // No fallback to full-page OCR for excluded blocks.
+    blockMenu(0, "Remove block");
+    assert(regions->count() == 1);
+    regionUndo->trigger();
+    assert(regions->count() == 2 && regions->item(0)->text().contains("Not a text"));
+
+    // Creation uses the same allowed scene rectangle for the preview and saved block,
+    // even when drawing backwards or at a noninteger zoom.
+    for (const auto zoom : {0.63, 1.0, 1.37}) for (const bool backwards : {false, true}) {
+        yagf::ui::MainWindow clippedWindow;
+        clippedWindow.loadSource(sourcePath);
+        clippedWindow.show();
+        QApplication::processEvents();
+        auto *canvas = clippedWindow.findChild<yagf::ui::PageView *>("pagePreview");
+        auto *miniatures = clippedWindow.findChild<QListWidget *>("imageRegions");
+        canvas->zoomBy(zoom);
+        const auto box = [&](int index) {
+            for (auto *item : canvas->scene()->items())
+                if (auto *rect = qgraphicsitem_cast<QGraphicsRectItem *>(item);
+                    rect && rect->data(1).isValid() && rect->data(1).toInt() == index)
+                    return rect->rect().toAlignedRect();
+            return QRect{};
+        };
+        const auto press = [&](QPointF point) {
+            QTest::mousePress(canvas->viewport(), Qt::LeftButton, {}, canvas->mapFromScene(point));
+        };
+        const auto move = [&](QPointF point) {
+            QTest::mouseMove(canvas->viewport(), canvas->mapFromScene(point));
+            QApplication::processEvents();
+        };
+        const auto release = [&](QPointF point) {
+            QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, {}, canvas->mapFromScene(point));
+            QApplication::processEvents();
+        };
+        press({80, 20}); move({120, 80}); release({120, 80});
+        assert(miniatures->count() == 1);
+        const QRect obstacle = box(0);
+        QSignalSpy created(canvas, &yagf::ui::PageView::regionSelected);
+        const QPointF origin(backwards ? 190 : 10, 30), end(backwards ? 10 : 190, 70);
+        press(origin); move(end);
+        auto *band = canvas->viewport()->findChild<QRubberBand *>();
+        assert(band && band->isVisible());
+        const QRect visibleAllowed = band->geometry();
+        release(end);
+        assert(miniatures->count() == 2 && created.size() == 1);
+        const QRect saved = box(1);
+        assert(!saved.intersects(obstacle));
+        assert(backwards ? saved.left() == obstacle.right() + 1 : saved.right() + 1 == obstacle.left());
+        assert(saved == qvariant_cast<QRectF>(created.at(0).at(0)).toAlignedRect());
+        assert(visibleAllowed == canvas->mapFromScene(QRectF(saved)).boundingRect());
+        QAction *undoDrawing = nullptr, *redoDrawing = nullptr;
+        for (auto *action : clippedWindow.findChildren<QAction *>()) {
+            if (action->text() == "Undo") undoDrawing = action;
+            if (action->text() == "Redo") redoDrawing = action;
+        }
+        assert(undoDrawing && redoDrawing);
+        undoDrawing->trigger();
+        assert(miniatures->count() == 1);
+        redoDrawing->trigger();
+        assert(box(1) == saved);
+    }
     // Opening and dismissing a book suggestion must leave the target untouched.
     yagf::core::OcrDocument book;
     book.sourcePath = sourcePath;
@@ -445,5 +597,15 @@ int main(int argc, char **argv)
     for (auto *action : scientificWindow.findChildren<QAction *>())
         if (action->text() == "Undo") action->trigger();
     assert(blocks->item(0)->text() == page.words[0].originalText);
+
+    assert(!scientificWindow.usePaddleVlService(QUrl("file:///tmp/model")));
+    assert(!scientificWindow.usePaddleVlService(QUrl("http://localhost:8765/v1/recognize")));
+    assert(scientificWindow.usePaddleVlService(QUrl("http://127.0.0.1:8765")));
+    auto *vlLanguage = scientificWindow.findChild<QLineEdit *>("languageField");
+    assert(vlLanguage && vlLanguage->text() == "auto");
+    bool vlStatus = false;
+    for (auto *label : scientificWindow.findChildren<QLabel *>())
+        vlStatus |= label->text().contains("OCR engine: PaddleOCR-VL");
+    assert(vlStatus);
 
 }

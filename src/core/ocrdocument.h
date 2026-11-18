@@ -69,6 +69,8 @@ struct OcrRegion {
 struct ImageRegion {
     QString id;
     QRect bounds;
+    QString language; // Empty inherits the page recognition language.
+    bool notText = false;
 };
 
 struct OcrPage {

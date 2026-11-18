@@ -12,6 +12,8 @@ import re
 import struct
 import tempfile
 import threading
+import urllib.request
+from urllib.parse import urlsplit
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from html.parser import HTMLParser
 
@@ -257,6 +259,54 @@ def normalize_kraken_records(records, width, height):
     return words
 
 
+class PaddleVlBackend:
+    """Bridge a running PaddleOCR-VL chat server without inventing word geometry."""
+    engine_id = "paddleocr"
+    result_key = "lines"
+    language = "auto"
+
+    def __init__(self, endpoint, model):
+        url = urlsplit(endpoint)
+        if url.scheme not in ("http", "https") or not url.hostname or url.username or url.password or url.fragment:
+            raise ValueError("Invalid PaddleOCR-VL chat endpoint")
+        if not model.strip():
+            raise ValueError("A PaddleOCR-VL model name is required")
+        self.endpoint, self.model = endpoint, model
+        self.token = os.environ.get("YAGF_VL_TOKEN", "")
+        self.lock = threading.Lock()
+
+    def recognize(self, png, width, height, language):
+        prompt = "OCR:" if language in ("auto", "") else f"OCR:\nDocument language: {language}."
+        payload = {"model": self.model, "temperature": 0, "stream": False,
+                   "max_tokens": 4096, "messages": [{"role": "user", "content": [
+                       {"type": "image_url", "image_url": {"url":
+                           "data:image/png;base64," + base64.b64encode(png).decode("ascii")}},
+                       {"type": "text", "text": prompt}]}]}
+        headers = {"Content-Type": "application/json"}
+        if self.token:
+            headers["Authorization"] = "Bearer " + self.token
+        request = urllib.request.Request(self.endpoint, json.dumps(payload).encode(), headers)
+        with self.lock, urllib.request.urlopen(request, timeout=170) as response:
+            body = response.read(8 * 1024 * 1024 + 1)
+        if len(body) > 8 * 1024 * 1024:
+            raise ValueError("PaddleOCR-VL response is too large")
+        result = json.loads(body)
+        choices = result.get("choices") if isinstance(result, dict) else None
+        if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+            raise ValueError("PaddleOCR-VL returned no transcription")
+        choice = choices[0]
+        if choice.get("finish_reason") != "stop":
+            raise ValueError("PaddleOCR-VL did not finish the transcription; try a smaller image region")
+        message = choice.get("message")
+        text = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(text, str):
+            raise ValueError("PaddleOCR-VL returned invalid transcription text")
+        if not text.strip():
+            return []
+        return [{"text": text.strip(), "confidence": None, "box": [0, 0, width, height],
+                 "layout_block": True}]
+
+
 class PaddleOcrBackend:
     engine_id = "paddleocr"
     result_key = "lines"
@@ -449,13 +499,16 @@ def handler_for(backend, token=""):
 
 def main():
     parser = argparse.ArgumentParser(description="YAGF OCR inference service")
-    parser.add_argument("--engine", choices=("paddleocr", "doctr", "rapidocr", "surya", "kraken"),
+    parser.add_argument("--engine", choices=("paddleocr", "paddleocr-vl", "doctr", "rapidocr", "surya", "kraken"),
                         default="paddleocr")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--device", help="Inference device: gpu or cpu; defaults vary by engine")
     parser.add_argument("--language", help="PaddleOCR language code; other engines use auto")
     parser.add_argument("--model", help="Kraken recognition model path")
+    parser.add_argument("--vl-endpoint", default="http://127.0.0.1:8082/v1/chat/completions",
+                        help="PaddleOCR-VL OpenAI-compatible chat endpoint")
+    parser.add_argument("--vl-model", default="PaddleOCR-VL-1.6", help="PaddleOCR-VL server model name")
     args = parser.parse_args()
     token = os.environ.get("YAGF_OCR_TOKEN", "")
     if args.host not in ("127.0.0.1", "localhost", "::1") and not token:
@@ -472,6 +525,8 @@ def main():
         parser.error("RapidOCR's default ONNX backend runs on CPU; use --device cpu")
     if args.engine == "paddleocr":
         backend = PaddleOcrBackend(device, args.language or "en")
+    elif args.engine == "paddleocr-vl":
+        backend = PaddleVlBackend(args.vl_endpoint, args.vl_model)
     elif args.engine == "doctr":
         backend = DocTrBackend(device)
     elif args.engine == "rapidocr":

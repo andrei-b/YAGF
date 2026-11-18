@@ -73,7 +73,11 @@ std::expected<core::OcrPage, OcrError> parseResponse(
         const QString text = provider == RemoteOcrEngine::Provider::Surya &&
             line.value("type").toString() == "table" ? rawText : rawText.trimmed();
         const QJsonValue score = line.value(QStringLiteral("confidence"));
-        const bool unknownScore = provider == RemoteOcrEngine::Provider::Surya && score.isNull();
+        if (line.contains(QStringLiteral("layout_block")) && !line.value(QStringLiteral("layout_block")).isBool())
+            return std::unexpected(OcrError{QStringLiteral("The OCR server returned an invalid layout block flag.")});
+        const bool paddleBlock = provider == RemoteOcrEngine::Provider::PaddleOcr &&
+                                 line.value(QStringLiteral("layout_block")).toBool();
+        const bool unknownScore = (provider == RemoteOcrEngine::Provider::Surya || paddleBlock) && score.isNull();
         if (box.size() != 4 || text.isEmpty() || (!unknownScore && (!score.isDouble() ||
             !std::isfinite(score.toDouble()) || score.toDouble() < 0 || score.toDouble() > 1)))
             return std::unexpected(OcrError{QStringLiteral("The OCR server returned invalid text or confidence.")});
@@ -99,7 +103,7 @@ std::expected<core::OcrPage, OcrError> parseResponse(
             return std::unexpected(OcrError{QStringLiteral("The OCR server returned invalid reading order.")});
         previousBlock = word.block;
         previousLine = word.line;
-        word.layoutBlock = provider == RemoteOcrEngine::Provider::Surya;
+        word.layoutBlock = provider == RemoteOcrEngine::Provider::Surya || paddleBlock;
         word.bounds = bounds;
         word.originalText = word.text = text;
         word.confidence = unknownScore ? -1 : score.toDouble() * 100.0;

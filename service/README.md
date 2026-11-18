@@ -4,6 +4,23 @@ This optional Python service can run [PaddleOCR 3.x](https://www.paddleocr.ai/ma
 
 ## PaddleOCR on a Jetson
 
+### Using an already running PaddleOCR-VL vision server
+
+For a PaddleOCR-VL model served by an OpenAI-compatible vision endpoint, run the lightweight bridge on the desktop:
+
+```sh
+python service/server.py --engine paddleocr-vl --port 8765 \
+  --vl-endpoint http://127.0.0.1:8082/v1/chat/completions --vl-model PaddleOCR-VL-1.6
+```
+
+In YAGF, choose **Tools → OCR engine… → PaddleOCR (remote service)**, set the service URL to `http://127.0.0.1:8765`, and use language `auto`. The endpoint must be reachable, for example through an SSH forward to the inference computer. Set `YAGF_VL_TOKEN` if the upstream vision server requires a bearer token. The bridge needs only Python's standard library; it runs no local inference model.
+
+You can also start the desktop app with the bridge already selected: `yagf-revival --paddleocr-vl-url http://127.0.0.1:8765 /path/to/scan.png`.
+
+The VL model transcribes each page or drawn image region as one editable text block. Its source box covers the complete submitted image, and confidence is unknown. It provides no individual word boxes. Draw smaller OCR regions when you want separate blocks. The bridge rejects truncated model responses instead of saving incomplete text. This endpoint serves the YAGF page OCR protocol; the vision server's chat endpoint can separately be used for AI review.
+
+### Running the standard PaddleOCR pipeline
+
 Use a Python environment compatible with your JetPack and selected PaddleOCR inference engine. Install PaddleOCR following its [current installation guide](https://www.paddleocr.ai/main/en/version3.x/installation.html). For GPU use on Jetson, first confirm that the chosen PaddlePaddle or other PaddleOCR engine has a build compatible with your JetPack, Python, CUDA, and ARM64 environment; the general x86 CUDA wheel commands are not a Jetson installation recipe. Test `PaddleOCR(device="gpu", lang="en", use_doc_orientation_classify=False, use_doc_unwarping=False, use_textline_orientation=False).predict("sample.png")` on the device before starting this service. Use `--device cpu` if a GPU backend is unavailable.
 
 From this repository on the inference computer:

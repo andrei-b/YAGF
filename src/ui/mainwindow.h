@@ -38,6 +38,8 @@ class QMimeData;
 class QDragEnterEvent;
 class QDropEvent;
 class QKeyEvent;
+class QUrl;
+class QContextMenuEvent;
 
 namespace yagf::ui {
 
@@ -55,6 +57,7 @@ signals:
     void regionActivated(int index);
     void regionChanged(int index, const QRectF &bounds);
     void regionDeleteRequested(int index);
+    void regionContextMenuRequested(int index, const QPoint &globalPosition);
 protected:
     void mousePressEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
@@ -62,13 +65,17 @@ protected:
     void resizeEvent(QResizeEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
+    void contextMenuEvent(QContextMenuEvent *event) override;
     void dragEnterEvent(QDragEnterEvent *event) override;
     void dropEvent(QDropEvent *event) override;
 signals:
     void inputDropped(const QMimeData *mime);
 private:
+    void updateRegionDrag(const QPoint &position);
+    QVector<QRectF> regionObstacles() const;
     QRubberBand *rubberBand;
-    QPoint regionOrigin;
+    QPointF regionAnchor;
+    QRect drawingRegion;
     bool regionMode = false;
     bool fitMode = true;
     int activeRegionIndex = -1;
@@ -86,6 +93,7 @@ public:
     ~MainWindow() override;
     void loadSource(const QString &path);
     void loadProject(const QString &path);
+    bool usePaddleVlService(const QUrl &url);
 signals:
     void exportProgress(qsizetype completed, qsizetype total);
 protected:
@@ -124,6 +132,9 @@ private:
     void activateImageRegion(int index);
     void moveImageRegion(int index, const QRectF &bounds);
     void deleteImageRegion(int index);
+    void showBlockContextMenu(int index, const QPoint &globalPosition);
+    void setBlockLanguage(int index, const QString &language, bool notText);
+    QString blockLanguage(const core::ImageRegion &region) const;
     void refreshImageRegionSelection(bool updateWords);
     void runNextImageRegion();
     void refreshReviewLabel();
@@ -185,7 +196,7 @@ private:
     QVector<int> selectedWords;
     QRect selectedRegion;
     int selectedImageRegion = -1;
-    QVector<QRect> queuedImageRegions;
+    QVector<core::ImageRegion> queuedImageRegions;
     int nextQueuedImageRegion = 0;
     QString imagePath;
     QString rawImagePath;

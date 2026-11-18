@@ -92,6 +92,14 @@ int main(int argc, char **argv)
                                     {"box", QJsonArray{7, 2, 10, 5}}, {"block", 1}, {"line", 1}}});
                 }
             }
+            if (requests >= 10) {
+                sent = response;
+                QJsonObject block{{"text", "First line\nSecond line"}, {"confidence", QJsonValue::Null},
+                                  {"box", QJsonArray{0, 0, 20, 10}}, {"layout_block", true}};
+                if (requests == 11) block.remove("layout_block");
+                if (requests == 12) block.insert("layout_block", "true");
+                sent.insert("lines", QJsonArray{block});
+            }
             const QByteArray body = QJsonDocument(sent).toJson(QJsonDocument::Compact);
             socket->write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " +
                           QByteArray::number(body.size()) + "\r\nConnection: close\r\n\r\n" + body);
@@ -156,4 +164,13 @@ int main(int argc, char **argv)
     assert(krakenPage->words[0].bounds == QRect(1, 2, 5, 5));
     assert(krakenPage->words[0].line == krakenPage->words[1].line);
     assert(requests == 9);
+    auto vlPage = engine.recognize(image, {.language = QStringLiteral("auto")}, {});
+    assert(vlPage && vlPage->words.size() == 1);
+    assert(vlPage->words[0].layoutBlock && vlPage->words[0].confidence == -1);
+    assert(vlPage->words[0].text == "First line\nSecond line");
+    assert(vlPage->words[0].bounds == image.rect());
+    auto unmarkedUnknown = engine.recognize(image, {.language = QStringLiteral("en")}, {});
+    assert(!unmarkedUnknown && unmarkedUnknown.error().message.contains("confidence"));
+    auto badFlag = engine.recognize(image, {.language = QStringLiteral("en")}, {});
+    assert(!badFlag && badFlag.error().message.contains("block flag"));
 }

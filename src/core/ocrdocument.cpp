@@ -418,7 +418,8 @@ QJsonObject OcrDocument::toJson() const
             regionItems.append(item);
         }
         for (const ImageRegion &region : page.imageRegions)
-            imageRegionItems.append(QJsonObject{{"id", region.id}, {"box", boxJson(region.bounds)}});
+            imageRegionItems.append(QJsonObject{{"id", region.id}, {"box", boxJson(region.bounds)},
+                {"language", region.language}, {"not_text", region.notText}});
         pageItems.append(QJsonObject{{"id", page.id}, {"number", page.number},
                                      {"width", page.width}, {"height", page.height},
                                      {"source_width", page.sourceWidth > 0 ? page.sourceWidth : page.width},
@@ -521,6 +522,11 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
                 if (!area.isObject()) return fail(QStringLiteral("Invalid image region."));
                 const QJsonObject item = area.toObject();
                 ImageRegion region;
+                if ((item.contains("language") && (!item.value("language").isString() || item.value("language").toString().size() > 64)) ||
+                    (item.contains("not_text") && !item.value("not_text").isBool()))
+                    return fail(QStringLiteral("Invalid image region language or type."));
+                region.language = item.value("language").toString();
+                region.notText = item.value("not_text").toBool();
                 region.id = item.value(QStringLiteral("id")).toString();
                 if (region.id.isEmpty() || ids.contains(region.id) ||
                     !parseBox(item.value(QStringLiteral("box")).toObject(),

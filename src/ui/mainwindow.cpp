@@ -9,6 +9,7 @@
 #include "remoteocrengine.h"
 #include "tesseractengine.h"
 #include "aireviewdialog.h"
+#include "regiongeometry.h"
 
 #include <QCloseEvent>
 #include <QApplication>
@@ -19,6 +20,7 @@
 #include <QDropEvent>
 #include <QActionGroup>
 #include <QComboBox>
+#include <QContextMenuEvent>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QFormLayout>
@@ -32,6 +34,7 @@
 #include <QHBoxLayout>
 #include <QImageReader>
 #include <QImageIOHandler>
+#include <QInputDialog>
 #include <QKeyEvent>
 #include <QIcon>
 #include <QJsonDocument>
@@ -42,6 +45,7 @@
 #include <QMessageBox>
 #include <QMouseEvent>
 #include <QMenuBar>
+#include <QMenu>
 #include <QMimeData>
 #include <QRegularExpression>
 #include <QSet>
@@ -245,8 +249,12 @@ void PageView::mousePressEvent(QMouseEvent *event)
             event->accept();
             return;
         }
-        regionOrigin = event->pos();
-        rubberBand->setGeometry(QRect(regionOrigin, QSize()));
+        const auto point = mapToScene(event->pos());
+        const auto limits = scene()->sceneRect();
+        regionAnchor = QPointF(qBound(limits.left(), qreal(qRound(point.x())), limits.right()),
+                               qBound(limits.top(), qreal(qRound(point.y())), limits.bottom()));
+        drawingRegion = {};
+        rubberBand->setGeometry(QRect(event->pos(), QSize()));
         rubberBand->show();
         event->accept();
         return;
@@ -260,10 +268,19 @@ void PageView::mousePressEvent(QMouseEvent *event)
     QGraphicsView::mousePressEvent(event);
 }
 
-void PageView::mouseMoveEvent(QMouseEvent *event)
+QVector<QRectF> PageView::regionObstacles() const
 {
-    if (regionMode && editingRegionItem) {
-        const QPointF delta = mapToScene(event->pos()) - editStartScene;
+    QVector<QRectF> obstacles;
+    for (auto *candidate : scene()->items())
+        if (auto *box = qgraphicsitem_cast<QGraphicsRectItem *>(candidate);
+            box && box != editingRegionItem && box->data(1).isValid()) obstacles.append(box->rect());
+    return obstacles;
+}
+
+void PageView::updateRegionDrag(const QPoint &position)
+{
+    if (editingRegionItem) {
+        const QPointF delta = mapToScene(position) - editStartScene;
         QRectF next = editStartRect;
         const QRectF limits = scene()->sceneRect();
         if (resizeEdges == 0) {
@@ -281,12 +298,22 @@ void PageView::mouseMoveEvent(QMouseEvent *event)
             if (resizeEdges & 8) next.setBottom(qBound(editStartRect.top() + 8.0,
                                                       editStartRect.bottom() + delta.y(), limits.bottom()));
         }
-        editingRegionItem->setRect(next);
-        event->accept();
-        return;
+        editingRegionItem->setRect(core::constrainRegion(editStartRect, next, regionObstacles()));
+    } else {
+        const auto point = mapToScene(position);
+        const auto limits = scene()->sceneRect();
+        const QPointF end(qBound(limits.left(), qreal(qRound(point.x())), limits.right()),
+                          qBound(limits.top(), qreal(qRound(point.y())), limits.bottom()));
+        drawingRegion = core::constrainRegion(QRectF(regionAnchor, QSizeF(0, 0)),
+            QRectF(regionAnchor, end).normalized(), regionObstacles());
+        rubberBand->setGeometry(mapFromScene(QRectF(drawingRegion)).boundingRect());
     }
-    if (regionMode && rubberBand->isVisible()) {
-        rubberBand->setGeometry(QRect(regionOrigin, event->pos()).normalized());
+}
+
+void PageView::mouseMoveEvent(QMouseEvent *event)
+{
+    if (regionMode && (editingRegionItem || rubberBand->isVisible())) {
+        updateRegionDrag(event->pos());
         event->accept();
         return;
     }
@@ -312,6 +339,7 @@ void PageView::mouseMoveEvent(QMouseEvent *event)
 void PageView::mouseReleaseEvent(QMouseEvent *event)
 {
     if (regionMode && event->button() == Qt::LeftButton && editingRegionItem) {
+        updateRegionDrag(event->pos());
         const int index = editingRegionIndex;
         const QRectF bounds = editingRegionItem->rect();
         const bool changed = bounds.toAlignedRect() != editStartRect.toAlignedRect();
@@ -322,16 +350,29 @@ void PageView::mouseReleaseEvent(QMouseEvent *event)
         return;
     }
     if (regionMode && event->button() == Qt::LeftButton && rubberBand->isVisible()) {
-        const QRect viewportRect = rubberBand->geometry();
+        updateRegionDrag(event->pos());
         rubberBand->hide();
-        if (viewportRect.width() >= 6 && viewportRect.height() >= 6) {
-            const QRectF sceneRect(mapToScene(viewportRect.topLeft()), mapToScene(viewportRect.bottomRight()));
-            emit regionSelected(sceneRect.normalized());
-        }
+        if (drawingRegion.width() >= 8 && drawingRegion.height() >= 8)
+            emit regionSelected(QRectF(drawingRegion));
         event->accept();
         return;
     }
     QGraphicsView::mouseReleaseEvent(event);
+}
+
+void PageView::contextMenuEvent(QContextMenuEvent *event)
+{
+    int index = event->reason() == QContextMenuEvent::Keyboard ? activeRegionIndex : -1;
+    if (index < 0)
+        for (auto *hit : items(event->pos()))
+            if (auto *box = qgraphicsitem_cast<QGraphicsRectItem *>(hit); box && box->data(1).isValid()) {
+                index = box->data(1).toInt();
+                break;
+            }
+    if (index >= 0) {
+        emit regionContextMenuRequested(index, event->globalPos());
+        event->accept();
+    } else QGraphicsView::contextMenuEvent(event);
 }
 
 void PageView::keyPressEvent(QKeyEvent *event)
@@ -561,6 +602,14 @@ MainWindow::MainWindow()
     navigationLayout->addWidget(regionsHeading);
     regionList = new QListWidget(navigationPane);
     regionList->setObjectName(QStringLiteral("imageRegions"));
+    regionList->setViewMode(QListView::IconMode);
+    regionList->setFlow(QListView::TopToBottom);
+    regionList->setWrapping(false);
+    regionList->setMovement(QListView::Static);
+    regionList->setResizeMode(QListView::Adjust);
+    regionList->setGridSize(QSize(168, 142));
+    regionList->setIconSize(QSize(146, 92));
+    regionList->setContextMenuPolicy(Qt::CustomContextMenu);
     regionList->setToolTip(tr("Select an OCR area. Drag its edge on the image to resize it; press Delete to remove it."));
     navigationLayout->addWidget(regionList, 2);
     deleteRegionButton = new QPushButton(tr("Delete region"), navigationPane);
@@ -657,6 +706,11 @@ MainWindow::MainWindow()
     connect(view, &PageView::regionActivated, this, &MainWindow::activateImageRegion);
     connect(view, &PageView::regionChanged, this, &MainWindow::moveImageRegion);
     connect(view, &PageView::regionDeleteRequested, this, &MainWindow::deleteImageRegion);
+    connect(view, &PageView::regionContextMenuRequested, this, &MainWindow::showBlockContextMenu);
+    connect(regionList, &QListWidget::customContextMenuRequested, this, [this](const QPoint &point) {
+        if (const auto *item = regionList->itemAt(point))
+            showBlockContextMenu(regionList->row(item), regionList->viewport()->mapToGlobal(point));
+    });
     connect(regionList, &QListWidget::currentRowChanged, this, &MainWindow::activateImageRegion);
     connect(deleteRegionButton, &QPushButton::clicked, this, [this] {
         deleteImageRegion(selectedImageRegion);
@@ -900,7 +954,10 @@ void MainWindow::setBusy(bool busy)
     cancelButton->setEnabled(blocked);
     selectionEditor->setEnabled(!blocked);
     applyButton->setEnabled(!blocked && !selectedWords.isEmpty() && !selectionEditor->isReadOnly());
-    regionOcrButton->setEnabled(!blocked && !imagePath.isEmpty() && !selectedRegion.isEmpty());
+    const auto *activePage = document.page(currentPage);
+    const bool textRegion = !activePage || selectedImageRegion < 0 || selectedImageRegion >= activePage->imageRegions.size() ||
+                            !activePage->imageRegions[selectedImageRegion].notText;
+    regionOcrButton->setEnabled(!blocked && textRegion && !imagePath.isEmpty() && !selectedRegion.isEmpty());
     reviewWordButton->setEnabled(!blocked && !imagePath.isEmpty() && canReviewSelection());
     regionList->setEnabled(!blocked);
     deleteRegionButton->setEnabled(!blocked && selectedImageRegion >= 0);
@@ -1401,12 +1458,17 @@ void MainWindow::runOcr()
         for (const OcrWord &word : page->words)
             if (word.reviewed)
                 for (const ImageRegion &region : page->imageRegions)
-                    hasCorrections |= overlapsWord(word, region.bounds);
+                    hasCorrections |= !region.notText && overlapsWord(word, region.bounds);
         if (hasCorrections && QMessageBox::question(this, tr("Recognize image regions"),
             tr("Some selected regions contain corrected text. New OCR may replace unmatched corrections. Continue?"))
             != QMessageBox::Yes) return;
         queuedImageRegions.clear();
-        for (const ImageRegion &region : page->imageRegions) queuedImageRegions.append(region.bounds);
+        for (const ImageRegion &region : page->imageRegions)
+            if (!region.notText) queuedImageRegions.append(region);
+        if (queuedImageRegions.isEmpty()) {
+            status->setText(tr("All blocks are marked Not a text."));
+            return;
+        }
         nextQueuedImageRegion = 0;
         runNextImageRegion();
         return;
@@ -1427,8 +1489,25 @@ void MainWindow::runNextImageRegion()
     if (processor.isBusy() || imagePath.isEmpty()) return;
     status->setText(tr("Recognizing region %1 of %2…")
                     .arg(nextQueuedImageRegion + 1).arg(queuedImageRegions.size()));
-    processor.recognizeRegion(imagePath, languageEdit->text().trimmed(), currentPage,
-                              queuedImageRegions.at(nextQueuedImageRegion));
+    const auto &region = queuedImageRegions.at(nextQueuedImageRegion);
+    processor.recognizeRegion(imagePath, blockLanguage(region), currentPage, region.bounds);
+}
+
+bool MainWindow::usePaddleVlService(const QUrl &url)
+{
+    if (processor.isBusy() || exportBusy || (url.scheme() != "http" && url.scheme() != "https") ||
+        url.host().isEmpty() || !url.userInfo().isEmpty() || url.hasQuery() || url.hasFragment() ||
+        (!url.path().isEmpty() && url.path() != "/")) return false;
+    processor.setEngine(std::make_unique<processing::RemoteOcrEngine>(url));
+    languageEdit->setText(QStringLiteral("auto"));
+    languageEdit->setReadOnly(false);
+    languageEdit->setToolTip(tr("PaddleOCR-VL uses its multilingual model vocabulary."));
+    languagePickerAction->setEnabled(false);
+    languagePickerButton->setEnabled(false);
+    QSettings(QStringLiteral("YAGF"), QStringLiteral("YAGF Revival"))
+        .setValue(QStringLiteral("ocr/paddleUrl"), url.toString());
+    status->setText(tr("OCR engine: PaddleOCR-VL · %1").arg(url.toString()));
+    return true;
 }
 
 void MainWindow::configureOcrEngine()
@@ -1836,19 +1915,32 @@ void MainWindow::showDocument()
             item->setToolTip(item->toolTip() + tr("\nReview an alternative from %1").arg(word.alternative.engine));
         }
     }
+    QImageReader regionPreviewReader(imagePath);
+    regionPreviewReader.setAutoTransform(true);
+    const QImage regionPreview = page->imageRegions.isEmpty() ? QImage() : regionPreviewReader.read();
     for (int i = 0; i < page->imageRegions.size(); ++i) {
         const ImageRegion &region = page->imageRegions.at(i);
         auto *box = scene->addRect(region.bounds, QPen(QColor(25, 135, 55), 2),
                                    QBrush(QColor(35, 160, 70, 35)));
         box->setData(1, i);
+        box->setData(2, region.notText);
         box->setZValue(4);
         box->setAcceptedMouseButtons(Qt::NoButton);
         box->setToolTip(tr("Region %1 · drag to move; drag an edge to resize").arg(i + 1));
         imageRegionBoxes.append(box);
-        regionList->addItem(tr("Region %1 · %2 × %3 px")
-                            .arg(i + 1).arg(region.bounds.width()).arg(region.bounds.height()));
+        const QString language = region.notText ? tr("Not a text") :
+            region.language.isEmpty() ? tr("Page language") : region.language;
+        auto *item = new QListWidgetItem(QIcon(QPixmap::fromImage(regionPreview.copy(region.bounds)
+            .scaled(regionList->iconSize(), Qt::KeepAspectRatio, Qt::SmoothTransformation))),
+            tr("Block %1 · %2\n%3 × %4 px").arg(i + 1).arg(language)
+                .arg(region.bounds.width()).arg(region.bounds.height()), regionList);
+        item->setSizeHint(regionList->gridSize());
+        item->setTextAlignment(Qt::AlignHCenter);
+        item->setToolTip(tr("Block %1 · %2\nRight-click to select its language or remove it.")
+            .arg(i + 1).arg(language));
+        if (region.notText) item->setForeground(QColor(110, 110, 110));
     }
-    ocrButton->setText(page->imageRegions.isEmpty() ? tr("Recognize") : tr("Recognize regions"));
+    ocrButton->setText(tr("Recognize"));
     refreshImageRegionSelection(true);
     pdfAction->setEnabled(!processor.isBusy() && !exportBusy && document.wordCount() > 0);
     pdfaAction->setEnabled(!processor.isBusy() && !exportBusy && document.wordCount() > 0);
@@ -1875,6 +1967,11 @@ void MainWindow::selectRegion(const QRectF &bounds)
     const QRect area = bounds.toAlignedRect().intersected(scene->sceneRect().toAlignedRect());
     if (area.width() < 8 || area.height() < 8) return;
     OcrPage edited = document.page(currentPage) ? *document.page(currentPage) : OcrPage{};
+    for (const auto &region : edited.imageRegions)
+        if (area.intersects(region.bounds)) {
+            statusBar()->showMessage(tr("Blocks cannot overlap. Draw in an empty part of the page."), 5000);
+            return;
+        }
     if (edited.imageRegions.size() >= 1000) { showError(tr("This page has too many regions.")); return; }
     if (edited.width == 0) {
         edited.id = QStringLiteral("page-%1").arg(currentPage);
@@ -1905,12 +2002,14 @@ void MainWindow::refreshImageRegionSelection(bool updateWords)
     }
     for (int i = 0; i < imageRegionBoxes.size(); ++i) {
         const bool active = i == selectedImageRegion;
-        imageRegionBoxes[i]->setPen(QPen(active ? QColor(210, 65, 25) : QColor(25, 135, 55),
-                                         active ? 3 : 2));
-        imageRegionBoxes[i]->setBrush(active ? QColor(230, 90, 35, 45) : QColor(35, 160, 70, 35));
+        const bool notText = page->imageRegions[i].notText;
+        imageRegionBoxes[i]->setPen(QPen(active ? QColor(210, 65, 25) : notText ? QColor(110, 110, 110) : QColor(25, 135, 55),
+                                         active ? 3 : 2, notText ? Qt::DashLine : Qt::SolidLine));
+        imageRegionBoxes[i]->setBrush(active ? QColor(230, 90, 35, 45) : notText ? QColor(100, 100, 100, 20) : QColor(35, 160, 70, 35));
     }
     deleteRegionButton->setEnabled(selectedImageRegion >= 0 && !processor.isBusy() && !exportBusy);
-    regionOcrButton->setEnabled(selectedImageRegion >= 0 && !processor.isBusy() && !exportBusy);
+    regionOcrButton->setEnabled(selectedImageRegion >= 0 && !page->imageRegions[selectedImageRegion].notText &&
+                                !processor.isBusy() && !exportBusy);
     QVector<int> matches;
     if (selectedImageRegion >= 0) {
         for (int i = 0; i < displayedWords.size(); ++i)
@@ -1939,6 +2038,8 @@ void MainWindow::moveImageRegion(int index, const QRectF &bounds)
         exportBusy || !maybeApplyEditor()) return;
     const QRect area = bounds.toAlignedRect().intersected(scene->sceneRect().toAlignedRect());
     if (area.width() < 8 || area.height() < 8 || area == page->imageRegions.at(index).bounds) return;
+    for (int i = 0; i < page->imageRegions.size(); ++i)
+        if (i != index && area.intersects(page->imageRegions[i].bounds)) { showDocument(); return; }
     OcrPage edited = *page;
     edited.imageRegions[index].bounds = area;
     selectedImageRegion = index;
@@ -1954,6 +2055,70 @@ void MainWindow::deleteImageRegion(int index)
     edited.imageRegions.removeAt(index);
     selectedImageRegion = -1;
     undoStack.push(new ReplacePageCommand(document, currentPage, std::move(edited), tr("Delete image region")));
+}
+
+QString MainWindow::blockLanguage(const ImageRegion &region) const
+{
+    return region.language.isEmpty() ? languageEdit->text().trimmed() : region.language;
+}
+
+void MainWindow::setBlockLanguage(int index, const QString &language, bool notText)
+{
+    const auto *page = document.page(currentPage);
+    if (!page || index < 0 || index >= page->imageRegions.size() || processor.isBusy() ||
+        exportBusy || !maybeApplyEditor()) return;
+    OcrPage edited = *document.page(currentPage);
+    auto &region = edited.imageRegions[index];
+    if (region.language == language && region.notText == notText) return;
+    region.language = language;
+    region.notText = notText;
+    if (notText) edited.words.removeIf([&](const OcrWord &word) { return overlapsWord(word, region.bounds); });
+    selectedImageRegion = index;
+    undoStack.push(new ReplacePageCommand(document, currentPage, std::move(edited), tr("Select block language")));
+}
+
+void MainWindow::showBlockContextMenu(int index, const QPoint &globalPosition)
+{
+    if (processor.isBusy() || exportBusy || !maybeApplyEditor()) return;
+    activateImageRegion(index);
+    const auto *page = document.page(currentPage);
+    if (!page || index < 0 || index >= page->imageRegions.size()) return;
+    const auto region = page->imageRegions[index];
+    QMenu menu(this);
+    menu.setObjectName(QStringLiteral("blockContextMenu"));
+    auto *recognize = menu.addAction(tr("Recognize block"));
+    recognize->setEnabled(!region.notText);
+    connect(recognize, &QAction::triggered, this, &MainWindow::runRegionOcr);
+    auto *languages = menu.addMenu(tr("Select block language"));
+    const auto addLanguage = [&](const QString &label, const QString &code, bool notText = false) {
+        auto *action = languages->addAction(label);
+        action->setData(code);
+        action->setCheckable(true);
+        action->setChecked(region.notText == notText && (notText || region.language == code));
+        connect(action, &QAction::triggered, this, [this, index, code, notText] { setBlockLanguage(index, code, notText); });
+    };
+    addLanguage(tr("Use page language (%1)").arg(languageEdit->text()), {});
+    addLanguage(tr("Not a text"), region.language, true);
+    languages->addSeparator();
+    const bool tesseract = processor.engineId() == QStringLiteral("tesseract");
+    const QStringList labels{tr("Automatic"), tr("English"), tr("German"), tr("French"), tr("Spanish"),
+        tr("Italian"), tr("Portuguese"), tr("Russian"), tr("Ukrainian"), tr("Chinese"), tr("Japanese"),
+        tr("Korean"), tr("Arabic"), tr("Hebrew")};
+    const QStringList codes = tesseract
+        ? QStringList{"", "eng", "deu", "fra", "spa", "ita", "por", "rus", "ukr", "chi_sim", "jpn", "kor", "ara", "heb"}
+        : QStringList{"auto", "en", "de", "fr", "es", "it", "pt", "ru", "uk", "zh", "ja", "ko", "ar", "he"};
+    for (int i = tesseract ? 1 : 0; i < labels.size(); ++i) addLanguage(labels[i], codes[i]);
+    auto *other = languages->addAction(tr("Other language…"));
+    connect(other, &QAction::triggered, this, [this, index, region] {
+        bool ok = false;
+        const QString code = QInputDialog::getText(this, tr("Select block language"),
+            tr("OCR language code or combination, for example eng+deu:"), QLineEdit::Normal, region.language, &ok).trimmed();
+        if (ok && QRegularExpression(QStringLiteral("^[A-Za-z0-9_+/-]{1,64}$")).match(code).hasMatch())
+            setBlockLanguage(index, code, false);
+    });
+    auto *remove = menu.addAction(tr("Remove block"));
+    connect(remove, &QAction::triggered, this, [this, index] { deleteImageRegion(index); });
+    menu.exec(globalPosition);
 }
 
 void MainWindow::refreshReviewLabel()
@@ -2170,6 +2335,10 @@ void MainWindow::runRegionOcr()
 {
     if (selectedRegion.isEmpty() || imagePath.isEmpty() || processor.isBusy()) return;
     if (!maybeApplyEditor()) return;
+    const auto *page = document.page(currentPage);
+    const auto *block = page && selectedImageRegion >= 0 && selectedImageRegion < page->imageRegions.size()
+        ? &page->imageRegions[selectedImageRegion] : nullptr;
+    if (block && block->notText) return;
     bool containsCorrections = false;
     for (int index : selectedWords)
         containsCorrections = containsCorrections || displayedWords.at(index)->reviewed;
@@ -2177,7 +2346,7 @@ void MainWindow::runRegionOcr()
         tr("This region contains corrected words. New OCR may replace unmatched corrections. Continue?"))
         != QMessageBox::Yes) return;
     status->setText(tr("Recognizing selected region…"));
-    processor.recognizeRegion(imagePath, languageEdit->text().trimmed(), currentPage, selectedRegion);
+    processor.recognizeRegion(imagePath, block ? blockLanguage(*block) : languageEdit->text().trimmed(), currentPage, selectedRegion);
 }
 
 void MainWindow::exportText()

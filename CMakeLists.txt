@@ -13,6 +13,7 @@ add_library(yagf_core STATIC
     src/core/ocrdocument.cpp src/core/ocrdocument.h src/core/preprocesssettings.h
     src/core/bookvocabulary.cpp src/core/bookvocabulary.h
     src/core/documentcontext.cpp src/core/documentcontext.h
+    src/core/regiongeometry.cpp src/core/regiongeometry.h
     src/core/symbolmatcher.cpp src/core/symbolmatcher.h
     src/core/correctionmemory.cpp src/core/correctionmemory.h
     src/core/projectfile.cpp src/core/projectfile.h
@@ -56,6 +57,9 @@ install(FILES COPYING
 include(CTest)
 if(BUILD_TESTING)
     find_package(Qt6 6.2 REQUIRED COMPONENTS Test)
+    qt_add_executable(regiongeometry_tests tests/regiongeometry_tests.cpp)
+    target_link_libraries(regiongeometry_tests PRIVATE yagf_core)
+    add_test(NAME regiongeometry_tests COMMAND regiongeometry_tests)
     qt_add_executable(documentcontext_tests tests/documentcontext_tests.cpp)
     target_link_libraries(documentcontext_tests PRIVATE yagf_core)
     add_test(NAME documentcontext_tests COMMAND documentcontext_tests)
