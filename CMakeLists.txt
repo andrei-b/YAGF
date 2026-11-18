@@ -22,6 +22,7 @@ target_link_libraries(yagf_core PUBLIC Qt6::Core Qt6::Gui)
 target_include_directories(yagf_core PUBLIC src/core)
 
 add_library(yagf_processing STATIC
+    src/processing/fontestimator.cpp src/processing/fontestimator.h
     src/processing/pagesource.cpp src/processing/pagesource.h
     src/processing/specialistocr.cpp src/processing/specialistocr.h
     src/processing/symbolshape.cpp src/processing/symbolshape.h
@@ -62,6 +63,10 @@ install(FILES COPYING
 include(CTest)
 if(BUILD_TESTING)
     find_package(Qt6 6.2 REQUIRED COMPONENTS Test)
+    qt_add_executable(fontestimator_tests tests/fontestimator_tests.cpp)
+    target_link_libraries(fontestimator_tests PRIVATE yagf_processing Qt6::Gui)
+    add_test(NAME fontestimator_tests COMMAND fontestimator_tests)
+    set_tests_properties(fontestimator_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" SKIP_RETURN_CODE 77)
     qt_add_executable(djvu_tests tests/djvu_tests.cpp)
     target_link_libraries(djvu_tests PRIVATE yagf_processing)
     target_compile_definitions(djvu_tests PRIVATE YAGF_APP_PATH="$<TARGET_FILE:yagf2>")

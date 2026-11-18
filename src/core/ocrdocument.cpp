@@ -60,6 +60,8 @@ QJsonObject wordJson(const OcrWord &word)
             {"source_boxes", sourceBoxes},
             {"confidence", word.confidence}, {"reviewed", word.reviewed},
             {"style", QJsonObject{{"bold", word.bold}, {"italic", word.italic},
+                                   {"font_family", word.fontFamily},
+                                   {"source_font_size_px", word.sourceFontSizePx},
                                    {"font_size_pt", word.fontSizePt},
                                    {"source_font_size_pt", word.sourceFontSizePt}}}};
     if (!word.readingEngine.isEmpty()) result.insert("reading_engine", word.readingEngine);
@@ -133,6 +135,15 @@ bool parseWord(const QJsonObject &json, int pageNumber, int width, int height, O
     const QJsonObject style = json.value(QStringLiteral("style")).toObject();
     word->bold = style.value(QStringLiteral("bold")).toBool();
     word->italic = style.value(QStringLiteral("italic")).toBool();
+    if (style.contains("source_font_size_px") &&
+        (!integer(style, "source_font_size_px", &word->sourceFontSizePx) ||
+         word->sourceFontSizePx < 0 || word->sourceFontSizePx > 4096)) return false;
+    if (style.contains("font_family")) {
+        const auto family = style.value("font_family");
+        if (!family.isString() || family.toString().size() > 128) return false;
+        word->fontFamily = family.toString();
+        for (QChar c : word->fontFamily) if (c.category() == QChar::Other_Control) return false;
+    }
     if (style.contains(QStringLiteral("font_size_pt")) &&
         (!integer(style, QStringLiteral("font_size_pt"), &word->fontSizePt) ||
          word->fontSizePt < 0 || word->fontSizePt > 72)) return false;
@@ -141,6 +152,17 @@ bool parseWord(const QJsonObject &json, int pageNumber, int width, int height, O
          word->sourceFontSizePt < 0 || word->sourceFontSizePt > 72)) return false;
     return std::isfinite(word->confidence);
 }
+}
+
+QString OcrWord::fontFamilyCss() const
+{
+    if (fontFamily.isEmpty()) return {};
+    QString escaped = fontFamily;
+    escaped.replace('\\', QStringLiteral("\\\\"));
+    escaped.replace('\'', QStringLiteral("\\'"));
+    escaped.replace('\n', ' ');
+    escaped.replace('\r', ' ');
+    return QStringLiteral("font-family:'%1';").arg(escaped);
 }
 
 bool OcrRegion::isFigure() const
@@ -376,14 +398,16 @@ QString OcrDocument::layoutHtml() const
         html += QStringLiteral("<section class=\"page\" style=\"width:%1px;height:%2px\" aria-label=\"Page %3\">")
                     .arg(page.width).arg(page.height).arg(page.number);
         for (const OcrWord &word : page.words) {
-            const int visualFontPx = qBound(8, qRound(word.bounds.height() * 1.15 *
+            const double sourcePixels = word.sourceFontSizePx > 0 ? word.sourceFontSizePx : word.bounds.height() * 1.15;
+            const int visualFontPx = qBound(8, qRound(sourcePixels *
                 static_cast<double>(qMax(1, word.fontSizePt)) / qMax(1, word.sourceFontSizePt)), 180);
             html += QStringLiteral("<span class=\"word\" data-word-id=\"%1\" style=\"left:%2px;top:%3px;"
-                                   "font-size:%4px;font-weight:%5;font-style:%6\">%7</span>")
+                                   "font-size:%4px;font-weight:%5;font-style:%6;%7\">%8</span>")
                         .arg(word.id.toHtmlEscaped()).arg(word.bounds.x()).arg(word.bounds.y())
                         .arg(visualFontPx)
                         .arg(word.bold ? QStringLiteral("bold") : QStringLiteral("normal"))
                         .arg(word.italic ? QStringLiteral("italic") : QStringLiteral("normal"))
+                        .arg(word.fontFamilyCss().toHtmlEscaped())
                         .arg(word.text.toHtmlEscaped());
         }
         html += QStringLiteral("</section>");
@@ -434,6 +458,7 @@ QJsonObject OcrDocument::toJson() const
                                      {"reading_order", readingOrder}});
     }
     return {{"schema_version", 2}, {"source", sourcePath}, {"engine", engine},
+            {"preserve_formatting", preserveFormatting},
             {"language", language}, {"total_pages", totalPages}, {"pages", pageItems},
             {"context", QJsonObject{{"description", context.description},
                                     {"infer_from_recognized_text", context.inferFromRecognizedText}}}};
@@ -450,6 +475,9 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
         !json.value(QStringLiteral("language")).isString())
         return fail(QStringLiteral("Invalid OCR document fields."));
     OcrDocument parsed;
+    if (json.contains("preserve_formatting") && !json.value("preserve_formatting").isBool())
+        return fail(QStringLiteral("Invalid format preservation mode."));
+    parsed.preserveFormatting = json.value("preserve_formatting").toBool();
     parsed.sourcePath = json.value(QStringLiteral("source")).toString();
     parsed.engine = json.value(QStringLiteral("engine")).toString();
     parsed.language = json.value(QStringLiteral("language")).toString();

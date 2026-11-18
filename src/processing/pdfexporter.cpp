@@ -74,14 +74,18 @@ void drawWord(QPainter &painter, const core::OcrWord &word)
 {
     if (word.text.isEmpty() || word.bounds.isEmpty()) return;
     QFont font = painter.font();
+    if (!word.fontFamily.isEmpty()) font.setFamily(word.fontFamily);
     // Optional ligature glyphs can lose their Unicode mapping in the PDF text layer.
     font.setStyleStrategy(QFont::StyleStrategy(font.styleStrategy() | QFont::PreferNoShaping));
-    font.setPixelSize(std::clamp(word.bounds.height(), 6, 180));
+    const int fontPixels = word.sourceFontSizePx > 0
+        ? qRound(double(word.sourceFontSizePx) * std::max(1, word.fontSizePt) / std::max(1, word.sourceFontSizePt)) : 0;
+    font.setPixelSize(std::clamp(fontPixels > 0 ? fontPixels : word.bounds.height(), 6, 512));
     font.setBold(word.bold);
     font.setItalic(word.italic);
     if (word.layoutBlock || word.text.contains('\n') || word.text.contains('\t')) {
         // Reflow passages with normal character spacing inside their source block.
-        font.setPixelSize(std::clamp(word.fontSizePt > 0 ? qRound(word.fontSizePt * 150.0 / 72.0) : 18, 8, 48));
+        font.setPixelSize(fontPixels > 0 ? std::clamp(fontPixels, 8, 512) :
+            std::clamp(word.fontSizePt > 0 ? qRound(word.fontSizePt * 150.0 / 72.0) : 18, 8, 48));
         QString text = word.text;
         text.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
         text.replace('\r', '\n');

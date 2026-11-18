@@ -21,6 +21,7 @@ struct OcrOptions {
     QString language;
     int pageNumber = 1;
     QStringList userWords;
+    bool preserveFormatting = false;
 };
 
 struct OcrError {

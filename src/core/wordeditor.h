@@ -11,6 +11,7 @@ struct EditedWord {
     bool bold = false;
     bool italic = false;
     int fontSizePt = 0;
+    QString fontFamily;
 };
 
 class WordEditor {

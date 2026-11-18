@@ -26,6 +26,7 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QFormLayout>
+#include <QFontComboBox>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -122,7 +123,7 @@ bool overlapsWord(const OcrWord &word, const QRect &selection)
     return false;
 }
 
-void carryCorrections(OcrPage &fresh, const OcrPage *oldPage)
+void carryCorrections(OcrPage &fresh, const OcrPage *oldPage, bool estimateFormatting)
 {
     if (!oldPage) return;
     fresh.imageRegions = oldPage->imageRegions;
@@ -136,12 +137,16 @@ void carryCorrections(OcrPage &fresh, const OcrPage *oldPage)
             if (old.bounds != word.bounds || old.originalText != word.originalText) continue;
             if (structured && sameEngine && word.block == old.block) matchingBlocks.insert(word.block);
             word.id = old.id;
-            word.bold = old.bold;
-            word.italic = old.italic;
+            if (old.reviewed || !estimateFormatting) {
+                word.bold = old.bold;
+                word.italic = old.italic;
+                word.fontFamily = old.fontFamily;
+                word.fontSizePt = old.fontSizePt;
+                word.sourceFontSizePt = old.sourceFontSizePt;
+                word.sourceFontSizePx = old.sourceFontSizePx;
+            }
             word.sourceWordIds = old.sourceWordIds;
             word.sourceBoxes = old.sourceBoxes;
-            word.fontSizePt = old.fontSizePt;
-            word.sourceFontSizePt = old.sourceFontSizePt;
             if (old.reviewed) {
                 word.text = old.text;
                 word.reviewed = true;
@@ -522,6 +527,15 @@ MainWindow::MainWindow()
                                              &MainWindow::createRegionFromSelection);
     remainingAction = toolsMenu->addAction(tr("Recognize remaining pages"), this, [this] { runBatchOcr(true); });
     batchAction = toolsMenu->addAction(tr("Recognize all pages"), this, [this] { runBatchOcr(false); });
+    preserveFormattingAction = toolsMenu->addAction(tr("Preserve formatting"));
+    preserveFormattingAction->setObjectName(QStringLiteral("preserveFormattingAction"));
+    preserveFormattingAction->setCheckable(true);
+    preserveFormattingAction->setToolTip(tr("Estimate the closest installed font, bold, italic and size during recognition. "
+        "Latin printed text is supported; paragraph OCR blocks receive one estimated style."));
+    connect(preserveFormattingAction, &QAction::toggled, this, [this](bool enabled) {
+        document.preserveFormatting = enabled;
+        if (!originalPath.isEmpty()) { externalDirty = true; refreshDirty(); }
+    });
     similarSymbolsAction = toolsMenu->addAction(tr("Match similar symbol images"));
     similarSymbolsAction->setCheckable(true);
     const QString similarSymbolsKey = QStringLiteral("review/matchSimilarSymbolImages");
@@ -722,6 +736,22 @@ MainWindow::MainWindow()
         selectionEditor->mergeCurrentCharFormat(format);
         editorPending = true;
     });
+    auto *fontPicker = new QFontComboBox(formatToolbar);
+    fontPicker->setObjectName(QStringLiteral("textFontFamily"));
+    fontPicker->setMaximumWidth(160);
+    fontPicker->setToolTip(tr("Font family for selected editor text"));
+    formatToolbar->addWidget(fontPicker);
+    connect(fontPicker, &QFontComboBox::activated, this, [this, fontPicker](int) {
+        QTextCharFormat format;
+        format.setFontFamilies({fontPicker->currentFont().family()});
+        selectionEditor->mergeCurrentCharFormat(format);
+        editorPending = true;
+    });
+    connect(selectionEditor, &QTextEdit::currentCharFormatChanged, fontPicker,
+        [fontPicker](const QTextCharFormat &format) {
+            const QSignalBlocker blocker(fontPicker);
+            fontPicker->setCurrentFont(format.font());
+        });
     formatToolbar->addSeparator();
     spellCheckAction = formatToolbar->addAction(tr("Spell check"));
     spellCheckAction->setObjectName(QStringLiteral("spellCheckAction"));
@@ -862,18 +892,22 @@ MainWindow::MainWindow()
             for (QRect &fragment : word.sourceBoxes) fragment.translate(offset);
             if (!region.isEmpty()) { word.id.clear(); word.sourceWordIds.clear(); }
         }
-        if (region.isEmpty()) carryCorrections(newPage, oldPage);
+        if (region.isEmpty()) carryCorrections(newPage, oldPage, document.preserveFormatting);
         else if (oldPage) {
             for (OcrWord &word : newPage.words) {
                 for (const OcrWord &old : oldPage->words) {
                     if (old.bounds == word.bounds && old.originalText == word.originalText) {
                         word.id = old.id;
-                        word.bold = old.bold;
-                        word.italic = old.italic;
+                        if (old.reviewed || !document.preserveFormatting) {
+                            word.bold = old.bold;
+                            word.italic = old.italic;
+                            word.fontFamily = old.fontFamily;
+                            word.fontSizePt = old.fontSizePt;
+                            word.sourceFontSizePt = old.sourceFontSizePt;
+                            word.sourceFontSizePx = old.sourceFontSizePx;
+                        }
                         word.sourceWordIds = old.sourceWordIds;
                         word.sourceBoxes = old.sourceBoxes;
-                        word.fontSizePt = old.fontSizePt;
-                        word.sourceFontSizePt = old.sourceFontSizePt;
                         if (old.reviewed) {
                             word.text = old.text;
                             word.reviewed = true;
@@ -966,7 +1000,7 @@ MainWindow::MainWindow()
         page.sourceWidth = sourceSize.width();
         page.sourceHeight = sourceSize.height();
         if (oldPage) page.preprocessing = oldPage->preprocessing;
-        carryCorrections(page, oldPage);
+        carryCorrections(page, oldPage, document.preserveFormatting);
         const QString language = page.language;
         const QString engineId = page.engineId;
         undoStack.push(new ReplacePageCommand(document, number, std::move(page), tr("Recognize page")));
@@ -1048,6 +1082,7 @@ void MainWindow::updatePageControls()
     pageSpin->setMaximum(pageCount);
     pageSpin->setValue(currentPage);
     const bool available = !processor.isBusy() && !exportBusy;
+    if (preserveFormattingAction) preserveFormattingAction->setEnabled(available);
     if (convertDjVuAction) convertDjVuAction->setEnabled(available && !imagePath.isEmpty() &&
         processing::pageSourceKind(originalPath) == processing::PageSourceKind::DjVu);
     previousButton->setEnabled(available && currentPage > 1);
@@ -1173,6 +1208,7 @@ void MainWindow::loadSource(const QString &path)
     originalPath = QFileInfo(path).absoluteFilePath();
     projectPath.clear();
     document = {};
+    document.preserveFormatting = preserveFormattingAction->isChecked();
     correctionMemory.reset();
     document.sourcePath = originalPath;
     undoStack.clear();
@@ -1247,6 +1283,10 @@ void MainWindow::loadProject(const QString &path)
     originalPath = loaded.sourcePath;
     projectPath = path;
     document = std::move(loaded);
+    {
+        const QSignalBlocker blocker(preserveFormattingAction);
+        preserveFormattingAction->setChecked(document.preserveFormatting);
+    }
     correctionMemory.reset();
     externalDirty = false;
     if (document.engine == processor.engineId() && !document.language.isEmpty())
@@ -2293,6 +2333,7 @@ void MainWindow::updateSelection(const QVector<int> &indices)
             cursor.insertText(separator);
         }
         QTextCharFormat format;
+        if (!word->fontFamily.isEmpty()) format.setFontFamilies({word->fontFamily});
         format.setFontWeight(word->bold ? QFont::Bold : QFont::Normal);
         format.setFontItalic(word->italic);
         if (word->fontSizePt > 0) format.setFontPointSize(word->fontSizePt);
@@ -2395,6 +2436,8 @@ bool MainWindow::applyCorrection()
         cursor.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor);
         block.bold = cursor.charFormat().fontWeight() >= QFont::Bold;
         block.italic = cursor.charFormat().fontItalic();
+        block.fontFamily = cursor.charFormat().fontFamilies().toStringList().value(0);
+        if (cursor.charFormat().fontPointSize() > 0) block.fontSizePt = qRound(cursor.charFormat().fontPointSize());
         const QString id = block.id;
         editorPending = false;
         undoStack.push(new ReplaceTextCommand(document, currentPage, std::move(edited)));
@@ -2413,7 +2456,8 @@ bool MainWindow::applyCorrection()
         tokens.append({.text = match.captured(),
                        .bold = format.fontWeight() >= QFont::Bold,
                        .italic = format.fontItalic(),
-                       .fontSizePt = format.fontPointSize() > 0 ? qRound(format.fontPointSize()) : 0});
+                       .fontSizePt = format.fontPointSize() > 0 ? qRound(format.fontPointSize()) : 0,
+                       .fontFamily = format.fontFamilies().toStringList().value(0)});
     }
     const OcrPage *page = document.page(currentPage);
     if (!page) return false;

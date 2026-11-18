@@ -226,6 +226,7 @@ private:
     QAction *nextSpecialistAction = nullptr;
     QAction *similarSymbolsAction = nullptr;
     QAction *documentContextAction = nullptr;
+    QAction *preserveFormattingAction = nullptr;
     std::optional<core::CorrectionMemory> correctionMemory;
     std::shared_ptr<std::atomic_bool> exportCancel;
     QFutureWatcher<processing::ExportResult> exportWatcher;

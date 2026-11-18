@@ -440,6 +440,8 @@ int main(int argc, char **argv)
     page.width = page.sourceWidth = image.width();
     page.height = page.sourceHeight = image.height();
     page.words.append({1, 1, 1, 1, QRect(5, 5, 40, 15), "QWldget", "QWidget", 75, true});
+    page.words.last().fontFamily = "Liberation Serif";
+    page.words.last().bold = true;
     page.words.append({1, 1, 1, 1, QRect(60, 5, 40, 15), "QWldget", "QWldget", 99});
     book.replacePage(page);
     const QString bookPath = directory.filePath("book.yagf.json");
@@ -451,6 +453,13 @@ int main(int argc, char **argv)
     assert(contextAction && !contextAction->isEnabled());
     contextWindow.loadProject(bookPath);
     assert(contextAction->isEnabled());
+    auto *preserveFormat = contextWindow.findChild<QAction *>("preserveFormattingAction");
+    assert(preserveFormat && preserveFormat->isEnabled() && !preserveFormat->isChecked());
+    auto *formattedWords = contextWindow.findChild<QListWidget *>("recognizedWords");
+    auto *formattedEditor = contextWindow.findChild<QTextEdit *>("recognizedTextEditor");
+    formattedWords->setCurrentRow(0, QItemSelectionModel::ClearAndSelect);
+    assert(formattedEditor->currentCharFormat().fontFamilies().toStringList().contains("Liberation Serif"));
+    assert(formattedEditor->currentCharFormat().fontWeight() == QFont::Bold);
     auto *spellToggle = contextWindow.findChild<QAction *>("spellCheckAction");
     auto *spellChoice = contextWindow.findChild<QComboBox *>("spellLanguage");
     assert(spellToggle && spellChoice);
@@ -509,11 +518,13 @@ int main(int argc, char **argv)
         dialog->reject();
     });
     contextWindow.findChild<QPushButton *>("reviewWordButton")->click();
+    preserveFormat->setChecked(true);
     contextSave->trigger();
     yagf::core::OcrDocument contextualBook;
     assert(yagf::core::ProjectFile::load(bookPath, &contextualBook, &error));
     assert(contextualBook.context.description == "A Qt programming manual");
     assert(!contextualBook.context.inferFromRecognizedText);
+    assert(contextualBook.preserveFormatting);
     // Loading a different source resets the book-specific description and inference setting.
     contextWindow.loadSource(sourcePath);
     inspectContext({}, true, false, false);

@@ -25,6 +25,7 @@ void setText(OcrWord &word, const EditedWord &edit, bool reviewed = true)
     word.bold = edit.bold;
     word.italic = edit.italic;
     if (edit.fontSizePt > 0) word.fontSizePt = edit.fontSizePt;
+    if (!edit.fontFamily.isEmpty()) word.fontFamily = edit.fontFamily;
     word.reviewed = reviewed;
 }
 
@@ -242,7 +243,7 @@ std::expected<OcrPage, QString> WordEditor::acceptPassage(const OcrPage &page, c
     QVector<EditedWord> tokens;
     for (int i = 0; i < pieces.size(); ++i) {
         const auto &style = page.words[span[qMin<qsizetype>(i, span.size() - 1)]];
-        tokens.append({pieces[i], style.bold, style.italic, style.fontSizePt});
+        tokens.append({pieces[i], style.bold, style.italic, style.fontSizePt, style.fontFamily});
     }
     auto result = apply(page, span, tokens);
     if (result) {

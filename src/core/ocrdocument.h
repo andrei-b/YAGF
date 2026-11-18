@@ -40,6 +40,9 @@ struct OcrWord {
     QByteArray symbolShape; // 16 by 16 normalized ink mask for isolated OCR symbols.
     SpecialistReading alternative;
     QString readingEngine; // Specialist credited for a verbatim, accepted reading.
+    QString fontFamily; // Closest installed face; empty keeps the editor/export default.
+    int sourceFontSizePx = 0;
+    [[nodiscard]] QString fontFamilyCss() const;
 };
 
 struct OcrLine {
@@ -99,6 +102,7 @@ public:
     QString language;
     int totalPages = 1;
     DocumentContext context;
+    bool preserveFormatting = false;
     QVector<OcrPage> pages;
 
     static bool fromJson(const QJsonObject &json, OcrDocument *result, QString *error);

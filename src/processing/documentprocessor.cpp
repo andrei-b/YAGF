@@ -1,4 +1,5 @@
 #include "documentprocessor.h"
+#include "fontestimator.h"
 
 #include "imageprocessor.h"
 #include "tesseractengine.h"
@@ -230,6 +231,8 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
                                       OcrOptions options, const QRect &region, bool batch)
 {
     if ((!batch && isBusy()) || (batch && batchPages.isEmpty())) return;
+    options.preserveFormatting = book && book->preserveFormatting;
+    const bool pagedSource = book && isPagedSource(book->sourcePath);
     if (book && engine->id() == "tesseract") {
         if (!batch || batchIndex == 0 || vocabularyLanguage != options.language ||
             nextEvidencePage > options.pageNumber) {
@@ -259,7 +262,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
     ocrStop = std::stop_source{};
     const std::stop_token token = ocrStop.get_token();
     if (!wasBusy) emit busyChanged(true);
-    ocrWatcher.setFuture(QtConcurrent::run([this, path, image, options, region, token, formulaRegions] {
+    ocrWatcher.setFuture(QtConcurrent::run([this, path, image, options, region, token, formulaRegions, pagedSource] {
         OcrJobResult result;
         QImage input = image;
         if (input.isNull()) {
@@ -283,6 +286,10 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
             result.region = bounded;
             input = input.copy(bounded);
         }
+        if (pagedSource && options.preserveFormatting) {
+            input.setDotsPerMeterX(5906); // PDF/DjVu pages are rendered at 150 DPI.
+            input.setDotsPerMeterY(5906);
+        }
         result.outcome = engine->recognize(input, options, token);
         if (result.outcome) {
             core::OcrPage &page = *result.outcome;
@@ -294,6 +301,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
                 return result;
             }
             page.rebuildHierarchy();
+            if (options.preserveFormatting) estimateTextFormatting(page, input, token);
             QSet<QString> ids;
             for (core::OcrWord &word : page.words) {
                 if (!input.rect().contains(word.bounds) || word.bounds.isEmpty() ||
