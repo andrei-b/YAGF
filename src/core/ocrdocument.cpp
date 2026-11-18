@@ -433,7 +433,9 @@ QJsonObject OcrDocument::toJson() const
                                      {"reading_order", readingOrder}});
     }
     return {{"schema_version", 2}, {"source", sourcePath}, {"engine", engine},
-            {"language", language}, {"total_pages", totalPages}, {"pages", pageItems}};
+            {"language", language}, {"total_pages", totalPages}, {"pages", pageItems},
+            {"context", QJsonObject{{"description", context.description},
+                                    {"infer_from_recognized_text", context.inferFromRecognizedText}}}};
 }
 
 bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString *error)
@@ -450,6 +452,17 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
     parsed.sourcePath = json.value(QStringLiteral("source")).toString();
     parsed.engine = json.value(QStringLiteral("engine")).toString();
     parsed.language = json.value(QStringLiteral("language")).toString();
+    if (json.contains(QStringLiteral("context"))) {
+        if (!json.value(QStringLiteral("context")).isObject())
+            return fail(QStringLiteral("Invalid document context."));
+        const auto context = json.value(QStringLiteral("context")).toObject();
+        if (!context.value(QStringLiteral("description")).isString() ||
+            context.value(QStringLiteral("description")).toString().size() > DocumentContext::maximumDescriptionLength ||
+            !context.value(QStringLiteral("infer_from_recognized_text")).isBool())
+            return fail(QStringLiteral("Invalid document context fields."));
+        parsed.context.description = context.value(QStringLiteral("description")).toString();
+        parsed.context.inferFromRecognizedText = context.value(QStringLiteral("infer_from_recognized_text")).toBool();
+    }
     if (parsed.sourcePath.isEmpty()) return fail(QStringLiteral("Missing source path."));
     QJsonArray pageItems;
     if (version == 1) {

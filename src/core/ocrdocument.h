@@ -1,6 +1,7 @@
 #pragma once
 
 #include "preprocesssettings.h"
+#include "documentcontext.h"
 
 #include <QJsonArray>
 #include <QJsonObject>
@@ -95,6 +96,7 @@ public:
     QString engine;
     QString language;
     int totalPages = 1;
+    DocumentContext context;
     QVector<OcrPage> pages;
 
     static bool fromJson(const QJsonObject &json, OcrDocument *result, QString *error);

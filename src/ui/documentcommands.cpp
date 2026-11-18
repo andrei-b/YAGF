@@ -27,6 +27,13 @@ core::OcrPage reordered(const core::OcrDocument &document, int pageNumber,
 
 } // namespace
 
+ChangeDocumentContextCommand::ChangeDocumentContextCommand(core::OcrDocument &document, core::DocumentContext after)
+    : QUndoCommand(QStringLiteral("Change document context")), document(document),
+      before(document.context), after(std::move(after)) {}
+
+void ChangeDocumentContextCommand::redo() { document.context = after; }
+void ChangeDocumentContextCommand::undo() { document.context = before; }
+
 PageStateCommand::PageStateCommand(core::OcrDocument &document, int pageNumber,
                                    std::optional<core::OcrPage> after, const QString &label)
     : QUndoCommand(label), document(document), pageNumber(pageNumber), after(std::move(after))

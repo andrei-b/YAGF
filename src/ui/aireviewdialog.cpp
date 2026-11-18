@@ -121,6 +121,12 @@ AiReviewDialog::AiReviewDialog(QString recognized, QString context, QImage crop,
     surrounding->setWordWrap(true);
     surrounding->setTextFormat(Qt::PlainText);
     layout->addWidget(surrounding);
+    contextPreview = new QPlainTextEdit(this);
+    contextPreview->setObjectName(QStringLiteral("documentContextPreview"));
+    contextPreview->setReadOnly(true);
+    contextPreview->setMaximumHeight(90);
+    contextPreview->hide();
+    layout->addWidget(contextPreview);
 
     auto *zoomRow = new QHBoxLayout();
     zoomRow->addWidget(new QLabel(tr("Magnification"), this));
@@ -160,7 +166,7 @@ AiReviewDialog::AiReviewDialog(QString recognized, QString context, QImage crop,
     form->addRow(tr("Model"), model);
     form->addRow(tr("Bearer token"), token);
     layout->addLayout(form);
-    message = new QLabel(tr("An image crop and nearby text are sent only when you click Ask AI."), this);
+    message = new QLabel(tr("The image crop, nearby text and document context shown above are sent only when you click Ask AI."), this);
     message->setObjectName(QStringLiteral("aiReviewMessage"));
     message->setWordWrap(true);
     layout->addWidget(message);
@@ -218,6 +224,20 @@ AiReviewDialog::AiReviewDialog(QString recognized, QString context, QImage crop,
         timedOut = true;
         if (reply) reply->abort();
     });
+}
+
+void AiReviewDialog::setDocumentContext(core::ReconstructionContext context)
+{
+    documentContext = std::move(context);
+    documentContext.description = documentContext.description.left(core::DocumentContext::maximumDescriptionLength);
+    documentContext.recognizedText = documentContext.recognizedText.left(6000);
+    QStringList preview;
+    if (!documentContext.description.isEmpty())
+        preview.append(tr("Document description:\n%1").arg(documentContext.description));
+    if (!documentContext.recognizedText.isEmpty())
+        preview.append(tr("Recognized text for subject and terminology:\n%1").arg(documentContext.recognizedText));
+    contextPreview->setPlainText(preview.join(QStringLiteral("\n\n")));
+    contextPreview->setVisible(!preview.isEmpty());
 }
 
 void AiReviewDialog::setBookSuggestions(const QVector<core::CorrectionSuggestion> &items)
@@ -282,7 +302,7 @@ void AiReviewDialog::askAi()
         message->setText(tr("Could not prepare the review image crop."));
         return;
     }
-    const QString prompt = passage
+    QString prompt = passage
         ? tr("Transcribe only the passage inside the red rectangle. Use the surrounding text to resolve "
              "visually ambiguous readings. Preserve identifiers, numbers, language and punctuation. "
              "Do not paraphrase or fill in missing facts. If the pixels are insufficient return an empty list. "
@@ -293,7 +313,15 @@ void AiReviewDialog::askAi()
         : tr("Read only the word inside the red rectangle. Current OCR reading: %1. "
         "Nearby text: %2. Use the image and context together. Return at most three visually plausible "
         "readings as JSON: {\"candidates\":[\"reading\"]}. Preserve the script and diacritics. "
-        "Do not change neighboring words.").arg(recognized, context.left(500));
+        "Do not change neighboring words. Preserve identifiers, numbers, language and punctuation. "
+        "Do not paraphrase or fill in missing facts. If the pixels are insufficient return an empty list.")
+            .arg(recognized, context.left(500));
+    if (!contextPreview->toPlainText().isEmpty()) {
+        prompt += tr("\nUse the document description as background. Infer the subject and terminology from the "
+            "earlier recognized excerpts when available. They may contain OCR errors. Use context only to choose "
+            "between readings supported by the marked image; never invent text to fit the subject.\n");
+        prompt += contextPreview->toPlainText();
+    }
     const QJsonObject payload{
         {QStringLiteral("model"), model->text().trimmed()},
         {QStringLiteral("stream"), false},

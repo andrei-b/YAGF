@@ -12,6 +12,7 @@ set(CMAKE_AUTORCC ON)
 add_library(yagf_core STATIC
     src/core/ocrdocument.cpp src/core/ocrdocument.h src/core/preprocesssettings.h
     src/core/bookvocabulary.cpp src/core/bookvocabulary.h
+    src/core/documentcontext.cpp src/core/documentcontext.h
     src/core/symbolmatcher.cpp src/core/symbolmatcher.h
     src/core/correctionmemory.cpp src/core/correctionmemory.h
     src/core/projectfile.cpp src/core/projectfile.h
@@ -55,6 +56,9 @@ install(FILES COPYING
 include(CTest)
 if(BUILD_TESTING)
     find_package(Qt6 6.2 REQUIRED COMPONENTS Test)
+    qt_add_executable(documentcontext_tests tests/documentcontext_tests.cpp)
+    target_link_libraries(documentcontext_tests PRIVATE yagf_core)
+    add_test(NAME documentcontext_tests COMMAND documentcontext_tests)
     qt_add_executable(correctionmemory_tests tests/correctionmemory_tests.cpp)
     target_link_libraries(correctionmemory_tests PRIVATE yagf_core)
     add_test(NAME correctionmemory_tests COMMAND correctionmemory_tests)

@@ -8,6 +8,16 @@
 
 namespace yagf::ui {
 
+class ChangeDocumentContextCommand final : public QUndoCommand {
+public:
+    ChangeDocumentContextCommand(core::OcrDocument &document, core::DocumentContext after);
+    void redo() override;
+    void undo() override;
+private:
+    core::OcrDocument &document;
+    core::DocumentContext before, after;
+};
+
 class PageStateCommand : public QUndoCommand {
 public:
     void redo() override;

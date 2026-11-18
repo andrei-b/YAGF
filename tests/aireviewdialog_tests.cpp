@@ -62,6 +62,11 @@ int main(int argc, char **argv)
             assert(content.size() == 2);
             assert(content.at(0).toObject().value(QStringLiteral("text")).toString()
                 .contains(QStringLiteral("nearby context")));
+            const QString contextualPrompt = content[0].toObject().value("text").toString();
+            assert(contextualPrompt.contains("Document description:\nA historical physics textbook"));
+            assert(contextualPrompt.contains("Entropy and thermodynamics"));
+            assert(contextualPrompt.contains("never invent text"));
+            assert(contextualPrompt.contains("pixels are insufficient"));
             if (requests == 2) {
                 const QString prompt = content[0].toObject().value("text").toString();
                 assert(prompt.contains("Primary OCR: E = rnc2") && prompt.contains("surya-remote: E=mc^2") &&
@@ -85,6 +90,10 @@ int main(int argc, char **argv)
     yagf::ui::AiReviewDialog dialog(QStringLiteral("modemization"),
         QStringLiteral("nearby context [modemization] matters"), crop, QRect(20, 5, 30, 15),
         QStringLiteral("secret"));
+    dialog.setDocumentContext({"A historical physics textbook", "Entropy and thermodynamics"});
+    auto *contextPreview = dialog.findChild<QPlainTextEdit *>("documentContextPreview");
+    assert(contextPreview && contextPreview->isReadOnly());
+    assert(contextPreview->toPlainText().contains("Entropy and thermodynamics"));
     dialog.setBookSuggestions({{"v", "ν", 2, false, 0, yagf::core::SymbolMatch::Similar}});
     auto *book = dialog.findChild<QComboBox *>(QStringLiteral("bookSuggestions"));
     assert(book && book->count() == 1 && book->itemText(0).contains("similar symbol image"));
@@ -121,6 +130,7 @@ int main(int argc, char **argv)
     const yagf::core::SpecialistReading formula{"surya-remote", "E=mc^2", {"E", "=", "rnc2"}, true};
     yagf::ui::AiReviewDialog passage("E = rnc2", "nearby context", crop, QRect(20, 5, 30, 15),
                                       "secret", nullptr, &formula);
+    passage.setDocumentContext({"A historical physics textbook", "Entropy and thermodynamics"});
     passage.findChild<QLineEdit *>("aiEndpoint")->setText(endpoint->text());
     passage.findChild<QLineEdit *>("aiModel")->setText("vision-test");
     auto *choices = passage.findChild<QListWidget *>("aiSuggestions");

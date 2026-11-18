@@ -52,6 +52,7 @@
 #include <QResizeEvent>
 #include <QWheelEvent>
 #include <QPushButton>
+#include <QPlainTextEdit>
 #include <QProcess>
 #include <QSignalBlocker>
 #include <QSaveFile>
@@ -477,6 +478,9 @@ MainWindow::MainWindow()
     });
     toolsMenu->addAction(tr("OCR engine…"), this, &MainWindow::configureOcrEngine);
     toolsMenu->addAction(tr("Specialist OCR…"), this, &MainWindow::configureSpecialists);
+    documentContextAction = toolsMenu->addAction(tr("Document context…"), this, &MainWindow::configureDocumentContext);
+    documentContextAction->setObjectName(QStringLiteral("documentContextAction"));
+    documentContextAction->setEnabled(false);
     nextSpecialistAction = toolsMenu->addAction(tr("Review next specialist reading…"), this, &MainWindow::reviewNextSpecialist);
     languagePickerAction = toolsMenu->addAction(tr("Choose OCR languages…"), this,
                                                 &MainWindow::chooseOcrLanguages);
@@ -932,6 +936,7 @@ void MainWindow::updatePageControls()
     if (batchAction) batchAction->setEnabled(available && pageCount > 1 &&
         originalPath.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive));
     if (remainingAction) remainingAction->setEnabled(batchAction->isEnabled());
+    if (documentContextAction) documentContextAction->setEnabled(available && !originalPath.isEmpty());
     if (nextSpecialistAction) nextSpecialistAction->setEnabled(available && !imagePath.isEmpty() &&
         document.page(currentPage) && !document.page(currentPage)->words.isEmpty());
     if (layoutAction) layoutAction->setEnabled(available && document.page(currentPage) &&
@@ -1572,6 +1577,50 @@ void MainWindow::configureSpecialists()
                              service(prose, proseService, "ocr/doctrUrl", Remote::Provider::DocTr));
 }
 
+void MainWindow::configureDocumentContext()
+{
+    if (processor.isBusy() || exportBusy || originalPath.isEmpty() || !maybeApplyEditor()) return;
+    QDialog dialog(this);
+    dialog.setObjectName(QStringLiteral("documentContextDialog"));
+    dialog.setWindowTitle(tr("Document context"));
+    dialog.resize(600, 380);
+    auto *layout = new QVBoxLayout(&dialog);
+    auto *explanation = new QLabel(tr("Describe the document's subject, period, terminology or names to help "
+        "resolve uncertain readings. Leave the description empty to infer the subject from earlier recognized text. "
+        "Context is used when you click Ask AI for readings in word or passage review."), &dialog);
+    explanation->setWordWrap(true);
+    layout->addWidget(explanation);
+    auto *description = new QPlainTextEdit(document.context.description, &dialog);
+    description->setObjectName(QStringLiteral("documentDescription"));
+    description->setPlaceholderText(tr("For example: A German physics textbook about thermodynamics, published in 1920."));
+    layout->addWidget(description);
+    auto *infer = new QCheckBox(tr("Use earlier recognized text to infer subject and terminology"), &dialog);
+    infer->setObjectName(QStringLiteral("inferDocumentContext"));
+    infer->setChecked(document.context.inferFromRecognizedText);
+    layout->addWidget(infer);
+    auto *disclosure = new QLabel(tr("AI review sends the description and selected reliable excerpts along with "
+        "the crop and nearby text to your configured model. Suggestions require your review against the scan."), &dialog);
+    disclosure->setWordWrap(true);
+    layout->addWidget(disclosure);
+    auto *length = new QLabel(&dialog);
+    layout->addWidget(length);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    layout->addWidget(buttons);
+    const auto validate = [&] {
+        const int count = description->toPlainText().size();
+        length->setText(tr("%1 / %2 characters").arg(count).arg(core::DocumentContext::maximumDescriptionLength));
+        buttons->button(QDialogButtonBox::Ok)->setEnabled(count <= core::DocumentContext::maximumDescriptionLength);
+    };
+    connect(description, &QPlainTextEdit::textChanged, &dialog, validate);
+    validate();
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    if (dialog.exec() != QDialog::Accepted) return;
+    core::DocumentContext context{description->toPlainText().trimmed(), infer->isChecked()};
+    if (context.description.size() > core::DocumentContext::maximumDescriptionLength || context == document.context) return;
+    undoStack.push(new ChangeDocumentContextCommand(document, std::move(context)));
+}
+
 void MainWindow::reviewNextSpecialist()
 {
     if (processor.isBusy() || exportBusy || !maybeApplyEditor()) return;
@@ -2027,6 +2076,7 @@ void MainWindow::reviewSelectedWord()
     AiReviewDialog dialog(baseline, context.join(' '), image.copy(cropRect),
                           bounds.translated(-cropRect.topLeft()), aiReviewToken, this,
                           specialist ? &word.alternative : nullptr, span.size() > 1 || word.layoutBlock);
+    dialog.setDocumentContext(core::reconstructionContext(document, currentPage, index));
     if (!specialist && span.size() == 1) {
         if (!correctionMemory) correctionMemory.emplace(document, similarSymbolsAction->isChecked());
         dialog.setBookSuggestions(correctionMemory->suggestions(*page, index));

@@ -113,6 +113,7 @@ private:
     void runOcr();
     void configureOcrEngine();
     void configureSpecialists();
+    void configureDocumentContext();
     void reviewNextSpecialist();
     void chooseOcrLanguages();
     bool canReviewSelection() const;
@@ -204,6 +205,7 @@ private:
     SpecialistService formulaService, proseService;
     QAction *nextSpecialistAction = nullptr;
     QAction *similarSymbolsAction = nullptr;
+    QAction *documentContextAction = nullptr;
     std::optional<core::CorrectionMemory> correctionMemory;
     std::shared_ptr<std::atomic_bool> exportCancel;
     QFutureWatcher<processing::ExportResult> exportWatcher;

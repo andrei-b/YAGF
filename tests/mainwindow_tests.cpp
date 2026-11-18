@@ -4,7 +4,9 @@
 #include <QAction>
 #include <QApplication>
 #include <QComboBox>
+#include <QCheckBox>
 #include <QDialog>
+#include <QDialogButtonBox>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QGraphicsRectItem>
@@ -277,6 +279,68 @@ int main(int argc, char **argv)
     const QString bookPath = directory.filePath("book.yagf.json");
     QString error;
     assert(yagf::core::ProjectFile::save(bookPath, book, &error));
+    // Document context is undoable, saved with the book, and supplied to review.
+    yagf::ui::MainWindow contextWindow;
+    auto *contextAction = contextWindow.findChild<QAction *>("documentContextAction");
+    assert(contextAction && !contextAction->isEnabled());
+    contextWindow.loadProject(bookPath);
+    assert(contextAction->isEnabled());
+    auto inspectContext = [&](const QString &expected, bool inference, bool change, bool accept) {
+        QTimer::singleShot(0, &contextWindow, [=] {
+            auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+            assert(dialog && dialog->objectName() == "documentContextDialog");
+            auto *description = dialog->findChild<QPlainTextEdit *>("documentDescription");
+            auto *infer = dialog->findChild<QCheckBox *>("inferDocumentContext");
+            assert(description && infer && description->toPlainText() == expected && infer->isChecked() == inference);
+            if (change) {
+                auto *ok = dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Ok);
+                description->setPlainText(QString(4001, 'x'));
+                assert(!ok->isEnabled());
+                description->setPlainText("A Qt programming manual");
+                assert(ok->isEnabled());
+                infer->setChecked(false);
+            }
+            if (accept) dialog->accept(); else dialog->reject();
+        });
+        contextAction->trigger();
+    };
+    inspectContext({}, true, true, false);
+    assert(!contextWindow.windowTitle().endsWith(" *"));
+    inspectContext({}, true, true, true);
+    assert(contextWindow.windowTitle().endsWith(" *"));
+    QAction *contextUndo = nullptr, *contextRedo = nullptr, *contextSave = nullptr;
+    for (auto *action : contextWindow.findChildren<QAction *>()) {
+        if (action->text() == "Undo") contextUndo = action;
+        if (action->text() == "Redo") contextRedo = action;
+        if (action->text() == "Save project") contextSave = action;
+    }
+    assert(contextUndo && contextRedo && contextSave);
+    contextUndo->trigger();
+    assert(!contextWindow.windowTitle().endsWith(" *"));
+    inspectContext({}, true, false, false);
+    contextRedo->trigger();
+    inspectContext("A Qt programming manual", false, false, false);
+    auto *contextWords = contextWindow.findChild<QListWidget *>("recognizedWords");
+    contextWords->setCurrentRow(1, QItemSelectionModel::ClearAndSelect);
+    QTimer::singleShot(0, &contextWindow, [] {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        assert(dialog);
+        auto *preview = dialog->findChild<QPlainTextEdit *>("documentContextPreview");
+        assert(preview && preview->toPlainText().contains("A Qt programming manual"));
+        assert(!preview->toPlainText().contains("earlier text"));
+        dialog->reject();
+    });
+    contextWindow.findChild<QPushButton *>("reviewWordButton")->click();
+    contextSave->trigger();
+    yagf::core::OcrDocument contextualBook;
+    assert(yagf::core::ProjectFile::load(bookPath, &contextualBook, &error));
+    assert(contextualBook.context.description == "A Qt programming manual");
+    assert(!contextualBook.context.inferFromRecognizedText);
+    // Loading a different source resets the book-specific description and inference setting.
+    contextWindow.loadSource(sourcePath);
+    inspectContext({}, true, false, false);
+    // Keep the original fixture for the independent correction-memory checks below.
+    assert(yagf::core::ProjectFile::save(bookPath, book, &error));
     yagf::ui::MainWindow bookWindow;
     bookWindow.loadProject(bookPath);
     auto *bookWords = bookWindow.findChild<QListWidget *>("recognizedWords");
@@ -290,6 +354,8 @@ int main(int argc, char **argv)
             assert(dialog);
             auto *choices = dialog->findChild<QComboBox *>("bookSuggestions");
             auto *reading = dialog->findChild<QLineEdit *>("verifiedCorrection");
+            auto *context = dialog->findChild<QPlainTextEdit *>("documentContextPreview");
+            assert(context && context->toPlainText().contains("QWidget"));
             assert(choices && choices->count() == 1 && choices->currentIndex() == -1);
             assert(reading && reading->text() == "QWldget");
             choices->setCurrentIndex(0);

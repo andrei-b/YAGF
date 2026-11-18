@@ -26,6 +26,7 @@ public:
                    const QString &sessionToken = {}, QWidget *parent = nullptr,
                    const core::SpecialistReading *specialist = nullptr, bool passage = false);
     void setBookSuggestions(const QVector<core::CorrectionSuggestion> &items);
+    void setDocumentContext(core::ReconstructionContext context);
     [[nodiscard]] QString correction() const;
     [[nodiscard]] QString sessionToken() const;
 
@@ -40,6 +41,8 @@ private:
     bool formula = false;
     QString recognized;
     QString context;
+    core::ReconstructionContext documentContext;
+    QPlainTextEdit *contextPreview = nullptr;
     QImage crop;
     QRect target;
     QImage contrast;

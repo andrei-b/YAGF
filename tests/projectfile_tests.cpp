@@ -24,6 +24,7 @@ int main()
     OcrDocument original;
     original.sourcePath = QStringLiteral("/tmp/source.png");
     original.language = QStringLiteral("eng+deu");
+    original.context = {QStringLiteral("A physics textbook, English and German."), false};
     OcrPage page;
     page.number = 1;
     page.width = 200;
@@ -56,6 +57,7 @@ int main()
     assert(ProjectFile::load(path, &loaded, &error));
     assert(loaded.sourcePath == original.sourcePath);
     assert(loaded.language == original.language);
+    assert(loaded.context == original.context);
     assert(loaded.page(1)->words.size() == 1);
     assert(loaded.page(1)->words.at(0).text == QStringLiteral("earth"));
     assert(loaded.page(1)->words.at(0).originalText == QStringLiteral("world"));
@@ -100,6 +102,22 @@ int main()
     assert(ProjectFile::load(path, &loaded, &error));
     assert(loaded.page(1)->words.at(0).text == QStringLiteral("fixed"));
     assert(!loaded.page(1)->words.at(0).id.isEmpty());
+    assert(loaded.context.description.isEmpty() && loaded.context.inferFromRecognizedText);
+
+    // Older v2 projects omit context; malformed new fields must not be silently accepted.
+    QJsonObject oldDocument = original.toJson();
+    oldDocument.remove("context");
+    assert(OcrDocument::fromJson(oldDocument, &loaded, &error));
+    assert(loaded.context == DocumentContext{});
+    for (const QJsonValue &invalid : {QJsonValue("bad"), QJsonValue(QJsonObject{{"description", 42},
+            {"infer_from_recognized_text", true}}), QJsonValue(QJsonObject{{"description", "valid"},
+            {"infer_from_recognized_text", "yes"}}), QJsonValue(QJsonObject{
+            {"description", QString(DocumentContext::maximumDescriptionLength + 1, 'x')},
+            {"infer_from_recognized_text", true}})}) {
+        auto broken = original.toJson();
+        broken.insert("context", invalid);
+        assert(!OcrDocument::fromJson(broken, &loaded, &error));
+    }
 
     const QString sourcePath = directory.filePath(QStringLiteral("portable-source.png"));
     QFile source(sourcePath);
@@ -128,6 +146,7 @@ int main()
     assert(copied.readAll() == imageBytes);
     assert(relocated.page(1)->words.at(0).text == original.page(1)->words.at(0).text);
     assert(relocated.page(1)->imageRegions.first().bounds == QRect(5, 8, 95, 60));
+    assert(relocated.context == original.context);
     copied.close();
     relocated.page(1)->words[0].text = QStringLiteral("portable edit");
     assert(ProjectFile::savePortable(moved, relocated, &error));
