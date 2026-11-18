@@ -71,6 +71,12 @@ Select one layout block to edit its transcription. In a table, tabs separate cel
 
 ## Learn from corrections
 
+For a large PDF, recognize and review a few early pages, then choose **Tools → Recognize remaining pages**. This skips pages that already contain OCR, including pages with reviewed corrections. Stop and resume the batch when you want to review more pages.
+
+Before each local Tesseract job, YAGF builds a case-sensitive vocabulary from earlier pages in the same document with the same OCR language setting. A reviewed source word qualifies immediately. An unreviewed reading qualifies after Tesseract or another word-box engine reports it at 95% confidence or higher on two separate pages. Correcting a reading removes its automatic support for later jobs. Up to 4,096 terms, prioritizing verified readings, are supplied through Tesseract’s temporary [user words file](https://github.com/tesseract-ocr/tesseract/blob/main/doc/tesseract.1.asc). Page and region OCR use the same hints as batch OCR. Tesseract still decides what the image says.
+
+For an isolated symbol from a word-box engine, YAGF also saves a small shape sample with its OCR box. Select a symbol below 85% confidence to see whether its normalized shape exactly matches an earlier example. A visual suggestion requires either a reviewed reading or readings at 95% confidence on two earlier pages, with agreement across the matching evidence. You can accept it in **Review word…**. Earlier projects can supply vocabulary immediately. Recognizing a page with this version adds the shape samples. These features work within a book and do not train a global OCR model.
+
 After you correct `QWldget` to `QWidget`, selecting another unreviewed `QWldget` anywhere in the same book shows **Review suggestion: QWidget…**. Open the review, choose a reading from **Choose a correction from this book**, compare it with the scan, and click **Use correction**. Cancel discards the choice. Undo and redo update both the word and the suggestions it contributes. Saving and reopening the project restores its correction memory.
 
 Matching is local and case-sensitive. Exact OCR readings take priority. When there is no exact match, alphabetic tokens of 5–80 letters can match a previous OCR reading by one insertion, deletion, or substitution. Digits and punctuation require an exact match. Up to three alternatives show the OCR reading, replacement, match type, and number of examples. Matching words immediately before or after the target on the same line rank alternatives, followed by example count.

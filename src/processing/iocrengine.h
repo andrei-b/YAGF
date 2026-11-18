@@ -20,6 +20,7 @@ struct EngineCapabilities {
 struct OcrOptions {
     QString language;
     int pageNumber = 1;
+    QStringList userWords;
 };
 
 struct OcrError {

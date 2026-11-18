@@ -125,7 +125,7 @@ private:
     bool applyCorrection();
     bool maybeApplyEditor();
     void runRegionOcr();
-    void runBatchOcr();
+    void runBatchOcr(bool remainingOnly);
     void editLayout();
     void createRegionFromSelection();
     void improveCurrentPage();
@@ -161,6 +161,7 @@ private:
     QPushButton *nextButton;
     QAction *improveAction;
     QAction *batchAction = nullptr;
+    QAction *remainingAction = nullptr;
     QAction *layoutAction = nullptr;
     QAction *createRegionAction = nullptr;
     QAction *pdfAction = nullptr;
@@ -169,7 +170,8 @@ private:
     QAction *redoAction = nullptr;
     QAction *languagePickerAction = nullptr;
     QSpinBox *pageSpin;
-    processing::DocumentProcessor processor;
+    core::OcrDocument document;
+    processing::DocumentProcessor processor{nullptr, &document};
     QVector<QGraphicsPathItem *> wordBoxes;
     QVector<QGraphicsRectItem *> imageRegionBoxes;
     QVector<core::OcrWord *> displayedWords;
@@ -178,7 +180,6 @@ private:
     int selectedImageRegion = -1;
     QVector<QRect> queuedImageRegions;
     int nextQueuedImageRegion = 0;
-    core::OcrDocument document;
     QString imagePath;
     QString rawImagePath;
     QImage rawImage;

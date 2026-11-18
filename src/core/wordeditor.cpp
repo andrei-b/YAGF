@@ -72,6 +72,7 @@ QVector<OcrWord> changedSpan(const OcrPage &page, const QVector<OcrWord> &old,
             word.originalText.clear();
             word.sourceWordIds.clear();
             word.sourceBoxes.clear();
+            word.symbolShape.clear();
             word.confidence = -1;
             const int start = qBound(0, gapStart + available * charactersBefore / totalCharacters,
                                      page.width - 1);
@@ -159,6 +160,7 @@ QVector<OcrWord> changedSpan(const OcrPage &page, const QVector<OcrWord> &old,
         word.sourceWordIds = sourceIds;
         word.originalText = originalTexts.join(QLatin1Char(' '));
         word.sourceBoxes = std::move(sourceBoxes);
+        word.symbolShape.clear();
         word.confidence = -1;
         word.bounds = placement.first();
         for (int j = 1; j < placement.size(); ++j)

@@ -11,6 +11,7 @@ set(CMAKE_AUTORCC ON)
 
 add_library(yagf_core STATIC
     src/core/ocrdocument.cpp src/core/ocrdocument.h src/core/preprocesssettings.h
+    src/core/bookvocabulary.cpp src/core/bookvocabulary.h
     src/core/correctionmemory.cpp src/core/correctionmemory.h
     src/core/projectfile.cpp src/core/projectfile.h
     src/core/wordeditor.cpp src/core/wordeditor.h)
@@ -18,6 +19,7 @@ target_link_libraries(yagf_core PUBLIC Qt6::Core Qt6::Gui)
 target_include_directories(yagf_core PUBLIC src/core)
 
 add_library(yagf_processing STATIC
+    src/processing/symbolshape.cpp src/processing/symbolshape.h
     src/processing/documentprocessor.cpp src/processing/documentprocessor.h
     src/processing/imageprocessor.cpp src/processing/imageprocessor.h
     src/processing/iocrengine.h
@@ -88,6 +90,9 @@ if(BUILD_TESTING)
     qt_add_executable(scientificbook_tests tests/scientificbook_tests.cpp)
     target_link_libraries(scientificbook_tests PRIVATE yagf_processing)
     add_test(NAME scientificbook_tests COMMAND scientificbook_tests)
+    qt_add_executable(adaptiveocr_tests tests/adaptiveocr_tests.cpp)
+    target_link_libraries(adaptiveocr_tests PRIVATE yagf_processing)
+    add_test(NAME adaptiveocr_tests COMMAND adaptiveocr_tests)
     qt_add_executable(ocrengine_tests tests/ocrengine_tests.cpp)
     target_link_libraries(ocrengine_tests PRIVATE yagf_processing)
     add_test(NAME ocrengine_tests COMMAND ocrengine_tests)

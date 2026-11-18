@@ -29,6 +29,7 @@ struct OcrWord {
     int sourceFontSizePt = 0;
     QVector<QRect> sourceBoxes; // Exact image fragments; empty for inserted text.
     bool layoutBlock = false; // A single OCR item can contain paragraphs, LaTeX or a table.
+    QByteArray symbolShape; // 16 by 16 normalized ink mask for isolated OCR symbols.
 };
 
 struct OcrLine {

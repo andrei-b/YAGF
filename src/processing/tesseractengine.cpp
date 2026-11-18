@@ -1,6 +1,7 @@
 #include "tesseractengine.h"
 
 #include <QElapsedTimer>
+#include <QFile>
 #include <QProcess>
 #include <QStandardPaths>
 #include <QTemporaryDir>
@@ -22,10 +23,17 @@ std::expected<core::OcrPage, OcrError> TesseractEngine::recognize(
     if (!image.save(imagePath, "PNG"))
         return std::unexpected(OcrError{QStringLiteral("Could not prepare the OCR image.")});
     if (stop.stop_requested()) return std::unexpected(OcrError{{}, true});
+    QStringList arguments{imagePath, QStringLiteral("stdout"), QStringLiteral("-l"), options.language};
+    if (!options.userWords.isEmpty()) {
+        QFile vocabulary(temporary.filePath(QStringLiteral("book-words.txt")));
+        const QByteArray data = options.userWords.join('\n').toUtf8() + '\n';
+        if (!vocabulary.open(QIODevice::WriteOnly) || vocabulary.write(data) != data.size() || !vocabulary.flush())
+            return std::unexpected(OcrError{QStringLiteral("Could not prepare the book vocabulary.")});
+        arguments << QStringLiteral("--user-words") << vocabulary.fileName();
+    }
+    arguments << QStringLiteral("tsv");
     QProcess process;
-    process.start(QStringLiteral("tesseract"),
-        {imagePath, QStringLiteral("stdout"), QStringLiteral("-l"),
-         options.language, QStringLiteral("tsv")});
+    process.start(QStringLiteral("tesseract"), arguments);
     if (!process.waitForStarted(10'000))
         return std::unexpected(OcrError{QStringLiteral("Could not start tesseract: %1")
             .arg(process.errorString())});

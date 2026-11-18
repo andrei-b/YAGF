@@ -62,6 +62,7 @@ QJsonObject wordJson(const OcrWord &word)
             {"style", QJsonObject{{"bold", word.bold}, {"italic", word.italic},
                                    {"font_size_pt", word.fontSizePt},
                                    {"source_font_size_pt", word.sourceFontSizePt}}}};
+    if (!word.symbolShape.isEmpty()) result.insert("symbol_shape", QString::fromLatin1(word.symbolShape.toHex()));
     if (word.layoutBlock) result.insert("layout_block", true);
     return result;
 }
@@ -79,6 +80,12 @@ bool parseWord(const QJsonObject &json, int pageNumber, int width, int height, O
         !json.value(QStringLiteral("reviewed")).isBool()) return false;
     if (json.contains("layout_block") && !json.value("layout_block").isBool()) return false;
     word->layoutBlock = json.value("layout_block").toBool();
+    if (json.contains("symbol_shape")) {
+        const QByteArray hex = json.value("symbol_shape").toString().toLatin1();
+        if (hex.size() != 64) return false;
+        word->symbolShape = QByteArray::fromHex(hex);
+        if (word->symbolShape.toHex() != hex.toLower()) return false;
+    }
     word->originalText = json.value(QStringLiteral("original_text")).toString();
     word->text = json.value(QStringLiteral("text")).toString();
     word->confidence = json.value(QStringLiteral("confidence")).toDouble();

@@ -1,4 +1,5 @@
 #include "correctionmemory.h"
+#include "bookvocabulary.h"
 
 #include <algorithm>
 
@@ -43,18 +44,20 @@ bool oneEditApart(QStringView a, QStringView b)
 
 bool isVerifiedCorrection(const OcrWord &word)
 {
-    // WordEditor resets confidence on estimated split/merge geometry.
-    return !word.layoutBlock && word.reviewed && word.confidence >= 0 && word.originalText != word.text &&
-        singleToken(word.originalText) && singleToken(word.text) &&
-        word.sourceWordIds.size() == 1 && word.sourceBoxes.size() == 1 &&
-        word.bounds.isValid() && word.sourceBoxes.first() == word.bounds;
+    return hasOriginalWordBox(word) && word.reviewed && word.originalText != word.text &&
+        singleToken(word.originalText) && singleToken(word.text);
 }
 
 CorrectionMemory::CorrectionMemory(const OcrDocument &document)
 {
     for (const auto &page : document.pages) {
+        QHash<QByteArray, QHash<QString, bool>> readingsOnPage;
         for (int i = 0; i < page.words.size(); ++i) {
             const auto &word = page.words[i];
+            if (word.symbolShape.size() == 32 && hasOriginalWordBox(word) && isSingleSymbol(word.text) &&
+                (word.reviewed || (word.confidence >= 95 && word.originalText == word.text))) {
+                readingsOnPage[word.symbolShape][word.text] |= word.reviewed;
+            }
             if (!isVerifiedCorrection(word)) continue;
             auto &entry = corrections[word.originalText][word.text];
             ++entry.occurrences;
@@ -62,6 +65,10 @@ CorrectionMemory::CorrectionMemory(const OcrDocument &document)
             const QString next = neighbor(page, i, 1);
             if (!previous.isEmpty()) entry.previousWords.insert(previous);
             if (!next.isEmpty()) entry.nextWords.insert(next);
+        }
+        for (auto shape = readingsOnPage.cbegin(); shape != readingsOnPage.cend(); ++shape) {
+            for (auto label = shape.value().cbegin(); label != shape.value().cend(); ++label)
+                symbolExamples[shape.key()].append({label.key(), page.language, page.number, label.value()});
         }
     }
 }
@@ -89,7 +96,29 @@ QVector<CorrectionSuggestion> CorrectionMemory::suggestions(const OcrPage &page,
         for (auto it = corrections.cbegin(); it != corrections.cend(); ++it)
             if (fuzzyEligible(it.key()) && oneEditApart(word.text, it.key())) collect(it, false);
     }
+    if (word.confidence < 85 && hasOriginalWordBox(word) && isSingleSymbol(word.text)) {
+        const auto found = symbolExamples.constFind(word.symbolShape);
+        QString reading;
+        QSet<int> pages;
+        bool confirmed = false;
+        if (found != symbolExamples.cend()) {
+            for (const auto &sample : found.value()) {
+                if (sample.page >= page.number || sample.language != page.language) continue;
+                if (!reading.isEmpty() && reading != sample.reading) {
+                    reading.clear();
+                    break;
+                }
+                reading = sample.reading;
+                confirmed |= sample.reviewed;
+                pages.insert(sample.page);
+            }
+        }
+        if (!reading.isEmpty() && reading != word.text && (confirmed || pages.size() >= 2))
+            result.append({word.text, reading, int(pages.size()), false, 0, true});
+    }
     std::sort(result.begin(), result.end(), [](const auto &a, const auto &b) {
+        if (a.exact != b.exact) return a.exact;
+        if (a.visualMatch != b.visualMatch) return a.visualMatch;
         if (a.matchingNeighbors != b.matchingNeighbors) return a.matchingNeighbors > b.matchingNeighbors;
         if (a.occurrences != b.occurrences) return a.occurrences > b.occurrences;
         if (a.replacement != b.replacement) return a.replacement < b.replacement;

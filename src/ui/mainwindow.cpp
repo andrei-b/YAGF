@@ -458,7 +458,8 @@ MainWindow::MainWindow()
     layoutAction = toolsMenu->addAction(tr("Edit layout…"), this, &MainWindow::editLayout);
     createRegionAction = toolsMenu->addAction(tr("Create region from selection"), this,
                                              &MainWindow::createRegionFromSelection);
-    batchAction = toolsMenu->addAction(tr("Recognize all pages"), this, &MainWindow::runBatchOcr);
+    remainingAction = toolsMenu->addAction(tr("Recognize remaining pages"), this, [this] { runBatchOcr(true); });
+    batchAction = toolsMenu->addAction(tr("Recognize all pages"), this, [this] { runBatchOcr(false); });
     toolsMenu->addAction(tr("OCR engine…"), this, &MainWindow::configureOcrEngine);
     languagePickerAction = toolsMenu->addAction(tr("Choose OCR languages…"), this,
                                                 &MainWindow::chooseOcrLanguages);
@@ -824,7 +825,7 @@ MainWindow::MainWindow()
         status->setText(tr("Batch OCR: %1 of %2 pages complete").arg(completed).arg(total));
     });
     connect(&processor, &DocumentProcessor::batchFinished, this, [this] {
-        status->setText(tr("Batch OCR complete: %1 pages").arg(pageCount));
+        status->setText(tr("Batch OCR complete"));
     });
     connect(&exportWatcher, &QFutureWatcher<processing::ExportResult>::finished, this, [this] {
         const auto result = exportWatcher.result();
@@ -902,6 +903,7 @@ void MainWindow::updatePageControls()
     }
     if (batchAction) batchAction->setEnabled(available && pageCount > 1 &&
         originalPath.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive));
+    if (remainingAction) remainingAction->setEnabled(batchAction->isEnabled());
     if (layoutAction) layoutAction->setEnabled(available && document.page(currentPage) &&
         !document.page(currentPage)->regions.isEmpty());
     if (createRegionAction) createRegionAction->setEnabled(available && !selectedWords.isEmpty() &&
@@ -1538,13 +1540,15 @@ void MainWindow::chooseOcrLanguages()
     languageEdit->setText(selected.join(QLatin1Char('+')));
 }
 
-void MainWindow::runBatchOcr()
+void MainWindow::runBatchOcr(bool remainingOnly)
 {
     if (processor.isBusy() || pageCount < 2 ||
         !originalPath.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive) || !maybeApplyEditor()) return;
     bool hasCorrections = false;
-    for (const OcrPage &page : document.pages)
-        for (const OcrWord &word : page.words) hasCorrections |= word.reviewed;
+    if (!remainingOnly) {
+        for (const OcrPage &page : document.pages)
+            for (const OcrWord &word : page.words) hasCorrections |= word.reviewed;
+    }
     if (hasCorrections && QMessageBox::question(this, tr("Recognize all pages again"),
         tr("Matching corrections will be kept, but unmatched words may be replaced. Continue?"))
         != QMessageBox::Yes) return;
@@ -1552,9 +1556,14 @@ void MainWindow::runBatchOcr()
     options.reserve(pageCount);
     for (int number = 1; number <= pageCount; ++number) {
         const OcrPage *page = document.page(number);
+        if (remainingOnly && page && (!page->engineId.isEmpty() || !page->words.isEmpty())) continue;
         options.append({.number = number,
                         .language = languageEdit->text().trimmed(),
                         .preprocessing = page ? page->preprocessing : core::PreprocessSettings{}});
+    }
+    if (options.isEmpty()) {
+        status->setText(tr("All pages have already been recognized."));
+        return;
     }
     processor.recognizePages(options);
 }

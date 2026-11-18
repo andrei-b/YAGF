@@ -10,6 +10,7 @@
 #include <QSize>
 
 #include "preprocesssettings.h"
+#include "bookvocabulary.h"
 #include "iocrengine.h"
 
 #include <memory>
@@ -27,7 +28,7 @@ struct BatchPageOptions {
 class DocumentProcessor : public QObject {
     Q_OBJECT
 public:
-    explicit DocumentProcessor(QObject *parent = nullptr);
+    explicit DocumentProcessor(QObject *parent = nullptr, const core::OcrDocument *book = nullptr);
     ~DocumentProcessor() override;
     bool isBusy() const;
     QString engineId() const;
@@ -60,7 +61,7 @@ private:
     void startNextBatchPage();
     void prepareBatchImage(const QString &path);
     void finishBatchError(const QString &message);
-    void startOcrImage(const QString &path, const QImage &image, const OcrOptions &options,
+    void startOcrImage(const QString &path, const QImage &image, OcrOptions options,
                        const QRect &region, bool batch);
 
     struct OcrJobResult {
@@ -69,6 +70,10 @@ private:
         QRect region;
     };
 
+    const core::OcrDocument *book; // Read only on the owning thread, before starting an OCR job.
+    core::BookVocabulary batchVocabulary;
+    QString vocabularyLanguage;
+    int nextEvidencePage = 1;
     QProcess process;
     QProcess thumbnailProcess;
     QFutureWatcher<OcrJobResult> ocrWatcher;

@@ -2,6 +2,7 @@
 
 #include "imageprocessor.h"
 #include "tesseractengine.h"
+#include "symbolshape.h"
 
 #include <QFileInfo>
 #include <QImageReader>
@@ -14,8 +15,8 @@
 
 namespace yagf::processing {
 
-DocumentProcessor::DocumentProcessor(QObject *parent)
-    : QObject(parent), engine(std::make_unique<TesseractEngine>())
+DocumentProcessor::DocumentProcessor(QObject *parent, const core::OcrDocument *sourceBook)
+    : QObject(parent), book(sourceBook), engine(std::make_unique<TesseractEngine>())
 {
     connect(&process, &QProcess::finished, this, [this](int exitCode, QProcess::ExitStatus status) {
         const Job finishedJob = job;
@@ -150,6 +151,8 @@ void DocumentProcessor::openPdf(const QString &path)
 
 void DocumentProcessor::resetSource()
 {
+    batchVocabulary = {};
+    nextEvidencePage = 1;
     thumbnailCount = 0;
     nextThumbnail = 0;
     if (thumbnailProcess.state() != QProcess::NotRunning) {
@@ -197,9 +200,24 @@ void DocumentProcessor::renderPdfPage(int pageNumber)
 }
 
 void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
-                                      const OcrOptions &options, const QRect &region, bool batch)
+                                      OcrOptions options, const QRect &region, bool batch)
 {
     if ((!batch && isBusy()) || (batch && batchPages.isEmpty())) return;
+    if (book && engine->id() == "tesseract") {
+        if (!batch || batchIndex == 0 || vocabularyLanguage != options.language ||
+            nextEvidencePage > options.pageNumber) {
+            batchVocabulary = {};
+            vocabularyLanguage = options.language;
+            nextEvidencePage = 1;
+        }
+        // In a sparse project a high page number can have very few recognized predecessors.
+        for (const auto &page : book->pages) {
+            if (page.number >= nextEvidencePage && page.number < options.pageNumber &&
+                page.language == options.language) batchVocabulary.addPage(page);
+        }
+        nextEvidencePage = options.pageNumber;
+        options.userWords = batchVocabulary.terms();
+    }
     const bool wasBusy = isBusy();
     job = batch ? Job::BatchOcr : Job::Ocr;
     cancellationRequested = false;
@@ -242,13 +260,19 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
             }
             page.rebuildHierarchy();
             QSet<QString> ids;
-            for (const core::OcrWord &word : page.words) {
+            for (core::OcrWord &word : page.words) {
                 if (!input.rect().contains(word.bounds) || word.bounds.isEmpty() ||
                     word.id.isEmpty() || ids.contains(word.id)) {
                     result.outcome = std::unexpected(OcrError{
                         QStringLiteral("The OCR engine returned invalid word geometry or IDs.")});
                     return result;
                 }
+                if (token.stop_requested()) {
+                    result.outcome = std::unexpected(OcrError{{}, true});
+                    return result;
+                }
+                if (engine->capabilities().supportsWordBoxes && core::isSingleSymbol(word.originalText))
+                    word.symbolShape = symbolShape(input, word.bounds);
                 ids.insert(word.id);
             }
         }
