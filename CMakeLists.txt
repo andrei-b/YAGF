@@ -41,6 +41,7 @@ qt_add_executable(yagf-revival
 target_sources(yagf-revival PRIVATE src/ui/scannerdialog.cpp src/ui/scannerdialog.h)
 target_sources(yagf-revival PRIVATE src/ui/documentcommands.cpp src/ui/documentcommands.h)
 target_sources(yagf-revival PRIVATE src/ui/aireviewdialog.cpp src/ui/aireviewdialog.h)
+target_sources(yagf-revival PRIVATE src/ui/spellhighlighter.cpp src/ui/spellhighlighter.h)
 target_link_libraries(yagf-revival PRIVATE yagf_core yagf_processing Qt6::Widgets Qt6::Concurrent)
 
 install(TARGETS yagf-revival RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
@@ -57,6 +58,12 @@ install(FILES COPYING
 include(CTest)
 if(BUILD_TESTING)
     find_package(Qt6 6.2 REQUIRED COMPONENTS Test)
+    qt_add_executable(spellhighlighter_tests tests/spellhighlighter_tests.cpp
+        src/ui/spellhighlighter.cpp src/ui/spellhighlighter.h)
+    target_link_libraries(spellhighlighter_tests PRIVATE Qt6::Widgets)
+    target_include_directories(spellhighlighter_tests PRIVATE src/ui)
+    add_test(NAME spellhighlighter_tests COMMAND spellhighlighter_tests)
+    set_tests_properties(spellhighlighter_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     qt_add_executable(regiongeometry_tests tests/regiongeometry_tests.cpp)
     target_link_libraries(regiongeometry_tests PRIVATE yagf_core)
     add_test(NAME regiongeometry_tests COMMAND regiongeometry_tests)
@@ -81,6 +88,7 @@ if(BUILD_TESTING)
         src/ui/scannerdialog.cpp src/ui/scannerdialog.h
         src/ui/documentcommands.cpp src/ui/documentcommands.h resources/icons.qrc)
     target_sources(mainwindow_tests PRIVATE src/ui/aireviewdialog.cpp src/ui/aireviewdialog.h)
+    target_sources(mainwindow_tests PRIVATE src/ui/spellhighlighter.cpp src/ui/spellhighlighter.h)
     target_link_libraries(mainwindow_tests PRIVATE yagf_processing Qt6::Widgets Qt6::Concurrent Qt6::Test)
     target_include_directories(mainwindow_tests PRIVATE src/ui)
     add_test(NAME mainwindow_tests COMMAND mainwindow_tests)

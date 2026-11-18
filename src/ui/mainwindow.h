@@ -40,8 +40,11 @@ class QDropEvent;
 class QKeyEvent;
 class QUrl;
 class QContextMenuEvent;
+class QComboBox;
 
 namespace yagf::ui {
+
+class SpellHighlighter;
 
 class PageView : public QGraphicsView {
     Q_OBJECT
@@ -138,6 +141,7 @@ private:
     void refreshImageRegionSelection(bool updateWords);
     void runNextImageRegion();
     void refreshReviewLabel();
+    void refreshSpellLanguage();
     void updateSelection(const QVector<int> &indices);
     QVector<int> indicesForIds(const QStringList &ids) const;
     bool applyCorrection();
@@ -165,6 +169,9 @@ private:
     QListWidget *pageList = nullptr;
     QListWidget *regionList = nullptr;
     QTextEdit *selectionEditor;
+    SpellHighlighter *spellHighlighter = nullptr;
+    QComboBox *spellLanguage = nullptr;
+    QAction *spellCheckAction = nullptr;
     QLabel *selectionLabel;
     QPushButton *applyButton;
     QPushButton *regionOcrButton;

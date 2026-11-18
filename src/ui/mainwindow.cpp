@@ -10,6 +10,7 @@
 #include "tesseractengine.h"
 #include "aireviewdialog.h"
 #include "regiongeometry.h"
+#include "spellhighlighter.h"
 
 #include <QCloseEvent>
 #include <QApplication>
@@ -42,6 +43,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QListWidgetItem>
+#include <QLocale>
 #include <QMessageBox>
 #include <QMouseEvent>
 #include <QMenuBar>
@@ -90,6 +92,18 @@ using processing::ImageProcessor;
 using processing::BatchPageOptions;
 
 namespace {
+QIcon recognizeActionIcon()
+{
+    return QIcon::fromTheme(QStringLiteral("document-scan"),
+                           QApplication::style()->standardIcon(QStyle::SP_FileDialogContentsView));
+}
+
+QIcon removeBlockIcon()
+{
+    return QIcon::fromTheme(QStringLiteral("edit-delete"),
+                           QApplication::style()->standardIcon(QStyle::SP_TrashIcon));
+}
+
 bool overlapsBox(const QRect &box, const QRect &selection)
 {
     if (selection.contains(box.center())) return true;
@@ -529,6 +543,8 @@ MainWindow::MainWindow()
     createRegionAction->setEnabled(false);
     batchAction->setEnabled(false);
     ocrButton = new QPushButton(tr("Recognize"), this);
+    ocrButton->setIcon(recognizeActionIcon());
+    ocrButton->setIconSize(QSize(20, 20));
     ocrButton->setObjectName(QStringLiteral("primaryButton"));
     toolbar->addWidget(ocrButton);
     connect(ocrButton, &QPushButton::clicked, this, &MainWindow::runOcr);
@@ -613,6 +629,7 @@ MainWindow::MainWindow()
     regionList->setToolTip(tr("Select an OCR area. Drag its edge on the image to resize it; press Delete to remove it."));
     navigationLayout->addWidget(regionList, 2);
     deleteRegionButton = new QPushButton(tr("Delete region"), navigationPane);
+    deleteRegionButton->setIcon(removeBlockIcon());
     deleteRegionButton->setObjectName(QStringLiteral("deleteRegionButton"));
     deleteRegionButton->setEnabled(false);
     navigationLayout->addWidget(deleteRegionButton);
@@ -627,6 +644,7 @@ MainWindow::MainWindow()
     view->setBackgroundBrush(QColor(QStringLiteral("#e9eef5")));
     auto *textPanel = new QWidget(splitter);
     textPanel->setObjectName(QStringLiteral("textPanel"));
+    textPanel->setMinimumWidth(450);
     auto *textLayout = new QVBoxLayout(textPanel);
     textLayout->setContentsMargins(16, 16, 16, 14);
     textLayout->setSpacing(10);
@@ -638,35 +656,49 @@ MainWindow::MainWindow()
     formatToolbar->setMovable(false);
     formatToolbar->setIconSize(QSize(16, 16));
     textLayout->addWidget(formatToolbar);
-    selectionEditor = new QTextEdit(textPanel);
+    auto *editorSplitter = new QSplitter(Qt::Vertical, textPanel);
+    editorSplitter->setObjectName(QStringLiteral("textEditorSplitter"));
+    editorSplitter->setChildrenCollapsible(false);
+    editorSplitter->setHandleWidth(5);
+    textLayout->addWidget(editorSplitter, 1);
+    selectionEditor = new QTextEdit(editorSplitter);
     selectionEditor->setObjectName(QStringLiteral("recognizedTextEditor"));
     selectionEditor->setPlaceholderText(tr("Select words on the page or drag a region, then edit here."));
     selectionEditor->setAcceptRichText(true);
-    selectionEditor->setMinimumHeight(180);
-    textLayout->addWidget(selectionEditor, 2);
+    selectionEditor->setMinimumHeight(280);
+    spellHighlighter = new SpellHighlighter(selectionEditor->document());
+    auto *wordPanel = new QWidget(editorSplitter);
+    auto *wordLayout = new QVBoxLayout(wordPanel);
+    wordLayout->setContentsMargins(0, 8, 0, 0);
+    wordLayout->setSpacing(10);
     auto *editButtons = new QHBoxLayout();
     applyButton = new QPushButton(tr("Apply correction"), textPanel);
     applyButton->setObjectName(QStringLiteral("applyButton"));
     applyButton->setEnabled(false);
     regionOcrButton = new QPushButton(tr("Recognize region"), textPanel);
+    regionOcrButton->setIcon(recognizeActionIcon());
     regionOcrButton->setObjectName(QStringLiteral("recognizeRegionButton"));
     regionOcrButton->setEnabled(false);
     editButtons->addWidget(applyButton);
     editButtons->addWidget(regionOcrButton);
-    textLayout->addLayout(editButtons);
+    wordLayout->addLayout(editButtons);
     reviewWordButton = new QPushButton(tr("Review word…"), textPanel);
     reviewWordButton->setObjectName(QStringLiteral("reviewWordButton"));
     reviewWordButton->setEnabled(false);
     reviewWordButton->setToolTip(tr("Inspect an enlarged source crop and request contextual reading suggestions"));
-    textLayout->addWidget(reviewWordButton);
+    wordLayout->addWidget(reviewWordButton);
     auto *wordsHeading = new QLabel(tr("WORDS ON THIS PAGE"), textPanel);
     wordsHeading->setObjectName(QStringLiteral("sectionHeading"));
-    textLayout->addWidget(wordsHeading);
+    wordLayout->addWidget(wordsHeading);
     wordList = new QListWidget(textPanel);
     wordList->setObjectName(QStringLiteral("recognizedWords"));
     wordList->setSelectionMode(QAbstractItemView::ExtendedSelection);
     wordList->setToolTip(tr("Select a word to locate it on the scan and edit it above."));
-    textLayout->addWidget(wordList, 3);
+    wordList->setMinimumHeight(80);
+    wordLayout->addWidget(wordList, 1);
+    editorSplitter->setStretchFactor(0, 4);
+    editorSplitter->setStretchFactor(1, 1);
+    editorSplitter->setSizes({480, 200});
     auto *boldAction = formatToolbar->addAction(tr("Bold"));
     boldAction->setShortcut(QKeySequence::Bold);
     boldAction->setToolTip(tr("Format selected editor text as bold"));
@@ -686,12 +718,47 @@ MainWindow::MainWindow()
         selectionEditor->mergeCurrentCharFormat(format);
         editorPending = true;
     });
+    formatToolbar->addSeparator();
+    spellCheckAction = formatToolbar->addAction(tr("Spell check"));
+    spellCheckAction->setObjectName(QStringLiteral("spellCheckAction"));
+    spellCheckAction->setCheckable(true);
+    spellCheckAction->setChecked(settings.value(QStringLiteral("spell/enabled"), true).toBool());
+    spellHighlighter->setEnabled(spellCheckAction->isChecked());
+    spellLanguage = new QComboBox(formatToolbar);
+    spellLanguage->setObjectName(QStringLiteral("spellLanguage"));
+    spellLanguage->setAccessibleName(tr("Spelling language"));
+    spellLanguage->addItem(tr("Automatic (block language)"), QString());
+    const auto dictionaries = spellHighlighter->availableDictionaries();
+    for (const auto &code : dictionaries) {
+        if (code.endsWith(QStringLiteral("_frami")) && dictionaries.contains(code.chopped(6))) continue;
+        spellLanguage->addItem(tr("%1 (%2)").arg(QLocale::languageToString(QLocale(code).language()), code), code);
+    }
+    spellLanguage->setMinimumWidth(210);
+    spellLanguage->setMaximumWidth(240);
+    spellLanguage->setMinimumContentsLength(20);
+    spellLanguage->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    const int dictionary = spellLanguage->findData(settings.value(QStringLiteral("spell/language"), QString()).toString());
+    spellLanguage->setCurrentIndex(qMax(0, dictionary));
+    formatToolbar->addWidget(spellLanguage);
+    connect(spellCheckAction, &QAction::toggled, this, [this](bool checked) {
+        const QSignalBlocker blocker(selectionEditor);
+        spellHighlighter->setEnabled(checked);
+        QSettings(QStringLiteral("YAGF"), QStringLiteral("YAGF Revival")).setValue(QStringLiteral("spell/enabled"), checked);
+        refreshSpellLanguage();
+    });
+    connect(spellLanguage, &QComboBox::currentIndexChanged, this, [this] {
+        QSettings(QStringLiteral("YAGF"), QStringLiteral("YAGF Revival"))
+            .setValue(QStringLiteral("spell/language"), spellLanguage->currentData().toString());
+        refreshSpellLanguage();
+    });
+    connect(languageEdit, &QLineEdit::textChanged, this, &MainWindow::refreshSpellLanguage);
+    refreshSpellLanguage();
     splitter->addWidget(navigationPane);
     splitter->addWidget(view);
     splitter->addWidget(textPanel);
-    splitter->setStretchFactor(1, 3);
+    splitter->setStretchFactor(1, 1);
     splitter->setStretchFactor(2, 1);
-    splitter->setSizes({220, 690, 370});
+    splitter->setSizes({210, 520, 550});
     splitter->setChildrenCollapsible(false);
     setCentralWidget(splitter);
     QFile styleFile(QStringLiteral(":/theme/app.qss"));
@@ -2086,7 +2153,8 @@ void MainWindow::showBlockContextMenu(int index, const QPoint &globalPosition)
     const auto region = page->imageRegions[index];
     QMenu menu(this);
     menu.setObjectName(QStringLiteral("blockContextMenu"));
-    auto *recognize = menu.addAction(tr("Recognize block"));
+    auto *recognize = menu.addAction(recognizeActionIcon(), tr("Recognize block"));
+    recognize->setIconVisibleInMenu(true);
     recognize->setEnabled(!region.notText);
     connect(recognize, &QAction::triggered, this, &MainWindow::runRegionOcr);
     auto *languages = menu.addMenu(tr("Select block language"));
@@ -2116,9 +2184,42 @@ void MainWindow::showBlockContextMenu(int index, const QPoint &globalPosition)
         if (ok && QRegularExpression(QStringLiteral("^[A-Za-z0-9_+/-]{1,64}$")).match(code).hasMatch())
             setBlockLanguage(index, code, false);
     });
-    auto *remove = menu.addAction(tr("Remove block"));
+    auto *remove = menu.addAction(removeBlockIcon(), tr("Remove block"));
+    remove->setIconVisibleInMenu(true);
     connect(remove, &QAction::triggered, this, [this, index] { deleteImageRegion(index); });
     menu.exec(globalPosition);
+}
+
+void MainWindow::refreshSpellLanguage()
+{
+    if (!spellHighlighter || !spellLanguage) return;
+    QStringList languages;
+    const QString chosen = spellLanguage->currentData().toString();
+    if (!chosen.isEmpty()) languages.append(chosen);
+    else {
+        const auto *page = document.page(currentPage);
+        const QString fallback = page && !page->language.isEmpty() && page->language != "auto"
+            ? page->language : languageEdit->text().trimmed();
+        if (page && selectedImageRegion >= 0 && selectedImageRegion < page->imageRegions.size()) {
+            const auto &region = page->imageRegions[selectedImageRegion];
+            languages.append(blockLanguage(region));
+        } else if (page && !selectedWords.isEmpty()) {
+            for (int index : selectedWords) {
+                if (index < 0 || index >= page->words.size()) continue;
+                QString code = fallback;
+                for (const auto &region : page->imageRegions)
+                    if (!region.notText && region.bounds.contains(page->words[index].bounds.center())) {
+                        code = blockLanguage(region);
+                        break;
+                    }
+                if (!languages.contains(code)) languages.append(code);
+            }
+        } else languages.append(fallback);
+    }
+    const QSignalBlocker blocker(selectionEditor);
+    spellHighlighter->setLanguages(languages);
+    spellCheckAction->setToolTip(spellHighlighter->statusText());
+    spellLanguage->setToolTip(spellHighlighter->statusText());
 }
 
 void MainWindow::refreshReviewLabel()
@@ -2193,6 +2294,7 @@ void MainWindow::updateSelection(const QVector<int> &indices)
         previous = word;
     }
     selectionEditor->moveCursor(QTextCursor::Start);
+    refreshSpellLanguage();
 }
 
 bool MainWindow::canReviewSelection() const

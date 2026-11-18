@@ -54,6 +54,7 @@ QToolBar#formatToolbar QToolButton {
     padding: 4px 8px;
 }
 QToolBar#formatToolbar QToolButton:hover { background: #e9f2ff; color: #175ca9; }
+QToolBar#formatToolbar QToolButton:checked { background: #deecfc; color: #155caa; border-color: #b5cfea; }
 
 QWidget#navigationPane { background: #f7f9fc; border-right: 1px solid #dce4ee; }
 QWidget#textPanel { background: #ffffff; border-left: 1px solid #dce4ee; }

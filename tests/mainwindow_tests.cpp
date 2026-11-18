@@ -28,6 +28,7 @@
 #include <QTimer>
 #include <QUrl>
 #include <QTest>
+#include <QSplitter>
 
 #ifdef NDEBUG
 #undef NDEBUG
@@ -87,6 +88,12 @@ int main(int argc, char **argv)
         if (button->text() == QStringLiteral("Apply correction")) apply = button;
     }
     assert(recognize && apply && recognize->isEnabled());
+    assert(!recognize->icon().isNull());
+    auto *spellCheck = window.findChild<QAction *>("spellCheckAction");
+    auto *spellingLanguage = window.findChild<QComboBox *>("spellLanguage");
+    auto *editorSplit = window.findChild<QSplitter *>("textEditorSplitter");
+    assert(spellCheck && spellCheck->isChecked() && spellingLanguage && editorSplit && editorSplit->count() == 2);
+    assert(editor->minimumHeight() >= 280);
     auto *language = window.findChild<QLineEdit *>(QStringLiteral("languageField"));
     QAction *picker = nullptr;
     for (QAction *action : window.findChildren<QAction *>())
@@ -289,6 +296,8 @@ int main(int argc, char **argv)
             auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
             assert(menu && menu->objectName() == "blockContextMenu");
             assert(menu->actions().first()->text() == "Recognize block");
+            assert(!menu->actions().first()->icon().isNull() && menu->actions().first()->isIconVisibleInMenu());
+            assert(!menu->actions().last()->icon().isNull() && menu->actions().last()->isIconVisibleInMenu());
             assert(menu->actions().at(1)->text() == "Select block language");
             if (choice == "Check disabled") {
                 assert(!menu->actions().first()->isEnabled());
@@ -310,6 +319,9 @@ int main(int argc, char **argv)
     };
     blockMenu(1, "German");
     assert(regions->item(1)->text().contains("deu"));
+    auto *regionSpelling = regionWindow.findChild<QComboBox *>("spellLanguage");
+    assert(regionSpelling);
+    if (regionSpelling->findData("de_DE") >= 0) assert(regionSpelling->toolTip().contains("de_DE"));
     QPushButton *recognizeRegions = nullptr;
     for (QPushButton *button : regionWindow.findChildren<QPushButton *>())
         if (button->text() == QStringLiteral("Recognize")) recognizeRegions = button;
@@ -437,6 +449,18 @@ int main(int argc, char **argv)
     assert(contextAction && !contextAction->isEnabled());
     contextWindow.loadProject(bookPath);
     assert(contextAction->isEnabled());
+    auto *spellToggle = contextWindow.findChild<QAction *>("spellCheckAction");
+    auto *spellChoice = contextWindow.findChild<QComboBox *>("spellLanguage");
+    assert(spellToggle && spellChoice);
+    const bool originallyEnabled = spellToggle->isChecked();
+    spellToggle->trigger();
+    spellToggle->trigger();
+    assert(spellToggle->isChecked() == originallyEnabled && !contextWindow.windowTitle().endsWith(" *"));
+    if (spellChoice->count() > 1) {
+        spellChoice->setCurrentIndex(1);
+        spellChoice->setCurrentIndex(0);
+        assert(!contextWindow.windowTitle().endsWith(" *"));
+    }
     auto inspectContext = [&](const QString &expected, bool inference, bool change, bool accept) {
         QTimer::singleShot(0, &contextWindow, [=] {
             auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
