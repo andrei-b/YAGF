@@ -1,5 +1,7 @@
 <RCC>
   <qresource prefix="/legacy">
+    <file>yagf-48.png</file>
+    <file>yagf.png</file>
     <file>back.png</file>
     <file>forward.png</file>
     <file>larger.png</file>

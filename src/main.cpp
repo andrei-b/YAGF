@@ -2,10 +2,16 @@
 
 #include <QApplication>
 #include <QFileInfo>
+#include <QIcon>
 
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
+    app.setDesktopFileName(QStringLiteral("io.github.andrei_b.YAGF"));
+    QIcon icon(QStringLiteral(":/legacy/yagf-48.png"));
+    icon.addFile(QStringLiteral(":/legacy/yagf.png"));
+    app.setWindowIcon(icon);
+
     yagf::ui::MainWindow window;
     if (argc > 1) {
         const QString path = QString::fromLocal8Bit(argv[1]);
