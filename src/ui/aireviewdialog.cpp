@@ -34,14 +34,14 @@ QStringList candidatesFromContent(QString content, bool passage)
 {
     content = content.trimmed();
     if (content.startsWith(QStringLiteral("```"))) {
-        const int start = content.indexOf(QLatin1Char('\n'));
-        const int end = content.lastIndexOf(QStringLiteral("```"));
+        const qsizetype start = content.indexOf(QLatin1Char('\n'));
+        const qsizetype end = content.lastIndexOf(QStringLiteral("```"));
         if (start >= 0 && end > start) content = content.mid(start + 1, end - start - 1).trimmed();
     }
     const int limit = passage ? 16384 : 120;
     QStringList candidates;
     const QJsonObject object = QJsonDocument::fromJson(content.toUtf8()).object();
-    for (const QJsonValue &value : object.value(QStringLiteral("candidates")).toArray()) {
+    for (const auto &value : object.value(QStringLiteral("candidates")).toArray()) {
         const QString reading = value.toString().trimmed();
         if (!reading.isEmpty() && reading.size() <= limit && !candidates.contains(reading))
             candidates.append(reading);
@@ -76,7 +76,7 @@ QImage markedImage(const QImage &image, const QRect &target, qreal scale)
 } // namespace
 
 AiReviewDialog::AiReviewDialog(QString recognized, QString context, QImage crop, QRect target,
-                               QString sessionToken, QWidget *parent,
+                               const QString &sessionToken, QWidget *parent,
                                const core::SpecialistReading *specialist, bool reviewPassage)
     : QDialog(parent), passage(specialist || reviewPassage), recognized(std::move(recognized)), context(std::move(context)),
       crop(std::move(crop)), target(target)
@@ -153,7 +153,7 @@ AiReviewDialog::AiReviewDialog(QString recognized, QString context, QImage crop,
     model = new QLineEdit(settings.value(QStringLiteral("ai/model")).toString(), this);
     model->setObjectName(QStringLiteral("aiModel"));
     model->setPlaceholderText(tr("Vision model name"));
-    token = new QLineEdit(std::move(sessionToken), this);
+    token = new QLineEdit(sessionToken, this);
     token->setEchoMode(QLineEdit::Password);
     token->setPlaceholderText(tr("Optional; kept only for this session"));
     form->addRow(tr("AI endpoint"), endpoint);

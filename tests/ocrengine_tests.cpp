@@ -23,8 +23,8 @@ class FakeEngine final : public IOcrEngine {
 public:
     explicit FakeEngine(bool waitForCancel, bool invalid = false)
         : waitForCancel(waitForCancel), invalid(invalid) {}
-    QString id() const override { return QStringLiteral("fake"); }
-    EngineCapabilities capabilities() const override
+    [[nodiscard]] QString id() const override { return QStringLiteral("fake"); }
+    [[nodiscard]] EngineCapabilities capabilities() const override
     { return {.supportsRegions = true, .supportsWordBoxes = true}; }
     std::expected<yagf::core::OcrPage, OcrError> recognize(
         const QImage &image, const OcrOptions &options, std::stop_token stop) override
@@ -102,7 +102,7 @@ int main(int argc, char **argv)
     QEventLoop loop;
     bool received = false;
     QObject::connect(&processor, &DocumentProcessor::recognized, &loop,
-        [&](yagf::core::OcrPage page, const QPoint &, const QRect &) {
+        [&](const yagf::core::OcrPage &page, const QPoint &, const QRect &) {
             assert(page.engineId == QStringLiteral("fake"));
             assert(page.width == 200 && page.words.size() == 1);
             received = true;

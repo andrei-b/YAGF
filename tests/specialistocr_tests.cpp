@@ -19,8 +19,8 @@ namespace {
 class FixtureEngine final : public IOcrEngine {
 public:
     FixtureEngine(QString name, core::OcrPage output) : name(std::move(name)), output(std::move(output)) {}
-    QString id() const override { return name; }
-    processing::EngineCapabilities capabilities() const override { return {.supportsRegions = true}; }
+    [[nodiscard]] QString id() const override { return name; }
+    [[nodiscard]] processing::EngineCapabilities capabilities() const override { return {.supportsRegions = true}; }
     std::expected<core::OcrPage, processing::OcrError> recognize(const QImage &image,
         const processing::OcrOptions &options, std::stop_token) override
     {

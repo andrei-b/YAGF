@@ -13,7 +13,7 @@ namespace yagf::ui {
 class ScannerDialog : public QDialog {
     Q_OBJECT
 public:
-    explicit ScannerDialog(const QString &destination, QWidget *parent = nullptr);
+    explicit ScannerDialog(QString destination, QWidget *parent = nullptr);
     ~ScannerDialog() override;
 
 private:

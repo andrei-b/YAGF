@@ -8,7 +8,7 @@ namespace {
 
 bool singleToken(const QString &text)
 {
-    return !text.isEmpty() && std::none_of(text.begin(), text.end(), [](QChar c) { return c.isSpace(); });
+    return !text.isEmpty() && std::ranges::none_of(text, [](QChar c) { return c.isSpace(); });
 }
 
 QString neighbor(const OcrPage &page, int index, int offset)
@@ -27,7 +27,7 @@ QString neighbor(const OcrPage &page, int index, int offset)
 bool fuzzyEligible(const QString &text)
 {
     return text.size() >= 5 && text.size() <= 80 &&
-        std::all_of(text.begin(), text.end(), [](QChar c) { return c.isLetter(); });
+        std::ranges::all_of(text, [](QChar c) { return c.isLetter(); });
 }
 
 bool oneEditApart(QStringView a, QStringView b)
@@ -133,7 +133,7 @@ QVector<CorrectionSuggestion> CorrectionMemory::suggestions(const OcrPage &page,
             if (fuzzyEligible(it.key()) && oneEditApart(word.text, it.key())) collect(it, false);
     }
     if (auto symbol = symbolSuggestion(page, word)) result.append(*symbol);
-    std::sort(result.begin(), result.end(), [](const auto &a, const auto &b) {
+    std::ranges::sort(result, [](const auto &a, const auto &b) {
         if (a.exact != b.exact) return a.exact;
         if (a.symbolMatch != b.symbolMatch) return a.symbolMatch > b.symbolMatch;
         if (a.matchingNeighbors != b.matchingNeighbors) return a.matchingNeighbors > b.matchingNeighbors;

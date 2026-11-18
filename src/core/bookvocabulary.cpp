@@ -24,7 +24,7 @@ void BookVocabulary::addPage(const OcrPage &page)
     for (const auto &word : page.words) {
         if (!hasOriginalWordBox(word) || word.text.isEmpty() || word.text.size() > 64) continue;
         const auto characters = word.text.toUcs4();
-        if (std::any_of(characters.begin(), characters.end(), [](char32_t c) {
+        if (std::ranges::any_of(characters, [](char32_t c) {
             return !QChar::isPrint(c) || QChar::isSpace(c);
         })) continue;
         if (word.reviewed) {

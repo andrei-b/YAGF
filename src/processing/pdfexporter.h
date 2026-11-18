@@ -10,7 +10,7 @@
 namespace yagf::processing {
 
 struct ExportResult {
-    enum class Status { Success, Cancelled, Error } status = Status::Error;
+    enum class Status : quint8 { Success, Cancelled, Error } status = Status::Error;
     QString error;
 };
 
@@ -18,7 +18,7 @@ using PdfExportResult = ExportResult;
 
 class PdfExporter {
 public:
-    using Progress = std::function<void(int completed, int total)>;
+    using Progress = std::function<void(qsizetype completed, qsizetype total)>;
 
     [[nodiscard]] static PdfExportResult write(const core::OcrDocument &document,
                                                const QString &destination, bool archive,

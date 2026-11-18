@@ -10,7 +10,7 @@
 
 namespace yagf::core {
 
-enum class SymbolMatch { None, Similar, Exact };
+enum class SymbolMatch : quint8 { None, Similar, Exact };
 
 struct CorrectionSuggestion {
     QString original;
@@ -26,7 +26,7 @@ bool isVerifiedCorrection(const OcrWord &word);
 class CorrectionMemory {
 public:
     explicit CorrectionMemory(const OcrDocument &document = {}, bool matchSimilarSymbols = false);
-    QVector<CorrectionSuggestion> suggestions(const OcrPage &page, int index) const;
+    [[nodiscard]] QVector<CorrectionSuggestion> suggestions(const OcrPage &page, int index) const;
 
 private:
     struct Evidence {
@@ -40,7 +40,7 @@ private:
         int page;
         bool reviewed;
     };
-    std::optional<CorrectionSuggestion> symbolSuggestion(const OcrPage &page, const OcrWord &word) const;
+    [[nodiscard]] std::optional<CorrectionSuggestion> symbolSuggestion(const OcrPage &page, const OcrWord &word) const;
     SymbolMatcher similarSymbols;
     QHash<QByteArray, QVector<SymbolExample>> symbolExamples;
     QHash<QString, QHash<QString, Evidence>> corrections;

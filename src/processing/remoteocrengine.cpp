@@ -64,7 +64,7 @@ std::expected<core::OcrPage, OcrError> parseResponse(
     page.language = root.value(QStringLiteral("language")).toString(options.language);
     int previousBlock = 0;
     int previousLine = 0;
-    for (const QJsonValue &value : items) {
+    for (const auto &value : items) {
         if (!value.isObject())
             return std::unexpected(OcrError{QStringLiteral("The OCR server returned an invalid text item.")});
         const QJsonObject line = value.toObject();
@@ -92,7 +92,7 @@ std::expected<core::OcrPage, OcrError> parseResponse(
         word.page = options.pageNumber;
         word.block = structured ? line.value(QStringLiteral("block")).toInt(-1) : 1;
         word.paragraph = 1;
-        word.line = structured ? line.value(QStringLiteral("line")).toInt(-1) : page.words.size() + 1;
+        word.line = structured ? line.value(QStringLiteral("line")).toInt(-1) : static_cast<int>(page.words.size()) + 1;
         if (word.block < 1 || word.line < 1 ||
             (structured && (word.block < previousBlock ||
                             (word.block == previousBlock && word.line < previousLine))))

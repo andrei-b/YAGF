@@ -60,7 +60,7 @@ struct OcrRegion {
     QVector<OcrParagraph> paragraphs;
     // Optional header and span metadata, aligned with the tab-separated block text.
     QJsonArray tableLayout;
-    bool isFigure() const;
+    [[nodiscard]] bool isFigure() const;
     static bool validTableLayout(const QJsonValue &value);
 };
 
@@ -83,7 +83,7 @@ struct OcrPage {
     QVector<OcrWord> words;
     QVector<OcrRegion> regions;
     QVector<ImageRegion> imageRegions;
-    QVector<int> specialistSpan(int start) const;
+    [[nodiscard]] QVector<int> specialistSpan(int start) const;
     void rebuildHierarchy();
     bool moveRegion(int index, int direction);
     bool extractRegion(const QVector<int> &wordIndices);
@@ -97,15 +97,15 @@ public:
     int totalPages = 1;
     QVector<OcrPage> pages;
 
-    static bool fromJson(const QJsonObject &json, OcrDocument *document, QString *error);
+    static bool fromJson(const QJsonObject &json, OcrDocument *result, QString *error);
     OcrPage *page(int number);
-    const OcrPage *page(int number) const;
-    void replacePage(OcrPage page);
+    [[nodiscard]] const OcrPage *page(int number) const;
+    void replacePage(OcrPage replacement);
     void removePage(int number);
-    int wordCount() const;
-    QString plainText() const;
-    QString layoutHtml() const;
-    QJsonObject toJson() const;
+    [[nodiscard]] qsizetype wordCount() const;
+    [[nodiscard]] QString plainText() const;
+    [[nodiscard]] QString layoutHtml() const;
+    [[nodiscard]] QJsonObject toJson() const;
 };
 
 } // namespace yagf::core

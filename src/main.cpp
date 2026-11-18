@@ -7,10 +7,10 @@
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
-    app.setDesktopFileName(QStringLiteral("io.github.andrei_b.YAGF"));
+    QApplication::setDesktopFileName(QStringLiteral("io.github.andrei_b.YAGF"));
     QIcon icon(QStringLiteral(":/legacy/yagf-48.png"));
     icon.addFile(QStringLiteral(":/legacy/yagf.png"));
-    app.setWindowIcon(icon);
+    QApplication::setWindowIcon(icon);
 
     yagf::ui::MainWindow window;
     if (argc > 1) {
@@ -20,5 +20,5 @@ int main(int argc, char **argv)
         else window.loadSource(path);
     }
     window.show();
-    return app.exec();
+    return QApplication::exec();
 }

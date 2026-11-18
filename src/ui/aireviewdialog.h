@@ -23,7 +23,7 @@ namespace yagf::ui {
 class AiReviewDialog final : public QDialog {
 public:
     AiReviewDialog(QString recognized, QString context, QImage crop, QRect target,
-                   QString sessionToken = {}, QWidget *parent = nullptr,
+                   const QString &sessionToken = {}, QWidget *parent = nullptr,
                    const core::SpecialistReading *specialist = nullptr, bool passage = false);
     void setBookSuggestions(const QVector<core::CorrectionSuggestion> &items);
     [[nodiscard]] QString correction() const;

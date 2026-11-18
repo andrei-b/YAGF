@@ -5,6 +5,7 @@
 #include <QUuid>
 
 #include <algorithm>
+#include <limits>
 
 namespace yagf::core {
 namespace {
@@ -81,11 +82,11 @@ QVector<OcrWord> changedSpan(const OcrPage &page, const QVector<OcrWord> &old,
             word.alternative = {};
             word.readingEngine.clear();
             word.confidence = -1;
-            const int start = qBound(0, gapStart + available * charactersBefore / totalCharacters,
-                                     page.width - 1);
+            const auto start = static_cast<int>(qBound(
+                0, gapStart + available * charactersBefore / totalCharacters, page.width - 1));
             charactersBefore += std::max<qsizetype>(1, replacement.at(newStart + i).text.size());
-            const int end = qBound(start + 1, gapStart + available * charactersBefore / totalCharacters,
-                                   page.width);
+            const auto end = static_cast<int>(qBound(
+                start + 1, gapStart + available * charactersBefore / totalCharacters, page.width));
             word.bounds = QRect(rtl ? page.width - end : start, y, end - start, height);
             setText(word, replacement.at(newStart + i));
             result.append(std::move(word));
@@ -119,10 +120,10 @@ QVector<OcrWord> changedSpan(const OcrPage &page, const QVector<OcrWord> &old,
     QSet<QString> usedIds;
     for (int i = 0; i < resultCount; ++i) {
         const EditedWord &edit = replacement.at(newStart + i);
-        const qint64 start = static_cast<qint64>(
+        const auto start = static_cast<qint64>(
             static_cast<long double>(totalWidth) * charactersBefore / totalCharacters);
         charactersBefore += std::max<qsizetype>(1, edit.text.size());
-        const qint64 end = static_cast<qint64>(
+        const auto end = static_cast<qint64>(
             static_cast<long double>(totalWidth) * charactersBefore / totalCharacters);
         QVector<QRect> placement, sourceBoxes;
         QStringList sourceIds, originalTexts;
@@ -152,7 +153,7 @@ QVector<OcrWord> changedSpan(const OcrPage &page, const QVector<OcrWord> &old,
             if (finish > begin) addPiece(fragment, begin, finish);
         }
         if (placement.isEmpty()) {
-            const auto candidate = std::find_if(fragments.cbegin(), fragments.cend(),
+            const auto candidate = std::ranges::find_if(fragments,
                 [start](const Fragment &fragment) {
                     return start < fragment.offset + fragment.box.width();
                 });
@@ -222,8 +223,8 @@ std::expected<OcrPage, QString> WordEditor::acceptSpecialist(const OcrPage &page
     }
     auto result = acceptPassage(edited, span, text);
     if (result && !engine.isEmpty()) {
-        const int after = result->words.size() - (page.words.size() - span.last() - 1);
-        for (int i = anchor; i < after; ++i) result->words[i].readingEngine = engine;
+        const qsizetype after = result->words.size() - (page.words.size() - span.last() - 1);
+        for (qsizetype i = anchor; i < after; ++i) result->words[i].readingEngine = engine;
     }
     return result;
 }
@@ -272,14 +273,18 @@ std::expected<OcrPage, QString> WordEditor::apply(const OcrPage &page,
             (i && selection.at(i) != selection.at(i - 1) + 1))
             return std::unexpected(QStringLiteral("Select consecutive words in reading order."));
     for (const EditedWord &word : replacement)
-        if (word.text.isEmpty() || std::any_of(word.text.cbegin(), word.text.cend(),
+        if (word.text.isEmpty() || std::ranges::any_of(word.text,
                 [](QChar character) { return character.isSpace(); }) ||
             word.fontSizePt < 0 || word.fontSizePt > 72)
             return std::unexpected(QStringLiteral("Invalid replacement word or font size."));
 
     QVector<OcrWord> old;
     for (int index : selection) old.append(page.words.at(index));
-    const int n = old.size(), m = replacement.size();
+    // The selection and edit anchors use int indices, including a one-past-end anchor.
+    if (old.size() >= std::numeric_limits<int>::max() || replacement.size() >= std::numeric_limits<int>::max())
+        return std::unexpected(QStringLiteral("Select a smaller text span for this edit."));
+    const auto n = static_cast<int>(old.size());
+    const auto m = static_cast<int>(replacement.size());
     int prefix = 0;
     while (prefix < n && prefix < m && old.at(prefix).text == replacement.at(prefix).text) ++prefix;
     int suffix = 0;

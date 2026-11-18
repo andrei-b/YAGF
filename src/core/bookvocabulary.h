@@ -9,7 +9,7 @@ namespace yagf::core {
 class BookVocabulary {
 public:
     void addPage(const OcrPage &page);
-    QStringList terms() const;
+    [[nodiscard]] QStringList terms() const;
 
 private:
     struct Evidence {

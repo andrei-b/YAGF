@@ -11,11 +11,12 @@
 #include <QSpinBox>
 #include <QStandardPaths>
 #include <QVBoxLayout>
+#include <utility>
 
 namespace yagf::ui {
 
-ScannerDialog::ScannerDialog(const QString &destination, QWidget *parent)
-    : QDialog(parent), destination(destination)
+ScannerDialog::ScannerDialog(QString destination, QWidget *parent)
+    : QDialog(parent), destination(std::move(destination))
 {
     setWindowTitle(tr("Scan a page"));
     auto *layout = new QVBoxLayout(this);

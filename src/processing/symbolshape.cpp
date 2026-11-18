@@ -40,7 +40,7 @@ QByteArray symbolShape(const QImage &page, const QRect &bounds)
         for (int x = 0; x < sample.width(); ++x) {
             if (row[x] > threshold) continue;
             const int bit = (top + y) * 16 + left + x;
-            mask[bit / 8] |= char(1u << (bit % 8));
+            mask[bit / 8] = static_cast<char>(mask[bit / 8] | (1 << (bit % 8)));
             ++ink;
         }
     }

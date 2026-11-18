@@ -12,7 +12,7 @@
 #include <QStandardPaths>
 #include <QTimer>
 #include <QUuid>
-#include <QtConcurrent>
+#include <QtConcurrentRun>
 
 namespace yagf::processing {
 

@@ -12,6 +12,8 @@
 #include <QSpinBox>
 #include <QVBoxLayout>
 
+#include <utility>
+
 namespace yagf::ui {
 
 LayoutDialog::LayoutDialog(core::OcrPage sourcePage, const QImage &image, QWidget *parent)
@@ -81,7 +83,7 @@ void LayoutDialog::fillList(int selected)
     const QSignalBlocker blocker(regionList);
     regionList->clear();
     for (const core::OcrRegion &region : page.regions) {
-        int words = 0;
+        qsizetype words = 0;
         for (const auto &paragraph : region.paragraphs)
             for (const auto &line : paragraph.lines) words += line.wordIds.size();
         regionList->addItem(tr("%1 · %2 (%3 words)")
@@ -126,7 +128,7 @@ void LayoutDialog::applyFields()
     if (type.isEmpty()) type = QStringLiteral("text");
     if (region.bounds == bounds && region.type == type) return;
     region.bounds = bounds;
-    region.type = type;
+    region.type = std::move(type);
     changed = true;
     regionList->item(index)->setText(tr("%1 · %2")
         .arg(region.id.section(QLatin1Char('/'), -1), region.type));

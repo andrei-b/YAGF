@@ -35,7 +35,6 @@
 #include <QKeyEvent>
 #include <QIcon>
 #include <QJsonDocument>
-#include <QMetaObject>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -65,13 +64,13 @@
 #include <QToolBar>
 #include <QToolButton>
 #include <QVBoxLayout>
-#include <QtConcurrent>
+#include <QtConcurrentRun>
 #include <QUuid>
 #include <QUrl>
 
-#include <utility>
-#include <cmath>
 #include <algorithm>
+#include <cmath>
+#include <utility>
 #include <limits>
 
 namespace yagf::ui {
@@ -162,7 +161,7 @@ void carryCorrections(OcrPage &fresh, const OcrPage *oldPage)
         return oldOrder.value(QStringLiteral("page-%1/region-%2")
             .arg(fresh.number).arg(group.first().block), std::numeric_limits<int>::max());
     };
-    std::stable_sort(groups.begin(), groups.end(), [&](const auto &a, const auto &b) {
+    std::ranges::stable_sort(groups, [&](const auto &a, const auto &b) {
         return orderOf(a) < orderOf(b);
     });
     fresh.words.clear();
@@ -791,7 +790,7 @@ MainWindow::MainWindow()
                 merged.regions.append(std::move(detected));
             }
             QVector<OcrWord> kept;
-            int insertion = -1;
+            qsizetype insertion = -1;
             for (const OcrWord &old : merged.words) {
                 if (overlapsWord(old, region)) {
                     if (insertion < 0) insertion = kept.size();
@@ -847,12 +846,15 @@ MainWindow::MainWindow()
         document.totalPages = pageCount;
         if (number == currentPage) showDocument();
     });
-    connect(&processor, &DocumentProcessor::batchProgress, this, [this](int completed, int total) {
+    connect(&processor, &DocumentProcessor::batchProgress, this, [this](qsizetype completed, qsizetype total) {
         status->setText(tr("Batch OCR: %1 of %2 pages complete").arg(completed).arg(total));
     });
     connect(&processor, &DocumentProcessor::batchFinished, this, [this] {
         status->setText(tr("Batch OCR complete"));
     });
+    connect(this, &MainWindow::exportProgress, this, [this](qsizetype completed, qsizetype total) {
+        if (exportBusy) status->setText(tr("Export: %1 of %2 pages").arg(completed).arg(total));
+    }, Qt::QueuedConnection);
     connect(&exportWatcher, &QFutureWatcher<processing::ExportResult>::finished, this, [this] {
         const auto result = exportWatcher.result();
         exportBusy = false;
@@ -994,7 +996,7 @@ void MainWindow::importMimeData(const QMimeData *mime)
         }
     }
     if (mime->hasImage()) {
-        const QImage image = qvariant_cast<QImage>(mime->imageData());
+        const auto image = qvariant_cast<QImage>(mime->imageData());
         if (image.isNull()) { showError(tr("The clipboard image could not be read.")); return; }
         const QString path = saveImportedImage(image);
         if (path.isEmpty()) return;
@@ -1010,7 +1012,7 @@ QString MainWindow::saveImportedImage(const QImage &image)
     const QString directory = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
         + QStringLiteral("/imports");
     if (!QDir().mkpath(directory)) { showError(tr("Could not create the image import folder.")); return {}; }
-    const QString path = directory + QLatin1Char('/') +
+    QString path = directory + QLatin1Char('/') +
         QUuid::createUuid().toString(QUuid::WithoutBraces) + QStringLiteral(".png");
     QSaveFile file(path);
     if (!file.open(QIODevice::WriteOnly) || !image.save(&file, "PNG") || !file.commit()) {
@@ -1185,7 +1187,7 @@ bool MainWindow::saveProjectAs()
         path += QStringLiteral(".yagf.json");
     QString error;
     if (!ProjectFile::save(path, document, &error)) { showError(error); return false; }
-    projectPath = path;
+    projectPath = std::move(path);
     externalDirty = false;
     undoStack.setClean();
     dirty = false;
@@ -1286,7 +1288,7 @@ void MainWindow::loadImage(const QString &path)
     rawImage = source;
     displayedPreprocessing = settings;
     rawImagePath = path;
-    imagePath = recognitionPath;
+    imagePath = std::move(recognitionPath);
     wordBoxes.clear();
     imageRegionBoxes.clear();
     displayedWords.clear();
@@ -1412,7 +1414,7 @@ void MainWindow::runNextImageRegion()
 {
     if (queuedImageRegions.isEmpty()) return;
     if (nextQueuedImageRegion >= queuedImageRegions.size()) {
-        const int count = queuedImageRegions.size();
+        const qsizetype count = queuedImageRegions.size();
         queuedImageRegions.clear();
         status->setText(tr("Recognized %1 image regions").arg(count));
         return;
@@ -1441,7 +1443,7 @@ void MainWindow::configureOcrEngine()
     const QStringList engineIds{QStringLiteral("tesseract"), QStringLiteral("paddleocr-remote"),
                                 QStringLiteral("doctr-remote"), QStringLiteral("rapidocr-remote"),
                                 QStringLiteral("surya-remote"), QStringLiteral("kraken-remote")};
-    const int currentEngine = engineIds.indexOf(processor.engineId());
+    const auto currentEngine = static_cast<int>(engineIds.indexOf(processor.engineId()));
     provider->setCurrentIndex(qMax(0, currentEngine));
     const QString paddleUrl = settings.value(QStringLiteral("ocr/paddleUrl"),
         settings.value(QStringLiteral("ocr/remoteUrl"),
@@ -1575,9 +1577,10 @@ void MainWindow::reviewNextSpecialist()
     if (processor.isBusy() || exportBusy || !maybeApplyEditor()) return;
     const auto *page = document.page(currentPage);
     if (!page || page->words.isEmpty()) return;
-    const int after = selectedWords.isEmpty() ? 0 : selectedWords.last() + 1;
-    for (int n = 0; n < page->words.size(); ++n) {
-        const int index = (after + n) % page->words.size();
+    const int count = wordList->count();
+    if (count == 0) return;
+    int index = selectedWords.isEmpty() ? 0 : (selectedWords.last() + 1) % count;
+    for (int n = 0; n < count; ++n, index = (index + 1) % count) {
         if (page->specialistSpan(index).isEmpty()) continue;
         selectWord(index);
         reviewSelectedWord();
@@ -1759,7 +1762,7 @@ void MainWindow::showDocument()
         return;
     }
     for (OcrWord &word : page->words) {
-        const int i = displayedWords.size();
+        const int i = wordList->count();
         displayedWords.append(&word);
         const bool uncertain = !word.reviewed && word.confidence >= 0 && word.confidence < 70;
         const QColor outline = uncertain ? QColor(185, 108, 10) : QColor(20, 90, 220);
@@ -1827,14 +1830,15 @@ void MainWindow::selectRegion(const QRectF &bounds)
     if (edited.width == 0) {
         edited.id = QStringLiteral("page-%1").arg(currentPage);
         edited.number = currentPage;
-        edited.width = scene->sceneRect().width();
-        edited.height = scene->sceneRect().height();
+        const QSize size = scene->sceneRect().size().toSize();
+        edited.width = size.width();
+        edited.height = size.height();
         edited.sourceWidth = rawImage.width();
         edited.sourceHeight = rawImage.height();
         edited.preprocessing = displayedPreprocessing;
     }
     edited.imageRegions.append({QUuid::createUuid().toString(QUuid::WithoutBraces), area});
-    selectedImageRegion = edited.imageRegions.size() - 1;
+    selectedImageRegion = static_cast<int>(edited.imageRegions.size()) - 1;
     undoStack.push(new ReplacePageCommand(document, currentPage, std::move(edited), tr("Add image region")));
     activateImageRegion(selectedImageRegion);
 }
@@ -1950,7 +1954,7 @@ void MainWindow::updateSelection(const QVector<int> &indices)
     const QSignalBlocker editorBlocker(selectionEditor);
     selectionEditor->clear();
     editorPending = false;
-    const bool multipleBlocks = indices.size() > 1 && std::any_of(indices.cbegin(), indices.cend(),
+    const bool multipleBlocks = indices.size() > 1 && std::ranges::any_of(indices,
         [this](int i) { return displayedWords.at(i)->layoutBlock; });
     selectionEditor->setReadOnly(multipleBlocks);
     applyButton->setEnabled(!processor.isBusy() && !exportBusy && !indices.isEmpty() && !multipleBlocks);
@@ -2080,7 +2084,7 @@ bool MainWindow::applyCorrection()
     while (matches.hasNext()) {
         const QRegularExpressionMatch match = matches.next();
         QTextCursor cursor(selectionEditor->document());
-        cursor.setPosition(match.capturedStart());
+        cursor.setPosition(static_cast<int>(match.capturedStart()));
         cursor.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor);
         const QTextCharFormat format = cursor.charFormat();
         tokens.append({.text = match.captured(),
@@ -2092,7 +2096,7 @@ bool MainWindow::applyCorrection()
     if (!page) return false;
     auto edited = core::WordEditor::apply(*page, selectedWords, tokens);
     if (!edited) { showError(edited.error()); return false; }
-    const int originalCount = selectedWords.size();
+    const qsizetype originalCount = selectedWords.size();
     QStringList selectedIds;
     for (int index : selectedWords) selectedIds.append(displayedWords.at(index)->id);
     editorPending = false;
@@ -2187,8 +2191,8 @@ void MainWindow::exportScientificBook()
 void MainWindow::exportVerifiedSamples()
 {
     if (processor.isBusy() || exportBusy || !maybeApplyEditor()) return;
-    const bool hasExamples = std::any_of(document.pages.cbegin(), document.pages.cend(), [](const auto &page) {
-        return std::any_of(page.words.cbegin(), page.words.cend(), core::isVerifiedCorrection);
+    const bool hasExamples = std::ranges::any_of(std::as_const(document.pages), [](const auto &page) {
+        return std::ranges::any_of(page.words, core::isVerifiedCorrection);
     });
     if (!hasExamples) { showError(tr("No verified single-word corrections to export.")); return; }
     chooseExportPath(tr("Export verified corrections"), tr("JSON Lines (*.jsonl)"), "jsonl", ExportFormat::Samples);
@@ -2219,10 +2223,8 @@ void MainWindow::startExport(const QString &path, ExportFormat format)
     const OcrDocument snapshot = document;
     const auto cancel = exportCancel;
     exportWatcher.setFuture(QtConcurrent::run([this, snapshot, path, format, cancel] {
-        const auto progress = [this](int completed, int total) {
-            QMetaObject::invokeMethod(this, [this, completed, total] {
-                if (exportBusy) status->setText(tr("Export: %1 of %2 pages").arg(completed).arg(total));
-            }, Qt::QueuedConnection);
+        const auto progress = [this](qsizetype completed, qsizetype total) {
+            emit exportProgress(completed, total);
         };
         if (format == ExportFormat::ScientificBook)
             return processing::ScientificBookExporter::write(snapshot, path, *cancel, progress);

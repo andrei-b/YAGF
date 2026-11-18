@@ -86,6 +86,8 @@ public:
     ~MainWindow() override;
     void loadSource(const QString &path);
     void loadProject(const QString &path);
+signals:
+    void exportProgress(qsizetype completed, qsizetype total);
 protected:
     void closeEvent(QCloseEvent *event) override;
     void dragEnterEvent(QDragEnterEvent *event) override;
@@ -136,7 +138,7 @@ private:
     void exportText();
     void exportHtml();
     void exportJson();
-    enum class ExportFormat { Pdf, ArchivalPdf, Samples, ScientificBook };
+    enum class ExportFormat : quint8 { Pdf, ArchivalPdf, Samples, ScientificBook };
     void exportPdf(bool archive);
     void exportVerifiedSamples();
     void exportScientificBook();

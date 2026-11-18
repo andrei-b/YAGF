@@ -51,13 +51,13 @@ signals:
     void thumbnailReady(int pageNumber, const QString &imagePath);
     void recognized(core::OcrPage page, const QPoint &offset, const QRect &region);
     void batchPageRecognized(core::OcrPage page, const QSize &sourceSize);
-    void batchProgress(int completed, int total);
+    void batchProgress(qsizetype completed, qsizetype total);
     void batchFinished();
     void cancelled();
     void failed(const QString &message);
     void specialistWarning(const QString &message);
 private:
-    enum class Job { None, PdfInfo, PdfRender, Ocr, BatchRender, BatchOcr };
+    enum class Job : quint8 { None, PdfInfo, PdfRender, Ocr, BatchRender, BatchOcr };
     void start(Job job, const QString &program, const QStringList &arguments);
     void startNextThumbnail();
     void startNextBatchPage();
@@ -92,7 +92,7 @@ private:
     int nextThumbnail = 0;
     int thumbnailCount = 0;
     QVector<BatchPageOptions> batchPages;
-    int batchIndex = 0;
+    qsizetype batchIndex = 0;
     QSize batchSourceSize;
 };
 

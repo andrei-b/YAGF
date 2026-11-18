@@ -42,12 +42,12 @@ int main(int argc, char **argv)
         });
         QObject::connect(socket, &QTcpSocket::readyRead, socket, [&, socket, received] {
             *received += socket->readAll();
-            const int end = received->indexOf("\r\n\r\n");
+            const qsizetype end = received->indexOf("\r\n\r\n");
             if (end < 0) return;
             const QByteArray headers = received->left(end);
-            const int start = headers.indexOf("Content-Length: ");
+            const qsizetype start = headers.indexOf("Content-Length: ");
             if (start < 0) return;
-            const int finish = headers.indexOf("\r\n", start);
+            const qsizetype finish = headers.indexOf("\r\n", start);
             const int length = headers.mid(start + 16,
                 finish < 0 ? -1 : finish - start - 16).toInt();
             if (received->size() < end + 4 + length) return;
@@ -97,7 +97,7 @@ int main(int argc, char **argv)
     endpoint->setText(QStringLiteral("http://127.0.0.1:%1/v1/chat/completions").arg(server.serverPort()));
     model->setText(QStringLiteral("vision-test"));
     dialog.show();
-    app.processEvents();
+    QApplication::processEvents();
     assert(requests == 0);
     for (int i = 0; i < 3; ++i) {
         auto *preview = dialog.findChild<QLabel *>(QStringLiteral("reviewPreview%1").arg(i));
@@ -107,7 +107,7 @@ int main(int argc, char **argv)
     QElapsedTimer timer;
     timer.start();
     while (suggestions->count() != 2 && timer.elapsed() < 3000) {
-        app.processEvents();
+        QApplication::processEvents();
         QThread::msleep(10);
     }
     assert(requests == 1 && suggestions->count() == 2);
@@ -127,7 +127,7 @@ int main(int argc, char **argv)
     passage.findChild<QPushButton *>("askAiButton")->click();
     timer.restart();
     while (choices->count() != 2 && timer.elapsed() < 3000) {
-        app.processEvents();
+        QApplication::processEvents();
         QThread::msleep(10);
     }
     assert(requests == 2 && choices->count() == 2 && passage.correction() == "E = rnc2");

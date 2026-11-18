@@ -53,7 +53,7 @@ int main(int argc, char **argv)
     QElapsedTimer timer;
     timer.start();
     while (combos.first()->count() == 0 && timer.elapsed() < 3000) {
-        app.processEvents();
+        QApplication::processEvents();
         QThread::msleep(10);
     }
     assert(combos.first()->count() == 1);
@@ -65,7 +65,7 @@ int main(int argc, char **argv)
     scanButton->click();
     timer.restart();
     while (dialog.result() != QDialog::Accepted && timer.elapsed() < 3000) {
-        app.processEvents();
+        QApplication::processEvents();
         QThread::msleep(10);
     }
     assert(dialog.result() == QDialog::Accepted);
@@ -77,7 +77,7 @@ int main(int argc, char **argv)
     const auto badCombos = badDialog.findChildren<QComboBox *>();
     timer.restart();
     while (badCombos.first()->count() == 0 && timer.elapsed() < 3000) {
-        app.processEvents();
+        QApplication::processEvents();
         QThread::msleep(10);
     }
     assert(badCombos.first()->count() == 1);
@@ -88,7 +88,7 @@ int main(int argc, char **argv)
     badScanButton->click();
     timer.restart();
     while (!badScanButton->isEnabled() && timer.elapsed() < 3000) {
-        app.processEvents();
+        QApplication::processEvents();
         QThread::msleep(10);
     }
     assert(badScanButton->isEnabled());

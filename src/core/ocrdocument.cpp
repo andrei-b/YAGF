@@ -115,7 +115,7 @@ bool parseWord(const QJsonObject &json, int pageNumber, int width, int height, O
     if (json.contains(QStringLiteral("source_word_ids"))) {
         const QJsonValue sources = json.value(QStringLiteral("source_word_ids"));
         if (!sources.isArray()) return false;
-        for (const QJsonValue &value : sources.toArray()) {
+        for (const auto &value : sources.toArray()) {
             if (!value.isString() || value.toString().isEmpty()) return false;
             word->sourceWordIds.append(value.toString());
         }
@@ -123,7 +123,7 @@ bool parseWord(const QJsonObject &json, int pageNumber, int width, int height, O
     if (json.contains(QStringLiteral("source_boxes"))) {
         const QJsonValue boxes = json.value(QStringLiteral("source_boxes"));
         if (!boxes.isArray() || boxes.toArray().size() > 4096) return false;
-        for (const QJsonValue &value : boxes.toArray()) {
+        for (const auto &value : boxes.toArray()) {
             QRect box;
             if (!value.isObject() || !parseBox(value.toObject(), width, height, &box) ||
                 !word->bounds.contains(box)) return false;
@@ -244,7 +244,7 @@ void OcrPage::rebuildHierarchy()
                 lineHeights.insert(line.id, line.bounds.height());
             }
     if (!heights.isEmpty()) {
-        std::sort(heights.begin(), heights.end());
+        std::ranges::sort(heights);
         const int median = qMax(1, heights.at(heights.size() / 2));
         for (OcrWord &word : words) {
             if (word.sourceFontSizePt <= 0)
@@ -327,7 +327,7 @@ void OcrDocument::replacePage(OcrPage replacement)
         if (item.number == replacement.number) { item = std::move(replacement); return; }
     }
     pages.append(std::move(replacement));
-    std::sort(pages.begin(), pages.end(), [](const OcrPage &a, const OcrPage &b) { return a.number < b.number; });
+    std::ranges::sort(pages, [](const OcrPage &a, const OcrPage &b) { return a.number < b.number; });
 }
 
 void OcrDocument::removePage(int number)
@@ -336,9 +336,9 @@ void OcrDocument::removePage(int number)
         if (pages.at(i).number == number) { pages.removeAt(i); return; }
 }
 
-int OcrDocument::wordCount() const
+qsizetype OcrDocument::wordCount() const
 {
-    int count = 0;
+    qsizetype count = 0;
     for (const OcrPage &page : pages) count += page.words.size();
     return count;
 }
@@ -464,7 +464,7 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
             return fail(QStringLiteral("Invalid page count or page list."));
         pageItems = json.value(QStringLiteral("pages")).toArray();
     }
-    for (const QJsonValue &value : pageItems) {
+    for (const auto &value : pageItems) {
         if (!value.isObject()) return fail(QStringLiteral("Invalid page entry."));
         const QJsonObject object = value.toObject();
         OcrPage page;
@@ -504,7 +504,7 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
             if (!areas.isArray() || areas.toArray().size() > 1000)
                 return fail(QStringLiteral("Invalid image regions."));
             QSet<QString> ids;
-            for (const QJsonValue &area : areas.toArray()) {
+            for (const auto &area : areas.toArray()) {
                 if (!area.isObject()) return fail(QStringLiteral("Invalid image region."));
                 const QJsonObject item = area.toObject();
                 ImageRegion region;
@@ -517,7 +517,7 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
                 page.imageRegions.append(std::move(region));
             }
         }
-        for (const QJsonValue &wordValue : object.value(QStringLiteral("words")).toArray()) {
+        for (const auto &wordValue : object.value(QStringLiteral("words")).toArray()) {
             if (!wordValue.isObject()) return fail(QStringLiteral("Invalid word entry."));
             OcrWord word;
             if (!parseWord(wordValue.toObject(), page.number, page.width, page.height, &word))
@@ -528,7 +528,7 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
             if (!object.value(QStringLiteral("regions")).isArray())
                 return fail(QStringLiteral("Invalid regions."));
             QSet<QString> regionIds;
-            for (const QJsonValue &regionValue : object.value(QStringLiteral("regions")).toArray()) {
+            for (const auto &regionValue : object.value(QStringLiteral("regions")).toArray()) {
                 if (!regionValue.isObject()) return fail(QStringLiteral("Invalid region entry."));
                 const QJsonObject item = regionValue.toObject();
                 OcrRegion region;
@@ -558,7 +558,7 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
             }
             QVector<OcrWord> ordered;
             QSet<QString> seen;
-            for (const QJsonValue &idValue : orderValue.toArray()) {
+            for (const auto &idValue : orderValue.toArray()) {
                 if (!idValue.isString()) return fail(QStringLiteral("Invalid reading order ID."));
                 const QString id = idValue.toString();
                 if (!byId.contains(id) || seen.contains(id)) return fail(QStringLiteral("Invalid reading order ID."));

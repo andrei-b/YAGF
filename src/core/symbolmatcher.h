@@ -11,7 +11,7 @@ namespace yagf::core {
 class SymbolMatcher {
 public:
     void insert(const QByteArray &mask);
-    QVector<QByteArray> similar(const QByteArray &mask) const;
+    [[nodiscard]] QVector<QByteArray> similar(const QByteArray &mask) const;
 
 private:
     using Rows = std::array<quint16, 16>;

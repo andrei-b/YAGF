@@ -30,12 +30,12 @@ int main(int argc, char **argv)
         });
         QObject::connect(socket, &QTcpSocket::readyRead, socket, [&, socket, requestBytes] {
             *requestBytes += socket->readAll();
-            const int headerEnd = requestBytes->indexOf("\r\n\r\n");
+            const qsizetype headerEnd = requestBytes->indexOf("\r\n\r\n");
             if (headerEnd < 0) return;
             const QByteArray headers = requestBytes->left(headerEnd);
-            const int lengthStart = headers.indexOf("Content-Length: ");
+            const qsizetype lengthStart = headers.indexOf("Content-Length: ");
             if (lengthStart < 0) return;
-            const int lengthEnd = headers.indexOf("\r\n", lengthStart);
+            const qsizetype lengthEnd = headers.indexOf("\r\n", lengthStart);
             const int length = headers.mid(lengthStart + 16,
                 lengthEnd < 0 ? -1 : lengthEnd - lengthStart - 16).toInt();
             if (requestBytes->size() < headerEnd + 4 + length) return;

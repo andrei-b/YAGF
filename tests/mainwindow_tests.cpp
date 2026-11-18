@@ -107,7 +107,7 @@ int main(int argc, char **argv)
     QElapsedTimer timer;
     timer.start();
     while (words->count() != 2 && timer.elapsed() < 3000) {
-        app.processEvents();
+        QApplication::processEvents();
         QThread::msleep(10);
     }
     assert(words->count() == 2);
@@ -117,7 +117,7 @@ int main(int argc, char **argv)
     auto *review = window.findChild<QPushButton *>(QStringLiteral("reviewWordButton"));
     assert(review);
     words->setCurrentRow(0);
-    app.processEvents();
+    QApplication::processEvents();
     assert(review->isEnabled());
     bool usedReview = false;
     QTimer::singleShot(0, &window, [&] {
@@ -201,7 +201,7 @@ int main(int argc, char **argv)
     savedOption->trigger();
     regionWindow.loadSource(sourcePath);
     regionWindow.show();
-    app.processEvents();
+    QApplication::processEvents();
     auto *pageView = regionWindow.findChild<yagf::ui::PageView *>(QStringLiteral("pagePreview"));
     auto *regions = regionWindow.findChild<QListWidget *>(QStringLiteral("imageRegions"));
     auto *regionWords = regionWindow.findChild<QListWidget *>(QStringLiteral("recognizedWords"));
@@ -212,7 +212,7 @@ int main(int argc, char **argv)
         QTest::mousePress(pageView->viewport(), Qt::LeftButton, {}, from);
         QTest::mouseMove(pageView->viewport(), to);
         QTest::mouseRelease(pageView->viewport(), Qt::LeftButton, {}, to);
-        app.processEvents();
+        QApplication::processEvents();
     };
     const auto regionBox = [&](int index) {
         for (QGraphicsItem *item : pageView->scene()->items())
@@ -257,7 +257,7 @@ int main(int argc, char **argv)
     recognizeRegions->click();
     timer.restart();
     while (regionWords->count() != 2 && timer.elapsed() < 5000) {
-        app.processEvents();
+        QApplication::processEvents();
         QThread::msleep(10);
     }
     assert(regionWords->count() == 2);

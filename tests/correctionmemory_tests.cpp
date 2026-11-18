@@ -12,10 +12,10 @@ static OcrPage makePage(int number, const QStringList &tokens)
 {
     OcrPage page;
     page.number = number;
-    page.width = page.sourceWidth = 20 * tokens.size();
+    page.width = page.sourceWidth = 20 * static_cast<int>(tokens.size());
     page.height = page.sourceHeight = 20;
     for (const auto &token : tokens) {
-        const QRect box(page.words.size() * 20, 0, 18, 15);
+        const QRect box(static_cast<int>(page.words.size()) * 20, 0, 18, 15);
         page.words.append({number, 1, 1, 1, box, token, token, 90});
     }
     page.rebuildHierarchy();

@@ -17,7 +17,7 @@
 
 using namespace yagf;
 
-static core::OcrPage page(int number, QString reading, double confidence, bool reviewed = false)
+static core::OcrPage page(int number, const QString &reading, double confidence, bool reviewed = false)
 {
     core::OcrPage result;
     result.number = number;

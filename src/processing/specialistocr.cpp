@@ -13,7 +13,7 @@ bool looksLikeFormula(const QString &line)
 }
 
 QStringList collectSpecialistReadings(core::OcrPage &page, const QImage &image,
-    const QVector<QRect> &formulaRegions, IOcrEngine *math, IOcrEngine *prose, std::stop_token stop)
+    const QVector<QRect> &formulaRegions, IOcrEngine *math, IOcrEngine *prose, const std::stop_token &stop)
 {
     QStringList errors;
     for (int begin = 0; begin < page.words.size() && (math || prose) && !stop.stop_requested();) {

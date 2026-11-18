@@ -6,8 +6,8 @@ namespace yagf::processing {
 
 class TesseractEngine final : public IOcrEngine {
 public:
-    QString id() const override { return QStringLiteral("tesseract"); }
-    EngineCapabilities capabilities() const override
+    [[nodiscard]] QString id() const override { return QStringLiteral("tesseract"); }
+    [[nodiscard]] EngineCapabilities capabilities() const override
     { return {.supportsRegions = true, .supportsWordBoxes = true,
               .supportsConfidence = true, .supportsLayout = true}; }
     std::expected<core::OcrPage, OcrError> recognize(
