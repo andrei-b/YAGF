@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "projectfile.h"
 
 #include <QAction>
 #include <QApplication>
@@ -45,14 +46,18 @@ int main(int argc, char **argv)
     assert(fixture.write(tsv) == tsv.size());
     fixture.close();
     const QString scriptPath = directory.filePath(QStringLiteral("tesseract"));
+    const QString argsPath = directory.filePath(QStringLiteral("tesseract-args.txt"));
     QFile script(scriptPath);
     assert(script.open(QIODevice::WriteOnly));
-    const QByteArray body = "#!/bin/sh\ncat \"$YAGF_TEST_TSV\"\n";
+    const QByteArray body = "#!/bin/sh\n"
+        "if [ \"$1\" = \"--list-langs\" ]; then printf 'List of available languages:\\neng\\ndeu\\n'; exit 0; fi\n"
+        "printf '%s\\n' \"$@\" > \"$YAGF_TEST_ARGS\"\ncat \"$YAGF_TEST_TSV\"\n";
     assert(script.write(body) == body.size());
     script.close();
     assert(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
     qputenv("PATH", QFile::encodeName(directory.path()) + ':' + qgetenv("PATH"));
     qputenv("YAGF_TEST_TSV", QFile::encodeName(fixturePath));
+    qputenv("YAGF_TEST_ARGS", QFile::encodeName(argsPath));
 
     yagf::ui::MainWindow window;
     window.loadSource(sourcePath);
@@ -65,6 +70,24 @@ int main(int argc, char **argv)
         if (button->text() == QStringLiteral("Apply correction")) apply = button;
     }
     assert(recognize && apply && recognize->isEnabled());
+    auto *language = window.findChild<QLineEdit *>(QStringLiteral("languageField"));
+    QAction *picker = nullptr;
+    for (QAction *action : window.findChildren<QAction *>())
+        if (action->text() == QStringLiteral("Choose OCR languages…")) picker = action;
+    assert(language && picker);
+    bool choseLanguages = false;
+    QTimer::singleShot(0, &window, [&] {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        assert(dialog);
+        auto *list = dialog->findChild<QListWidget *>(QStringLiteral("availableOcrLanguages"));
+        assert(list && list->count() == 2);
+        for (int i = 0; i < list->count(); ++i)
+            if (list->item(i)->text() == QStringLiteral("deu")) list->item(i)->setCheckState(Qt::Checked);
+        choseLanguages = true;
+        dialog->accept();
+    });
+    picker->trigger();
+    assert(choseLanguages && language->text() == QStringLiteral("eng+deu"));
     QAction *undo = nullptr, *redo = nullptr;
     for (QAction *action : window.findChildren<QAction *>()) {
         if (action->text() == QStringLiteral("Undo")) undo = action;
@@ -79,6 +102,28 @@ int main(int argc, char **argv)
         QThread::msleep(10);
     }
     assert(words->count() == 2);
+    QFile args(argsPath);
+    assert(args.open(QIODevice::ReadOnly));
+    assert(args.readAll().split('\n').contains("eng+deu"));
+    auto *review = window.findChild<QPushButton *>(QStringLiteral("reviewWordButton"));
+    assert(review);
+    words->setCurrentRow(0);
+    app.processEvents();
+    assert(review->isEnabled());
+    bool usedReview = false;
+    QTimer::singleShot(0, &window, [&] {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        assert(dialog);
+        auto *verified = dialog->findChild<QLineEdit *>(QStringLiteral("verifiedCorrection"));
+        assert(verified);
+        verified->setText(QStringLiteral("modern"));
+        usedReview = true;
+        dialog->accept();
+    });
+    review->click();
+    assert(usedReview && words->item(0)->text() == QStringLiteral("modern"));
+    undo->trigger();
+    assert(words->item(0)->text() == QStringLiteral("mod"));
     assert(editor->toPlainText() == QStringLiteral("mod ernization"));
 
     editor->setPlainText(QStringLiteral("modernization"));
@@ -124,7 +169,7 @@ int main(int argc, char **argv)
         auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
         assert(dialog);
         auto *choice = dialog->findChild<QComboBox *>();
-        assert(choice && choice->count() == 3);
+        assert(choice && choice->count() == 6);
         choice->setCurrentIndex(2);
         auto *address = dialog->findChild<QLineEdit *>();
         assert(address);
@@ -206,4 +251,56 @@ int main(int argc, char **argv)
                       pageView->mapFromScene(QPointF(30, 35)));
     auto *regionEditor = regionWindow.findChild<QTextEdit *>(QStringLiteral("recognizedTextEditor"));
     assert(regionEditor && regionEditor->toPlainText() == QStringLiteral("mod"));
+    // Opening and dismissing a book suggestion must leave the target untouched.
+    yagf::core::OcrDocument book;
+    book.sourcePath = sourcePath;
+    yagf::core::OcrPage page;
+    page.width = page.sourceWidth = image.width();
+    page.height = page.sourceHeight = image.height();
+    page.words.append({1, 1, 1, 1, QRect(5, 5, 40, 15), "QWldget", "QWidget", 75, true});
+    page.words.append({1, 1, 1, 1, QRect(60, 5, 40, 15), "QWldget", "QWldget", 99});
+    book.replacePage(page);
+    const QString bookPath = directory.filePath("book.yagf.json");
+    QString error;
+    assert(yagf::core::ProjectFile::save(bookPath, book, &error));
+    yagf::ui::MainWindow bookWindow;
+    bookWindow.loadProject(bookPath);
+    auto *bookWords = bookWindow.findChild<QListWidget *>("recognizedWords");
+    auto *reviewBook = bookWindow.findChild<QPushButton *>("reviewWordButton");
+    assert(bookWords && reviewBook && bookWords->count() == 2);
+    bookWords->setCurrentRow(1, QItemSelectionModel::ClearAndSelect);
+    assert(reviewBook->text().contains("QWidget"));
+    for (bool accept : {false, true}) {
+        QTimer::singleShot(0, &bookWindow, [accept] {
+            auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+            assert(dialog);
+            auto *choices = dialog->findChild<QComboBox *>("bookSuggestions");
+            auto *reading = dialog->findChild<QLineEdit *>("verifiedCorrection");
+            assert(choices && choices->count() == 1 && choices->currentIndex() == -1);
+            assert(reading && reading->text() == "QWldget");
+            choices->setCurrentIndex(0);
+            choices->activated(0);
+            assert(reading->text() == "QWidget");
+            if (accept) dialog->accept();
+            else dialog->reject();
+        });
+        reviewBook->click();
+        assert(bookWords->item(1)->text() == (accept ? "QWidget" : "QWldget"));
+    }
+    for (auto *action : bookWindow.findChildren<QAction *>())
+        if (action->text() == "Undo") action->trigger();
+    assert(bookWords->item(1)->text() == "QWldget");
+    bookWords->setCurrentRow(0, QItemSelectionModel::ClearAndSelect);
+    auto *bookEditor = bookWindow.findChild<QTextEdit *>("recognizedTextEditor");
+    auto *bookApply = bookWindow.findChild<QPushButton *>("applyButton");
+    assert(bookEditor && bookApply);
+    bookEditor->setPlainText("QPanel");
+    bookApply->click();
+    bookWords->setCurrentRow(1, QItemSelectionModel::ClearAndSelect);
+    assert(reviewBook->text().contains("QPanel"));
+    for (auto *action : bookWindow.findChildren<QAction *>())
+        if (action->text() == "Undo") action->trigger();
+    bookWords->setCurrentRow(1, QItemSelectionModel::ClearAndSelect);
+    assert(reviewBook->text().contains("QWidget"));
+
 }

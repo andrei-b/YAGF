@@ -1,6 +1,9 @@
 #pragma once
 
 #include "ocrdocument.h"
+#include "correctionmemory.h"
+
+#include <optional>
 #include "documentprocessor.h"
 #include "pdfexporter.h"
 
@@ -22,6 +25,7 @@ class QGraphicsPathItem;
 class QGraphicsScene;
 class QLabel;
 class QLineEdit;
+class QToolButton;
 class QListWidget;
 class QPushButton;
 class QCloseEvent;
@@ -106,6 +110,8 @@ private:
     void updatePageControls();
     void runOcr();
     void configureOcrEngine();
+    void chooseOcrLanguages();
+    void reviewSelectedWord();
     void showDocument();
     void selectWord(int index);
     void selectRegion(const QRectF &bounds);
@@ -126,7 +132,10 @@ private:
     void exportText();
     void exportHtml();
     void exportJson();
+    enum class ExportFormat { Pdf, ArchivalPdf, Samples };
     void exportPdf(bool archive);
+    void exportVerifiedSamples();
+    void startExport(const QString &path, ExportFormat format);
     void setBusy(bool busy);
     void showError(const QString &message);
 
@@ -139,8 +148,10 @@ private:
     QLabel *selectionLabel;
     QPushButton *applyButton;
     QPushButton *regionOcrButton;
+    QPushButton *reviewWordButton;
     QPushButton *deleteRegionButton = nullptr;
     QLineEdit *languageEdit;
+    QToolButton *languagePickerButton;
     QLabel *status;
     QPushButton *ocrButton;
     QPushButton *cancelButton;
@@ -154,6 +165,7 @@ private:
     QAction *pdfaAction = nullptr;
     QAction *undoAction = nullptr;
     QAction *redoAction = nullptr;
+    QAction *languagePickerAction = nullptr;
     QSpinBox *pageSpin;
     processing::DocumentProcessor processor;
     QVector<QGraphicsPathItem *> wordBoxes;
@@ -177,9 +189,11 @@ private:
     QUndoStack undoStack;
     bool editorPending = false;
     bool exportBusy = false;
-    QString pdfExportPath;
-    std::shared_ptr<std::atomic_bool> pdfCancel;
-    QFutureWatcher<processing::PdfExportResult> pdfWatcher;
+    QString exportPath;
+    QString aiReviewToken;
+    std::optional<core::CorrectionMemory> correctionMemory;
+    std::shared_ptr<std::atomic_bool> exportCancel;
+    QFutureWatcher<processing::ExportResult> exportWatcher;
     int currentPage = 1;
     int pageCount = 1;
 };

@@ -64,6 +64,32 @@ int main(int argc, char **argv)
                                 {"box", QJsonArray{10, 2, 8, 5}},
                                 {"block", 1}, {"line", 1}}});
             }
+            if (requests >= 7) {
+                sent.remove(QStringLiteral("words"));
+                sent.insert(QStringLiteral("language"), QStringLiteral("auto"));
+                if (requests == 7) {
+                    sent.insert(QStringLiteral("engine_id"), QStringLiteral("rapidocr"));
+                    sent.insert(QStringLiteral("lines"), QJsonArray{QJsonObject{
+                        {"text", "Rapid line"}, {"confidence", 0.9},
+                        {"box", QJsonArray{1, 2, 12, 5}}}});
+                } else if (requests == 8) {
+                    sent.insert(QStringLiteral("engine_id"), QStringLiteral("surya"));
+                    sent.insert(QStringLiteral("lines"), QJsonArray{
+                        QJsonObject{{"text", "Chapter"}, {"confidence", 0.95},
+                                    {"box", QJsonArray{1, 1, 8, 2}}, {"block", 1},
+                                    {"line", 1}, {"type", "sectionheader"}},
+                        QJsonObject{{"text", "A B"}, {"confidence", 0.8},
+                                    {"box", QJsonArray{1, 4, 18, 5}}, {"block", 2},
+                                    {"line", 1}, {"type", "table"}}});
+                } else {
+                    sent.insert(QStringLiteral("engine_id"), QStringLiteral("kraken"));
+                    sent.insert(QStringLiteral("words"), QJsonArray{
+                        QJsonObject{{"text", "old"}, {"confidence", 0.94},
+                                    {"box", QJsonArray{1, 2, 5, 5}}, {"block", 1}, {"line", 1}},
+                        QJsonObject{{"text", "book"}, {"confidence", 0.87},
+                                    {"box", QJsonArray{7, 2, 10, 5}}, {"block", 1}, {"line", 1}}});
+                }
+            }
             const QByteArray body = QJsonDocument(sent).toJson(QJsonDocument::Compact);
             socket->write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " +
                           QByteArray::number(body.size()) + "\r\nConnection: close\r\n\r\n" + body);
@@ -104,4 +130,26 @@ int main(int argc, char **argv)
     auto wrongEngine = doctr.recognize(image, {.language = QStringLiteral("auto")}, {});
     assert(!wrongEngine && wrongEngine.error().message.contains(QStringLiteral("schema")));
     assert(requests == 6);
+    const QUrl service(QStringLiteral("http://127.0.0.1:%1").arg(server.serverPort()));
+    RemoteOcrEngine rapid(service, QStringLiteral("secret"), RemoteOcrEngine::Provider::RapidOcr);
+    assert(rapid.id() == QStringLiteral("rapidocr-remote"));
+    assert(!rapid.capabilities().supportsWordBoxes);
+    auto rapidPage = rapid.recognize(image, {.language = QStringLiteral("auto")}, {});
+    assert(rapidPage && rapidPage->words.size() == 1 && rapidPage->words[0].text == QStringLiteral("Rapid line"));
+    RemoteOcrEngine surya(service, QStringLiteral("secret"), RemoteOcrEngine::Provider::Surya);
+    assert(surya.capabilities().supportsLayout);
+    auto suryaPage = surya.recognize(image, {.language = QStringLiteral("auto")}, {});
+    assert(suryaPage && suryaPage->regions.size() == 2);
+    assert(suryaPage->regions[0].type == QStringLiteral("sectionheader"));
+    assert(suryaPage->regions[1].type == QStringLiteral("table"));
+    yagf::core::OcrDocument document;
+    document.replacePage(*suryaPage);
+    assert(document.page(1)->regions[1].type == QStringLiteral("table"));
+    RemoteOcrEngine kraken(service, QStringLiteral("secret"), RemoteOcrEngine::Provider::Kraken);
+    assert(kraken.capabilities().supportsWordBoxes);
+    auto krakenPage = kraken.recognize(image, {.language = QStringLiteral("auto")}, {});
+    assert(krakenPage && krakenPage->words.size() == 2);
+    assert(krakenPage->words[0].bounds == QRect(1, 2, 5, 5));
+    assert(krakenPage->words[0].line == krakenPage->words[1].line);
+    assert(requests == 9);
 }

@@ -1,6 +1,14 @@
 #include "pdfexporter.h"
 
 #include "imageprocessor.h"
+#include "correctionmemory.h"
+
+#include <QBuffer>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QSaveFile>
+#include <expected>
+#include <optional>
 
 #include <QElapsedTimer>
 #include <QFile>
@@ -58,6 +66,38 @@ PdfExportResult runProcess(const QString &program, const QStringList &arguments,
     return {.status = PdfExportResult::Status::Success};
 }
 
+std::expected<QImage, ExportResult> readExportPage(const core::OcrDocument &document, int number,
+                                                   const QTemporaryDir &temporary,
+                                                   const std::atomic_bool &cancelled)
+{
+    const bool sourceIsPdf = document.sourcePath.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive);
+    QString imagePath = document.sourcePath;
+    if (sourceIsPdf) {
+        const QString prefix = temporary.filePath(QStringLiteral("page"));
+        const auto rendered = runProcess(QStringLiteral("pdftoppm"),
+            {QStringLiteral("-f"), QString::number(number),
+             QStringLiteral("-l"), QString::number(number),
+             QStringLiteral("-singlefile"), QStringLiteral("-r"), QStringLiteral("150"),
+             QStringLiteral("-png"), document.sourcePath, prefix}, cancelled);
+        if (rendered.status != PdfExportResult::Status::Success) return std::unexpected(rendered);
+        imagePath = prefix + QStringLiteral(".png");
+    }
+    QImageReader reader(imagePath);
+    reader.setAutoTransform(true);
+    const QImage source = reader.read();
+    if (source.isNull())
+        return std::unexpected(failure(QStringLiteral("Could not read page %1: %2").arg(number).arg(reader.errorString())));
+    const core::OcrPage *page = document.page(number);
+    if (page && (source.width() != page->sourceWidth || source.height() != page->sourceHeight))
+        return std::unexpected(failure(QStringLiteral("Source dimensions changed on page %1.").arg(number)));
+    auto processed = ImageProcessor::apply(source,
+        page ? page->preprocessing : core::PreprocessSettings{});
+    if (!processed) return std::unexpected(failure(processed.error()));
+    if (page && (processed->width() != page->width || processed->height() != page->height))
+        return std::unexpected(failure(QStringLiteral("Processed dimensions changed on page %1.").arg(number)));
+    return std::move(*processed);
+}
+
 void drawWord(QPainter &painter, const core::OcrWord &word)
 {
     if (word.text.isEmpty() || word.bounds.isEmpty()) return;
@@ -97,7 +137,6 @@ PdfExportResult PdfExporter::write(const core::OcrDocument &document,
     if (!temporary.isValid()) return failure(QStringLiteral("Could not create temporary export files."));
     const QString rawPdf = temporary.filePath(QStringLiteral("searchable.pdf"));
     const QString archivePdf = temporary.filePath(QStringLiteral("archive.pdf"));
-    const bool sourceIsPdf = document.sourcePath.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive);
     {
         QPdfWriter writer(rawPdf);
         writer.setResolution(150);
@@ -107,30 +146,9 @@ PdfExportResult PdfExporter::write(const core::OcrDocument &document,
         QPainter painter;
         for (int number = 1; number <= document.totalPages; ++number) {
             if (cancelled.load()) return {.status = PdfExportResult::Status::Cancelled};
-            QString imagePath = document.sourcePath;
-            if (sourceIsPdf) {
-                const QString prefix = temporary.filePath(QStringLiteral("page-%1").arg(number));
-                const auto rendered = runProcess(QStringLiteral("pdftoppm"),
-                    {QStringLiteral("-f"), QString::number(number),
-                     QStringLiteral("-l"), QString::number(number),
-                     QStringLiteral("-singlefile"), QStringLiteral("-r"), QStringLiteral("150"),
-                     QStringLiteral("-png"), document.sourcePath, prefix}, cancelled);
-                if (rendered.status != PdfExportResult::Status::Success) return rendered;
-                imagePath = prefix + QStringLiteral(".png");
-            }
-            QImageReader reader(imagePath);
-            reader.setAutoTransform(true);
-            const QImage source = reader.read();
-            if (source.isNull())
-                return failure(QStringLiteral("Could not read page %1: %2").arg(number).arg(reader.errorString()));
-            const core::OcrPage *page = document.page(number);
-            if (page && (source.width() != page->sourceWidth || source.height() != page->sourceHeight))
-                return failure(QStringLiteral("Source dimensions changed on page %1.").arg(number));
-            const auto processed = ImageProcessor::apply(source,
-                page ? page->preprocessing : core::PreprocessSettings{});
-            if (!processed) return failure(processed.error());
-            if (page && (processed->width() != page->width || processed->height() != page->height))
-                return failure(QStringLiteral("Processed dimensions changed on page %1.").arg(number));
+            const auto processed = readExportPage(document, number, temporary, cancelled);
+            if (!processed) return processed.error();
+            const auto *page = document.page(number);
             if (number == 1) {
                 writer.setPageSize(pageSizeFor(*processed));
                 if (!painter.begin(&writer)) return failure(QStringLiteral("Could not start PDF output."));
@@ -180,6 +198,51 @@ PdfExportResult PdfExporter::write(const core::OcrDocument &document,
         return failure(QStringLiteral("Could not complete PDF export: %1").arg(error));
     }
     return {.status = PdfExportResult::Status::Success};
+}
+
+ExportResult VerifiedSampleExporter::write(const core::OcrDocument &document, const QString &destination,
+                                       const std::atomic_bool &cancelled, const PdfExporter::Progress &progress)
+{
+    QTemporaryDir temporary;
+    if (!temporary.isValid()) return failure(QStringLiteral("Could not create temporary export files."));
+    QSaveFile output(destination);
+    if (!output.open(QIODevice::WriteOnly)) return failure(output.errorString());
+    int count = 0;
+    int completed = 0;
+    for (const auto &page : document.pages) {
+        std::optional<QImage> image;
+        for (const auto &word : page.words) {
+            if (cancelled.load()) return {.status = ExportResult::Status::Cancelled};
+            if (!core::isVerifiedCorrection(word)) continue;
+            if (!image) {
+                auto loaded = readExportPage(document, page.number, temporary, cancelled);
+                if (!loaded) return loaded.error();
+                image = std::move(*loaded);
+            }
+            if (!image->rect().contains(word.bounds))
+                return failure(QStringLiteral("Word outside the image on page %1.").arg(page.number));
+            QByteArray png;
+            QBuffer buffer(&png);
+            if (!buffer.open(QIODevice::WriteOnly) || !image->copy(word.bounds).save(&buffer, "PNG"))
+                return failure(QStringLiteral("Could not encode a word on page %1.").arg(page.number));
+            const QJsonObject sample{
+                {"page", page.number}, {"word_id", word.id}, {"source_word_id", word.sourceWordIds.first()},
+                {"engine", page.engineId}, {"language", page.language}, {"confidence", word.confidence},
+                {"box", QJsonArray{word.bounds.x(), word.bounds.y(), word.bounds.width(), word.bounds.height()}},
+                {"original_text", word.originalText}, {"text", word.text},
+                {"png_base64", QString::fromLatin1(png.toBase64())}
+            };
+            const QByteArray row = QJsonDocument(sample).toJson(QJsonDocument::Compact) + '\n';
+            if (output.write(row) != row.size()) return failure(output.errorString());
+            ++count;
+        }
+        ++completed;
+        if (progress) progress(completed, document.pages.size());
+    }
+    if (cancelled.load()) return {.status = ExportResult::Status::Cancelled};
+    if (!count) return failure(QStringLiteral("No verified single-word corrections to export."));
+    if (!output.commit()) return failure(output.errorString());
+    return {.status = ExportResult::Status::Success};
 }
 
 } // namespace yagf::processing

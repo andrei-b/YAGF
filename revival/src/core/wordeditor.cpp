@@ -13,13 +13,13 @@ QString newId()
     return QStringLiteral("edited-word-%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
 }
 
-void setText(OcrWord &word, const EditedWord &edit)
+void setText(OcrWord &word, const EditedWord &edit, bool reviewed = true)
 {
     word.text = edit.text;
     word.bold = edit.bold;
     word.italic = edit.italic;
     if (edit.fontSizePt > 0) word.fontSizePt = edit.fontSizePt;
-    word.reviewed = true;
+    word.reviewed = reviewed;
 }
 
 QVector<OcrWord> changedSpan(const OcrPage &page, const QVector<OcrWord> &old,
@@ -224,7 +224,9 @@ std::expected<OcrPage, QString> WordEditor::apply(const OcrPage &page,
                               replacement, previousNew + 1, nextNew, selection.first());
         if (nextOld < n) {
             OcrWord anchor = old.at(nextOld);
-            setText(anchor, replacement.at(nextNew));
+            // Editing one word in a passage does not verify its unchanged neighbors.
+            const bool verifiedSelection = prefix == n && n == m;
+            setText(anchor, replacement.at(nextNew), anchor.reviewed || verifiedSelection);
             edited.append(std::move(anchor));
         }
     }

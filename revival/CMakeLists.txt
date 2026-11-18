@@ -11,6 +11,7 @@ set(CMAKE_AUTORCC ON)
 
 add_library(yagf_core STATIC
     src/core/ocrdocument.cpp src/core/ocrdocument.h src/core/preprocesssettings.h
+    src/core/correctionmemory.cpp src/core/correctionmemory.h
     src/core/projectfile.cpp src/core/projectfile.h
     src/core/wordeditor.cpp src/core/wordeditor.h)
 target_link_libraries(yagf_core PUBLIC Qt6::Core Qt6::Gui)
@@ -32,6 +33,7 @@ qt_add_executable(yagf-revival
     src/ui/layoutdialog.cpp src/ui/layoutdialog.h resources/icons.qrc)
 target_sources(yagf-revival PRIVATE src/ui/scannerdialog.cpp src/ui/scannerdialog.h)
 target_sources(yagf-revival PRIVATE src/ui/documentcommands.cpp src/ui/documentcommands.h)
+target_sources(yagf-revival PRIVATE src/ui/aireviewdialog.cpp src/ui/aireviewdialog.h)
 target_link_libraries(yagf-revival PRIVATE yagf_core yagf_processing Qt6::Widgets Qt6::Concurrent)
 
 install(TARGETS yagf-revival RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
@@ -48,6 +50,9 @@ install(FILES ../COPYING
 include(CTest)
 if(BUILD_TESTING)
     find_package(Qt6 6.2 REQUIRED COMPONENTS Test)
+    qt_add_executable(correctionmemory_tests tests/correctionmemory_tests.cpp)
+    target_link_libraries(correctionmemory_tests PRIVATE yagf_core)
+    add_test(NAME correctionmemory_tests COMMAND correctionmemory_tests)
     qt_add_executable(ocrdocument_tests tests/ocrdocument_tests.cpp)
     target_link_libraries(ocrdocument_tests PRIVATE yagf_core)
     add_test(NAME ocrdocument_tests COMMAND ocrdocument_tests)
@@ -62,10 +67,17 @@ if(BUILD_TESTING)
         src/ui/layoutdialog.cpp src/ui/layoutdialog.h
         src/ui/scannerdialog.cpp src/ui/scannerdialog.h
         src/ui/documentcommands.cpp src/ui/documentcommands.h resources/icons.qrc)
+    target_sources(mainwindow_tests PRIVATE src/ui/aireviewdialog.cpp src/ui/aireviewdialog.h)
     target_link_libraries(mainwindow_tests PRIVATE yagf_processing Qt6::Widgets Qt6::Concurrent Qt6::Test)
     target_include_directories(mainwindow_tests PRIVATE src/ui)
     add_test(NAME mainwindow_tests COMMAND mainwindow_tests)
     set_tests_properties(mainwindow_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    qt_add_executable(aireviewdialog_tests tests/aireviewdialog_tests.cpp
+        src/ui/aireviewdialog.cpp src/ui/aireviewdialog.h)
+    target_link_libraries(aireviewdialog_tests PRIVATE yagf_processing Qt6::Widgets Qt6::Network Qt6::Test)
+    target_include_directories(aireviewdialog_tests PRIVATE src/ui)
+    add_test(NAME aireviewdialog_tests COMMAND aireviewdialog_tests)
+    set_tests_properties(aireviewdialog_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     qt_add_executable(projectfile_tests tests/projectfile_tests.cpp)
     target_link_libraries(projectfile_tests PRIVATE yagf_core)
     add_test(NAME projectfile_tests COMMAND projectfile_tests)

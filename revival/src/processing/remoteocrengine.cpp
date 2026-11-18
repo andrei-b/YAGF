@@ -19,6 +19,18 @@ constexpr auto protocol = "yagf-ocr/1";
 constexpr qsizetype maxPngBytes = 32 * 1024 * 1024;
 constexpr qsizetype maxResponseBytes = 8 * 1024 * 1024;
 
+QString providerName(RemoteOcrEngine::Provider provider)
+{
+    switch (provider) {
+    case RemoteOcrEngine::Provider::PaddleOcr: return QStringLiteral("paddleocr");
+    case RemoteOcrEngine::Provider::DocTr: return QStringLiteral("doctr");
+    case RemoteOcrEngine::Provider::RapidOcr: return QStringLiteral("rapidocr");
+    case RemoteOcrEngine::Provider::Surya: return QStringLiteral("surya");
+    case RemoteOcrEngine::Provider::Kraken: return QStringLiteral("kraken");
+    }
+    return {};
+}
+
 std::expected<core::OcrPage, OcrError> parseResponse(
     const QByteArray &bytes, const QSize &imageSize, const OcrOptions &options,
     RemoteOcrEngine::Provider provider)
@@ -30,11 +42,12 @@ std::expected<core::OcrPage, OcrError> parseResponse(
     if (parseError.error != QJsonParseError::NoError || !json.isObject())
         return std::unexpected(OcrError{QStringLiteral("The OCR server returned invalid JSON.")});
     const QJsonObject root = json.object();
-    const bool doctr = provider == RemoteOcrEngine::Provider::DocTr;
-    const QString itemKey = doctr ? QStringLiteral("words") : QStringLiteral("lines");
+    const bool orderedWords = provider == RemoteOcrEngine::Provider::DocTr ||
+                              provider == RemoteOcrEngine::Provider::Kraken;
+    const bool structured = orderedWords || provider == RemoteOcrEngine::Provider::Surya;
+    const QString itemKey = orderedWords ? QStringLiteral("words") : QStringLiteral("lines");
     if (root.value(QStringLiteral("protocol")).toString() != QLatin1String(protocol) ||
-        root.value(QStringLiteral("engine_id")).toString() !=
-            (doctr ? QStringLiteral("doctr") : QStringLiteral("paddleocr")) ||
+        root.value(QStringLiteral("engine_id")).toString() != providerName(provider) ||
         root.value(QStringLiteral("width")).toInt(-1) != imageSize.width() ||
         root.value(QStringLiteral("height")).toInt(-1) != imageSize.height() ||
         !root.value(itemKey).isArray())
@@ -47,7 +60,7 @@ std::expected<core::OcrPage, OcrError> parseResponse(
     page.number = options.pageNumber;
     page.width = page.sourceWidth = imageSize.width();
     page.height = page.sourceHeight = imageSize.height();
-    page.engineId = doctr ? QStringLiteral("doctr-remote") : QStringLiteral("paddleocr-remote");
+    page.engineId = providerName(provider) + QStringLiteral("-remote");
     page.language = root.value(QStringLiteral("language")).toString(options.language);
     int previousBlock = 0;
     int previousLine = 0;
@@ -74,12 +87,12 @@ std::expected<core::OcrPage, OcrError> parseResponse(
             return std::unexpected(OcrError{QStringLiteral("The OCR server returned out-of-bounds text geometry.")});
         core::OcrWord word;
         word.page = options.pageNumber;
-        word.block = doctr ? line.value(QStringLiteral("block")).toInt(-1) : 1;
+        word.block = structured ? line.value(QStringLiteral("block")).toInt(-1) : 1;
         word.paragraph = 1;
-        word.line = doctr ? line.value(QStringLiteral("line")).toInt(-1) : page.words.size() + 1;
+        word.line = structured ? line.value(QStringLiteral("line")).toInt(-1) : page.words.size() + 1;
         if (word.block < 1 || word.line < 1 ||
-            (doctr && (word.block < previousBlock ||
-                       (word.block == previousBlock && word.line < previousLine))))
+            (structured && (word.block < previousBlock ||
+                            (word.block == previousBlock && word.line < previousLine))))
             return std::unexpected(OcrError{QStringLiteral("The OCR server returned invalid reading order.")});
         previousBlock = word.block;
         previousLine = word.line;
@@ -89,6 +102,16 @@ std::expected<core::OcrPage, OcrError> parseResponse(
         page.words.append(std::move(word));
     }
     page.rebuildHierarchy();
+    if (provider == RemoteOcrEngine::Provider::Surya) {
+        if (page.regions.size() != items.size())
+            return std::unexpected(OcrError{QStringLiteral("Surya returned inconsistent layout blocks.")});
+        for (int i = 0; i < items.size(); ++i) {
+            const QString type = items.at(i).toObject().value(QStringLiteral("type")).toString();
+            if (type.isEmpty())
+                return std::unexpected(OcrError{QStringLiteral("Surya returned an invalid region type.")});
+            page.regions[i].type = type;
+        }
+    }
     return page;
 }
 }
@@ -98,15 +121,23 @@ RemoteOcrEngine::RemoteOcrEngine(QUrl server, QString bearerToken, Provider prov
 
 QString RemoteOcrEngine::id() const
 {
-    return provider == Provider::DocTr ? QStringLiteral("doctr-remote") : QStringLiteral("paddleocr-remote");
+    return providerName(provider) + QStringLiteral("-remote");
 }
 
 EngineCapabilities RemoteOcrEngine::capabilities() const
 {
-    return provider == Provider::DocTr
-        ? EngineCapabilities{.supportsRegions = true, .supportsWordBoxes = true,
-                             .supportsConfidence = true, .supportsLayout = true}
-        : EngineCapabilities{.supportsRegions = true, .supportsConfidence = true};
+    switch (provider) {
+    case Provider::DocTr:
+    case Provider::Kraken:
+        return {.supportsRegions = true, .supportsWordBoxes = true,
+                .supportsConfidence = true, .supportsLayout = true};
+    case Provider::Surya:
+        return {.supportsRegions = true, .supportsConfidence = true, .supportsLayout = true};
+    case Provider::PaddleOcr:
+    case Provider::RapidOcr:
+        return {.supportsRegions = true, .supportsConfidence = true};
+    }
+    return {};
 }
 
 std::expected<core::OcrPage, OcrError> RemoteOcrEngine::recognize(

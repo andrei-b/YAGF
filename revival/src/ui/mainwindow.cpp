@@ -8,6 +8,7 @@
 #include "wordeditor.h"
 #include "remoteocrengine.h"
 #include "tesseractengine.h"
+#include "aireviewdialog.h"
 
 #include <QCloseEvent>
 #include <QApplication>
@@ -37,6 +38,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QListWidgetItem>
 #include <QMessageBox>
 #include <QMouseEvent>
 #include <QMenuBar>
@@ -50,6 +52,7 @@
 #include <QResizeEvent>
 #include <QWheelEvent>
 #include <QPushButton>
+#include <QProcess>
 #include <QSignalBlocker>
 #include <QSaveFile>
 #include <QSettings>
@@ -434,6 +437,8 @@ MainWindow::MainWindow()
                                              &MainWindow::createRegionFromSelection);
     batchAction = toolsMenu->addAction(tr("Recognize all pages"), this, &MainWindow::runBatchOcr);
     toolsMenu->addAction(tr("OCR engine…"), this, &MainWindow::configureOcrEngine);
+    languagePickerAction = toolsMenu->addAction(tr("Choose OCR languages…"), this,
+                                                &MainWindow::chooseOcrLanguages);
     layoutAction->setEnabled(false);
     createRegionAction->setEnabled(false);
     batchAction->setEnabled(false);
@@ -447,24 +452,32 @@ MainWindow::MainWindow()
     toolbar->addWidget(cancelButton);
     connect(cancelButton, &QPushButton::clicked, &processor, &DocumentProcessor::cancel);
     connect(cancelButton, &QPushButton::clicked, this, [this] {
-        if (exportBusy && pdfCancel) {
-            pdfCancel->store(true);
+        if (exportBusy && exportCancel) {
+            exportCancel->store(true);
             cancelButton->setEnabled(false);
-            status->setText(tr("Cancelling PDF export…"));
+            status->setText(tr("Cancelling export…"));
         }
     });
     toolbar->addSeparator();
-    auto *languageLabel = new QLabel(tr("Language"), this);
+    auto *languageLabel = new QLabel(tr("OCR"), this);
     languageLabel->setObjectName(QStringLiteral("toolbarCaption"));
     toolbar->addWidget(languageLabel);
     languageEdit = new QLineEdit(QStringLiteral("eng"), this);
-    languageEdit->setToolTip(tr("Language code for the selected OCR engine"));
+    languageEdit->setToolTip(tr("Tesseract languages, for example eng+deu. The first language is primary."));
     languageEdit->setObjectName(QStringLiteral("languageField"));
-    languageEdit->setMaximumWidth(82);
+    languageEdit->setMinimumWidth(115);
+    languageEdit->setMaximumWidth(135);
     toolbar->addWidget(languageEdit);
+    languagePickerButton = new QToolButton(this);
+    languagePickerButton->setObjectName(QStringLiteral("languagePickerButton"));
+    languagePickerButton->setText(QStringLiteral("…"));
+    languagePickerButton->setToolTip(tr("Choose installed Tesseract languages"));
+    toolbar->addWidget(languagePickerButton);
+    connect(languagePickerButton, &QToolButton::clicked, this, &MainWindow::chooseOcrLanguages);
     fileMenu->addSeparator();
     fileMenu->addAction(tr("Export text"), this, &MainWindow::exportText);
     fileMenu->addAction(tr("Export layout HTML"), this, &MainWindow::exportHtml);
+    fileMenu->addAction(tr("Export verified corrections…"), this, &MainWindow::exportVerifiedSamples);
     fileMenu->addAction(tr("Export JSON"), this, &MainWindow::exportJson);
     fileMenu->addSeparator();
     pdfAction = fileMenu->addAction(tr("Export searchable PDF…"), this, [this] { exportPdf(false); });
@@ -546,6 +559,11 @@ MainWindow::MainWindow()
     editButtons->addWidget(applyButton);
     editButtons->addWidget(regionOcrButton);
     textLayout->addLayout(editButtons);
+    reviewWordButton = new QPushButton(tr("Review word…"), textPanel);
+    reviewWordButton->setObjectName(QStringLiteral("reviewWordButton"));
+    reviewWordButton->setEnabled(false);
+    reviewWordButton->setToolTip(tr("Inspect an enlarged source crop and request contextual reading suggestions"));
+    textLayout->addWidget(reviewWordButton);
     auto *wordsHeading = new QLabel(tr("WORDS ON THIS PAGE"), textPanel);
     wordsHeading->setObjectName(QStringLiteral("sectionHeading"));
     textLayout->addWidget(wordsHeading);
@@ -599,6 +617,7 @@ MainWindow::MainWindow()
     });
     connect(applyButton, &QPushButton::clicked, this, &MainWindow::applyCorrection);
     connect(regionOcrButton, &QPushButton::clicked, this, &MainWindow::runRegionOcr);
+    connect(reviewWordButton, &QPushButton::clicked, this, &MainWindow::reviewSelectedWord);
     connect(selectionEditor, &QTextEdit::textChanged, this, [this] { editorPending = true; });
     connect(view, &PageView::wordClicked, this, &MainWindow::selectWord);
     connect(wordList, &QListWidget::itemSelectionChanged, this, [this] {
@@ -774,18 +793,19 @@ MainWindow::MainWindow()
     connect(&processor, &DocumentProcessor::batchFinished, this, [this] {
         status->setText(tr("Batch OCR complete: %1 pages").arg(pageCount));
     });
-    connect(&pdfWatcher, &QFutureWatcher<processing::PdfExportResult>::finished, this, [this] {
-        const auto result = pdfWatcher.result();
+    connect(&exportWatcher, &QFutureWatcher<processing::ExportResult>::finished, this, [this] {
+        const auto result = exportWatcher.result();
         exportBusy = false;
-        pdfCancel.reset();
+        exportCancel.reset();
         setBusy(processor.isBusy());
-        if (result.status == processing::PdfExportResult::Status::Success)
-            status->setText(tr("PDF exported: %1").arg(pdfExportPath));
-        else if (result.status == processing::PdfExportResult::Status::Cancelled)
-            status->setText(tr("PDF export cancelled"));
+        if (result.status == processing::ExportResult::Status::Success)
+            status->setText(tr("Exported: %1").arg(exportPath));
+        else if (result.status == processing::ExportResult::Status::Cancelled)
+            status->setText(tr("Export cancelled"));
         else showError(result.error);
     });
     connect(&undoStack, &QUndoStack::indexChanged, this, [this] {
+        correctionMemory.reset();
         const OcrPage *page = document.page(currentPage);
         if (page && !rawImagePath.isEmpty() && page->preprocessing != displayedPreprocessing)
             loadImage(rawImagePath);
@@ -798,9 +818,9 @@ MainWindow::MainWindow()
 
 MainWindow::~MainWindow()
 {
-    if (exportBusy && pdfCancel) {
-        pdfCancel->store(true);
-        pdfWatcher.waitForFinished();
+    if (exportBusy && exportCancel) {
+        exportCancel->store(true);
+        exportWatcher.waitForFinished();
     }
 }
 
@@ -815,6 +835,7 @@ void MainWindow::setBusy(bool busy)
     selectionEditor->setEnabled(!blocked);
     applyButton->setEnabled(!blocked && !selectedWords.isEmpty());
     regionOcrButton->setEnabled(!blocked && !imagePath.isEmpty() && !selectedRegion.isEmpty());
+    reviewWordButton->setEnabled(!blocked && !imagePath.isEmpty() && selectedWords.size() == 1);
     regionList->setEnabled(!blocked);
     deleteRegionButton->setEnabled(!blocked && selectedImageRegion >= 0);
     improveAction->setEnabled(!blocked && !rawImage.isNull());
@@ -952,6 +973,7 @@ void MainWindow::loadSource(const QString &path)
     originalPath = QFileInfo(path).absoluteFilePath();
     projectPath.clear();
     document = {};
+    correctionMemory.reset();
     document.sourcePath = originalPath;
     undoStack.clear();
     externalDirty = false;
@@ -1025,6 +1047,7 @@ void MainWindow::loadProject(const QString &path)
     originalPath = loaded.sourcePath;
     projectPath = path;
     document = std::move(loaded);
+    correctionMemory.reset();
     externalDirty = false;
     if (document.engine == processor.engineId() && !document.language.isEmpty())
         languageEdit->setText(document.language);
@@ -1349,14 +1372,26 @@ void MainWindow::configureOcrEngine()
     provider->addItem(tr("Tesseract (on this computer)"));
     provider->addItem(tr("PaddleOCR (remote service)"));
     provider->addItem(tr("docTR (remote service)"));
-    provider->setCurrentIndex(processor.engineId() == QStringLiteral("paddleocr-remote") ? 1 :
-                              processor.engineId() == QStringLiteral("doctr-remote") ? 2 : 0);
+    provider->addItem(tr("RapidOCR (remote service)"));
+    provider->addItem(tr("Surya (remote service)"));
+    provider->addItem(tr("Kraken (remote service)"));
+    const QStringList engineIds{QStringLiteral("tesseract"), QStringLiteral("paddleocr-remote"),
+                                QStringLiteral("doctr-remote"), QStringLiteral("rapidocr-remote"),
+                                QStringLiteral("surya-remote"), QStringLiteral("kraken-remote")};
+    const int currentEngine = engineIds.indexOf(processor.engineId());
+    provider->setCurrentIndex(qMax(0, currentEngine));
     const QString paddleUrl = settings.value(QStringLiteral("ocr/paddleUrl"),
         settings.value(QStringLiteral("ocr/remoteUrl"),
             QStringLiteral("http://127.0.0.1:8765"))).toString();
     const QString doctrUrl = settings.value(QStringLiteral("ocr/doctrUrl"),
         QStringLiteral("http://127.0.0.1:8766")).toString();
-    auto *address = new QLineEdit(provider->currentIndex() == 2 ? doctrUrl : paddleUrl, &dialog);
+    const QStringList urls{QString(), paddleUrl, doctrUrl,
+        settings.value(QStringLiteral("ocr/rapidocrUrl"), QStringLiteral("http://127.0.0.1:8767")).toString(),
+        settings.value(QStringLiteral("ocr/suryaUrl"), QStringLiteral("http://127.0.0.1:8768")).toString(),
+        settings.value(QStringLiteral("ocr/krakenUrl"), QStringLiteral("http://127.0.0.1:8769")).toString()};
+    const QStringList settingKeys{QString(), QStringLiteral("ocr/paddleUrl"), QStringLiteral("ocr/doctrUrl"),
+        QStringLiteral("ocr/rapidocrUrl"), QStringLiteral("ocr/suryaUrl"), QStringLiteral("ocr/krakenUrl")};
+    auto *address = new QLineEdit(urls.at(provider->currentIndex()), &dialog);
     address->setPlaceholderText(tr("http://127.0.0.1:8765"));
     auto *token = new QLineEdit(&dialog);
     token->setEchoMode(QLineEdit::Password);
@@ -1371,7 +1406,7 @@ void MainWindow::configureOcrEngine()
     connect(provider, &QComboBox::currentIndexChanged, &dialog, [=](int index) {
         address->setEnabled(index != 0);
         token->setEnabled(index != 0);
-        address->setText(index == 2 ? doctrUrl : paddleUrl);
+        address->setText(urls.at(index));
     });
     address->setEnabled(provider->currentIndex() != 0);
     token->setEnabled(provider->currentIndex() != 0);
@@ -1388,17 +1423,86 @@ void MainWindow::configureOcrEngine()
             showError(tr("Enter the service base URL, for example http://127.0.0.1:8765"));
             return;
         }
-        const bool doctr = provider->currentIndex() == 2;
+        const int selected = provider->currentIndex();
+        using Provider = processing::RemoteOcrEngine::Provider;
+        const Provider backend = selected == 2 ? Provider::DocTr :
+                                 selected == 3 ? Provider::RapidOcr :
+                                 selected == 4 ? Provider::Surya :
+                                 selected == 5 ? Provider::Kraken : Provider::PaddleOcr;
         processor.setEngine(std::make_unique<processing::RemoteOcrEngine>(url, token->text(),
-            doctr ? processing::RemoteOcrEngine::Provider::DocTr
-                  : processing::RemoteOcrEngine::Provider::PaddleOcr));
-        settings.setValue(doctr ? QStringLiteral("ocr/doctrUrl") : QStringLiteral("ocr/paddleUrl"),
-                          url.toString());
-        if (doctr) languageEdit->setText(QStringLiteral("auto"));
+            backend));
+        settings.setValue(settingKeys.at(selected), url.toString());
+        if (selected != 1) languageEdit->setText(QStringLiteral("auto"));
         else if (languageEdit->text() == QStringLiteral("eng") ||
                  languageEdit->text() == QStringLiteral("auto")) languageEdit->setText(QStringLiteral("en"));
     }
+    const bool tesseract = provider->currentIndex() == 0;
+    languagePickerAction->setEnabled(tesseract);
+    languagePickerButton->setEnabled(tesseract);
+    languageEdit->setReadOnly(provider->currentIndex() > 1);
+    languageEdit->setToolTip(tesseract
+        ? tr("Tesseract languages, for example eng+deu. The first language is primary.")
+        : provider->currentIndex() == 1
+            ? tr("Language configured on the PaddleOCR service, for example en")
+            : tr("This engine chooses its model vocabulary; language is auto."));
     status->setText(tr("OCR engine: %1").arg(processor.engineId()));
+}
+
+void MainWindow::chooseOcrLanguages()
+{
+    if (processor.engineId() != QStringLiteral("tesseract") || processor.isBusy()) return;
+    QProcess process;
+    process.start(QStringLiteral("tesseract"), {QStringLiteral("--list-langs")});
+    if (!process.waitForFinished(5000) || process.exitStatus() != QProcess::NormalExit ||
+        process.exitCode() != 0) {
+        showError(tr("Could not list installed Tesseract languages."));
+        return;
+    }
+    QStringList languages;
+    const QString output = QString::fromUtf8(process.readAllStandardOutput() + process.readAllStandardError());
+    const QRegularExpression code(QStringLiteral("^[A-Za-z][A-Za-z0-9_/-]*$"));
+    for (const QString &row : output.split(QLatin1Char('\n'))) {
+        const QString name = row.trimmed();
+        if (code.match(name).hasMatch() && name != QStringLiteral("osd")) languages.append(name);
+    }
+    languages.removeDuplicates();
+    languages.sort(Qt::CaseInsensitive);
+    if (languages.isEmpty()) { showError(tr("No Tesseract recognition languages are installed.")); return; }
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Choose OCR languages"));
+    auto *layout = new QVBoxLayout(&dialog);
+    layout->addWidget(new QLabel(tr("Select languages to recognize together. The first code in the field is primary."),
+                                 &dialog));
+    auto *list = new QListWidget(&dialog);
+    list->setObjectName(QStringLiteral("availableOcrLanguages"));
+    list->setMinimumSize(320, 260);
+    const QStringList original = languageEdit->text().split(QLatin1Char('+'), Qt::SkipEmptyParts);
+    for (const QString &language : languages) {
+        auto *item = new QListWidgetItem(language, list);
+        item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+        item->setCheckState(original.contains(language) ? Qt::Checked : Qt::Unchecked);
+    }
+    layout->addWidget(list);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    layout->addWidget(buttons);
+    const auto updateOk = [list, buttons] {
+        bool checked = false;
+        for (int i = 0; i < list->count(); ++i) checked |= list->item(i)->checkState() == Qt::Checked;
+        buttons->button(QDialogButtonBox::Ok)->setEnabled(checked);
+    };
+    connect(list, &QListWidget::itemChanged, &dialog, updateOk);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    updateOk();
+    if (dialog.exec() != QDialog::Accepted) return;
+    QStringList selected;
+    for (const QString &language : original)
+        if (languages.contains(language) && list->findItems(language, Qt::MatchExactly).first()->checkState() == Qt::Checked)
+            selected.append(language);
+    for (int i = 0; i < list->count(); ++i)
+        if (list->item(i)->checkState() == Qt::Checked && !selected.contains(list->item(i)->text()))
+            selected.append(list->item(i)->text());
+    languageEdit->setText(selected.join(QLatin1Char('+')));
 }
 
 void MainWindow::runBatchOcr()
@@ -1416,9 +1520,7 @@ void MainWindow::runBatchOcr()
     for (int number = 1; number <= pageCount; ++number) {
         const OcrPage *page = document.page(number);
         options.append({.number = number,
-                        .language = processor.engineId().endsWith(QStringLiteral("-remote"))
-                            ? languageEdit->text().trimmed()
-                            : page && !page->language.isEmpty() ? page->language : languageEdit->text().trimmed(),
+                        .language = languageEdit->text().trimmed(),
                         .preprocessing = page ? page->preprocessing : core::PreprocessSettings{}});
     }
     processor.recognizePages(options);
@@ -1512,16 +1614,21 @@ void MainWindow::showDocument()
     for (OcrWord &word : page->words) {
         const int i = displayedWords.size();
         displayedWords.append(&word);
+        const bool uncertain = !word.reviewed && word.confidence >= 0 && word.confidence < 70;
+        const QColor outline = uncertain ? QColor(185, 108, 10) : QColor(20, 90, 220);
+        const QColor fill = uncertain ? QColor(245, 170, 45, 45) : QColor(20, 90, 220, 35);
         QPainterPath path;
         if (word.sourceBoxes.isEmpty()) path.addRect(word.bounds);
         else for (const QRect &fragment : word.sourceBoxes) path.addRect(fragment);
-        auto *box = scene->addPath(path, QPen(QColor(20, 90, 220), 1.5));
-        box->setBrush(QColor(20, 90, 220, 35));
+        auto *box = scene->addPath(path, QPen(outline, 1.5));
+        box->setBrush(fill);
         box->setData(0, i);
         box->setZValue(1);
         wordBoxes.append(box);
         auto *item = new QListWidgetItem(word.text, wordList);
         if (word.reviewed) item->setForeground(QColor(0, 90, 20));
+        else if (word.confidence >= 0 && word.confidence < 70)
+            item->setForeground(QColor(160, 95, 0));
         item->setToolTip(tr("Confidence: %1; box: %2, %3, %4 × %5; source fragments: %6")
                          .arg(word.confidence).arg(word.bounds.x()).arg(word.bounds.y())
                          .arg(word.bounds.width()).arg(word.bounds.height()).arg(word.sourceBoxes.size()));
@@ -1648,6 +1755,21 @@ void MainWindow::deleteImageRegion(int index)
 void MainWindow::updateSelection(const QVector<int> &indices)
 {
     selectedWords = indices;
+    QString reviewLabel = tr("Review word…");
+    if (indices.size() == 1) {
+        if (const auto *page = document.page(currentPage)) {
+            if (!correctionMemory) correctionMemory.emplace(document);
+            const auto suggestions = correctionMemory->suggestions(*page, indices.first());
+            if (!suggestions.isEmpty()) {
+                QString reading = reviewWordButton->fontMetrics().elidedText(
+                    suggestions.first().replacement, Qt::ElideMiddle, 180);
+                reviewLabel = tr("Review suggestion: %1…").arg(reading.replace('&', "&&"));
+            }
+        }
+    }
+    reviewWordButton->setText(reviewLabel);
+    reviewWordButton->setEnabled(!processor.isBusy() && !exportBusy && !imagePath.isEmpty() &&
+                               indices.size() == 1);
     if (createRegionAction) createRegionAction->setEnabled(!processor.isBusy() && !exportBusy && !indices.isEmpty() &&
         document.page(currentPage) && indices.size() < document.page(currentPage)->words.size());
     QSet<int> selectedSet;
@@ -1656,10 +1778,14 @@ void MainWindow::updateSelection(const QVector<int> &indices)
     wordList->clearSelection();
     for (int i = 0; i < wordBoxes.size(); ++i) {
         const bool selected = selectedSet.contains(i);
-        wordBoxes[i]->setPen(QPen(selected ? QColor(215, 65, 25) : QColor(20, 90, 220),
+        const bool uncertain = !displayedWords.at(i)->reviewed &&
+                               displayedWords.at(i)->confidence >= 0 && displayedWords.at(i)->confidence < 70;
+        wordBoxes[i]->setPen(QPen(selected ? QColor(215, 65, 25) :
+                                   uncertain ? QColor(185, 108, 10) : QColor(20, 90, 220),
                                    selected ? 2.5 : 1.5,
                                    displayedWords.at(i)->sourceBoxes.isEmpty() ? Qt::DashLine : Qt::SolidLine));
-        wordBoxes[i]->setBrush(selected ? QColor(235, 95, 30, 50) : QColor(20, 90, 220, 35));
+        wordBoxes[i]->setBrush(selected ? QColor(235, 95, 30, 50) :
+                                   uncertain ? QColor(245, 170, 45, 45) : QColor(20, 90, 220, 35));
         if (selected) wordList->item(i)->setSelected(true);
     }
     const QSignalBlocker editorBlocker(selectionEditor);
@@ -1687,6 +1813,38 @@ void MainWindow::updateSelection(const QVector<int> &indices)
         previous = word;
     }
     selectionEditor->moveCursor(QTextCursor::Start);
+}
+
+void MainWindow::reviewSelectedWord()
+{
+    if (processor.isBusy() || exportBusy || imagePath.isEmpty() || selectedWords.size() != 1 ||
+        !maybeApplyEditor() || selectedWords.size() != 1) return;
+    const OcrPage *page = document.page(currentPage);
+    if (!page || selectedWords.first() < 0 || selectedWords.first() >= page->words.size()) return;
+    const int index = selectedWords.first();
+    const OcrWord &word = page->words.at(index);
+    const QImage image(imagePath);
+    if (image.isNull()) { showError(tr("Could not load the page image for review.")); return; }
+    const QRect bounds = word.bounds.intersected(image.rect());
+    if (bounds.isEmpty()) { showError(tr("This word has no usable source image box.")); return; }
+    const QRect cropRect = bounds.adjusted(-qMax(45, bounds.width() / 2),
+        -qMax(25, bounds.height()), qMax(45, bounds.width() / 2),
+        qMax(25, bounds.height())).intersected(image.rect());
+    QStringList context;
+    for (int i = qMax(0, index - 6); i <= qMin(page->words.size() - 1, index + 6); ++i)
+        context.append(i == index ? QStringLiteral("[%1]").arg(page->words.at(i).text)
+                                  : page->words.at(i).text);
+    AiReviewDialog dialog(word.text, context.join(QLatin1Char(' ')), image.copy(cropRect),
+                          bounds.translated(-cropRect.topLeft()), aiReviewToken, this);
+    if (!correctionMemory) correctionMemory.emplace(document);
+    dialog.setBookSuggestions(correctionMemory->suggestions(*page, index));
+    const int result = dialog.exec();
+    aiReviewToken = dialog.sessionToken();
+    if (result != QDialog::Accepted) return;
+    QTextCursor cursor(selectionEditor->document());
+    cursor.select(QTextCursor::Document);
+    cursor.insertText(dialog.correction(), selectionEditor->currentCharFormat());
+    applyCorrection();
 }
 
 QVector<int> MainWindow::indicesForIds(const QStringList &ids) const
@@ -1797,20 +1955,47 @@ void MainWindow::exportPdf(bool archive)
         archive ? tr("Export archival PDF/A") : tr("Export searchable PDF"), {}, tr("PDF files (*.pdf)"));
     if (path.isEmpty()) return;
     if (!path.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive)) path += QStringLiteral(".pdf");
-    pdfExportPath = path;
-    pdfCancel = std::make_shared<std::atomic_bool>(false);
+    startExport(path, archive ? ExportFormat::ArchivalPdf : ExportFormat::Pdf);
+}
+
+void MainWindow::exportVerifiedSamples()
+{
+    if (processor.isBusy() || exportBusy || !maybeApplyEditor()) return;
+    const bool hasExamples = std::any_of(document.pages.cbegin(), document.pages.cend(), [](const auto &page) {
+        return std::any_of(page.words.cbegin(), page.words.cend(), core::isVerifiedCorrection);
+    });
+    if (!hasExamples) { showError(tr("No verified single-word corrections to export.")); return; }
+    QFileDialog dialog(this, tr("Export verified corrections"), {}, tr("JSON Lines (*.jsonl)"));
+    dialog.setAcceptMode(QFileDialog::AcceptSave);
+    dialog.setDefaultSuffix(QStringLiteral("jsonl"));
+    if (dialog.exec() != QDialog::Accepted) return;
+    const QString path = dialog.selectedFiles().value(0);
+    if (path.isEmpty()) return;
+    if (QFileInfo(path) == QFileInfo(originalPath) || (!projectPath.isEmpty() && QFileInfo(path) == QFileInfo(projectPath))) {
+        showError(tr("Choose a destination separate from the source and project files."));
+        return;
+    }
+    startExport(path, ExportFormat::Samples);
+}
+
+void MainWindow::startExport(const QString &path, ExportFormat format)
+{
+    exportPath = path;
+    exportCancel = std::make_shared<std::atomic_bool>(false);
     exportBusy = true;
     setBusy(true);
-    status->setText(tr("Preparing PDF…"));
+    status->setText(tr("Preparing export…"));
     const OcrDocument snapshot = document;
-    const auto cancel = pdfCancel;
-    pdfWatcher.setFuture(QtConcurrent::run([this, snapshot, path, archive, cancel] {
-        return processing::PdfExporter::write(snapshot, path, archive, *cancel,
-            [this](int completed, int total) {
-                QMetaObject::invokeMethod(this, [this, completed, total] {
-                    if (exportBusy) status->setText(tr("PDF export: %1 of %2 pages").arg(completed).arg(total));
-                }, Qt::QueuedConnection);
-            });
+    const auto cancel = exportCancel;
+    exportWatcher.setFuture(QtConcurrent::run([this, snapshot, path, format, cancel] {
+        const auto progress = [this](int completed, int total) {
+            QMetaObject::invokeMethod(this, [this, completed, total] {
+                if (exportBusy) status->setText(tr("Export: %1 of %2 pages").arg(completed).arg(total));
+            }, Qt::QueuedConnection);
+        };
+        if (format == ExportFormat::Samples)
+            return processing::VerifiedSampleExporter::write(snapshot, path, *cancel, progress);
+        return processing::PdfExporter::write(snapshot, path, format == ExportFormat::ArchivalPdf, *cancel, progress);
     }));
 }
 

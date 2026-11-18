@@ -1,4 +1,4 @@
-"""Small, versioned HTTP adapters for PaddleOCR and docTR inference."""
+"""Small, versioned HTTP adapters for optional OCR inference providers."""
 
 import argparse
 import base64
@@ -8,10 +8,12 @@ import json
 import logging
 import math
 import os
+import re
 import struct
 import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from html.parser import HTMLParser
 
 
 PROTOCOL = "yagf-ocr/1"
@@ -96,6 +98,128 @@ def normalize_paddle_result(result, width, height):
     return lines
 
 
+def polygon_box(points, width, height):
+    """Return a bounded pixel rectangle around a polygon or character cuts."""
+    if points is None or len(points) == 0:
+        raise ValueError("OCR returned empty geometry")
+    coords = [(float(point[0]), float(point[1])) for point in points]
+    if any(not math.isfinite(x) or not math.isfinite(y) for x, y in coords):
+        raise ValueError("OCR returned nonfinite geometry")
+    x1 = max(0, math.floor(min(x for x, _ in coords)))
+    y1 = max(0, math.floor(min(y for _, y in coords)))
+    x2 = min(width, math.ceil(max(x for x, _ in coords)))
+    y2 = min(height, math.ceil(max(y for _, y in coords)))
+    if x1 >= x2 or y1 >= y2:
+        raise ValueError("OCR returned out-of-bounds geometry")
+    return [x1, y1, x2 - x1, y2 - y1]
+
+
+def normalize_rapid_result(result, width, height):
+    boxes = result.boxes if result.boxes is not None else []
+    texts = result.txts if result.txts is not None else []
+    scores = result.scores if result.scores is not None else []
+    if not (len(boxes) == len(texts) == len(scores)):
+        raise ValueError("RapidOCR returned inconsistent line arrays")
+    lines = []
+    for polygon, value, confidence in zip(boxes, texts, scores):
+        value = str(value).strip()
+        if not value:
+            continue
+        confidence = float(confidence)
+        if not math.isfinite(confidence) or not 0 <= confidence <= 1:
+            raise ValueError("RapidOCR returned invalid confidence")
+        lines.append({"text": value, "confidence": confidence,
+                      "box": polygon_box(polygon, width, height)})
+        if len(lines) > MAX_ITEMS:
+            raise ValueError("RapidOCR returned too many lines")
+    return lines
+
+
+class BlockTextParser(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.parts = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag in ("br", "p", "div", "tr", "li"):
+            self.parts.append("\n")
+        elif tag in ("td", "th"):
+            self.parts.append("\t")
+
+    def handle_endtag(self, tag):
+        if tag in ("p", "div", "tr", "li", "table"):
+            self.parts.append("\n")
+
+    def handle_data(self, data):
+        self.parts.append(data)
+
+    def text(self):
+        return "\n".join(" ".join(line.split()) for line in
+                         "".join(self.parts).splitlines() if line.strip()).strip()
+
+
+def normalize_surya_result(result, width, height):
+    if len(result) != 1:
+        raise ValueError("Surya returned an unexpected page count")
+    blocks = []
+    for block in sorted(result[0].blocks, key=lambda item: item.reading_order):
+        if block.skipped or block.error:
+            continue
+        parser = BlockTextParser()
+        parser.feed(block.html)
+        value = parser.text()
+        if not value:
+            continue
+        score = float(block.confidence)
+        if not math.isfinite(score) or not 0 <= score <= 1:
+            raise ValueError("Surya returned invalid confidence")
+        box = polygon_box(block.polygon, width, height)
+        blocks.append({"text": value, "confidence": score, "box": box,
+                       "block": len(blocks) + 1, "line": 1,
+                       "type": str(block.label).strip().lower() or "text"})
+        if len(blocks) > MAX_ITEMS:
+            raise ValueError("Surya returned too many blocks")
+    return blocks
+
+
+def normalize_kraken_records(records, width, height):
+    words = []
+    for line_number, record in enumerate(records, 1):
+        prediction = str(record.prediction)
+        if not prediction.strip():
+            continue
+        cuts = record.cuts
+        confidences = record.confidences
+        if len(cuts) != len(prediction) or len(confidences) != len(prediction):
+            line = record.line
+            boundary = getattr(line, "boundary", None)
+            if boundary is not None and len(boundary) > 0:
+                box = polygon_box(boundary, width, height)
+            else:
+                x1, y1, x2, y2 = line.bbox
+                box = polygon_box(((x1, y1), (x2, y2)), width, height)
+            scores = [float(value) for value in confidences]
+            score = sum(scores) / len(scores) if scores else 0.0
+            if not math.isfinite(score) or not 0 <= score <= 1:
+                raise ValueError("Kraken returned invalid confidence")
+            words.append({"text": prediction.strip(), "confidence": score,
+                          "box": box, "block": 1, "line": line_number})
+            if len(words) > MAX_ITEMS:
+                raise ValueError("Kraken returned too many words")
+            continue
+        for match in re.finditer(r"\S+", prediction):
+            points = [point for cut in cuts[match.start():match.end()] for point in cut]
+            score = sum(float(value) for value in confidences[match.start():match.end()]) / len(match.group())
+            if not math.isfinite(score) or not 0 <= score <= 1:
+                raise ValueError("Kraken returned invalid confidence")
+            words.append({"text": match.group(), "confidence": score,
+                          "box": polygon_box(points, width, height),
+                          "block": 1, "line": line_number})
+            if len(words) > MAX_ITEMS:
+                raise ValueError("Kraken returned too many words")
+    return words
+
+
 class PaddleOcrBackend:
     engine_id = "paddleocr"
     result_key = "lines"
@@ -150,6 +274,78 @@ class DocTrBackend:
             with self.lock:
                 result = self.pipeline(DocumentFile.from_images(image.name))
                 return normalize_doctr_result(result, width, height)
+
+
+class RapidOcrBackend:
+    engine_id = "rapidocr"
+    result_key = "lines"
+    language = "auto"
+
+    def __init__(self):
+        from rapidocr import RapidOCR
+        self.lock = threading.Lock()
+        self.pipeline = RapidOCR()
+
+    def recognize(self, png, width, height, language):
+        if language != "auto":
+            raise ValueError("RapidOCR uses its configured model vocabulary; set language to 'auto'")
+        with tempfile.NamedTemporaryFile(suffix=".png") as image:
+            image.write(png)
+            image.flush()
+            with self.lock:
+                return normalize_rapid_result(self.pipeline(image.name), width, height)
+
+
+class SuryaBackend:
+    engine_id = "surya"
+    result_key = "lines"
+    language = "auto"
+
+    def __init__(self):
+        from surya.inference import SuryaInferenceManager
+        from surya.recognition import RecognitionPredictor
+        self.lock = threading.Lock()
+        self.pipeline = RecognitionPredictor(SuryaInferenceManager())
+
+    def recognize(self, png, width, height, language):
+        if language != "auto":
+            raise ValueError("Surya selects languages automatically; set language to 'auto'")
+        from PIL import Image
+        with tempfile.NamedTemporaryFile(suffix=".png") as image:
+            image.write(png)
+            image.flush()
+            with Image.open(image.name) as page, self.lock:
+                return normalize_surya_result(self.pipeline([page.convert("RGB")]), width, height)
+
+
+class KrakenBackend:
+    engine_id = "kraken"
+    result_key = "words"
+    language = "auto"
+
+    def __init__(self, model_path, device):
+        if not model_path or not os.path.isfile(model_path):
+            raise ValueError("Kraken requires an existing --model file")
+        from kraken.tasks import RecognitionTaskModel, SegmentationTaskModel
+        from kraken.configs import RecognitionInferenceConfig, SegmentationInferenceConfig
+        self.lock = threading.Lock()
+        self.segmenter = SegmentationTaskModel.load_model()
+        self.recognizer = RecognitionTaskModel.load_model(model_path)
+        self.segment_config = SegmentationInferenceConfig(device=device)
+        self.recognize_config = RecognitionInferenceConfig(device=device, num_line_workers=0)
+
+    def recognize(self, png, width, height, language):
+        if language != "auto":
+            raise ValueError("Kraken uses its selected recognition model; set language to 'auto'")
+        from PIL import Image
+        with tempfile.NamedTemporaryFile(suffix=".png") as image:
+            image.write(png)
+            image.flush()
+            with Image.open(image.name) as page, self.lock:
+                page = page.convert("RGB")
+                segmentation = self.segmenter.predict(page, self.segment_config)
+                records = self.recognizer.predict(page, segmentation, self.recognize_config)
+                return normalize_kraken_records(records, width, height)
 
 
 def handler_for(backend, token=""):
@@ -216,19 +412,37 @@ def handler_for(backend, token=""):
 
 def main():
     parser = argparse.ArgumentParser(description="YAGF OCR inference service")
-    parser.add_argument("--engine", choices=("paddleocr", "doctr"), default="paddleocr")
+    parser.add_argument("--engine", choices=("paddleocr", "doctr", "rapidocr", "surya", "kraken"),
+                        default="paddleocr")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
-    parser.add_argument("--device", default="gpu", help="Inference device: gpu or cpu")
-    parser.add_argument("--language", help="PaddleOCR language code; docTR uses auto")
+    parser.add_argument("--device", help="Inference device: gpu or cpu; defaults vary by engine")
+    parser.add_argument("--language", help="PaddleOCR language code; other engines use auto")
+    parser.add_argument("--model", help="Kraken recognition model path")
     args = parser.parse_args()
     token = os.environ.get("YAGF_OCR_TOKEN", "")
     if args.host not in ("127.0.0.1", "localhost", "::1") and not token:
         parser.error("YAGF_OCR_TOKEN is required when binding to a network address")
-    if args.engine == "doctr" and args.language not in (None, "auto"):
-        parser.error("docTR uses its model vocabulary; set --language auto")
-    backend = (PaddleOcrBackend(args.device, args.language or "en") if args.engine == "paddleocr"
-               else DocTrBackend(args.device))
+    if args.engine != "paddleocr" and args.language not in (None, "auto"):
+        parser.error(f"{args.engine} uses its model vocabulary; set --language auto")
+    if args.engine == "kraken" and not args.model:
+        parser.error("Kraken requires --model PATH")
+    if args.engine != "kraken" and args.model:
+        parser.error("--model is only used with Kraken")
+    device = args.device or ("cpu" if args.engine == "rapidocr" else
+                             "auto" if args.engine == "kraken" else "gpu")
+    if args.engine == "rapidocr" and device != "cpu":
+        parser.error("RapidOCR's default ONNX backend runs on CPU; use --device cpu")
+    if args.engine == "paddleocr":
+        backend = PaddleOcrBackend(device, args.language or "en")
+    elif args.engine == "doctr":
+        backend = DocTrBackend(device)
+    elif args.engine == "rapidocr":
+        backend = RapidOcrBackend()
+    elif args.engine == "surya":
+        backend = SuryaBackend()
+    else:
+        backend = KrakenBackend(args.model, "cuda:0" if device == "gpu" else device)
     server = ThreadingHTTPServer((args.host, args.port), handler_for(backend, token))
     print(f"YAGF OCR service listening on {args.host}:{args.port}", flush=True)
     try:

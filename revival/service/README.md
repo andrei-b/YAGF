@@ -1,6 +1,6 @@
 # Remote text OCR services for YAGF
 
-This optional Python service runs either [PaddleOCR 3.x](https://www.paddleocr.ai/main/en/version3.x/pipeline_usage/OCR.html) or [docTR](https://mindee.github.io/doctr/latest/) on a separate inference computer. YAGF sends a processed page as PNG over HTTP. PaddleOCR returns text-line boxes; docTR returns word boxes with block and line order. Choose the matching provider and URL in **Tools → OCR engine…**. Neither provider currently returns table structure to YAGF.
+This optional Python service can run [PaddleOCR 3.x](https://www.paddleocr.ai/main/en/version3.x/pipeline_usage/OCR.html), [docTR](https://mindee.github.io/doctr/latest/), [RapidOCR](https://rapidai.github.io/RapidOCRDocs/main/en/quickstart/), [Surya](https://github.com/datalab-to/surya), or [Kraken](https://kraken.re/main/user_guide/api.html) on a separate inference computer. YAGF sends a processed page as PNG over HTTP. Choose the matching provider and URL in **Tools → OCR engine…**. Each engine can be installed in its own Python environment; none is required by the desktop application.
 
 ## PaddleOCR on a Jetson
 
@@ -30,22 +30,62 @@ python revival/service/server.py --engine doctr --host 127.0.0.1 --port 8766 --d
 
 Use `--device gpu` where a compatible PyTorch CUDA build is available. The service moves the predictor to CUDA as described in the [docTR GPU guide](https://mindee.github.io/doctr/using_doctr/using_models.html). In YAGF, select **docTR (remote service)** and use `http://127.0.0.1:8766`. docTR returns individual word rectangles, so corrected text starts with more precise source mapping than PaddleOCR line output.
 
+## RapidOCR
+
+The adapter uses the [current RapidOCR Python API](https://rapidai.github.io/RapidOCRDocs/main/en/install_usage/rapidocr/usage/) and returns text-line rectangles. Its default ONNX Runtime pipeline runs on CPU:
+
+```sh
+python3 -m venv .venv-rapidocr
+. .venv-rapidocr/bin/activate
+python -m pip install rapidocr onnxruntime
+python revival/service/server.py --engine rapidocr --host 127.0.0.1 --port 8767 --device cpu
+```
+
+Select **RapidOCR (remote service)** with `http://127.0.0.1:8767` and language `auto`. The language is determined by the models configured in RapidOCR, not by YAGF's language field. The Python adapter is available now; a native C++ RapidOCR build and ARM64/TensorRT deployment are separate work and are not claimed by this integration.
+
+## Surya
+
+The adapter targets [Surya 2.x's current `RecognitionPredictor` API](https://github.com/datalab-to/surya#ocr-text-recognition). It converts ordered HTML blocks into editable text and keeps each block's bounding box and layout type. For example:
+
+```sh
+python3 -m venv .venv-surya
+. .venv-surya/bin/activate
+python -m pip install surya-ocr
+python revival/service/server.py --engine surya --host 127.0.0.1 --port 8768
+```
+
+Select **Surya (remote service)** with `http://127.0.0.1:8768` and language `auto`. Surya also needs its [inference backend](https://github.com/datalab-to/surya#inference-backend-prerequisites), such as vLLM or llama.cpp. YAGF currently keeps block order and type, including table regions, but flattens HTML table cells into editable text; it does not yet export Surya's full table structure. Surya's [code and model weights have different licenses](https://github.com/datalab-to/surya#commercial-usage). YAGF does not redistribute those weights.
+
+## Kraken
+
+The adapter uses Kraken's [task API](https://kraken.re/main/user_guide/api.html). Supply a recognition model suitable for the document; Kraken's default segmentation model finds lines. Character cuts are grouped into word rectangles, preserving line order and confidence:
+
+```sh
+python3 -m venv .venv-kraken
+. .venv-kraken/bin/activate
+python -m pip install kraken
+python revival/service/server.py --engine kraken --model /path/to/recognition-model.safetensors \
+  --host 127.0.0.1 --port 8769 --device cpu
+```
+
+Select **Kraken (remote service)** with `http://127.0.0.1:8769` and language `auto`. The selected model controls script and language. Check that model's own license before redistribution. If Kraken returns character geometry that cannot be aligned with its transcription, the service retains that line as one text item with a line box instead of inventing word boxes.
+
 For a Jetson reached over SSH, keep the service bound to loopback and forward its port from the desktop:
 
 ```sh
 ssh -L 8765:127.0.0.1:8765 user@jetson-host
 ```
 
-Forward port 8766 instead if docTR runs there. Test a service with `curl http://127.0.0.1:8765/v1/health`; the response identifies its engine. For direct network binding, set `YAGF_OCR_TOKEN` before starting the service and enter that token in YAGF. Use HTTPS through a trusted reverse proxy when sending documents or tokens across an untrusted network; the built-in server speaks plain HTTP.
+Forward the matching service port for other providers. Test a service with `curl http://127.0.0.1:8765/v1/health`; the response identifies its engine. For direct network binding, set `YAGF_OCR_TOKEN` before starting the service and enter that token in YAGF. Use HTTPS through a trusted reverse proxy when sending documents or tokens across an untrusted network; the built-in server speaks plain HTTP.
 
 ## Protocol
 
-`POST /v1/recognize` takes `application/json` with `protocol: "yagf-ocr/1"`, `image_png` as base64, `language`, and `page_number`. The response carries the same protocol, `engine_id`, image `width` and `height`, and `language`. PaddleOCR responses contain `lines`; docTR responses contain `words`. Each item has `text`, `confidence` from 0 to 1, and a pixel box `[x, y, width, height]`. docTR words also have one-based `block` and `line` numbers. The Qt client validates provider, schema, dimensions, confidence, and bounds before accepting a page. Requests are capped at 44 MiB encoded and 32 MiB PNG; responses are capped at 8 MiB. `GET /v1/health` reports readiness.
+`POST /v1/recognize` takes `application/json` with `protocol: "yagf-ocr/1"`, `image_png` as base64, `language`, and `page_number`. The response carries the same protocol, `engine_id`, image `width` and `height`, and `language`. PaddleOCR, RapidOCR, and Surya responses contain `lines`; docTR and Kraken responses contain `words`. Each item has `text`, `confidence` from 0 to 1, and a pixel box `[x, y, width, height]`. Structured providers add one-based `block` and `line` numbers; Surya also adds `type`. The Qt client validates provider, schema, dimensions, confidence, bounds, and reading order before accepting a page. Requests are capped at 44 MiB encoded and 32 MiB PNG; responses are capped at 8 MiB. `GET /v1/health` reports readiness.
 
-Run the protocol tests without PaddleOCR or Jetson hardware:
+Run the protocol and adapter tests without installing inference frameworks:
 
 ```sh
 python3 -m unittest discover -s revival/service/tests
 ```
 
-The service is not bundled into the desktop application or AppImage. GPU inference and performance have not yet been verified on physical Jetson hardware in this repository.
+The service is not bundled into the desktop application or AppImage. The three new adapters have contract tests, but real model inference and Jetson performance have not yet been verified in this repository.

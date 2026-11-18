@@ -4,6 +4,8 @@
 #include <QFileInfo>
 #include <QImage>
 #include <QImageReader>
+#include <QJsonDocument>
+#include <QJsonArray>
 #include <QFile>
 #include <QPageSize>
 #include <QPainter>
@@ -47,6 +49,7 @@ int main(int argc, char **argv)
     const QString imagePath = directory.filePath(QStringLiteral("source.png"));
     QImage image(400, 120, QImage::Format_RGB32);
     image.fill(Qt::white);
+    image.setPixelColor(2, 2, Qt::red);
     assert(image.save(imagePath));
     OcrDocument document = sampleDocument(400, 120, imagePath);
     document.page(1)->words[0].text = QStringLiteral("Corrected");
@@ -54,6 +57,29 @@ int main(int argc, char **argv)
     std::atomic_bool cancelled = false;
     const auto result = PdfExporter::write(document, pdfPath, false, cancelled);
     assert(result.status == PdfExportResult::Status::Success);
+    const QString samplesPath = directory.filePath("corrections.jsonl");
+    using yagf::processing::VerifiedSampleExporter;
+    assert(VerifiedSampleExporter::write(document, samplesPath, cancelled).status ==
+           PdfExportResult::Status::Error);
+    assert(!QFileInfo::exists(samplesPath));
+    document.page(1)->words[0].reviewed = true;
+    assert(VerifiedSampleExporter::write(document, samplesPath, cancelled).status ==
+           PdfExportResult::Status::Success);
+    QFile samples(samplesPath);
+    assert(samples.open(QIODevice::ReadOnly));
+    const QByteArray saved = samples.readAll();
+    samples.close();
+    const auto record = QJsonDocument::fromJson(saved).object();
+    assert(record["original_text"] == "Mistake" && record["text"] == "Corrected");
+    assert(record["page"].toInt() == 1 && record["box"].toArray() == QJsonArray({2, 2, 110, 30}));
+    const QImage crop = QImage::fromData(QByteArray::fromBase64(record["png_base64"].toString().toLatin1()));
+    assert(crop.size() == QSize(110, 30) && crop.pixelColor(0, 0) == Qt::red);
+    std::atomic_bool stop = false;
+    const auto partial = VerifiedSampleExporter::write(document, samplesPath, stop,
+        [&stop](int, int) { stop = true; });
+    assert(partial.status == PdfExportResult::Status::Cancelled);
+    assert(samples.open(QIODevice::ReadOnly) && samples.readAll() == saved);
+    samples.close();
     QProcess extract;
     extract.start(QStringLiteral("pdftotext"), {pdfPath, QStringLiteral("-")});
     assert(extract.waitForFinished(10'000));
@@ -125,6 +151,13 @@ int main(int argc, char **argv)
         next.page(2)->words[0].text = QStringLiteral("SecondFix");
         pages.totalPages = 2;
         pages.replacePage(*next.page(2));
+        pages.page(2)->words[0].reviewed = true;
+        assert(VerifiedSampleExporter::write(pages, samplesPath, cancelled).status ==
+               PdfExportResult::Status::Success);
+        assert(samples.open(QIODevice::ReadOnly));
+        const auto secondRecord = QJsonDocument::fromJson(samples.readAll()).object();
+        assert(secondRecord["page"].toInt() == 2 && secondRecord["text"] == "SecondFix");
+        samples.close();
         const QString multiPdf = directory.filePath(QStringLiteral("multi.pdf"));
         assert(PdfExporter::write(pages, multiPdf, false, cancelled).status == PdfExportResult::Status::Success);
         extract.start(QStringLiteral("pdftotext"), {multiPdf, QStringLiteral("-")});
