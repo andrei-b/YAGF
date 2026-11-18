@@ -36,8 +36,8 @@ QStringList collectSpecialistReadings(core::OcrPage &page, const QImage &image,
         if (reviewed || tokens.size() > 1024 || !image.rect().contains(bounds)) continue;
         const QString baseline = tokens.join(' ');
         const bool formula = looksLikeFormula(baseline) ||
-            std::any_of(formulaRegions.begin(), formulaRegions.end(),
-                [&](const QRect &region) { return region.contains(bounds.center()); });
+            std::ranges::any_of(formulaRegions,
+                                [&](const QRect &region) { return region.contains(bounds.center()); });
         IOcrEngine *engine = formula && math ? math : weak ? prose : nullptr;
         if (!engine) continue;
         // A small margin retains antialiased edges without submitting adjacent passages.
@@ -52,8 +52,7 @@ QStringList collectSpecialistReadings(core::OcrPage &page, const QImage &image,
         }
         core::OcrDocument excerpt;
         excerpt.pages.append(std::move(*result));
-        const QString reading = excerpt.plainText().trimmed();
-        if (!reading.isEmpty() && reading.size() <= 16384 && reading != baseline)
+        if (const QString reading = excerpt.plainText().trimmed(); !reading.isEmpty() && reading.size() <= 16384 && reading != baseline)
             page.words[anchor].alternative = {engine->id(), reading, tokens, formula && engine == math};
     }
     return errors;

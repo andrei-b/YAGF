@@ -78,7 +78,7 @@ QImage medianDenoise(const QImage &source)
                 destination[x] = gray.constScanLine(y)[x];
                 continue;
             }
-            std::array<uchar, 9> neighborhood;
+            std::array<uchar, 9> neighborhood{};
             int index = 0;
             for (int dy = -1; dy <= 1; ++dy) {
                 const uchar *row = gray.constScanLine(y + dy);
@@ -141,15 +141,13 @@ std::expected<QualityAssessment, QString> ImageProcessor::assess(const QImage &s
     double bestScore = baseline, bestAngle = 0;
     for (int step = -14; step <= 14; ++step) {
         const double angle = step * 0.5;
-        const double score = projectionScore(ink, sampled.height(), sampled.width(), angle);
-        if (score > bestScore) { bestScore = score; bestAngle = angle; }
+        if (const double score = projectionScore(ink, sampled.height(), sampled.width(), angle); score > bestScore) { bestScore = score; bestAngle = angle; }
     }
     const double coarse = bestAngle;
     for (int step = -5; step <= 5; ++step) {
         const double angle = coarse + step * 0.1;
         if (angle < -7.0 || angle > 7.0) continue;
-        const double score = projectionScore(ink, sampled.height(), sampled.width(), angle);
-        if (score > bestScore) { bestScore = score; bestAngle = angle; }
+        if (const double score = projectionScore(ink, sampled.height(), sampled.width(), angle); score > bestScore) { bestScore = score; bestAngle = angle; }
     }
     if (std::abs(bestAngle) >= 0.3 && bestScore > baseline * 1.04)
         quality.skewDegrees = bestAngle;
