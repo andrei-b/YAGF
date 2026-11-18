@@ -23,6 +23,7 @@ add_library(yagf_processing STATIC
     src/processing/iocrengine.h
     src/processing/tesseractengine.cpp src/processing/tesseractengine.h
     src/processing/remoteocrengine.cpp src/processing/remoteocrengine.h
+    src/processing/scientificbookexporter.cpp src/processing/exportpage.h
     src/processing/pdfexporter.cpp src/processing/pdfexporter.h)
 target_link_libraries(yagf_processing PUBLIC yagf_core Qt6::Core Qt6::Gui Qt6::Concurrent Qt6::Network)
 target_include_directories(yagf_processing PUBLIC src/processing)
@@ -84,6 +85,9 @@ if(BUILD_TESTING)
     qt_add_executable(imageprocessor_tests tests/imageprocessor_tests.cpp)
     target_link_libraries(imageprocessor_tests PRIVATE yagf_processing)
     add_test(NAME imageprocessor_tests COMMAND imageprocessor_tests)
+    qt_add_executable(scientificbook_tests tests/scientificbook_tests.cpp)
+    target_link_libraries(scientificbook_tests PRIVATE yagf_processing)
+    add_test(NAME scientificbook_tests COMMAND scientificbook_tests)
     qt_add_executable(ocrengine_tests tests/ocrengine_tests.cpp)
     target_link_libraries(ocrengine_tests PRIVATE yagf_processing)
     add_test(NAME ocrengine_tests COMMAND ocrengine_tests)

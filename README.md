@@ -61,6 +61,14 @@ For a document with mixed languages, choose **Tools → Choose OCR languages…*
 
 To review a doubtful word, select it in the image or word list and click **Review word…**. YAGF marks unreviewed words below 70% confidence in amber. The dialog shows the source letters at adjustable magnification in original, higher contrast, and black-and-white views. You can type a correction directly, or enter a vision model name and a complete OpenAI-compatible chat-completions endpoint, then click **Ask AI for readings**. A local [llama.cpp server with a vision model](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md#post-v1chatcompletions-openai-compatible-chat-completions-api) is one option. Only that explicit click sends the cropped image and nearby text. The model's suggestions are never applied automatically: choose a candidate, inspect its letters, and click **Use correction**. The correction uses the existing undo stack. Endpoint and model are saved in desktop settings; the optional bearer token stays in memory. No AI model is bundled with YAGF.
 
+## Scientific books
+
+Choose **Tools → OCR engine… → Surya**, open a scan, and recognize the page or use **Tools → Recognize all pages** for a PDF. The Surya service detects layout, predicts reading order, and transcribes inline and display mathematics into LaTeX. Tables retain row and cell boundaries, header cells, and merged-cell spans. Figures and diagrams retain their source rectangles even when they contain no recognized text. See the [service setup](service/README.md#surya).
+
+Select one layout block to edit its transcription. In a table, tabs separate cells and newlines separate rows. In **Tools → Edit layout…**, compare the ordered regions with the page, correct a label or figure crop, and move regions up or down. Save the project to retain these edits.
+
+**File → Export scientific book as HTML…** writes a self-contained, reflowable document in the reviewed reading order. It includes selectable LaTeX source, HTML tables and embedded PNG figure crops. A caption immediately above or below a single figure or table stays with it. Ambiguous and separated captions remain at their reading positions. Plain text and JSON exports also include the LaTeX transcription. Check equations, table alignment and multi-column order against the scan before publication.
+
 ## Learn from corrections
 
 After you correct `QWldget` to `QWidget`, selecting another unreviewed `QWldget` anywhere in the same book shows **Review suggestion: QWidget…**. Open the review, choose a reading from **Choose a correction from this book**, compare it with the scan, and click **Use correction**. Cancel discards the choice. Undo and redo update both the word and the suggestions it contributes. Saving and reopening the project restores its correction memory.

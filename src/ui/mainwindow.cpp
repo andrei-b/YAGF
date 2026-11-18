@@ -105,10 +105,16 @@ bool overlapsWord(const OcrWord &word, const QRect &selection)
 void carryCorrections(OcrPage &fresh, const OcrPage *oldPage)
 {
     if (!oldPage) return;
-    fresh.regions = oldPage->regions;
+    fresh.imageRegions = oldPage->imageRegions;
+    const bool structured = fresh.engineId == "surya-remote" || oldPage->engineId == "surya-remote";
+    const bool sameEngine = oldPage->engineId == fresh.engineId;
+    // Keep manual layout on a matching block. IDs alone can be reused for
+    // completely different content after switching recognition engines.
+    QSet<int> matchingBlocks;
     for (OcrWord &word : fresh.words) {
         for (const OcrWord &old : oldPage->words) {
             if (old.bounds != word.bounds || old.originalText != word.originalText) continue;
+            if (structured && sameEngine && word.block == old.block) matchingBlocks.insert(word.block);
             word.id = old.id;
             word.bold = old.bold;
             word.italic = old.italic;
@@ -119,6 +125,23 @@ void carryCorrections(OcrPage &fresh, const OcrPage *oldPage)
             if (old.reviewed) { word.text = old.text; word.reviewed = true; }
             break;
         }
+    }
+    if (structured) {
+        QHash<QString, core::OcrRegion> oldRegions;
+        for (const auto &region : oldPage->regions) oldRegions.insert(region.id, region);
+        QSet<QString> matchedIds;
+        for (int block : matchingBlocks)
+            matchedIds.insert(QStringLiteral("page-%1/region-%2").arg(fresh.number).arg(block));
+        for (auto &region : fresh.regions) {
+            const auto old = oldRegions.constFind(region.id);
+            if (old != oldRegions.cend() && matchedIds.contains(region.id)) {
+                region.bounds = old->bounds;
+                region.type = old->type;
+            }
+        }
+        if (matchedIds.size() != fresh.regions.size()) return;
+    } else {
+        fresh.regions = oldPage->regions;
     }
     if (oldPage->regions.size() < 2) return;
     QHash<QString, int> oldOrder;
@@ -476,6 +499,7 @@ MainWindow::MainWindow()
     connect(languagePickerButton, &QToolButton::clicked, this, &MainWindow::chooseOcrLanguages);
     fileMenu->addSeparator();
     fileMenu->addAction(tr("Export text"), this, &MainWindow::exportText);
+    fileMenu->addAction(tr("Export scientific book as HTML…"), this, &MainWindow::exportScientificBook);
     fileMenu->addAction(tr("Export layout HTML"), this, &MainWindow::exportHtml);
     fileMenu->addAction(tr("Export verified corrections…"), this, &MainWindow::exportVerifiedSamples);
     fileMenu->addAction(tr("Export JSON"), this, &MainWindow::exportJson);
@@ -727,8 +751,17 @@ MainWindow::MainWindow()
             merged.language = newPage.language;
             int maxBlock = 0;
             for (const OcrWord &old : merged.words) maxBlock = qMax(maxBlock, old.block);
+            QHash<QString, QString> regionIds;
             for (OcrWord &word : newPage.words) {
+                const QString prefix = QStringLiteral("page-%1/region-").arg(currentPage);
+                regionIds.insert(prefix + QString::number(word.block), prefix + QString::number(word.block + maxBlock));
                 word.block += maxBlock;
+            }
+            // Region OCR returns crop-local boxes and block IDs.
+            for (auto detected : newPage.regions) {
+                detected.id = regionIds.value(detected.id);
+                detected.bounds.translate(offset);
+                merged.regions.append(std::move(detected));
             }
             QVector<OcrWord> kept;
             int insertion = -1;
@@ -833,7 +866,7 @@ void MainWindow::setBusy(bool busy)
     view->setEnabled(!blocked);
     cancelButton->setEnabled(blocked);
     selectionEditor->setEnabled(!blocked);
-    applyButton->setEnabled(!blocked && !selectedWords.isEmpty());
+    applyButton->setEnabled(!blocked && !selectedWords.isEmpty() && !selectionEditor->isReadOnly());
     regionOcrButton->setEnabled(!blocked && !imagePath.isEmpty() && !selectedRegion.isEmpty());
     reviewWordButton->setEnabled(!blocked && !imagePath.isEmpty() && selectedWords.size() == 1);
     regionList->setEnabled(!blocked);
@@ -1791,8 +1824,11 @@ void MainWindow::updateSelection(const QVector<int> &indices)
     const QSignalBlocker editorBlocker(selectionEditor);
     selectionEditor->clear();
     editorPending = false;
-    applyButton->setEnabled(!processor.isBusy() && !exportBusy && !indices.isEmpty());
-    selectionLabel->setText(indices.isEmpty() ? tr("Recognized text") :
+    const bool multipleBlocks = indices.size() > 1 && std::any_of(indices.cbegin(), indices.cend(),
+        [this](int i) { return displayedWords.at(i)->layoutBlock; });
+    selectionEditor->setReadOnly(multipleBlocks);
+    applyButton->setEnabled(!processor.isBusy() && !exportBusy && !indices.isEmpty() && !multipleBlocks);
+    selectionLabel->setText(multipleBlocks ? tr("Select one layout block to edit") : indices.isEmpty() ? tr("Recognized text") :
                             tr("Selected text (%1 words)").arg(indices.size()));
     QTextCursor cursor(selectionEditor->document());
     cursor.movePosition(QTextCursor::Start);
@@ -1858,7 +1894,24 @@ QVector<int> MainWindow::indicesForIds(const QStringList &ids) const
 bool MainWindow::applyCorrection()
 {
     if (selectedWords.isEmpty()) { editorPending = false; return true; }
+    if (selectionEditor->isReadOnly()) { editorPending = false; return true; }
     const QString plain = selectionEditor->toPlainText();
+    if (selectedWords.size() == 1 && displayedWords.at(selectedWords.first())->layoutBlock &&
+        !plain.trimmed().isEmpty()) {
+        auto edited = *document.page(currentPage);
+        auto &block = edited.words[selectedWords.first()];
+        block.text = plain;
+        block.reviewed = true;
+        QTextCursor cursor(selectionEditor->document());
+        cursor.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor);
+        block.bold = cursor.charFormat().fontWeight() >= QFont::Bold;
+        block.italic = cursor.charFormat().fontItalic();
+        const QString id = block.id;
+        editorPending = false;
+        undoStack.push(new ReplaceTextCommand(document, currentPage, std::move(edited)));
+        updateSelection(indicesForIds({id}));
+        return true;
+    }
     QRegularExpression wordPattern(QStringLiteral("\\S+"));
     auto matches = wordPattern.globalMatch(plain);
     QVector<core::EditedWord> tokens;
@@ -1958,6 +2011,17 @@ void MainWindow::exportPdf(bool archive)
     startExport(path, archive ? ExportFormat::ArchivalPdf : ExportFormat::Pdf);
 }
 
+void MainWindow::exportScientificBook()
+{
+    if (processor.isBusy() || exportBusy || !maybeApplyEditor()) return;
+    if (!document.wordCount()) { showError(tr("Recognize the document before exporting its reading order.")); return; }
+    if (document.pages.size() < document.totalPages &&
+        QMessageBox::question(this, tr("Pages without OCR"),
+            tr("Export only the recognized pages?"), QMessageBox::Yes | QMessageBox::Cancel,
+            QMessageBox::Cancel) != QMessageBox::Yes) return;
+    chooseExportPath(tr("Export scientific book"), tr("HTML (*.html)"), "html", ExportFormat::ScientificBook);
+}
+
 void MainWindow::exportVerifiedSamples()
 {
     if (processor.isBusy() || exportBusy || !maybeApplyEditor()) return;
@@ -1965,9 +2029,14 @@ void MainWindow::exportVerifiedSamples()
         return std::any_of(page.words.cbegin(), page.words.cend(), core::isVerifiedCorrection);
     });
     if (!hasExamples) { showError(tr("No verified single-word corrections to export.")); return; }
-    QFileDialog dialog(this, tr("Export verified corrections"), {}, tr("JSON Lines (*.jsonl)"));
+    chooseExportPath(tr("Export verified corrections"), tr("JSON Lines (*.jsonl)"), "jsonl", ExportFormat::Samples);
+}
+
+void MainWindow::chooseExportPath(const QString &title, const QString &filter, const QString &suffix, ExportFormat format)
+{
+    QFileDialog dialog(this, title, {}, filter);
     dialog.setAcceptMode(QFileDialog::AcceptSave);
-    dialog.setDefaultSuffix(QStringLiteral("jsonl"));
+    dialog.setDefaultSuffix(suffix);
     if (dialog.exec() != QDialog::Accepted) return;
     const QString path = dialog.selectedFiles().value(0);
     if (path.isEmpty()) return;
@@ -1975,7 +2044,7 @@ void MainWindow::exportVerifiedSamples()
         showError(tr("Choose a destination separate from the source and project files."));
         return;
     }
-    startExport(path, ExportFormat::Samples);
+    startExport(path, format);
 }
 
 void MainWindow::startExport(const QString &path, ExportFormat format)
@@ -1993,6 +2062,8 @@ void MainWindow::startExport(const QString &path, ExportFormat format)
                 if (exportBusy) status->setText(tr("Export: %1 of %2 pages").arg(completed).arg(total));
             }, Qt::QueuedConnection);
         };
+        if (format == ExportFormat::ScientificBook)
+            return processing::ScientificBookExporter::write(snapshot, path, *cancel, progress);
         if (format == ExportFormat::Samples)
             return processing::VerifiedSampleExporter::write(snapshot, path, *cancel, progress);
         return processing::PdfExporter::write(snapshot, path, format == ExportFormat::ArchivalPdf, *cancel, progress);

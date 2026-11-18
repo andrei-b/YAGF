@@ -45,7 +45,7 @@ Select **RapidOCR (remote service)** with `http://127.0.0.1:8767` and language `
 
 ## Surya
 
-The adapter targets [Surya 2.x's current `RecognitionPredictor` API](https://github.com/datalab-to/surya#ocr-text-recognition). It converts ordered HTML blocks into editable text and keeps each block's bounding box and layout type. For example:
+The adapter targets [Surya 2.x's current `RecognitionPredictor` API](https://github.com/datalab-to/surya#ocr-text-recognition). It converts the predictor’s ordered blocks to editable text, including LaTeX from math tags and tab-separated table cells. For example:
 
 ```sh
 python3 -m venv .venv-surya
@@ -54,7 +54,7 @@ python -m pip install surya-ocr
 python service/server.py --engine surya --host 127.0.0.1 --port 8768
 ```
 
-Select **Surya (remote service)** with `http://127.0.0.1:8768` and language `auto`. Surya also needs its [inference backend](https://github.com/datalab-to/surya#inference-backend-prerequisites), such as vLLM or llama.cpp. YAGF currently keeps block order and type, including table regions, but flattens HTML table cells into editable text; it does not yet export Surya's full table structure. Surya's [code and model weights have different licenses](https://github.com/datalab-to/surya#commercial-usage). YAGF does not redistribute those weights.
+Select **Surya (remote service)** with `http://127.0.0.1:8768` and language `auto`. Surya also needs its [inference backend](https://github.com/datalab-to/surya#inference-backend-prerequisites), such as vLLM or llama.cpp. The adapter retains header and span metadata for recognized tables, preserves picture boxes even when OCR skips them, and keeps captions in reading order. The desktop scientific-book export crops figures from the local page image. Surya's [code and model weights have different licenses](https://github.com/datalab-to/surya#commercial-usage). YAGF does not redistribute those weights.
 
 ## Kraken
 
@@ -80,7 +80,7 @@ Forward the matching service port for other providers. Test a service with `curl
 
 ## Protocol
 
-`POST /v1/recognize` takes `application/json` with `protocol: "yagf-ocr/1"`, `image_png` as base64, `language`, and `page_number`. The response carries the same protocol, `engine_id`, image `width` and `height`, and `language`. PaddleOCR, RapidOCR, and Surya responses contain `lines`; docTR and Kraken responses contain `words`. Each item has `text`, `confidence` from 0 to 1, and a pixel box `[x, y, width, height]`. Structured providers add one-based `block` and `line` numbers; Surya also adds `type`. The Qt client validates provider, schema, dimensions, confidence, bounds, and reading order before accepting a page. Requests are capped at 44 MiB encoded and 32 MiB PNG; responses are capped at 8 MiB. `GET /v1/health` reports readiness.
+`POST /v1/recognize` takes `application/json` with `protocol: "yagf-ocr/1"`, `image_png` as base64, `language`, and `page_number`. The response carries the same protocol, `engine_id`, image `width` and `height`, and `language`. PaddleOCR, RapidOCR, and Surya responses contain `lines`; docTR and Kraken responses contain `words`. Each item has `text`, `confidence` from 0 to 1, and a pixel box `[x, y, width, height]`. Structured providers add one-based `block` and `line` numbers; Surya also adds `type` and may report unknown confidence as `null`. Tables use tab-separated cells and newline-separated rows in `text`. The optional `table_layout` array records `header`, `rowspan`, and `colspan` for each cell. The Qt client validates provider, schema, dimensions, confidence, bounds, and reading order before accepting a page. Requests are capped at 44 MiB encoded and 32 MiB PNG; responses are capped at 8 MiB. `GET /v1/health` reports readiness.
 
 Run the protocol and adapter tests without installing inference frameworks:
 

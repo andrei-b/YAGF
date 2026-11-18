@@ -136,24 +136,53 @@ def normalize_rapid_result(result, width, height):
 
 
 class BlockTextParser(HTMLParser):
-    def __init__(self):
+    def __init__(self, label):
         super().__init__(convert_charrefs=True)
+        self.label = label
         self.parts = []
+        self.rows = []
+        self.cell_parts = None
+
+    def append(self, value):
+        self.parts.append(value)
+        if self.cell_parts is not None:
+            self.cell_parts.append(value)
 
     def handle_starttag(self, tag, attrs):
-        if tag in ("br", "p", "div", "tr", "li"):
-            self.parts.append("\n")
-        elif tag in ("td", "th"):
-            self.parts.append("\t")
+        if tag == "math":
+            self.append(r"\[" if self.label == "equation" else r"\(")
+        elif tag == "tr":
+            self.rows.append([])
+            self.append("\n")
+        elif tag in ("td", "th") and self.rows:
+            attributes = dict(attrs)
+            cell = {"text": "", "header": tag == "th"}
+            for name in ("colspan", "rowspan"):
+                value = attributes.get(name, "1")
+                if not value or not re.fullmatch(r"[1-9][0-9]{0,2}", value):
+                    raise ValueError("Invalid table span")
+                cell[name] = int(value)
+            self.rows[-1].append(cell)
+            self.cell_parts = []
+        elif tag in ("br", "p", "div", "li"):
+            self.append("\n")
 
     def handle_endtag(self, tag):
-        if tag in ("p", "div", "tr", "li", "table"):
-            self.parts.append("\n")
+        if tag == "math":
+            self.append(r"\]" if self.label == "equation" else r"\)")
+        elif tag in ("td", "th") and self.cell_parts is not None:
+            self.rows[-1][-1]["text"] = " ".join("".join(self.cell_parts).split())
+            self.cell_parts = None
+            self.parts.append(" ")
+        elif tag in ("p", "div", "tr", "li", "table"):
+            self.append("\n")
 
     def handle_data(self, data):
-        self.parts.append(data)
+        self.append(data)
 
     def text(self):
+        if self.label == "table" and self.rows:
+            return "\n".join("\t".join(cell["text"] for cell in row) for row in self.rows)
         return "\n".join(" ".join(line.split()) for line in
                          "".join(self.parts).splitlines() if line.strip()).strip()
 
@@ -163,20 +192,28 @@ def normalize_surya_result(result, width, height):
         raise ValueError("Surya returned an unexpected page count")
     blocks = []
     for block in sorted(result[0].blocks, key=lambda item: item.reading_order):
-        if block.skipped or block.error:
+        label = str(block.label).strip().lower() or "text"
+        visual = label in ("figure", "picture", "diagram", "image")
+        if block.error or (block.skipped and not visual):
             continue
-        parser = BlockTextParser()
-        parser.feed(block.html)
+        parser = BlockTextParser(label)
+        parser.feed(block.html or "")
+        parser.close()
         value = parser.text()
-        if not value:
-            continue
-        score = float(block.confidence)
-        if not math.isfinite(score) or not 0 <= score <= 1:
+        if not value.strip():
+            if not visual:
+                continue
+            value = "[" + label.capitalize() + "]"
+        score = float(block.confidence) if block.confidence is not None else None
+        if score is not None and (not math.isfinite(score) or not 0 <= score <= 1):
             raise ValueError("Surya returned invalid confidence")
         box = polygon_box(block.polygon, width, height)
-        blocks.append({"text": value, "confidence": score, "box": box,
-                       "block": len(blocks) + 1, "line": 1,
-                       "type": str(block.label).strip().lower() or "text"})
+        item = {"text": value, "confidence": score, "box": box,
+                "block": len(blocks) + 1, "line": 1, "type": label}
+        if label == "table" and parser.rows:
+            item["table_layout"] = [[{k: v for k, v in cell.items() if k != "text"}
+                                     for cell in row] for row in parser.rows]
+        blocks.append(item)
         if len(blocks) > MAX_ITEMS:
             raise ValueError("Surya returned too many blocks")
     return blocks

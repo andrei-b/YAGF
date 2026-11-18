@@ -2,6 +2,7 @@
 
 #include "preprocesssettings.h"
 
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QRect>
 #include <QString>
@@ -27,6 +28,7 @@ struct OcrWord {
     int fontSizePt = 0;
     int sourceFontSizePt = 0;
     QVector<QRect> sourceBoxes; // Exact image fragments; empty for inserted text.
+    bool layoutBlock = false; // A single OCR item can contain paragraphs, LaTeX or a table.
 };
 
 struct OcrLine {
@@ -46,6 +48,10 @@ struct OcrRegion {
     QRect bounds;
     QString type = QStringLiteral("text");
     QVector<OcrParagraph> paragraphs;
+    // Optional header and span metadata, aligned with the tab-separated block text.
+    QJsonArray tableLayout;
+    bool isFigure() const;
+    static bool validTableLayout(const QJsonValue &value);
 };
 
 // User-drawn OCR areas exist before recognition and survive OCR page rebuilds.

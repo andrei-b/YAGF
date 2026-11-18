@@ -44,7 +44,7 @@ bool oneEditApart(QStringView a, QStringView b)
 bool isVerifiedCorrection(const OcrWord &word)
 {
     // WordEditor resets confidence on estimated split/merge geometry.
-    return word.reviewed && word.confidence >= 0 && word.originalText != word.text &&
+    return !word.layoutBlock && word.reviewed && word.confidence >= 0 && word.originalText != word.text &&
         singleToken(word.originalText) && singleToken(word.text) &&
         word.sourceWordIds.size() == 1 && word.sourceBoxes.size() == 1 &&
         word.bounds.isValid() && word.sourceBoxes.first() == word.bounds;

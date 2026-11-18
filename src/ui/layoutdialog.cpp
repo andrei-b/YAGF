@@ -43,6 +43,7 @@ LayoutDialog::LayoutDialog(core::OcrPage sourcePage, const QImage &image, QWidge
     typeCombo->setEditable(true);
     typeCombo->addItems({QStringLiteral("text"), QStringLiteral("heading"),
                          QStringLiteral("column"), QStringLiteral("table"),
+                         QStringLiteral("figure"), QStringLiteral("caption"), QStringLiteral("equation"),
                          QStringLiteral("image"), QStringLiteral("footnote")});
     form->addRow(tr("Type"), typeCombo);
     xSpin = new QSpinBox(this);

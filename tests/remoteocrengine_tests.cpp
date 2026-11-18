@@ -80,7 +80,9 @@ int main(int argc, char **argv)
                                     {"line", 1}, {"type", "sectionheader"}},
                         QJsonObject{{"text", "A B"}, {"confidence", 0.8},
                                     {"box", QJsonArray{1, 4, 18, 5}}, {"block", 2},
-                                    {"line", 1}, {"type", "table"}}});
+                                    {"line", 1}, {"type", "table"},
+                                    {"table_layout", QJsonArray{QJsonArray{QJsonObject{
+                                        {"header", true}, {"rowspan", 1}, {"colspan", 2}}}}}}});
                 } else {
                     sent.insert(QStringLiteral("engine_id"), QStringLiteral("kraken"));
                     sent.insert(QStringLiteral("words"), QJsonArray{
@@ -145,6 +147,8 @@ int main(int argc, char **argv)
     yagf::core::OcrDocument document;
     document.replacePage(*suryaPage);
     assert(document.page(1)->regions[1].type == QStringLiteral("table"));
+    assert(suryaPage->words.last().layoutBlock);
+    assert(suryaPage->regions.last().tableLayout.first().toArray().first().toObject()["colspan"].toInt() == 2);
     RemoteOcrEngine kraken(service, QStringLiteral("secret"), RemoteOcrEngine::Provider::Kraken);
     assert(kraken.capabilities().supportsWordBoxes);
     auto krakenPage = kraken.recognize(image, {.language = QStringLiteral("auto")}, {});

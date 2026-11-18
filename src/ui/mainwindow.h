@@ -132,9 +132,11 @@ private:
     void exportText();
     void exportHtml();
     void exportJson();
-    enum class ExportFormat { Pdf, ArchivalPdf, Samples };
+    enum class ExportFormat { Pdf, ArchivalPdf, Samples, ScientificBook };
     void exportPdf(bool archive);
     void exportVerifiedSamples();
+    void exportScientificBook();
+    void chooseExportPath(const QString &title, const QString &filter, const QString &suffix, ExportFormat format);
     void startExport(const QString &path, ExportFormat format);
     void setBusy(bool busy);
     void showError(const QString &message);

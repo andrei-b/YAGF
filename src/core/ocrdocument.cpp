@@ -53,7 +53,7 @@ QJsonObject wordJson(const OcrWord &word)
     for (const QString &id : word.sourceWordIds) sources.append(id);
     QJsonArray sourceBoxes;
     for (const QRect &box : word.sourceBoxes) sourceBoxes.append(boxJson(box));
-    return {{"id", word.id}, {"page", word.page}, {"block", word.block},
+    QJsonObject result{{"id", word.id}, {"page", word.page}, {"block", word.block},
             {"paragraph", word.paragraph}, {"line", word.line}, {"box", boxJson(word.bounds)},
             {"original_text", word.originalText}, {"text", word.text},
             {"source_word_ids", sources},
@@ -62,6 +62,8 @@ QJsonObject wordJson(const OcrWord &word)
             {"style", QJsonObject{{"bold", word.bold}, {"italic", word.italic},
                                    {"font_size_pt", word.fontSizePt},
                                    {"source_font_size_pt", word.sourceFontSizePt}}}};
+    if (word.layoutBlock) result.insert("layout_block", true);
+    return result;
 }
 
 bool parseWord(const QJsonObject &json, int pageNumber, int width, int height, OcrWord *word)
@@ -75,6 +77,8 @@ bool parseWord(const QJsonObject &json, int pageNumber, int width, int height, O
         !json.value(QStringLiteral("text")).isString() ||
         !json.value(QStringLiteral("confidence")).isDouble() ||
         !json.value(QStringLiteral("reviewed")).isBool()) return false;
+    if (json.contains("layout_block") && !json.value("layout_block").isBool()) return false;
+    word->layoutBlock = json.value("layout_block").toBool();
     word->originalText = json.value(QStringLiteral("original_text")).toString();
     word->text = json.value(QStringLiteral("text")).toString();
     word->confidence = json.value(QStringLiteral("confidence")).toDouble();
@@ -109,6 +113,30 @@ bool parseWord(const QJsonObject &json, int pageNumber, int width, int height, O
          word->sourceFontSizePt < 0 || word->sourceFontSizePt > 72)) return false;
     return std::isfinite(word->confidence);
 }
+}
+
+bool OcrRegion::isFigure() const
+{
+    return type == "figure" || type == "diagram" || type == "picture" || type == "image";
+}
+
+bool OcrRegion::validTableLayout(const QJsonValue &value)
+{
+    if (!value.isArray()) return false;
+    qsizetype cells = 0;
+    for (const auto &row : value.toArray()) {
+        if (!row.isArray() || row.toArray().isEmpty()) return false;
+        cells += row.toArray().size();
+        if (cells > 100000) return false;
+        for (const auto &entry : row.toArray()) {
+            const auto cell = entry.toObject();
+            int rows, columns;
+            if (!cell.value("header").isBool() || !integer(cell, "rowspan", &rows) ||
+                !integer(cell, "colspan", &columns) || rows < 1 || columns < 1 ||
+                rows > 999 || columns > 999) return false;
+        }
+    }
+    return true;
 }
 
 void OcrPage::rebuildHierarchy()
@@ -159,6 +187,7 @@ void OcrPage::rebuildHierarchy()
         if (const auto old = previousRegions.constFind(region.id); old != previousRegions.cend()) {
             if (!old->bounds.isNull()) region.bounds = old->bounds;
             region.type = old->type;
+            region.tableLayout = old->tableLayout;
         }
     }
     QVector<int> heights;
@@ -338,8 +367,10 @@ QJsonObject OcrDocument::toJson() const
                 paragraphItems.append(QJsonObject{{"id", paragraph.id}, {"box", boxJson(paragraph.bounds)},
                                                   {"lines", lineItems}});
             }
-            regionItems.append(QJsonObject{{"id", region.id}, {"type", region.type},
-                                           {"box", boxJson(region.bounds)}, {"paragraphs", paragraphItems}});
+            QJsonObject item{{"id", region.id}, {"type", region.type}, {"box", boxJson(region.bounds)},
+                             {"paragraphs", paragraphItems}};
+            if (!region.tableLayout.isEmpty()) item.insert("table_layout", region.tableLayout);
+            regionItems.append(item);
         }
         for (const ImageRegion &region : page.imageRegions)
             imageRegionItems.append(QJsonObject{{"id", region.id}, {"box", boxJson(region.bounds)}});
@@ -461,6 +492,11 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
                 if (region.id.isEmpty() || region.type.isEmpty() || regionIds.contains(region.id) ||
                     !parseBox(item.value(QStringLiteral("box")).toObject(), page.width, page.height, &region.bounds))
                     return fail(QStringLiteral("Invalid region geometry or type."));
+                if (item.contains("table_layout")) {
+                    if (!OcrRegion::validTableLayout(item.value("table_layout")))
+                        return fail(QStringLiteral("Invalid table cell layout."));
+                    region.tableLayout = item.value("table_layout").toArray();
+                }
                 regionIds.insert(region.id);
                 page.regions.append(std::move(region));
             }

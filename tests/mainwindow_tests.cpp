@@ -303,4 +303,24 @@ int main(int argc, char **argv)
     bookWords->setCurrentRow(1, QItemSelectionModel::ClearAndSelect);
     assert(reviewBook->text().contains("QWidget"));
 
+    // A structured table stays one editable block when its cells contain spaces or tabs.
+    page.words[0].text = page.words[0].originalText = "Name\tValue\nRate constant\t42";
+    page.words[0].layoutBlock = true;
+    book.replacePage(page);
+    assert(yagf::core::ProjectFile::save(bookPath, book, &error));
+    yagf::ui::MainWindow scientificWindow;
+    scientificWindow.loadProject(bookPath);
+    auto *blocks = scientificWindow.findChild<QListWidget *>("recognizedWords");
+    auto *blockEditor = scientificWindow.findChild<QTextEdit *>("recognizedTextEditor");
+    auto *applyBlock = scientificWindow.findChild<QPushButton *>("applyButton");
+    assert(blocks && blockEditor && applyBlock);
+    blocks->setCurrentRow(0, QItemSelectionModel::ClearAndSelect);
+    const QString correctedTable = "Name\tValue\nRate constant\t43";
+    blockEditor->setPlainText(correctedTable);
+    applyBlock->click();
+    assert(blocks->count() == 2 && blocks->item(0)->text() == correctedTable);
+    for (auto *action : scientificWindow.findChildren<QAction *>())
+        if (action->text() == "Undo") action->trigger();
+    assert(blocks->item(0)->text() == page.words[0].originalText);
+
 }

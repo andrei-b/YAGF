@@ -69,10 +69,13 @@ std::expected<core::OcrPage, OcrError> parseResponse(
             return std::unexpected(OcrError{QStringLiteral("The OCR server returned an invalid text item.")});
         const QJsonObject line = value.toObject();
         const QJsonArray box = line.value(QStringLiteral("box")).toArray();
-        const QString text = line.value(QStringLiteral("text")).toString().trimmed();
+        const QString rawText = line.value(QStringLiteral("text")).toString();
+        const QString text = provider == RemoteOcrEngine::Provider::Surya &&
+            line.value("type").toString() == "table" ? rawText : rawText.trimmed();
         const QJsonValue score = line.value(QStringLiteral("confidence"));
-        if (box.size() != 4 || text.isEmpty() || !score.isDouble() ||
-            !std::isfinite(score.toDouble()) || score.toDouble() < 0 || score.toDouble() > 1)
+        const bool unknownScore = provider == RemoteOcrEngine::Provider::Surya && score.isNull();
+        if (box.size() != 4 || text.isEmpty() || (!unknownScore && (!score.isDouble() ||
+            !std::isfinite(score.toDouble()) || score.toDouble() < 0 || score.toDouble() > 1)))
             return std::unexpected(OcrError{QStringLiteral("The OCR server returned invalid text or confidence.")});
         int geometry[4];
         for (int i = 0; i < 4; ++i) {
@@ -96,9 +99,10 @@ std::expected<core::OcrPage, OcrError> parseResponse(
             return std::unexpected(OcrError{QStringLiteral("The OCR server returned invalid reading order.")});
         previousBlock = word.block;
         previousLine = word.line;
+        word.layoutBlock = provider == RemoteOcrEngine::Provider::Surya;
         word.bounds = bounds;
         word.originalText = word.text = text;
-        word.confidence = score.toDouble() * 100.0;
+        word.confidence = unknownScore ? -1 : score.toDouble() * 100.0;
         page.words.append(std::move(word));
     }
     page.rebuildHierarchy();
@@ -110,6 +114,12 @@ std::expected<core::OcrPage, OcrError> parseResponse(
             if (type.isEmpty())
                 return std::unexpected(OcrError{QStringLiteral("Surya returned an invalid region type.")});
             page.regions[i].type = type;
+            const auto layout = items.at(i).toObject().value("table_layout");
+            if (!layout.isUndefined()) {
+                if (type != "table" || !core::OcrRegion::validTableLayout(layout))
+                    return std::unexpected(OcrError{QStringLiteral("Surya returned an invalid table layout.")});
+                page.regions[i].tableLayout = layout.toArray();
+            }
         }
     }
     return page;

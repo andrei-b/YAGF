@@ -26,6 +26,13 @@ public:
                                                const Progress &progress = {});
 };
 
+class ScientificBookExporter {
+public:
+    [[nodiscard]] static ExportResult write(const core::OcrDocument &document, const QString &destination,
+                                            const std::atomic_bool &cancelled,
+                                            const PdfExporter::Progress &progress = {});
+};
+
 class VerifiedSampleExporter {
 public:
     [[nodiscard]] static ExportResult write(const core::OcrDocument &document, const QString &destination,

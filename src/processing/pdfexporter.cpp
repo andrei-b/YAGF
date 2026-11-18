@@ -1,4 +1,5 @@
 #include "pdfexporter.h"
+#include "exportpage.h"
 
 #include "imageprocessor.h"
 #include "correctionmemory.h"
@@ -66,6 +67,33 @@ PdfExportResult runProcess(const QString &program, const QStringList &arguments,
     return {.status = PdfExportResult::Status::Success};
 }
 
+void drawWord(QPainter &painter, const core::OcrWord &word)
+{
+    if (word.text.isEmpty() || word.bounds.isEmpty()) return;
+    QFont font = painter.font();
+    font.setPixelSize(std::clamp(word.bounds.height(), 6, 180));
+    font.setBold(word.bold);
+    font.setItalic(word.italic);
+    painter.setFont(font);
+    const QFontMetricsF metrics(font);
+    const qreal naturalWidth = std::max<qreal>(1.0, metrics.horizontalAdvance(word.text));
+    const qreal scaleX = static_cast<qreal>(word.bounds.width()) / naturalWidth;
+    painter.save();
+    painter.translate(word.bounds.x(), word.bounds.y());
+    painter.scale(scaleX, 1.0);
+    painter.drawText(QPointF(0, metrics.ascent()), word.text);
+    painter.restore();
+}
+
+QPageSize pageSizeFor(const QImage &image)
+{
+    constexpr double pointsPerPixel = 72.0 / 150.0;
+    return QPageSize(QSizeF(image.width() * pointsPerPixel,
+                            image.height() * pointsPerPixel), QPageSize::Point);
+}
+
+} // namespace
+
 std::expected<QImage, ExportResult> readExportPage(const core::OcrDocument &document, int number,
                                                    const QTemporaryDir &temporary,
                                                    const std::atomic_bool &cancelled)
@@ -97,33 +125,6 @@ std::expected<QImage, ExportResult> readExportPage(const core::OcrDocument &docu
         return std::unexpected(failure(QStringLiteral("Processed dimensions changed on page %1.").arg(number)));
     return std::move(*processed);
 }
-
-void drawWord(QPainter &painter, const core::OcrWord &word)
-{
-    if (word.text.isEmpty() || word.bounds.isEmpty()) return;
-    QFont font = painter.font();
-    font.setPixelSize(std::clamp(word.bounds.height(), 6, 180));
-    font.setBold(word.bold);
-    font.setItalic(word.italic);
-    painter.setFont(font);
-    const QFontMetricsF metrics(font);
-    const qreal naturalWidth = std::max<qreal>(1.0, metrics.horizontalAdvance(word.text));
-    const qreal scaleX = static_cast<qreal>(word.bounds.width()) / naturalWidth;
-    painter.save();
-    painter.translate(word.bounds.x(), word.bounds.y());
-    painter.scale(scaleX, 1.0);
-    painter.drawText(QPointF(0, metrics.ascent()), word.text);
-    painter.restore();
-}
-
-QPageSize pageSizeFor(const QImage &image)
-{
-    constexpr double pointsPerPixel = 72.0 / 150.0;
-    return QPageSize(QSizeF(image.width() * pointsPerPixel,
-                            image.height() * pointsPerPixel), QPageSize::Point);
-}
-
-} // namespace
 
 PdfExportResult PdfExporter::write(const core::OcrDocument &document,
                                    const QString &destination, bool archive,

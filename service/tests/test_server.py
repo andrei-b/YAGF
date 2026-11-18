@@ -186,6 +186,27 @@ class ServerTests(unittest.TestCase):
         self.assertIn("A", items[1]["text"])
         self.assertIn("B", items[1]["text"])
 
+    def test_scientific_page(self):
+        def block(order, label, html, skipped=False):
+            return SimpleNamespace(reading_order=order, label=label, html=html,
+                                   polygon=[(1, 1), (9, 1), (9, 8), (1, 8)],
+                                   confidence=None, skipped=skipped, error=False)
+        page = SimpleNamespace(blocks=[
+            block(4, "Caption", "<p>Figure 1 &amp; details</p>"),
+            block(2, "Table", '<table><tr><th colspan="2">A B</th></tr>'
+                  '<tr><td></td><td><math>y_i</math></td></tr></table>'),
+            block(0, "Text", "<p>Let <math>x_i</math> vary.</p>"),
+            block(3, "Picture", "", skipped=True),
+            block(1, "Equation", r"<math>\frac{a}{b}</math>")])
+        text, equation, table, picture, caption = normalize_surya_result([page], 10, 10)
+        self.assertEqual(text["text"], r"Let \(x_i\) vary.")
+        self.assertEqual(equation["text"], r"\[\frac{a}{b}\]")
+        self.assertEqual(table["text"], "A B\n\t" + r"\(y_i\)")
+        self.assertEqual(table["table_layout"][0][0], {"header": True, "rowspan": 1, "colspan": 2})
+        self.assertEqual(picture["type"], "picture")
+        self.assertIsNone(picture["confidence"])
+        self.assertEqual(caption["text"], "Figure 1 & details")
+
     def test_kraken_words_use_character_cuts(self):
         def cut(left, right):
             return [(left, 2), (right, 2), (right, 7), (left, 7)]
