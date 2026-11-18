@@ -12,6 +12,7 @@ set(CMAKE_AUTORCC ON)
 add_library(yagf_core STATIC
     src/core/ocrdocument.cpp src/core/ocrdocument.h src/core/preprocesssettings.h
     src/core/bookvocabulary.cpp src/core/bookvocabulary.h
+    src/core/symbolmatcher.cpp src/core/symbolmatcher.h
     src/core/correctionmemory.cpp src/core/correctionmemory.h
     src/core/projectfile.cpp src/core/projectfile.h
     src/core/wordeditor.cpp src/core/wordeditor.h)

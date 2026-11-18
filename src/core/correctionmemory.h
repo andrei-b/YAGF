@@ -1,11 +1,16 @@
 #pragma once
 
 #include "ocrdocument.h"
+#include "symbolmatcher.h"
+
+#include <optional>
 
 #include <QHash>
 #include <QSet>
 
 namespace yagf::core {
+
+enum class SymbolMatch { None, Similar, Exact };
 
 struct CorrectionSuggestion {
     QString original;
@@ -13,14 +18,14 @@ struct CorrectionSuggestion {
     int occurrences = 0;
     bool exact = false;
     int matchingNeighbors = 0;
-    bool visualMatch = false;
+    SymbolMatch symbolMatch = SymbolMatch::None;
 };
 
 bool isVerifiedCorrection(const OcrWord &word);
 
 class CorrectionMemory {
 public:
-    explicit CorrectionMemory(const OcrDocument &document = {});
+    explicit CorrectionMemory(const OcrDocument &document = {}, bool matchSimilarSymbols = false);
     QVector<CorrectionSuggestion> suggestions(const OcrPage &page, int index) const;
 
 private:
@@ -35,6 +40,8 @@ private:
         int page;
         bool reviewed;
     };
+    std::optional<CorrectionSuggestion> symbolSuggestion(const OcrPage &page, const OcrWord &word) const;
+    SymbolMatcher similarSymbols;
     QHash<QByteArray, QVector<SymbolExample>> symbolExamples;
     QHash<QString, QHash<QString, Evidence>> corrections;
 };

@@ -30,6 +30,7 @@ int main(int argc, char **argv)
     QApplication app(argc, argv);
     QTemporaryDir directory;
     assert(directory.isValid());
+    QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, directory.path());
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, directory.path());
     const QString sourcePath = directory.filePath(QStringLiteral("source.png"));
@@ -60,6 +61,13 @@ int main(int argc, char **argv)
     qputenv("YAGF_TEST_ARGS", QFile::encodeName(argsPath));
 
     yagf::ui::MainWindow window;
+    auto matchOption = [](const yagf::ui::MainWindow &window) -> QAction * {
+        for (auto *action : window.findChildren<QAction *>())
+            if (action->text() == QStringLiteral("Match similar symbol images")) return action;
+        return nullptr;
+    };
+    auto *similar = matchOption(window);
+    assert(similar && similar->isCheckable() && !similar->isChecked());
     window.loadSource(sourcePath);
     auto *words = window.findChild<QListWidget *>(QStringLiteral("recognizedWords"));
     auto *editor = window.findChild<QTextEdit *>(QStringLiteral("recognizedTextEditor"));
@@ -127,6 +135,8 @@ int main(int argc, char **argv)
     assert(editor->toPlainText() == QStringLiteral("mod ernization"));
 
     editor->setPlainText(QStringLiteral("modernization"));
+    similar->trigger();
+    assert(similar->isChecked() && editor->toPlainText() == QStringLiteral("modernization"));
     apply->click();
     assert(words->count() == 1 && words->item(0)->text() == QStringLiteral("modernization"));
     assert(undo->isEnabled());
@@ -185,6 +195,9 @@ int main(int argc, char **argv)
     assert(hasAutoLanguage);
 
     yagf::ui::MainWindow regionWindow;
+    auto *savedOption = matchOption(regionWindow);
+    assert(savedOption && savedOption->isChecked());
+    savedOption->trigger();
     regionWindow.loadSource(sourcePath);
     regionWindow.show();
     app.processEvents();

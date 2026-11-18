@@ -48,7 +48,7 @@ bool isVerifiedCorrection(const OcrWord &word)
         singleToken(word.originalText) && singleToken(word.text);
 }
 
-CorrectionMemory::CorrectionMemory(const OcrDocument &document)
+CorrectionMemory::CorrectionMemory(const OcrDocument &document, bool matchSimilarSymbols)
 {
     for (const auto &page : document.pages) {
         QHash<QByteArray, QHash<QString, bool>> readingsOnPage;
@@ -71,6 +71,42 @@ CorrectionMemory::CorrectionMemory(const OcrDocument &document)
                 symbolExamples[shape.key()].append({label.key(), page.language, page.number, label.value()});
         }
     }
+    if (matchSimilarSymbols) {
+        for (auto it = symbolExamples.cbegin(); it != symbolExamples.cend(); ++it)
+            similarSymbols.insert(it.key());
+    }
+}
+
+std::optional<CorrectionSuggestion> CorrectionMemory::symbolSuggestion(const OcrPage &page,
+                                                                      const OcrWord &word) const
+{
+    if (word.confidence >= 85 || !hasOriginalWordBox(word) || !isSingleSymbol(word.text) ||
+        word.symbolShape.size() != 32) return {};
+
+    QString reading;
+    QSet<int> pages;
+    bool confirmed = false;
+    const auto agree = [&](const QByteArray &mask) {
+        const auto found = symbolExamples.constFind(mask);
+        if (found == symbolExamples.cend()) return true;
+        for (const auto &sample : found.value()) {
+            if (sample.page >= page.number || sample.language != page.language) continue;
+            if (!reading.isEmpty() && reading != sample.reading) return false;
+            reading = sample.reading;
+            confirmed |= sample.reviewed;
+            pages.insert(sample.page);
+        }
+        return true;
+    };
+    if (!agree(word.symbolShape)) return {};
+    SymbolMatch match = SymbolMatch::Exact;
+    if (pages.isEmpty()) {
+        match = SymbolMatch::Similar;
+        for (const auto &mask : similarSymbols.similar(word.symbolShape))
+            if (!agree(mask)) return {};
+    }
+    if (reading.isEmpty() || reading == word.text || (!confirmed && pages.size() < 2)) return {};
+    return CorrectionSuggestion{word.text, reading, int(pages.size()), false, 0, match};
 }
 
 QVector<CorrectionSuggestion> CorrectionMemory::suggestions(const OcrPage &page, int index) const
@@ -96,29 +132,10 @@ QVector<CorrectionSuggestion> CorrectionMemory::suggestions(const OcrPage &page,
         for (auto it = corrections.cbegin(); it != corrections.cend(); ++it)
             if (fuzzyEligible(it.key()) && oneEditApart(word.text, it.key())) collect(it, false);
     }
-    if (word.confidence < 85 && hasOriginalWordBox(word) && isSingleSymbol(word.text)) {
-        const auto found = symbolExamples.constFind(word.symbolShape);
-        QString reading;
-        QSet<int> pages;
-        bool confirmed = false;
-        if (found != symbolExamples.cend()) {
-            for (const auto &sample : found.value()) {
-                if (sample.page >= page.number || sample.language != page.language) continue;
-                if (!reading.isEmpty() && reading != sample.reading) {
-                    reading.clear();
-                    break;
-                }
-                reading = sample.reading;
-                confirmed |= sample.reviewed;
-                pages.insert(sample.page);
-            }
-        }
-        if (!reading.isEmpty() && reading != word.text && (confirmed || pages.size() >= 2))
-            result.append({word.text, reading, int(pages.size()), false, 0, true});
-    }
+    if (auto symbol = symbolSuggestion(page, word)) result.append(*symbol);
     std::sort(result.begin(), result.end(), [](const auto &a, const auto &b) {
         if (a.exact != b.exact) return a.exact;
-        if (a.visualMatch != b.visualMatch) return a.visualMatch;
+        if (a.symbolMatch != b.symbolMatch) return a.symbolMatch > b.symbolMatch;
         if (a.matchingNeighbors != b.matchingNeighbors) return a.matchingNeighbors > b.matchingNeighbors;
         if (a.occurrences != b.occurrences) return a.occurrences > b.occurrences;
         if (a.replacement != b.replacement) return a.replacement < b.replacement;

@@ -1,6 +1,7 @@
 #include "aireviewdialog.h"
 
 #include <QApplication>
+#include <QComboBox>
 #include <QDialogButtonBox>
 #include <QElapsedTimer>
 #include <QJsonArray>
@@ -78,6 +79,10 @@ int main(int argc, char **argv)
     yagf::ui::AiReviewDialog dialog(QStringLiteral("modemization"),
         QStringLiteral("nearby context [modemization] matters"), crop, QRect(20, 5, 30, 15),
         QStringLiteral("secret"));
+    dialog.setBookSuggestions({{"v", "ν", 2, false, 0, yagf::core::SymbolMatch::Similar}});
+    auto *book = dialog.findChild<QComboBox *>(QStringLiteral("bookSuggestions"));
+    assert(book && book->count() == 1 && book->itemText(0).contains("similar symbol image"));
+    assert(book->currentIndex() == -1 && dialog.correction() == QStringLiteral("modemization"));
     auto *endpoint = dialog.findChild<QLineEdit *>(QStringLiteral("aiEndpoint"));
     auto *model = dialog.findChild<QLineEdit *>(QStringLiteral("aiModel"));
     auto *ask = dialog.findChild<QPushButton *>(QStringLiteral("askAiButton"));

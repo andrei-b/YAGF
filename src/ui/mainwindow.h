@@ -120,6 +120,7 @@ private:
     void deleteImageRegion(int index);
     void refreshImageRegionSelection(bool updateWords);
     void runNextImageRegion();
+    void refreshReviewLabel();
     void updateSelection(const QVector<int> &indices);
     QVector<int> indicesForIds(const QStringList &ids) const;
     bool applyCorrection();
@@ -194,6 +195,7 @@ private:
     bool exportBusy = false;
     QString exportPath;
     QString aiReviewToken;
+    QAction *similarSymbolsAction = nullptr;
     std::optional<core::CorrectionMemory> correctionMemory;
     std::shared_ptr<std::atomic_bool> exportCancel;
     QFutureWatcher<processing::ExportResult> exportWatcher;

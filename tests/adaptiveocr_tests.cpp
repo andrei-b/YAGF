@@ -39,9 +39,75 @@ static void script(const QString &path, const QByteArray &body)
     assert(file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
 }
 
+static void testSimilarSymbols()
+{
+    // Two scans of an L with a one-cell crop offset and a nick in its foot.
+    auto shape = [](QPoint offset, bool nick, bool dot) {
+        QImage image(16, 16, QImage::Format_RGB32);
+        image.fill(Qt::white);
+        QPainter pen(&image);
+        pen.translate(offset);
+        pen.fillRect(3, 2, 3, 11, Qt::black);
+        pen.fillRect(3, 10, 8, 3, Qt::black);
+        if (nick) pen.fillRect(10, 12, 1, 1, Qt::white);
+        if (dot) pen.fillRect(10, 2, 1, 1, Qt::black);
+        pen.end();
+        return processing::symbolShape(image, image.rect());
+    };
+
+    auto previous = page(1, "L", 98, true);
+    previous.words[0].symbolShape = shape({}, false, false);
+    auto current = page(4, "I", 60);
+    current.words[0].symbolShape = shape({1, 1}, true, false);
+    core::OcrDocument document;
+    document.replacePage(previous);
+    auto suggestions = [&](bool similar) {
+        return core::CorrectionMemory(document, similar).suggestions(current, 0);
+    };
+    assert(suggestions(false).isEmpty());
+    auto matches = suggestions(true);
+    assert(matches.size() == 1 && matches.first().symbolMatch == core::SymbolMatch::Similar &&
+           matches.first().replacement == "L" && matches.first().occurrences == 1);
+    assert(current.words.first().text == "I" && !current.words.first().reviewed);
+
+    current.words[0].symbolShape = shape({1, 1}, true, true);
+    assert(suggestions(true).isEmpty()); // A distant dot changes the symbol.
+    current.words[0].symbolShape = shape({1, 1}, true, false);
+    previous.words[0].reviewed = false;
+    previous.words.append(previous.words.first());
+    document.replacePage(previous);
+    assert(suggestions(true).isEmpty()); // Two occurrences on one page.
+    auto second = previous;
+    second.number = 2;
+    second.words.resize(1);
+    second.words[0].symbolShape = shape({}, true, false);
+    document.replacePage(second);
+    assert(suggestions(true).size() == 1 && suggestions(true).first().occurrences == 2);
+    current.language = "deu";
+    assert(suggestions(true).isEmpty());
+    current.language = "eng";
+    current.number = 2;
+    assert(suggestions(true).isEmpty());
+    current.number = 4;
+    current.words[0].confidence = 85;
+    assert(suggestions(true).isEmpty());
+    current.words[0].confidence = 60;
+
+    second.words[0].text = second.words[0].originalText = "J";
+    document.replacePage(second);
+    assert(suggestions(true).isEmpty()); // Competing labels among similar masks.
+    second.words[0].reviewed = true;
+    second.words[0].symbolShape = current.words.first().symbolShape;
+    document.replacePage(second);
+    matches = suggestions(true);
+    assert(matches.size() == 1 && matches.first().symbolMatch == core::SymbolMatch::Exact &&
+           matches.first().replacement == "J");
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
+    testSimilarSymbols();
     QImage scan(80, 40, QImage::Format_RGB32);
     scan.fill(Qt::white);
     QPainter painter(&scan);
@@ -68,7 +134,7 @@ int main(int argc, char **argv)
     QString error;
     assert(core::OcrDocument::fromJson(book.toJson(), &restored, &error));
     const auto proposals = core::CorrectionMemory(restored).suggestions(*restored.page(3), 0);
-    assert(proposals.size() == 1 && proposals[0].visualMatch && proposals[0].replacement == "L");
+    assert(proposals.size() == 1 && proposals[0].symbolMatch == core::SymbolMatch::Exact && proposals[0].replacement == "L");
     assert(restored.page(3)->words[0].text == "I" && !restored.page(3)->words[0].reviewed);
     test.language = "deu";
     assert(core::CorrectionMemory(book).suggestions(test, 0).isEmpty());

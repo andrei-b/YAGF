@@ -192,8 +192,11 @@ void AiReviewDialog::setBookSuggestions(const QVector<core::CorrectionSuggestion
 {
     bookSuggestions->clear();
     for (const auto &item : items) {
-        if (item.visualMatch) {
-            bookSuggestions->addItem(tr("%1 → %2 (matching symbol image on %3 earlier page(s))")
+        if (item.symbolMatch != core::SymbolMatch::None) {
+            const QString label = item.symbolMatch == core::SymbolMatch::Similar
+                ? tr("%1 → %2 (similar symbol image on %3 earlier page(s))")
+                : tr("%1 → %2 (matching symbol image on %3 earlier page(s))");
+            bookSuggestions->addItem(label
                 .arg(item.original, item.replacement).arg(item.occurrences), item.replacement);
             continue;
         }

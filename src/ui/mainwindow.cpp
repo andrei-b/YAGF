@@ -460,6 +460,16 @@ MainWindow::MainWindow()
                                              &MainWindow::createRegionFromSelection);
     remainingAction = toolsMenu->addAction(tr("Recognize remaining pages"), this, [this] { runBatchOcr(true); });
     batchAction = toolsMenu->addAction(tr("Recognize all pages"), this, [this] { runBatchOcr(false); });
+    similarSymbolsAction = toolsMenu->addAction(tr("Match similar symbol images"));
+    similarSymbolsAction->setCheckable(true);
+    const QString similarSymbolsKey = QStringLiteral("review/matchSimilarSymbolImages");
+    QSettings settings(QStringLiteral("YAGF"), QStringLiteral("YAGF Revival"));
+    similarSymbolsAction->setChecked(settings.value(similarSymbolsKey, false).toBool());
+    connect(similarSymbolsAction, &QAction::toggled, this, [this, similarSymbolsKey](bool enabled) {
+        QSettings(QStringLiteral("YAGF"), QStringLiteral("YAGF Revival")).setValue(similarSymbolsKey, enabled);
+        correctionMemory.reset();
+        refreshReviewLabel();
+    });
     toolsMenu->addAction(tr("OCR engine…"), this, &MainWindow::configureOcrEngine);
     languagePickerAction = toolsMenu->addAction(tr("Choose OCR languages…"), this,
                                                 &MainWindow::chooseOcrLanguages);
@@ -1794,14 +1804,13 @@ void MainWindow::deleteImageRegion(int index)
     undoStack.push(new ReplacePageCommand(document, currentPage, std::move(edited), tr("Delete image region")));
 }
 
-void MainWindow::updateSelection(const QVector<int> &indices)
+void MainWindow::refreshReviewLabel()
 {
-    selectedWords = indices;
     QString reviewLabel = tr("Review word…");
-    if (indices.size() == 1) {
+    if (selectedWords.size() == 1) {
         if (const auto *page = document.page(currentPage)) {
-            if (!correctionMemory) correctionMemory.emplace(document);
-            const auto suggestions = correctionMemory->suggestions(*page, indices.first());
+            if (!correctionMemory) correctionMemory.emplace(document, similarSymbolsAction->isChecked());
+            const auto suggestions = correctionMemory->suggestions(*page, selectedWords.first());
             if (!suggestions.isEmpty()) {
                 QString reading = reviewWordButton->fontMetrics().elidedText(
                     suggestions.first().replacement, Qt::ElideMiddle, 180);
@@ -1810,6 +1819,12 @@ void MainWindow::updateSelection(const QVector<int> &indices)
         }
     }
     reviewWordButton->setText(reviewLabel);
+}
+
+void MainWindow::updateSelection(const QVector<int> &indices)
+{
+    selectedWords = indices;
+    refreshReviewLabel();
     reviewWordButton->setEnabled(!processor.isBusy() && !exportBusy && !imagePath.isEmpty() &&
                                indices.size() == 1);
     if (createRegionAction) createRegionAction->setEnabled(!processor.isBusy() && !exportBusy && !indices.isEmpty() &&
@@ -1881,7 +1896,7 @@ void MainWindow::reviewSelectedWord()
                                   : page->words.at(i).text);
     AiReviewDialog dialog(word.text, context.join(QLatin1Char(' ')), image.copy(cropRect),
                           bounds.translated(-cropRect.topLeft()), aiReviewToken, this);
-    if (!correctionMemory) correctionMemory.emplace(document);
+    if (!correctionMemory) correctionMemory.emplace(document, similarSymbolsAction->isChecked());
     dialog.setBookSuggestions(correctionMemory->suggestions(*page, index));
     const int result = dialog.exec();
     aiReviewToken = dialog.sessionToken();
