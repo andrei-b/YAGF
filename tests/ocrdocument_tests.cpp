@@ -84,6 +84,15 @@ int main()
     assert(restored.plainText() == layout.plainText());
     assert(restored.page(1)->regions.at(0).type == QStringLiteral("column"));
     assert(restored.page(1)->regions.at(0).bounds == QRect(100, 10, 70, 50));
+    assert(!layout.useRawOcrOutput && !restored.useRawOcrOutput);
+    auto rawMode = layout.toJson();
+    rawMode.insert("use_raw_ocr_output", true);
+    assert(OcrDocument::fromJson(rawMode, &restored, &error) && restored.useRawOcrOutput);
+    assert(restored.toJson().value("use_raw_ocr_output").toBool());
+    rawMode.remove("use_raw_ocr_output");
+    assert(OcrDocument::fromJson(rawMode, &restored, &error) && !restored.useRawOcrOutput);
+    rawMode.insert("use_raw_ocr_output", "yes");
+    assert(!OcrDocument::fromJson(rawMode, &restored, &error));
 
     OcrDocument manual;
     manual.sourcePath = QStringLiteral("image.png");

@@ -140,6 +140,17 @@ private slots:
         for (const auto &region : page->regions) QCOMPARE(region.type, "equation");
     }
 
+    void mathInputPreparation()
+    {
+        const auto python = processing::MathOcrEngine::pythonPath();
+        if (python.isEmpty()) QSKIP("Requires the local math OCR runtime");
+        QProcess process;
+        process.start(python, {QStringLiteral(MATH_FIXTURE_DIR "/../../test_math_ocr.py")});
+        QVERIFY(process.waitForFinished(30000));
+        QVERIFY2(process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0,
+                 process.readAllStandardError().constData());
+    }
+
     void russianTextAndMath()
     {
         QProcess models;

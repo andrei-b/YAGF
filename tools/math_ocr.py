@@ -22,7 +22,44 @@ def equation_boxes(gray):
     for band in np.split(rows, np.flatnonzero(np.diff(rows) > gap + 1) + 1):
         top, bottom = int(band[0]), int(band[-1]) + 1
         columns = np.flatnonzero(ink[top:bottom].any(axis=0))
-        yield int(columns[0]), top, int(columns[-1]) + 1, bottom
+        if bottom-top >= 3 and int(columns[-1])-int(columns[0]) >= 2:
+            yield int(columns[0]), top, int(columns[-1]) + 1, bottom
+
+
+def clean_crop(crop):
+    pixels = np.asarray(crop.convert("L")).copy()
+    _, labels, stats, _ = cv2.connectedComponentsWithStats((pixels < 175).astype(np.uint8), 8)
+    glyph_heights = [h for _, _, w, h, area in stats[1:] if h >= 3 and w >= 2 and area >= 4]
+    if not glyph_heights:
+        raise ValueError("No mathematical ink in the selected region")
+    height = float(np.median(glyph_heights))
+    minimum_area = max(4, round(height * 0.7))
+    substantial = [box for box in stats[1:] if box[4] >= minimum_area]
+    if not substantial:
+        raise ValueError("No mathematical ink in the selected region")
+    left = min(x for x, _, _, _, _ in substantial)
+    top = min(y for _, y, _, _, _ in substantial)
+    right = max(x+w for x, _, w, _, _ in substantial)
+    bottom = max(y+h for _, y, _, h, _ in substantial)
+    # Keep small marks beside symbols: decimal points, primes and subscripts.
+    # Remove only distant specks that would widen the formula's input image.
+    for label, (x, y, w, h, area) in enumerate(stats[1:], 1):
+        if area < minimum_area and (x+w < left-height or x > right+height or
+                                    y+h < top-height or y > bottom+height):
+            pixels[labels == label] = 255
+    ys, xs = np.nonzero(pixels < 175)
+    crop = Image.fromarray(pixels).crop((int(xs.min()), int(ys.min()), int(xs.max())+1, int(ys.max())+1))
+    return crop, height
+
+
+def prepare_crop(crop):
+    crop, glyph_height = clean_crop(crop)
+    scale = min(48 / crop.height, 672 / crop.width)
+    if glyph_height * scale < 3:
+        raise ValueError("Too many lines in the math crop. Turn off Math only for pages containing prose, "
+                         "or select a smaller equation region.")
+    size = max(1, round(crop.width * scale)), max(1, round(crop.height * scale))
+    return ImageOps.expand(crop.resize(size, Image.Resampling.LANCZOS), border=8, fill=255)
 
 
 def recognize(path, boxes=None):
@@ -41,10 +78,7 @@ def recognize(path, boxes=None):
     model = LaTeXOCR(**{key: str(models / name) for key, name in weights.items()})
     result = []
     for left, top, right, bottom in boxes:
-        crop = gray.crop((left, top, right, bottom))
-        scale = min(48 / crop.height, 672 / crop.width)
-        size = max(1, round(crop.width * scale)), max(1, round(crop.height * scale))
-        crop = ImageOps.expand(crop.resize(size, Image.Resampling.LANCZOS), border=8, fill=255)
+        crop = prepare_crop(gray.crop((left, top, right, bottom)))
         text, _ = model(np.asarray(crop.convert("RGB")))
         if not text.strip():
             raise ValueError(f"No formula reading for image rows {top}–{bottom}")

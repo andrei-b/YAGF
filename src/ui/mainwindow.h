@@ -262,6 +262,7 @@ private:
     QAction *similarSymbolsAction = nullptr;
     QAction *documentContextAction = nullptr;
     QAction *preserveFormattingAction = nullptr;
+    QAction *rawOcrOutputAction = nullptr;
     std::optional<core::CorrectionMemory> correctionMemory;
     std::shared_ptr<std::atomic_bool> exportCancel;
     QFutureWatcher<processing::ExportResult> exportWatcher;

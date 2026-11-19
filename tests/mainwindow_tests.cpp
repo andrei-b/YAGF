@@ -90,6 +90,8 @@ int main(int argc, char **argv)
     qputenv("YAGF_TEST_ARGS", QFile::encodeName(argsPath));
 
     yagf::ui::MainWindow window;
+    auto *rawOcr = window.findChild<QAction *>("rawOcrOutputAction");
+    assert(rawOcr && rawOcr->isCheckable() && !rawOcr->isChecked());
     auto matchOption = [](const yagf::ui::MainWindow &window) -> QAction * {
         for (auto *action : window.findChildren<QAction *>())
             if (action->text() == QStringLiteral("Match similar symbol images")) return action;
@@ -222,6 +224,7 @@ int main(int argc, char **argv)
     assert(singleProgress && singleProgress->isVisible());
     assert(singleProgress->value() == 0 && singleProgress->maximum() == 1);
     assert(singleProgress->labelText() == "0 / 1 pages recognized");
+    assert(!rawOcr->isEnabled());
     QElapsedTimer timer;
     timer.start();
     while (words->count() != 2 && timer.elapsed() < 3000) {
@@ -233,6 +236,25 @@ int main(int argc, char **argv)
     QFile args(argsPath);
     assert(args.open(QIODevice::ReadOnly));
     assert(args.readAll().split('\n').contains("eng+deu"));
+    {
+        yagf::ui::MainWindow rawSwitchWindow;
+        rawSwitchWindow.loadSource(sourcePath);
+        auto *rawMode = rawSwitchWindow.findChild<QAction *>("rawOcrOutputAction");
+        auto *recognizeAll = rawSwitchWindow.findChild<QToolButton *>("recognizeAllButton");
+        auto *rawBlocks = rawSwitchWindow.findChild<QListWidget *>("imageRegions");
+        auto *rawWords = rawSwitchWindow.findChild<QListWidget *>("recognizedWords");
+        for (bool raw : {false, true, false}) {
+            rawMode->setChecked(raw);
+            recognizeAll->click();
+            timer.restart();
+            while (!recognizeAll->isEnabled() && timer.elapsed() < 3000) {
+                QApplication::processEvents();
+                QThread::msleep(5);
+            }
+            assert(recognizeAll->isEnabled() && rawWords->count() == 2);
+            assert(rawBlocks->count() == (raw ? 0 : 1));
+        }
+    }
     auto *review = window.findChild<QPushButton *>(QStringLiteral("reviewWordButton"));
     assert(review);
     words->setCurrentRow(0);
@@ -743,12 +765,19 @@ int main(int argc, char **argv)
     });
     contextWindow.findChild<QPushButton *>("reviewWordButton")->click();
     preserveFormat->setChecked(true);
+    auto *contextRawOcr = contextWindow.findChild<QAction *>("rawOcrOutputAction");
+    assert(contextRawOcr && !contextRawOcr->isChecked());
+    contextRawOcr->setChecked(true);
     contextSave->trigger();
     yagf::core::OcrDocument contextualBook;
     assert(yagf::core::ProjectFile::load(bookPath, &contextualBook, &error));
     assert(contextualBook.context.description == "A Qt programming manual");
     assert(!contextualBook.context.inferFromRecognizedText);
     assert(contextualBook.preserveFormatting);
+    assert(contextualBook.useRawOcrOutput);
+    yagf::ui::MainWindow rawProjectWindow;
+    rawProjectWindow.loadProject(bookPath);
+    assert(rawProjectWindow.findChild<QAction *>("rawOcrOutputAction")->isChecked());
     auto *formattedPdf = contextWindow.findChild<QAction *>("exportFormattedPdfAction");
     assert(formattedPdf && formattedPdf->isEnabled());
     const QString formattedPath = directory.filePath("formatted-from-ui.pdf");
@@ -1180,6 +1209,10 @@ int main(int argc, char **argv)
 
     // Changing only the default before batch OCR refreshes the current preview
     // when the batch creates that page at a different DPI.
+    // This fixture supplies only full-page readings, with no extra crop readings.
+    helperScript("tesseract", QByteArray("#!/bin/sh\n"
+        "case \" $* \" in *' --psm 7 '*) head -n 1 \"$YAGF_TEST_TSV\"; exit 0;; esac\n")
+        + body.mid(body.indexOf('\n') + 1));
     yagf::core::OcrDocument emptyBook;
     emptyBook.sourcePath = resolutionPdf; emptyBook.totalPages = 2;
     const QString batchResolutionProject = directory.filePath("batch-resolution.yagf.json");

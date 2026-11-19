@@ -125,7 +125,7 @@ std::expected<core::OcrPage, OcrError> TesseractEngine::parseTsv(
     page.engineId = QStringLiteral("tesseract");
     page.language = options.language;
     for (int i = 1; i < rows.size(); ++i) {
-        const QStringList fields = rows.at(i).trimmed().split(QLatin1Char('\t'));
+        const QStringList fields = rows.at(i).split(QLatin1Char('\t'));
         if (fields.size() < 12 || fields.at(0) != QStringLiteral("5")) continue;
         bool ok[8] = {};
         core::OcrWord word;
@@ -140,12 +140,20 @@ std::expected<core::OcrPage, OcrError> TesseractEngine::parseTsv(
         word.confidence = fields.at(10).toDouble(&ok[7]);
         word.originalText = fields.mid(11).join(QLatin1Char('\t')).trimmed();
         word.text = word.originalText;
-        bool valid = !word.text.isEmpty() && x >= 0 && y >= 0 && width > 0 && height > 0 &&
+        bool valid = x >= 0 && y >= 0 && width > 0 && height > 0 &&
             static_cast<qint64>(x) + width <= imageSize.width() &&
             static_cast<qint64>(y) + height <= imageSize.height();
         for (bool value : ok) valid = valid && value;
         if (!valid) continue;
         word.bounds = QRect(x, y, width, height);
+        if (word.text.isEmpty()) {
+            // Tesseract represents image blocks, including unread display
+            // equations, as word rows whose transcription is whitespace.
+            if (word.confidence >= 0)
+                page.imageRegions.append({QStringLiteral("%1/image-%2").arg(page.id).arg(i),
+                    word.bounds, {}, false, {}, true});
+            continue;
+        }
         page.words.append(std::move(word));
     }
     page.rebuildHierarchy();

@@ -6,7 +6,9 @@
 #include <QRegularExpression>
 #include <QUuid>
 #include <algorithm>
+#include <limits>
 #include <map>
+#include <set>
 
 namespace yagf::processing {
 namespace {
@@ -16,7 +18,88 @@ struct Row {
     QRect box;
     QString content;
     QVector<OcrWord> words;
+    bool recovered = false;
 };
+
+int median(QVector<int> values)
+{
+    auto middle = values.begin() + values.size()/2;
+    std::nth_element(values.begin(), middle, values.end());
+    return *middle;
+}
+
+void restoreRecoveredText(core::OcrPage &page, const QVector<Row> &rows)
+{
+    int nextLine = 0;
+    for (const auto &word : page.words) nextLine = std::max(nextLine, word.line);
+    for (const auto &row : rows) {
+        if (!row.recovered || row.words.isEmpty()) continue;
+        struct Line {
+            int first, end;
+            QRect box;
+            QVector<int> centers, heights;
+        };
+        QVector<Line> lines;
+        for (int i = 0; i < page.words.size(); ++i) {
+            const auto &word = page.words[i];
+            if (i == 0 || word.block != page.words[i-1].block ||
+                word.paragraph != page.words[i-1].paragraph || word.line != page.words[i-1].line)
+                lines.append({i, i, {}, {}, {}});
+            auto &line = lines.last();
+            line.end = i+1;
+            line.box |= word.bounds;
+            line.centers.append(word.bounds.center().y());
+            line.heights.append(word.bounds.height());
+        }
+        const Line *nearest = nullptr;
+        qint64 best = std::numeric_limits<qint64>::max();
+        for (const auto &line : lines) {
+            const qint64 dx = std::max({0, line.box.left()-row.box.right(), row.box.left()-line.box.right()});
+            const qint64 dy = median(line.centers)-row.box.center().y();
+            const qint64 distance = dx*dx + 4*dy*dy;
+            if (distance < best) { best = distance; nearest = &line; }
+        }
+        int insertion = page.words.size(), block = 1, paragraph = 1, lineNumber = ++nextLine;
+        if (nearest) {
+            const auto &anchor = page.words[nearest->first];
+            block = anchor.block;
+            paragraph = anchor.paragraph;
+            const int center = median(nearest->centers);
+            if (std::abs(center-row.box.center().y()) <= std::max(2, median(nearest->heights)/2)) {
+                lineNumber = anchor.line;
+                insertion = nearest->first;
+                while (insertion < nearest->end && page.words[insertion].bounds.center().x() < row.box.center().x())
+                    ++insertion;
+            } else insertion = row.box.center().y() < center ? nearest->first : nearest->end;
+        }
+        for (auto word : row.words) {
+            word.id = page.id + "/recovered-" + QUuid::createUuid().toString(QUuid::WithoutBraces);
+            word.sourceWordIds.clear();
+            word.block = block; word.paragraph = paragraph; word.line = lineNumber;
+            page.words.insert(insertion++, std::move(word));
+        }
+    }
+}
+
+QVector<core::ImageRegion> textBlocksFromReading(const core::OcrPage &page,
+    const QVector<core::ImageRegion> &explicitRegions, const QVector<core::ImageRegion> &detected)
+{
+    QVector<core::ImageRegion> result = explicitRegions;
+    QVector<QRect> paragraphs;
+    for (const auto &region : page.regions) for (const auto &paragraph : region.paragraphs) {
+        if (std::ranges::any_of(explicitRegions, [&](const auto &r) { return r.bounds.intersects(paragraph.bounds); }))
+            continue;
+        paragraphs.append(paragraph.bounds);
+        result.append({QUuid::createUuid().toString(QUuid::WithoutBraces), paragraph.bounds, {}, false, "text", true});
+    }
+    // Keep proposals beside manually drawn blocks where a raw paragraph crosses
+    // an explicit boundary. Other prose outlines follow the raw paragraphs.
+    for (int i = explicitRegions.size(); i < detected.size(); ++i) {
+        if (!std::ranges::any_of(paragraphs, [&](const auto &box) { return box.intersects(detected[i].bounds); }))
+            result.append(detected[i]);
+    }
+    return result;
+}
 
 // Bound the actual ink, including accents and scripts outside a Tesseract word box.
 QRect inkBox(const QImage &gray, QRect area)
@@ -82,6 +165,37 @@ bool mathInk(const QImage &gray, const QRect &box)
     return false;
 }
 
+QRect formulaFromHint(const QImage &gray, const QRect &hint, const QRect &area,
+                      const QVector<OcrWord> &words, int glyphHeight)
+{
+    const QRect bandArea = QRect(area.left(), hint.top()-2, area.width(), hint.height()+4).intersected(area);
+    QImage band = gray.copy(bandArea);
+    using LineKey = std::tuple<int, int, int>;
+    std::set<LineKey> proseLines;
+    for (const auto &word : words)
+        if (proseWord(word.text)) proseLines.insert({word.block, word.paragraph, word.line});
+    {
+        QPainter mask(&band);
+        for (const auto &word : words)
+            if (proseLines.contains({word.block, word.paragraph, word.line}))
+                mask.fillRect(word.bounds.translated(-bandArea.topLeft()), Qt::white);
+    }
+    const auto columnHasInk = [&](int x) {
+        for (int y = 0; y < band.height(); ++y) if (band.constScanLine(y)[x] < 175) return true;
+        return false;
+    };
+    int left = hint.left()-bandArea.left(), right = hint.right()-bandArea.left();
+    // Recover adjacent symbols such as "w =" that lie outside the image hint,
+    // stopping at the gutter before an equation number or another column.
+    const int gap = std::max(32, glyphHeight*3);
+    for (int x = left-1; x >= 0 && left-x <= gap; --x)
+        if (columnHasInk(x)) left = x;
+    for (int x = right+1; x < band.width() && x-right <= gap; ++x)
+        if (columnHasInk(x)) right = x;
+    const QRect box = inkBox(band, {left, 0, right-left+1, band.height()});
+    return box.isEmpty() ? QRect{} : box.translated(bandArea.topLeft());
+}
+
 void classify(Row &row, const QImage &gray, const QString &mode)
 {
     if (mode == "text") { row.content = mode; return; }
@@ -134,18 +248,35 @@ QVector<Row> rowsIn(const QImage &gray, QRect area, const QVector<OcrWord> &word
     // Closely spaced prose lines may have a smaller gap than a fraction bar.
     // Preserve baseline OCR line breaks when both lines contain prose.
     using LineKey = std::tuple<int, int, int>;
-    std::map<LineKey, QRect> textLines;
+    struct TextLine {
+        QRect box;
+        QVector<int> centers;
+        QVector<int> heights;
+    };
+    std::map<LineKey, TextLine> textLines;
     for (const auto &word : words) {
-        if (area.contains(word.bounds.center()) && proseWord(word.text))
-            textLines[{word.block, word.paragraph, word.line}] |= word.bounds;
+        if (area.contains(word.bounds.center()) && proseWord(word.text)) {
+            auto &line = textLines[{word.block, word.paragraph, word.line}];
+            line.box |= word.bounds;
+            line.centers.append(word.bounds.center().y());
+            line.heights.append(word.bounds.height());
+        }
     }
     QSet<int> breaks;
     QRect previous;
+    int previousCenter = 0, previousHeight = 0;
     for (const auto &[key, line] : textLines) {
-        if (!previous.isEmpty() && previous.bottom() < line.top() && line.top()-previous.bottom() <= maxGap+2 &&
-            previous.left() <= line.right() && line.left() <= previous.right())
-            breaks.insert((previous.bottom() + line.top() + 1) / 2);
-        previous = line;
+        const int center = median(line.centers), height = median(line.heights);
+        // Tall OCR boxes and scan speckles can bridge adjacent prose lines.
+        // Their typical word centers still identify separate baselines.
+        const int distance = center - previousCenter;
+        const int typicalHeight = std::max(previousHeight, height);
+        if (!previous.isEmpty() && distance > typicalHeight/2 && distance <= 2*typicalHeight &&
+            previous.left() <= line.box.right() && line.box.left() <= previous.right())
+            breaks.insert((previousCenter + center + 1) / 2);
+        previous = line.box;
+        previousCenter = center;
+        previousHeight = height;
     }
     int top = -1, bottom = -1;
     auto finish = [&] {
@@ -225,7 +356,6 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
     QVector<Row> rows;
     std::map<QString, core::OcrPage> baselines;
     if (initialReading) baselines.emplace(page.language, *initialReading);
-    bool recoveredWords = false;
     TesseractEngine tesseract;
     const auto analyze = [&](const QImage &pixels, QRect area, const QString &mode, QString language,
                              const QVector<core::ImageRegion> &excluded)
@@ -258,7 +388,26 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
             std::nth_element(heights.begin(), median, heights.end());
             height = *median;
         }
-        auto found = rowsIn(pixels, area, local, mode, height, stop, excluded);
+        QImage analysis = pixels;
+        QVector<Row> hinted;
+        if (mode.isEmpty() && baselines.contains(language)) {
+            for (const auto &hint : baselines.at(language).imageRegions) {
+                if (!hint.autoDetected || !hint.content.isEmpty() || !area.contains(hint.bounds) ||
+                    std::ranges::any_of(excluded, [&](const auto &r) { return r.bounds.intersects(hint.bounds); }) ||
+                    !mathInk(pixels, hint.bounds)) continue;
+                const QRect box = formulaFromHint(pixels, hint.bounds, area, local, height);
+                if (box.isEmpty() || std::ranges::any_of(excluded, [&](const auto &r) { return r.bounds.intersects(box); }))
+                    continue;
+                Row row{box, {}, {}};
+                classify(row, pixels, "math");
+                hinted.append(std::move(row));
+                QPainter mask(&analysis);
+                mask.fillRect(box, Qt::white);
+            }
+        }
+        auto found = rowsIn(analysis, area, local, mode, height, stop, excluded);
+        found += hinted;
+        std::ranges::stable_sort(found, {}, [](const Row &row) { return std::pair(row.box.top(), row.box.left()); });
         if (!splitOnly) for (auto &row : found) {
             if (!row.words.isEmpty()) continue;
             // Page segmentation can skip a short line altogether. Retry only
@@ -281,7 +430,7 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
                 if (word.bounds.isEmpty()) continue;
                 word.sourceBoxes.clear();
                 row.words.append(std::move(word));
-                recoveredWords = true;
+                row.recovered = true;
             }
             classify(row, pixels, mode);
         }
@@ -319,14 +468,14 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
         lastText = row.content == "text" ? page.imageRegions.size() : -1;
         page.imageRegions.append({QUuid::createUuid().toString(QUuid::WithoutBraces), row.box, {}, false, row.content, true});
     }
-    if (page.imageRegions.size() > 1000) {
-        if (!initialReading)
-            return std::unexpected(OcrError{QStringLiteral("More than 1000 blocks detected. Select a smaller area.")});
-        page.imageRegions.resize(1000);
+    const auto limitBlocks = [&](QVector<core::ImageRegion> &blocks) {
+        if (blocks.size() <= 1000) return true;
+        if (!initialReading) return false;
+        blocks.resize(1000);
         if (warnings) warnings->append(QStringLiteral("Only the first 1000 block outlines are shown."));
-    }
+        return true;
+    };
     if (stop.stop_requested()) return std::unexpected(OcrError{{}, true});
-    if (splitOnly) return page;
     rows += *detected;
     // A normal prose page keeps Tesseract's paragraphs, columns, IDs and reading order.
     const auto withDetectedBlocks = [&] {
@@ -340,9 +489,27 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
         original.rebuildHierarchy();
         return original;
     };
-    if (initialReading && baselines.size() == 1 && !recoveredWords &&
-        std::ranges::all_of(rows, [](const auto &row) { return row.content == "text"; }))
-        return withDetectedBlocks();
+    if (baselines.size() == 1 && std::ranges::all_of(rows, [](const auto &row) { return row.content == "text"; })) {
+        auto original = baselines.begin()->second;
+        original.words.removeIf([&](const auto &word) {
+            const auto contains = [&](const auto &r) { return r.bounds.contains(word.bounds.center()); };
+            return (!includeUnmarked && !std::ranges::any_of(regions, contains)) ||
+                std::ranges::any_of(regions, [&](const auto &r) { return r.notText && contains(r); });
+        });
+        if (!splitOnly) restoreRecoveredText(original, rows);
+        original.rebuildHierarchy();
+        original.imageRegions = textBlocksFromReading(original, regions, page.imageRegions);
+        if (!limitBlocks(original.imageRegions))
+            return std::unexpected(OcrError{QStringLiteral("More than 1000 blocks detected. Select a smaller area.")});
+        if (splitOnly) {
+            page.imageRegions = original.imageRegions;
+            return page;
+        }
+        return original;
+    }
+    if (!limitBlocks(page.imageRegions))
+        return std::unexpected(OcrError{QStringLiteral("More than 1000 blocks detected. Select a smaller area.")});
+    if (splitOnly) return page;
     std::ranges::stable_sort(rows, {}, [](const Row &row) { return std::pair(row.box.top(), row.box.left()); });
     QList<QRect> boxes;
     QList<int> indices;

@@ -6,6 +6,7 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QImage>
+#include <QPainter>
 #include <QTemporaryDir>
 #include <QTimer>
 
@@ -67,6 +68,11 @@ int main(int argc, char **argv)
     assert(parsed->engineId == QStringLiteral("tesseract"));
     assert(!TesseractEngine::parseTsv("broken", QSize(200, 100),
                                      {.language = QStringLiteral("eng")}));
+    const auto withImage = TesseractEngine::parseTsv(tsv +
+        "5\t1\t2\t1\t1\t1\t80\t50\t60\t40\t95\t \n", QSize(200, 100), {.language = "rus"});
+    assert(withImage && withImage->words.size() == 2 && withImage->imageRegions.size() == 1);
+    assert(withImage->imageRegions[0].bounds == QRect(80, 50, 60, 40));
+    assert(withImage->imageRegions[0].autoDetected && withImage->imageRegions[0].content.isEmpty());
 
     QTemporaryDir directory;
     assert(directory.isValid());
@@ -158,4 +164,75 @@ int main(int argc, char **argv)
     loop.exec();
     assert(failure.contains(QStringLiteral("invalid word geometry")));
     assert(!processor.isBusy());
+
+    // Corrected layout remains the default; raw mode skips generated outlines.
+    assert(script.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    assert(script.write(body) == body.size());
+    script.close();
+    qputenv("TEST_MODEL_LANGUAGE", "eng");
+    QPainter painter(&image);
+    painter.fillRect(10, 20, 30, 12, Qt::black);
+    painter.fillRect(50, 20, 40, 12, Qt::black);
+    painter.end();
+    assert(image.save(imagePath));
+    yagf::core::OcrDocument rawBook;
+    rawBook.sourcePath = imagePath;
+    assert(!rawBook.useRawOcrOutput);
+    DocumentProcessor rawProcessor(nullptr, &rawBook);
+    for (bool raw : {false, true}) {
+        rawBook.useRawOcrOutput = raw;
+        bool completed = false;
+        QEventLoop rawLoop;
+        const auto connection = QObject::connect(&rawProcessor, &DocumentProcessor::recognized, &rawLoop,
+            [&](const yagf::core::OcrPage &page, const QPoint &, const QRect &) {
+                assert(page.engineId == "tesseract" && page.words.size() == 2);
+                assert(page.words[0].text == "Hello" && page.words[1].text == "world");
+                assert(page.imageRegions.isEmpty() == raw);
+                completed = true;
+                rawLoop.quit();
+            });
+        QTimer::singleShot(3000, &rawLoop, &QEventLoop::quit);
+        rawProcessor.recognize(imagePath, "eng", 1);
+        rawLoop.exec();
+        assert(completed);
+        QObject::disconnect(connection);
+    }
+
+    // Raw OCR of several selected blocks keeps each crop's source geometry.
+    QEventLoop selectedLoop;
+    int selectedResults = 0;
+    const auto selectedConnection = QObject::connect(&rawProcessor, &DocumentProcessor::recognized, &selectedLoop,
+        [&](const yagf::core::OcrPage &page, const QPoint &offset, const QRect &region) {
+            assert(page.words.size() == 2 && region.width() == 100);
+            assert(offset == region.topLeft());
+            assert(page.words[0].bounds == QRect(10, 20, 30, 12));
+            assert(page.words[0].sourceBoxes == QVector<QRect>{page.words[0].bounds});
+            if (++selectedResults == 2) selectedLoop.quit();
+        });
+    QTimer::singleShot(3000, &selectedLoop, &QEventLoop::quit);
+    rawProcessor.recognizeTypedRegions(imagePath, "eng", 1,
+        {{"left", {0, 0, 100, 100}, "eng", false, "text"},
+         {"right", {100, 0, 100, 100}, "eng", false, "math"}});
+    selectedLoop.exec();
+    assert(selectedResults == 2);
+    QObject::disconnect(selectedConnection);
+
+    // Explicit non-text exclusions still apply when automatic layout is skipped.
+    yagf::core::OcrPage excludedPage;
+    excludedPage.width = excludedPage.sourceWidth = image.width();
+    excludedPage.height = excludedPage.sourceHeight = image.height();
+    excludedPage.imageRegions = {{"excluded", {10, 20, 30, 12}, {}, true}};
+    rawBook.replacePage(excludedPage);
+    QEventLoop excludedLoop;
+    bool excluded = false;
+    QObject::connect(&rawProcessor, &DocumentProcessor::recognized, &excludedLoop,
+        [&](const yagf::core::OcrPage &page, const QPoint &, const QRect &) {
+            assert(page.words.size() == 1 && page.words[0].text == "world");
+            excluded = true;
+            excludedLoop.quit();
+        });
+    QTimer::singleShot(3000, &excludedLoop, &QEventLoop::quit);
+    rawProcessor.recognize(imagePath, "eng", 1);
+    excludedLoop.exec();
+    assert(excluded);
 }

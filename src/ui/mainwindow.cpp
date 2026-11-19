@@ -192,12 +192,16 @@ bool overlapsWord(const OcrWord &word, const QRect &selection)
     return false;
 }
 
-void carryCorrections(OcrPage &fresh, const OcrPage *oldPage, bool estimateFormatting)
+void carryCorrections(OcrPage &fresh, const OcrPage *oldPage, bool estimateFormatting, bool keepLayout)
 {
     if (!oldPage) return;
     auto detectedBlocks = std::move(fresh.imageRegions);
     core::retainCorrections(fresh, *oldPage, estimateFormatting);
     if (!detectedBlocks.isEmpty() || fresh.engineId == "local-mixed") fresh.imageRegions = std::move(detectedBlocks);
+    if (!keepLayout) {
+        fresh.imageRegions.removeIf([](const auto &block) { return block.autoDetected; });
+        return;
+    }
     const auto hasLayout = [](const QString &engine) {
         return engine == "surya-remote" || engine == "rapid-latex-ocr" || engine == "local-mixed";
     };
@@ -612,6 +616,15 @@ MainWindow::MainWindow()
     batchAction->setIcon(recognizeActionIcon());
     batchAction->setIconText(tr("Recognize all"));
     batchAction->setToolTip(tr("Recognize every page in the open document, including pages already recognized."));
+    rawOcrOutputAction = toolsMenu->addAction(tr("Use raw OCR output"));
+    rawOcrOutputAction->setObjectName(QStringLiteral("rawOcrOutputAction"));
+    rawOcrOutputAction->setCheckable(true);
+    rawOcrOutputAction->setToolTip(tr("Use Tesseract's raw text and reading order without automatic block-layout correction or formula recognition. "
+        "Leave unchecked for corrected layout."));
+    connect(rawOcrOutputAction, &QAction::toggled, this, [this](bool enabled) {
+        document.useRawOcrOutput = enabled;
+        if (!originalPath.isEmpty()) { externalDirty = true; refreshDirty(); }
+    });
     preserveFormattingAction = toolsMenu->addAction(tr("Preserve formatting"));
     preserveFormattingAction->setObjectName(QStringLiteral("preserveFormattingAction"));
     preserveFormattingAction->setCheckable(true);
@@ -1087,7 +1100,8 @@ MainWindow::MainWindow()
                     return block.notText && overlapsWord(word, block.bounds);
                 });
             });
-            carryCorrections(newPage, oldPage, document.preserveFormatting);
+            carryCorrections(newPage, oldPage, document.preserveFormatting,
+                !document.useRawOcrOutput || newPage.engineId != "tesseract");
         } else if (oldPage) {
             auto previous = *oldPage;
             previous.words.removeIf([&](const auto &word) { return !overlapsWord(word, region); });
@@ -1182,7 +1196,8 @@ MainWindow::MainWindow()
         page.sourceWidth = sourceSize.width();
         page.sourceHeight = sourceSize.height();
         if (oldPage) page.preprocessing = oldPage->preprocessing;
-        carryCorrections(page, oldPage, document.preserveFormatting);
+        carryCorrections(page, oldPage, document.preserveFormatting,
+            !document.useRawOcrOutput || page.engineId != "tesseract");
         const QString language = page.language;
         const QString engineId = page.engineId;
         undoStack.push(new ReplacePageCommand(document, number, std::move(page), tr("Recognize page")));
@@ -1283,6 +1298,7 @@ void MainWindow::updatePageControls()
     const bool available = !processor.isBusy() && !exportBusy;
     if (renderingAction) renderingAction->setEnabled(available && processing::isPagedSource(originalPath));
     if (preserveFormattingAction) preserveFormattingAction->setEnabled(available);
+    if (rawOcrOutputAction) rawOcrOutputAction->setEnabled(available);
     if (scanExportAction) scanExportAction->setEnabled(available && !imagePath.isEmpty());
     if (formattedPdfAction) formattedPdfAction->setEnabled(available && document.wordCount() > 0);
     if (convertDjVuAction) convertDjVuAction->setEnabled(available && !imagePath.isEmpty() &&
@@ -1412,6 +1428,7 @@ void MainWindow::loadSource(const QString &path)
     projectPath.clear();
     document = {};
     document.preserveFormatting = preserveFormattingAction->isChecked();
+    document.useRawOcrOutput = rawOcrOutputAction->isChecked();
     document.mathOcr = mathMode->isChecked();
     correctionMemory.reset();
     document.sourcePath = originalPath;
@@ -1493,6 +1510,10 @@ void MainWindow::loadProject(const QString &path)
     {
         const QSignalBlocker blocker(preserveFormattingAction);
         preserveFormattingAction->setChecked(document.preserveFormatting);
+    }
+    {
+        const QSignalBlocker blocker(rawOcrOutputAction);
+        rawOcrOutputAction->setChecked(document.useRawOcrOutput);
     }
     correctionMemory.reset();
     externalDirty = false;

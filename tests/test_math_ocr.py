@@ -1,0 +1,55 @@
+import importlib.util
+from pathlib import Path
+import unittest
+
+from PIL import Image, ImageDraw
+
+spec = importlib.util.spec_from_file_location("math_ocr", Path(__file__).resolve().parents[1] / "tools/math_ocr.py")
+math_ocr = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(math_ocr)
+
+
+class MathInputTests(unittest.TestCase):
+    def test_distant_specks_do_not_widen_formula(self):
+        image = Image.new("L", (120, 50), 255)
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((40, 15, 49, 34), fill=0)
+        draw.rectangle((70, 15, 79, 34), fill=0)
+        draw.rectangle((3, 20, 5, 21), fill=0)
+        draw.point((115, 25), fill=0)
+        cleaned, _ = math_ocr.clean_crop(image)
+        self.assertEqual(cleaned.size, (40, 20))
+
+    def test_decimal_point_and_prime_are_retained(self):
+        image = Image.new("L", (120, 60), 255)
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((40, 20, 49, 39), fill=0)
+        draw.rectangle((70, 20, 79, 39), fill=0)
+        draw.rectangle((58, 37, 59, 38), fill=0)
+        draw.rectangle((82, 14, 83, 16), fill=0)
+        cleaned, _ = math_ocr.clean_crop(image)
+        self.assertEqual(cleaned.size, (44, 26))
+        self.assertEqual(cleaned.getpixel((18, 23)), 0)
+        self.assertEqual(cleaned.getpixel((42, 0)), 0)
+
+    def test_prose_page_is_not_squeezed_into_one_formula(self):
+        image = Image.new("L", (400, 1000), 255)
+        draw = ImageDraw.Draw(image)
+        for y in range(10, 990, 25):
+            for x in range(10, 390, 15):
+                draw.rectangle((x, y, x+7, y+12), fill=0)
+        with self.assertRaisesRegex(ValueError, "Turn off Math only"):
+            math_ocr.prepare_crop(image)
+
+    def test_empty_crop_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "No mathematical ink"):
+            math_ocr.prepare_crop(Image.new("L", (100, 50), 255))
+
+    def test_isolated_speck_is_not_an_equation(self):
+        image = Image.new("L", (100, 80), 255)
+        image.putpixel((10, 10), 0)
+        self.assertEqual(list(math_ocr.equation_boxes(image)), [])
+
+
+if __name__ == "__main__":
+    unittest.main()
