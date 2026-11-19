@@ -30,6 +30,7 @@
 #include <QPushButton>
 #include <QRubberBand>
 #include <QSignalSpy>
+#include <QScrollBar>
 #include <QPlainTextEdit>
 #include <QSettings>
 #include <QTemporaryDir>
@@ -51,6 +52,7 @@ int main(int argc, char **argv)
     QApplication app(argc, argv);
     QTemporaryDir directory;
     assert(directory.isValid());
+    qputenv("XDG_DATA_HOME", QFile::encodeName(directory.path()));
     QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, directory.path());
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, directory.path());
@@ -73,6 +75,7 @@ int main(int argc, char **argv)
     assert(script.open(QIODevice::WriteOnly));
     const QByteArray body = "#!/bin/sh\n"
         "if [ \"$1\" = \"--list-langs\" ]; then printf 'List of available languages:\\neng\\ndeu\\n'; exit 0; fi\n"
+        "echo run >> \"$YAGF_TEST_ARGS.runs\"\n"
         "printf '%s\\n' \"$@\" > \"$YAGF_TEST_ARGS\"\ncat \"$YAGF_TEST_TSV\"\n";
     assert(script.write(body) == body.size());
     script.close();
@@ -306,6 +309,20 @@ int main(int argc, char **argv)
     regionWindow.loadSource(sourcePath);
     regionWindow.show();
     QApplication::processEvents();
+    auto *toolbar = regionWindow.findChild<QToolBar *>("mainToolbar");
+    assert(toolbar);
+    QAction *scan = nullptr;
+    for (auto *action : toolbar->actions()) {
+        assert(action->text() != "Pan" && action->text() != "Select region");
+        if (action->iconText() == "Scan") scan = action;
+    }
+    assert(scan && scan->isEnabled());
+    QTimer::singleShot(0, &regionWindow, [] {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        assert(dialog && dialog->windowTitle() == "Scan a page");
+        dialog->reject();
+    });
+    scan->trigger();
     const auto separatorWidths = [&] {
         QVector<int> widths;
         for (auto *toolbar : regionWindow.findChildren<QToolBar *>())
@@ -468,13 +485,46 @@ int main(int argc, char **argv)
     for (QPushButton *button : regionWindow.findChildren<QPushButton *>())
         if (button->text() == QStringLiteral("Recognize")) recognizeRegions = button;
     assert(recognizeRegions);
-    recognizeRegions->click();
-    timer.restart();
-    while (regionWords->count() != 2 && timer.elapsed() < 5000) {
-        QApplication::processEvents();
-        QThread::msleep(10);
-    }
-    assert(regionWords->count() == 2);
+    const auto invocations = [&] {
+        QFile log(argsPath + ".runs");
+        assert(log.open(QIODevice::ReadOnly));
+        return log.readAll().count('\n');
+    };
+    const auto recognizeSelection = [&](int expectedRuns) {
+        const auto previous = invocations();
+        recognizeRegions->click();
+        timer.restart();
+        while (!recognizeRegions->isEnabled() && timer.elapsed() < 5000) QTest::qWait(5);
+        assert(recognizeRegions->isEnabled() && invocations() == previous + expectedRuns);
+    };
+    assert(regions->selectedItems().size() == 1 && regions->item(1)->isSelected());
+    recognizeSelection(1);
+    assert(regionWords->count() == 1);
+    QTest::mouseClick(pageView->viewport(), Qt::LeftButton, Qt::ShiftModifier,
+                      pageView->mapFromScene(regionBox(0).center()));
+    assert(regions->selectedItems().size() == 2);
+    QTest::mouseClick(pageView->viewport(), Qt::LeftButton, {}, pageView->mapFromScene(50, 95));
+    assert(regions->selectedItems().isEmpty() && regions->count() == 2);
+    recognizeSelection(1);
+    assert(regionWords->count() == 2 && regions->selectedItems().isEmpty());
+    regions->setCurrentRow(0, QItemSelectionModel::ClearAndSelect);
+    QTest::mouseClick(regions->viewport(), Qt::LeftButton, Qt::ControlModifier,
+                      regions->visualItemRect(regions->item(1)).center());
+    assert(regions->selectedItems().size() == 2);
+    recognizeSelection(2);
+    assert(regionWords->count() == 2 && regions->selectedItems().size() == 2);
+    pageView->zoomBy(2);
+    auto *scroll = pageView->horizontalScrollBar();
+    scroll->setValue(scroll->maximum() / 2);
+    const int beforePan = scroll->value();
+    const QPoint center = pageView->viewport()->rect().center();
+    QTest::mousePress(pageView->viewport(), Qt::MiddleButton, {}, center);
+    QTest::mouseMove(pageView->viewport(), center + QPoint(15, 0));
+    QTest::mouseRelease(pageView->viewport(), Qt::MiddleButton, {}, center + QPoint(15, 0));
+    assert(scroll->value() < beforePan && regions->selectedItems().size() == 2);
+    pageView->fitPage();
+    QTest::keyClick(pageView, Qt::Key_Escape);
+    assert(regions->selectedItems().isEmpty());
     args.close();
     assert(args.open(QIODevice::ReadOnly));
     assert(args.readAll().split('\n').contains("deu"));

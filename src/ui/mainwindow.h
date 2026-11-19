@@ -15,6 +15,7 @@
 #include <QPoint>
 #include <QPointF>
 #include <QRectF>
+#include <QSet>
 #include <QTemporaryDir>
 #include <QUndoStack>
 
@@ -53,14 +54,13 @@ class PageView : public QGraphicsView {
     Q_OBJECT
 public:
     explicit PageView(QWidget *parent = nullptr);
-    void setRegionMode(bool enabled);
     void setActiveRegionIndex(int index);
     void fitPage();
     void zoomBy(qreal factor);
 signals:
     void wordClicked(int index);
     void regionSelected(const QRectF &bounds);
-    void regionActivated(int index);
+    void regionActivated(int index, bool toggle = false);
     void regionChanged(int index, const QRectF &bounds);
     void regionDeleteRequested(int index);
     void regionContextMenuRequested(int index, const QPoint &globalPosition);
@@ -82,7 +82,7 @@ private:
     QRubberBand *rubberBand;
     QPointF regionAnchor;
     QRect drawingRegion;
-    bool regionMode = false;
+    std::optional<QPoint> panPosition;
     bool fitMode = true;
     int activeRegionIndex = -1;
     int editingRegionIndex = -1;
@@ -143,7 +143,7 @@ private:
     void showDocument();
     void selectWord(int index);
     void selectRegion(const QRectF &bounds);
-    void activateImageRegion(int index);
+    void activateImageRegion(int index, bool toggle = false);
     void moveImageRegion(int index, const QRectF &bounds);
     void deleteImageRegion(int index);
     void showBlockContextMenu(int index, const QPoint &globalPosition);
@@ -157,7 +157,6 @@ private:
     QVector<int> indicesForIds(const QStringList &ids) const;
     bool applyCorrection();
     bool maybeApplyEditor();
-    void runRegionOcr();
     void runBatchOcr(bool remainingOnly);
     void editLayout();
     void createRegionFromSelection();
@@ -202,6 +201,7 @@ private:
     QPushButton *cancelButton;
     QPushButton *previousButton;
     QPushButton *nextButton;
+    QAction *scanAction;
     QAction *improveAction;
     QAction *restoreAction;
     QAction *batchAction = nullptr;
@@ -223,7 +223,7 @@ private:
     QVector<QGraphicsRectItem *> imageRegionBoxes;
     QVector<core::OcrWord *> displayedWords;
     QVector<int> selectedWords;
-    QRect selectedRegion;
+    QSet<QString> selectedRegionIds;
     int selectedImageRegion = -1;
     QVector<core::ImageRegion> queuedImageRegions;
     int nextQueuedImageRegion = 0;
