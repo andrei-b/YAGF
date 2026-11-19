@@ -3,6 +3,7 @@
 #include "ocrdocument.h"
 
 #include <expected>
+#include <optional>
 
 namespace yagf::core {
 
@@ -12,6 +13,7 @@ struct EditedWord {
     bool italic = false;
     int fontSizePt = 0;
     QString fontFamily;
+    std::optional<bool> layoutBlock; // A structured item may contain spaces or line breaks.
 };
 
 class WordEditor {

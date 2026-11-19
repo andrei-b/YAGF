@@ -22,6 +22,7 @@ void setText(OcrWord &word, const EditedWord &edit, bool reviewed = true)
         word.readingEngine.clear();
     }
     word.text = edit.text;
+    if (edit.layoutBlock.has_value()) word.layoutBlock = *edit.layoutBlock;
     word.bold = edit.bold;
     word.italic = edit.italic;
     if (edit.fontSizePt > 0) word.fontSizePt = edit.fontSizePt;
@@ -274,8 +275,8 @@ std::expected<OcrPage, QString> WordEditor::apply(const OcrPage &page,
             (i && selection.at(i) != selection.at(i - 1) + 1))
             return std::unexpected(QStringLiteral("Select consecutive words in reading order."));
     for (const EditedWord &word : replacement)
-        if (word.text.isEmpty() || std::ranges::any_of(word.text,
-                [](QChar character) { return character.isSpace(); }) ||
+        if (word.text.isEmpty() || (!word.layoutBlock.value_or(false) && std::ranges::any_of(word.text,
+                [](QChar character) { return character.isSpace(); })) ||
             word.fontSizePt < 0 || word.fontSizePt > 72)
             return std::unexpected(QStringLiteral("Invalid replacement word or font size."));
 
@@ -286,11 +287,24 @@ std::expected<OcrPage, QString> WordEditor::apply(const OcrPage &page,
         return std::unexpected(QStringLiteral("Select a smaller text span for this edit."));
     const auto n = static_cast<int>(old.size());
     const auto m = static_cast<int>(replacement.size());
+    // When a passage keeps its inline equations, their OCR boxes anchor edits
+    // on either side even if the user changes the LaTeX and adds prose at once.
+    QVector<int> oldBlocks, newBlocks;
+    for (int i = 0; i < n; ++i) if (old[i].layoutBlock) oldBlocks.append(i);
+    for (int j = 0; j < m; ++j) if (replacement[j].layoutBlock.value_or(false)) newBlocks.append(j);
+    QHash<int, int> blockAnchors;
+    if (oldBlocks.size() == newBlocks.size())
+        for (int i = 0; i < oldBlocks.size(); ++i) blockAnchors.insert(oldBlocks[i], newBlocks[i]);
+    const auto matches = [&](int i, int j) {
+        if (blockAnchors.contains(i)) return blockAnchors.value(i) == j;
+        if (replacement[j].layoutBlock && old[i].layoutBlock != *replacement[j].layoutBlock) return false;
+        return old[i].text == replacement[j].text;
+    };
     int prefix = 0;
-    while (prefix < n && prefix < m && old.at(prefix).text == replacement.at(prefix).text) ++prefix;
+    while (prefix < n && prefix < m && matches(prefix, prefix)) ++prefix;
     int suffix = 0;
     while (suffix < n - prefix && suffix < m - prefix &&
-           old.at(n - suffix - 1).text == replacement.at(m - suffix - 1).text) ++suffix;
+           matches(n - suffix - 1, m - suffix - 1)) ++suffix;
     const int middleOld = n - prefix - suffix;
     const int middleNew = m - prefix - suffix;
     if (static_cast<qint64>(middleOld) * middleNew > 2'000'000)
@@ -301,12 +315,12 @@ std::expected<OcrPage, QString> WordEditor::apply(const OcrPage &page,
     };
     for (int i = middleOld - 1; i >= 0; --i)
         for (int j = middleNew - 1; j >= 0; --j)
-            cell(i, j) = old.at(prefix + i).text == replacement.at(prefix + j).text
+            cell(i, j) = matches(prefix + i, prefix + j)
                 ? 1 + cell(i + 1, j + 1) : std::max(cell(i + 1, j), cell(i, j + 1));
     QVector<QPair<int, int>> anchors{{-1, -1}};
     for (int i = 0; i < prefix; ++i) anchors.append({i, i});
     for (int i = 0, j = 0; i < middleOld && j < middleNew;) {
-        if (old.at(prefix + i).text == replacement.at(prefix + j).text) {
+        if (matches(prefix + i, prefix + j)) {
             anchors.append({prefix + i++, prefix + j++});
         } else if (cell(i + 1, j) >= cell(i, j + 1)) ++i;
         else ++j;
@@ -315,6 +329,8 @@ std::expected<OcrPage, QString> WordEditor::apply(const OcrPage &page,
         anchors.append({n - suffix + i, m - suffix + i});
     anchors.append({n, m});
     QVector<OcrWord> edited;
+    const bool verifiedSelection = prefix == n && n == m &&
+        std::equal(old.begin(), old.end(), replacement.begin(), [](const auto &a, const auto &b) { return a.text == b.text; });
     for (int k = 1; k < anchors.size(); ++k) {
         const auto [previousOld, previousNew] = anchors.at(k - 1);
         const auto [nextOld, nextNew] = anchors.at(k);
@@ -323,8 +339,7 @@ std::expected<OcrPage, QString> WordEditor::apply(const OcrPage &page,
         if (nextOld < n) {
             OcrWord anchor = old.at(nextOld);
             // Editing one word in a passage does not verify its unchanged neighbors.
-            const bool verifiedSelection = prefix == n && n == m;
-            setText(anchor, replacement.at(nextNew), anchor.reviewed || verifiedSelection);
+            setText(anchor, replacement.at(nextNew), anchor.reviewed || verifiedSelection || anchor.text != replacement.at(nextNew).text);
             edited.append(std::move(anchor));
         }
     }

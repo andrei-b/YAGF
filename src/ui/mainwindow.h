@@ -17,6 +17,7 @@
 #include <QRectF>
 #include <QSet>
 #include <QTemporaryDir>
+#include <QTextCursor>
 #include <QUndoStack>
 
 #include <atomic>
@@ -153,6 +154,7 @@ private:
     void refreshImageRegionSelection(bool updateWords);
     void runNextImageRegion();
     void refreshReviewLabel();
+    void editSelectedFormula();
     void refreshSpellLanguage();
     void updateSelection(const QVector<int> &indices);
     QVector<int> indicesForIds(const QStringList &ids) const;
@@ -210,6 +212,7 @@ private:
     QAction *batchAction = nullptr;
     QAction *remainingAction = nullptr;
     QAction *layoutAction = nullptr;
+    QAction *editFormulaAction = nullptr;
     QAction *createRegionAction = nullptr;
     QAction *scanExportAction = nullptr;
     QAction *pdfAction = nullptr;
@@ -226,6 +229,12 @@ private:
     QVector<QGraphicsRectItem *> imageRegionBoxes;
     QVector<core::OcrWord *> displayedWords;
     QVector<int> selectedWords;
+    struct EditorSection {
+        int firstWord;
+        int lastWord;
+        QTextCursor separator; // Inside the blank line before this section, tracking edits above it.
+    };
+    QVector<EditorSection> editorSections;
     QSet<QString> selectedRegionIds;
     int selectedImageRegion = -1;
     QVector<core::ImageRegion> queuedImageRegions;

@@ -1,4 +1,6 @@
 #include "pdfexporter.h"
+#include "detail/pdfformulas.h"
+#include "formulaeditor.h"
 #include "exportpage.h"
 #include "scientificbookexporter.h"
 #include "verifiedsampleexporter.h"
@@ -808,6 +810,10 @@ MainWindow::MainWindow()
     formatToolbar->setMovable(false);
     formatToolbar->setIconSize(QSize(16, 16));
     textLayout->addWidget(formatToolbar);
+    editFormulaAction = formatToolbar->addAction(tr("Edit formula…"), this, &MainWindow::editSelectedFormula);
+    editFormulaAction->setObjectName("editFormulaAction");
+    editFormulaAction->setToolTip(tr("Edit the selected equation as LaTeX with a live preview."));
+    editFormulaAction->setEnabled(false);
     auto *editorSplitter = new QSplitter(Qt::Vertical, textPanel);
     editorSplitter->setObjectName(QStringLiteral("textEditorSplitter"));
     editorSplitter->setChildrenCollapsible(false);
@@ -972,7 +978,12 @@ MainWindow::MainWindow()
             const int row = wordList->row(item);
             if (row >= 0 && row < displayedWords.size()) ids.append(displayedWords.at(row)->id);
         }
-        if (!maybeApplyEditor()) { updateSelection(selectedWords); return; }
+        if (!maybeApplyEditor()) {
+            const QSignalBlocker blocker(wordList);
+            wordList->clearSelection();
+            for (int index : selectedWords) wordList->item(index)->setSelected(true);
+            return;
+        }
         updateSelection(indicesForIds(ids));
     });
     status = new QLabel(tr("Open an image, PDF or DjVu to begin."), this);
@@ -1228,6 +1239,9 @@ void MainWindow::setBusy(bool busy)
     view->setEnabled(!blocked);
     cancelButton->setEnabled(blocked);
     selectionEditor->setEnabled(!blocked);
+    const auto *formulaPage = document.page(currentPage);
+    editFormulaAction->setEnabled(!blocked && !imagePath.isEmpty() && formulaPage &&
+        !processing::detail::editableFormulaSpans(*formulaPage, selectedWords).isEmpty());
     applyButton->setEnabled(!blocked && !selectedWords.isEmpty() && !selectionEditor->isReadOnly());
     const auto *activePage = document.page(currentPage);
     const bool textRegion = !activePage || selectedImageRegion < 0 || selectedImageRegion >= activePage->imageRegions.size() ||
@@ -2625,6 +2639,9 @@ void MainWindow::refreshReviewLabel()
 void MainWindow::updateSelection(const QVector<int> &indices)
 {
     selectedWords = indices;
+    const auto *page = document.page(currentPage);
+    editFormulaAction->setEnabled(!processor.isBusy() && !exportBusy && page &&
+        !processing::detail::editableFormulaSpans(*page, indices).isEmpty());
     refreshReviewLabel();
     reviewWordButton->setEnabled(!processor.isBusy() && !exportBusy && !imagePath.isEmpty() && canReviewSelection());
     if (createRegionAction) createRegionAction->setEnabled(!processor.isBusy() && !exportBusy && !indices.isEmpty() &&
@@ -2646,14 +2663,14 @@ void MainWindow::updateSelection(const QVector<int> &indices)
         if (selected) wordList->item(i)->setSelected(true);
     }
     const QSignalBlocker editorBlocker(selectionEditor);
+    editorSections.clear();
     selectionEditor->clear();
     editorPending = false;
-    const bool multipleBlocks = indices.size() > 1 && std::ranges::any_of(indices,
+    const bool structured = std::ranges::any_of(indices,
         [this](int i) { return displayedWords.at(i)->layoutBlock; });
-    selectionEditor->setReadOnly(multipleBlocks);
-    applyButton->setEnabled(!processor.isBusy() && !exportBusy && !indices.isEmpty() && !multipleBlocks);
-    selectionLabel->setText(multipleBlocks ? tr("Select one layout block to edit") : indices.isEmpty() ? tr("Recognized text") :
-                            tr("Selected text (%1 words)").arg(indices.size()));
+    selectionEditor->setReadOnly(indices.isEmpty());
+    applyButton->setEnabled(!processor.isBusy() && !exportBusy && !indices.isEmpty());
+    selectionLabel->setText(indices.isEmpty() ? tr("Recognized text") : tr("Selected text (%1 items)").arg(indices.size()));
     QTextCursor cursor(selectionEditor->document());
     cursor.movePosition(QTextCursor::Start);
     const OcrWord *previous = nullptr;
@@ -2661,10 +2678,21 @@ void MainWindow::updateSelection(const QVector<int> &indices)
         if (index < 0 || index >= displayedWords.size()) continue;
         const OcrWord *word = displayedWords.at(index);
         if (previous) {
-            const QString separator = previous->block != word->block || previous->paragraph != word->paragraph
+            const bool paragraph = previous->block != word->block || previous->paragraph != word->paragraph;
+            const auto standalone = [](const OcrWord &item) {
+                return item.layoutBlock && !(item.text.startsWith("\\(") && item.text.endsWith("\\)"));
+            };
+            const bool separate = index != editorSections.last().lastWord + 1 ||
+                (structured && (paragraph || standalone(*word) || standalone(*previous)));
+            const QString separator = separate || paragraph
                 ? QStringLiteral("\n\n") : previous->line != word->line ? QStringLiteral("\n") : QStringLiteral(" ");
             cursor.insertText(separator);
-        }
+            if (separate) {
+                auto boundary = cursor;
+                boundary.movePosition(QTextCursor::PreviousCharacter);
+                editorSections.append({index, index, boundary});
+            } else editorSections.last().lastWord = index;
+        } else editorSections.append({index, index, {}});
         QTextCharFormat format;
         if (!word->fontFamily.isEmpty()) format.setFontFamilies({word->fontFamily});
         format.setFontWeight(word->bold ? QFont::Bold : QFont::Normal);
@@ -2675,6 +2703,38 @@ void MainWindow::updateSelection(const QVector<int> &indices)
     }
     selectionEditor->moveCursor(QTextCursor::Start);
     refreshSpellLanguage();
+}
+
+void MainWindow::editSelectedFormula()
+{
+    if (processor.isBusy() || exportBusy || !maybeApplyEditor()) return;
+    const auto *page = document.page(currentPage);
+    if (!page) return;
+    const auto spans = processing::detail::editableFormulaSpans(*page, selectedWords);
+    if (spans.isEmpty()) return;
+    auto span = spans.first();
+    if (spans.size() > 1) {
+        QStringList choices;
+        for (const auto &item : spans)
+            choices.append(tr("%1. %2").arg(choices.size() + 1)
+                .arg(page->words[item.word].text.mid(item.start, item.length).simplified().left(100)));
+        bool accepted = false;
+        const QString chosen = QInputDialog::getItem(this, tr("Edit formula"), tr("Choose an equation"),
+                                                      choices, 0, false, &accepted);
+        if (!accepted) return;
+        span = spans.at(choices.indexOf(chosen));
+    }
+    const auto source = page->words[span.word].text.mid(span.start, span.length);
+    const auto replacement = editFormulaSource(this, source, span.display);
+    if (!replacement || *replacement == source) return;
+    auto edited = *page;
+    auto &word = edited.words[span.word];
+    word.text.replace(span.start, span.length, *replacement);
+    word.reviewed = true;
+    word.readingEngine.clear();
+    word.alternative = {};
+    undoStack.push(new ReplaceTextCommand(document, currentPage, std::move(edited)));
+    updateSelection({span.word});
 }
 
 bool MainWindow::canReviewSelection() const
@@ -2754,57 +2814,88 @@ QVector<int> MainWindow::indicesForIds(const QStringList &ids) const
 
 bool MainWindow::applyCorrection()
 {
-    if (selectedWords.isEmpty()) { editorPending = false; return true; }
-    if (selectionEditor->isReadOnly()) { editorPending = false; return true; }
+    if (editorSections.isEmpty()) { editorPending = false; return true; }
     const QString plain = selectionEditor->toPlainText();
-    if (selectedWords.size() == 1 && displayedWords.at(selectedWords.first())->layoutBlock &&
-        !plain.trimmed().isEmpty()) {
-        auto edited = *document.page(currentPage);
-        auto &block = edited.words[selectedWords.first()];
-        if (block.text != plain) block.readingEngine.clear();
-        block.alternative = {};
-        block.text = plain;
-        block.reviewed = true;
-        QTextCursor cursor(selectionEditor->document());
-        cursor.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor);
-        block.bold = cursor.charFormat().fontWeight() >= QFont::Bold;
-        block.italic = cursor.charFormat().fontItalic();
-        block.fontFamily = cursor.charFormat().fontFamilies().toStringList().value(0);
-        if (cursor.charFormat().fontPointSize() > 0) block.fontSizePt = qRound(cursor.charFormat().fontPointSize());
-        const QString id = block.id;
-        editorPending = false;
-        undoStack.push(new ReplaceTextCommand(document, currentPage, std::move(edited)));
-        updateSelection(indicesForIds({id}));
-        return true;
-    }
-    QRegularExpression wordPattern(QStringLiteral("\\S+"));
-    auto matches = wordPattern.globalMatch(plain);
-    QVector<core::EditedWord> tokens;
-    while (matches.hasNext()) {
-        const QRegularExpressionMatch match = matches.next();
-        QTextCursor cursor(selectionEditor->document());
-        cursor.setPosition(static_cast<int>(match.capturedStart()));
-        cursor.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor);
-        const QTextCharFormat format = cursor.charFormat();
-        tokens.append({.text = match.captured(),
-                       .bold = format.fontWeight() >= QFont::Bold,
-                       .italic = format.fontItalic(),
-                       .fontSizePt = format.fontPointSize() > 0 ? qRound(format.fontPointSize()) : 0,
-                       .fontFamily = format.fontFamilies().toStringList().value(0)});
-    }
-    const OcrPage *page = document.page(currentPage);
+    const auto *page = document.page(currentPage);
     if (!page) return false;
-    auto edited = core::WordEditor::apply(*page, selectedWords, tokens);
-    if (!edited) { showError(edited.error()); return false; }
-    const qsizetype originalCount = selectedWords.size();
+
+    // Keep each structured block in its own source box. A live cursor in each
+    // separator also distinguishes a block boundary from blank lines inside a table.
+    QVector<int> starts{0};
+    for (qsizetype i = 1; i < editorSections.size() && !plain.isEmpty(); ++i) {
+        const int pos = editorSections[i].separator.position();
+        if (pos > starts.last() && plain.mid(pos - 1, 2) == "\n\n") {
+            starts.append(pos + 1);
+            continue;
+        }
+        // Replacing the entire editor contents collapses the live cursors.
+        starts = {0};
+        for (qsizetype at = plain.indexOf("\n\n"); at >= 0; at = plain.indexOf("\n\n", at + 2))
+            starts.append(at + 2);
+        if (starts.size() != editorSections.size()) {
+            showError(tr("Keep a blank line between the selected OCR blocks, or select a single block to change its paragraph breaks."));
+            return false;
+        }
+        break;
+    }
+
+    static const QRegularExpression tokenPattern(QStringLiteral(R"(\\\([\s\S]*?\\\)|\S+)"));
+    const auto editedWord = [&](int at, const QString &text, bool layoutBlock) {
+        QTextCursor cursor(selectionEditor->document());
+        cursor.setPosition(at);
+        cursor.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor);
+        const auto format = cursor.charFormat();
+        return core::EditedWord{text, format.fontWeight() >= QFont::Bold, format.fontItalic(),
+            format.fontPointSize() > 0 ? qRound(format.fontPointSize()) : 0,
+            format.fontFamilies().toStringList().value(0), layoutBlock};
+    };
+
+    auto updated = *page;
     QStringList selectedIds;
-    for (int index : selectedWords) selectedIds.append(displayedWords.at(index)->id);
+    int replacementCount = 0;
+    // Later edits cannot shift the source indices of earlier sections.
+    for (qsizetype i = editorSections.size(); i-- > 0;) {
+        const auto &section = editorSections[i];
+        const int start = plain.isEmpty() ? 0 : starts[i];
+        const int end = !plain.isEmpty() && i + 1 < starts.size() ? starts[i + 1] - 2 : plain.size();
+        const QString text = plain.mid(start, end - start);
+        QVector<core::EditedWord> tokens;
+        if (section.firstWord == section.lastWord && page->words[section.firstWord].layoutBlock) {
+            if (!text.trimmed().isEmpty()) tokens.append(editedWord(start, text, true));
+        } else {
+            auto matches = tokenPattern.globalMatch(text);
+            while (matches.hasNext()) {
+                const auto match = matches.next();
+                const auto token = match.captured();
+                tokens.append(editedWord(start + match.capturedStart(), token,
+                    token.startsWith("\\(") && token.endsWith("\\)")));
+            }
+        }
+        replacementCount += tokens.size();
+        QVector<int> selection;
+        bool changed = tokens.size() != section.lastWord - section.firstWord + 1;
+        for (int index = section.firstWord; index <= section.lastWord; ++index) {
+            selection.append(index);
+            if (changed) continue;
+            const auto &old = page->words[index];
+            const auto &edit = tokens[index - section.firstWord];
+            changed = old.text != edit.text || old.bold != edit.bold || old.italic != edit.italic ||
+                (edit.fontSizePt > 0 && old.fontSizePt != edit.fontSizePt) ||
+                (!edit.fontFamily.isEmpty() && old.fontFamily != edit.fontFamily);
+        }
+        if (changed || editorSections.size() == 1) {
+            auto result = core::WordEditor::apply(updated, selection, tokens);
+            if (!result) { showError(result.error()); return false; }
+            updated = std::move(*result);
+        }
+        for (qsizetype j = 0; j < tokens.size(); ++j) selectedIds.append(updated.words[section.firstWord + j].id);
+    }
     editorPending = false;
-    if (originalCount == 1 && tokens.size() > 1)
-        undoStack.push(new SplitWordCommand(document, currentPage, std::move(*edited)));
-    else if (originalCount > 1 && tokens.size() == 1)
-        undoStack.push(new MergeWordsCommand(document, currentPage, std::move(*edited)));
-    else undoStack.push(new ReplaceTextCommand(document, currentPage, std::move(*edited)));
+    if (selectedWords.size() == 1 && replacementCount > 1)
+        undoStack.push(new SplitWordCommand(document, currentPage, std::move(updated)));
+    else if (selectedWords.size() > 1 && replacementCount == 1)
+        undoStack.push(new MergeWordsCommand(document, currentPage, std::move(updated)));
+    else undoStack.push(new ReplaceTextCommand(document, currentPage, std::move(updated)));
     updateSelection(indicesForIds(selectedIds));
     statusBar()->showMessage(tr("Correction applied. Use Edit → Undo to reverse it."));
     return true;

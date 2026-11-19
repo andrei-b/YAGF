@@ -33,6 +33,7 @@
 #include <QScrollBar>
 #include <QPlainTextEdit>
 #include <QSettings>
+#include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTextEdit>
 #include <QThread>
@@ -901,6 +902,98 @@ int main(int argc, char **argv)
     for (auto *action : scientificWindow.findChildren<QAction *>())
         if (action->text() == "Undo") action->trigger();
     assert(blocks->item(0)->text() == page.words[0].originalText);
+
+    // The default page selection mixes a display equation, prose and inline math.
+    {
+        yagf::core::OcrPage mixed;
+        mixed.width = mixed.sourceWidth = image.width();
+        mixed.height = mixed.sourceHeight = image.height();
+        mixed.words = {{1, 1, 1, 1, {10,10,90,18}, "x=1", "x=1", 95},
+                       {1, 2, 1, 1, {5,45,40,20}, "Пусть", "Пусть", 90},
+                       {1, 2, 1, 1, {50,45,45,20}, R"(\(x=1\))", R"(\(x=1\))", 90},
+                       {1, 2, 1, 1, {105,45,75,20}, "верно.", "верно.", 90}};
+        mixed.words[0].layoutBlock = mixed.words[2].layoutBlock = true;
+        mixed.rebuildHierarchy();
+        mixed.regions[0].type = "equation";
+        yagf::core::OcrDocument mixedBook;
+        mixedBook.sourcePath = sourcePath;
+        mixedBook.replacePage(mixed);
+        const QString mixedPath = directory.filePath("mixed-edit.yagf.json");
+        assert(yagf::core::ProjectFile::save(mixedPath, mixedBook, &error));
+        yagf::ui::MainWindow mixedWindow;
+        mixedWindow.loadProject(mixedPath);
+        auto *text = mixedWindow.findChild<QTextEdit *>("recognizedTextEditor");
+        auto *apply = mixedWindow.findChild<QPushButton *>("applyButton");
+        auto *list = mixedWindow.findChild<QListWidget *>("recognizedWords");
+        assert(text && apply && list && !text->isReadOnly() && apply->isEnabled());
+        text->setPlainText(QStringLiteral("x = 2\n\nПусть теперь \\(x = 2\\) истинно."));
+        apply->click();
+        assert(list->count() == 5 && list->item(0)->text() == "x = 2");
+        assert(list->item(3)->text() == R"(\(x = 2\))" && list->item(4)->text() == "истинно.");
+        list->setCurrentRow(3, QItemSelectionModel::ClearAndSelect);
+        auto *edit = mixedWindow.findChild<QAction *>("editFormulaAction");
+        assert(edit && edit->isEnabled());
+        // Use real preview tools when installed, outside this test's fake OCR tool directory.
+        const auto previousPath = qgetenv("PATH");
+        qputenv("PATH", previousPath.mid(QFile::encodeName(directory.path()).size() + 1));
+        const bool hasPreview = !QStandardPaths::findExecutable("pdflatex").isEmpty() &&
+                                !QStandardPaths::findExecutable("pdftoppm").isEmpty();
+        for (bool save : {false, true}) {
+            QTimer::singleShot(0, &mixedWindow, [save, hasPreview] {
+                auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+                assert(dialog && dialog->objectName() == "formulaEditor");
+                auto *input = dialog->findChild<QPlainTextEdit *>("formulaSource");
+                auto *preview = dialog->findChild<QLabel *>("formulaPreview");
+                assert(input && preview && input->toPlainText() == "x = 2");
+                if (hasPreview && !save) {
+                    input->setPlainText(R"(\unknowncommand{x})");
+                    QElapsedTimer wait;
+                    wait.start();
+                    while (!preview->text().contains("Unsupported") && wait.elapsed() < 5000) QTest::qWait(20);
+                    assert(preview->text().contains("unknowncommand"));
+                }
+                input->setPlainText(R"(\frac{x}{2})");
+                if (hasPreview) {
+                    QElapsedTimer wait;
+                    wait.start();
+                    while (preview->pixmap().isNull() && wait.elapsed() < 10000) QTest::qWait(20);
+                    const auto rendered = preview->pixmap().toImage().convertToFormat(QImage::Format_Grayscale8);
+                    assert(!rendered.isNull());
+                    int ink = 0;
+                    for (int y = 0; y < rendered.height(); ++y)
+                        for (int x = 0; x < rendered.width(); ++x) ink += rendered.constScanLine(y)[x] < 150;
+                    assert(ink > 10);
+                }
+                if (save) dialog->accept(); else dialog->reject();
+            });
+            edit->trigger();
+            assert(list->item(3)->text() == (save ? R"(\(\frac{x}{2}\))" : R"(\(x = 2\))"));
+        }
+        qputenv("PATH", previousPath);
+        for (auto *action : mixedWindow.findChildren<QAction *>())
+            if (action->text() == "Save project") action->trigger();
+        assert(yagf::core::ProjectFile::load(mixedPath, &mixedBook, &error));
+        const auto &saved = mixedBook.pages.first();
+        assert(saved.regions.first().type == "equation" && saved.words[3].layoutBlock);
+        assert(saved.words[3].bounds == mixed.words[2].bounds && saved.words[3].id == mixed.words[2].id);
+        assert(saved.words[3].text == R"(\(\frac{x}{2}\))" && !saved.words[1].reviewed);
+        for (auto *action : mixedWindow.findChildren<QAction *>())
+            if (action->text() == "Undo") action->trigger();
+        assert(list->item(3)->text() == R"(\(x = 2\))");
+        list->setCurrentRow(0, QItemSelectionModel::ClearAndSelect);
+        qputenv("PATH", QFile::encodeName(noTools.path()));
+        QTimer::singleShot(0, &mixedWindow, [] {
+            auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+            auto *input = dialog->findChild<QPlainTextEdit *>("formulaSource");
+            assert(input->toPlainText() == "x = 2");
+            assert(dialog->findChild<QLabel *>("formulaPreview")->text().contains("pdflatex", Qt::CaseInsensitive));
+            input->setPlainText("x = 3");
+            dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Save)->click();
+        });
+        edit->trigger();
+        qputenv("PATH", previousPath);
+        assert(list->item(0)->text() == "x = 3");
+    }
 
     assert(!scientificWindow.usePaddleVlService(QUrl("file:///tmp/model")));
     assert(!scientificWindow.usePaddleVlService(QUrl("http://localhost:8765/v1/recognize")));

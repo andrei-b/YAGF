@@ -177,6 +177,81 @@ constexpr auto preamble = R"YAGF(\documentclass{article}
 )YAGF";
 }
 
+QVector<FormulaSpan> editableFormulaSpans(const core::OcrPage &page, const QVector<int> &selection)
+{
+    QSet<QString> equations;
+    for (const auto &region : page.regions) {
+        if (region.type != "equation" && region.type != "formula") continue;
+        for (const auto &paragraph : region.paragraphs)
+            for (const auto &line : paragraph.lines)
+                if (line.wordIds.size() == 1) equations.insert(line.wordIds.first());
+    }
+    QVector<FormulaSpan> spans;
+    for (int index : selection) {
+        if (index < 0 || index >= page.words.size()) continue;
+        const auto &word = page.words.at(index);
+        const QString text = word.text.trimmed();
+        if (const auto body = delimited(text)) {
+            const auto offset = (text.size() - body->size()) / 2;
+            spans.append({index, word.text.indexOf(text) + offset, body->size(),
+                          text.startsWith("\\[") || text.startsWith("$$")});
+        } else if (equations.contains(word.id)) {
+            spans.append({index, 0, word.text.size(), true});
+        } else {
+            auto matches = inlineMath.globalMatch(word.text);
+            while (matches.hasNext()) {
+                const auto match = matches.next();
+                const bool display = match.capturedStart(2) >= 0;
+                const int group = display ? 2 : 1;
+                spans.append({index, match.capturedStart(group), match.capturedLength(group), display});
+            }
+        }
+    }
+    return spans;
+}
+
+std::expected<QImage, QString> renderFormulaPreview(const QString &source, bool display, const std::atomic_bool &cancelled)
+{
+    const auto tokens = mathTokens(source.trimmed());
+    if (!tokens) return std::unexpected(tokens.error());
+    QTemporaryDir dir;
+    QFile tex(dir.filePath("preview.tex"));
+    if (!dir.isValid() || !tex.open(QIODevice::WriteOnly))
+        return std::unexpected(QStringLiteral("Could not create the preview files."));
+    QTextStream out(&tex);
+    out << "\\documentclass{article}\n\\usepackage{amsmath,amssymb,graphicx}\n"
+           "\\providecommand{\\degree}{^{\\circ}}\n";
+    if (source.contains(QRegularExpression(QStringLiteral("[\\x{0400}-\\x{04ff}]"))))
+        out << "\\usepackage[T2A]{fontenc}\n";
+    out << "\\begin{document}\n\\setbox0=\\hbox{$" << (display ? "\\displaystyle " : "\\textstyle ") << *tokens
+        << "$}\n"
+           "\\ifdim\\wd0>360pt \\setbox0=\\hbox{\\resizebox{360pt}{!}{\\box0}}\\fi\n"
+           "\\ifdim\\dimexpr\\ht0+\\dp0\\relax>160pt \\setbox0=\\hbox{\\resizebox*{!}{160pt}{\\box0}}\\fi\n"
+           "\\pdfhorigin=4pt\\pdfvorigin=4pt\\pdfpagewidth=\\dimexpr\\wd0+8pt\\relax\n"
+           "\\pdfpageheight=\\dimexpr\\ht0+\\dp0+8pt\\relax\\shipout\\box0\\end{document}\n";
+    out.flush();
+    if (out.status() != QTextStream::Ok || !tex.flush()) return std::unexpected(tex.errorString());
+    tex.close();
+    auto compiled = runExportCommand("pdflatex", {"-no-shell-escape", "-interaction=nonstopmode",
+                                      "-halt-on-error", "preview.tex"}, cancelled, dir.path());
+    if (compiled.status != ExportResult::Status::Success) {
+        QFile log(dir.filePath("preview.log"));
+        if (log.open(QIODevice::ReadOnly)) {
+            while (!log.atEnd()) {
+                const auto line = log.readLine();
+                if (line.startsWith("! ")) return std::unexpected(QString::fromUtf8(line.mid(2)).trimmed());
+            }
+        }
+        return std::unexpected(compiled.error);
+    }
+    auto rendered = runExportCommand("pdftoppm", {"-r", "160", "-png", "-singlefile", "preview.pdf", "preview"},
+                                     cancelled, dir.path());
+    if (rendered.status != ExportResult::Status::Success) return std::unexpected(rendered.error);
+    QImage image(dir.filePath("preview.png"));
+    if (image.isNull()) return std::unexpected(QStringLiteral("Could not read the rendered formula."));
+    return image;
+}
+
 PdfFormulaPage collectPdfFormulas(const core::OcrPage &page, const QRegion &protectedGraphics)
 {
     PdfFormulaPage result;
