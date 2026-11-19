@@ -22,6 +22,7 @@ struct OcrOptions {
     int pageNumber = 1;
     QStringList userWords;
     bool preserveFormatting = false;
+    bool collectBenchmarkMetrics = false;
 };
 
 struct OcrError {
@@ -34,6 +35,7 @@ public:
     virtual ~IOcrEngine() = default;
     [[nodiscard]] virtual QString id() const = 0;
     [[nodiscard]] virtual EngineCapabilities capabilities() const = 0;
+    [[nodiscard]] virtual QJsonObject lastRunDetails() const { return {}; }
     virtual std::expected<core::OcrPage, OcrError> recognize(
         const QImage &image, const OcrOptions &options, std::stop_token stop) = 0;
 };

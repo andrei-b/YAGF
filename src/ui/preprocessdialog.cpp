@@ -2,6 +2,8 @@
 #include "imageprocessor.h"
 
 #include <QCheckBox>
+#include <QComboBox>
+#include <QtConcurrentRun>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QHBoxLayout>
@@ -16,46 +18,55 @@ PreprocessDialog::PreprocessDialog(const QImage &source, core::PreprocessSetting
     : QDialog(parent), previewSource(source.width() > 460 || source.height() > 550
         ? source.scaled(QSize(460, 550), Qt::KeepAspectRatio, Qt::SmoothTransformation) : source)
 {
+    analysisSource = source.width() > 2200 || source.height() > 2200
+        ? source.scaled(QSize(2200,2200), Qt::KeepAspectRatio, Qt::SmoothTransformation) : source;
+    setObjectName(QStringLiteral("preprocessDialog"));
     setWindowTitle(tr("Improve page quality"));
     resize(1050, 710);
     auto *layout = new QVBoxLayout(this);
-    const auto assessment = processing::ImageProcessor::assess(source);
     messageLabel = new QLabel(this);
-    if (assessment) {
-        messageLabel->setText(tr("Detected skew: %1° · contrast range: %2–%3%4")
-            .arg(assessment->skewDegrees, 0, 'f', 1)
-            .arg(assessment->lowLuminance).arg(assessment->highLuminance)
-            .arg(assessment->needsContrast() ? tr(" · contrast improvement may help") : QString()));
-    } else {
-        messageLabel->setText(assessment.error());
-    }
+    messageLabel->setWordWrap(true);
+    messageLabel->setText(tr("For uneven lighting, skew detection uses a locally binarized copy. Rotation and binarization can also be applied to the OCR image."));
     layout->addWidget(messageLabel);
-
     auto *controls = new QHBoxLayout();
+    rotationCombo = new QComboBox(this);
+    rotationCombo->setObjectName(QStringLiteral("pageRotation"));
+    rotationCombo->addItems({tr("No rotation"), tr("90° clockwise"), tr("180°"), tr("90° counterclockwise")});
+    rotationCombo->setCurrentIndex(initial.quarterTurns);
     angleSpin = new QDoubleSpinBox(this);
+    angleSpin->setObjectName(QStringLiteral("deskewAngle"));
     angleSpin->setRange(-15.0, 15.0);
     angleSpin->setDecimals(1);
     angleSpin->setSingleStep(0.1);
     angleSpin->setSuffix(QStringLiteral("°"));
     angleSpin->setValue(initial.deskewDegrees);
     auto *detectButton = new QPushButton(tr("Detect skew"), this);
-    connect(detectButton, &QPushButton::clicked, this, [this, assessment] {
-        if (assessment) angleSpin->setValue(assessment->skewDegrees);
-    });
+    connect(detectButton, &QPushButton::clicked, this, &PreprocessDialog::detectSkew);
+    orientationButton = new QPushButton(tr("Detect orientation + skew"), this);
+    connect(orientationButton, &QPushButton::clicked, this, &PreprocessDialog::detectOrientation);
+    controls->addWidget(rotationCombo);
+    controls->addWidget(new QLabel(tr("Fine skew:"), this));
+    controls->addWidget(angleSpin);
+    controls->addWidget(detectButton);
+    controls->addWidget(orientationButton);
+    controls->addStretch();
+    layout->addLayout(controls);
+    auto *filters = new QHBoxLayout();
     auto *resetButton = new QPushButton(tr("Reset"), this);
     contrastCheck = new QCheckBox(tr("Auto contrast"), this);
     contrastCheck->setChecked(initial.autoContrast);
     denoiseCheck = new QCheckBox(tr("Denoise (grayscale)"), this);
     denoiseCheck->setChecked(initial.denoise);
-    controls->addWidget(new QLabel(tr("Deskew angle:"), this));
-    controls->addWidget(angleSpin);
-    controls->addWidget(detectButton);
-    controls->addSpacing(15);
-    controls->addWidget(contrastCheck);
-    controls->addWidget(denoiseCheck);
-    controls->addStretch();
-    controls->addWidget(resetButton);
-    layout->addLayout(controls);
+    binaryCheck = new QCheckBox(tr("Adaptive binarization"), this);
+    binaryCheck->setObjectName(QStringLiteral("adaptiveBinarization"));
+    binaryCheck->setToolTip(tr("Remove uneven paper lighting with local black-and-white thresholding. This changes the OCR image; skew detection uses its own binary copy regardless."));
+    binaryCheck->setChecked(initial.adaptiveBinarization);
+    filters->addWidget(contrastCheck);
+    filters->addWidget(denoiseCheck);
+    filters->addWidget(binaryCheck);
+    filters->addStretch();
+    filters->addWidget(resetButton);
+    layout->addLayout(filters);
 
     auto *images = new QHBoxLayout();
     auto *beforeColumn = new QVBoxLayout();
@@ -82,23 +93,70 @@ PreprocessDialog::PreprocessDialog(const QImage &source, core::PreprocessSetting
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     layout->addWidget(buttons);
+    connect(binaryCheck, &QCheckBox::toggled, this, &PreprocessDialog::refreshPreview);
+    connect(rotationCombo, &QComboBox::currentIndexChanged, this, [this] { angleSpin->setValue(0); refreshPreview(); });
     connect(angleSpin, &QDoubleSpinBox::valueChanged, this, &PreprocessDialog::refreshPreview);
     connect(contrastCheck, &QCheckBox::toggled, this, &PreprocessDialog::refreshPreview);
     connect(denoiseCheck, &QCheckBox::toggled, this, &PreprocessDialog::refreshPreview);
     connect(resetButton, &QPushButton::clicked, this, [this] {
+        rotationCombo->setCurrentIndex(0);
+        binaryCheck->setChecked(false);
         angleSpin->setValue(0.0);
         contrastCheck->setChecked(false);
         denoiseCheck->setChecked(false);
         refreshPreview();
     });
+    connect(&orientationWatcher, &QFutureWatcherBase::finished, this, [this] {
+        if (orientationStop.stop_requested()) return;
+        orientationButton->setEnabled(true);
+        const auto result = orientationWatcher.result();
+        if (result) rotationCombo->setCurrentIndex(result->quarterTurns);
+        detectSkew();
+        if (!result && !result.error().cancelled)
+            messageLabel->setText(result.error().message + tr(" Fine skew at the selected rotation: %1°.").arg(angleSpin->value(),0,'f',1));
+    });
     refreshPreview();
+}
+
+PreprocessDialog::~PreprocessDialog()
+{
+    orientationStop.request_stop();
+    if (orientationWatcher.isRunning()) orientationWatcher.waitForFinished();
+}
+
+void PreprocessDialog::detectSkew()
+{
+    const auto rotated = processing::ImageProcessor::apply(analysisSource, {.quarterTurns = rotationCombo->currentIndex()});
+    if (!rotated) { messageLabel->setText(rotated.error()); return; }
+    const auto assessment = processing::ImageProcessor::assess(*rotated);
+    if (!assessment) { messageLabel->setText(assessment.error()); return; }
+    angleSpin->setValue(assessment->skewDegrees);
+    messageLabel->setText(tr("Detected fine skew: %1° after %2° clockwise rotation. Detection used local binarization to suppress shadows.")
+        .arg(assessment->skewDegrees,0,'f',1).arg(rotationCombo->currentIndex()*90));
+}
+
+void PreprocessDialog::detectOrientation()
+{
+    if (orientationWatcher.isRunning()) return;
+    orientationButton->setEnabled(false);
+    messageLabel->setText(tr("Detecting text orientation…"));
+    orientationStop = std::stop_source{};
+    const auto token = orientationStop.get_token();
+    const QImage source = analysisSource;
+    orientationWatcher.setFuture(QtConcurrent::run([source, token] {
+        const auto binary = processing::ImageProcessor::apply(source, {.adaptiveBinarization = true});
+        if (!binary) return std::expected<processing::PageOrientation,processing::OcrError>(std::unexpected(processing::OcrError{binary.error()}));
+        return processing::detectPageOrientation(*binary, token);
+    }));
 }
 
 core::PreprocessSettings PreprocessDialog::settings() const
 {
     return {.deskewDegrees = angleSpin->value(),
             .autoContrast = contrastCheck->isChecked(),
-            .denoise = denoiseCheck->isChecked()};
+            .denoise = denoiseCheck->isChecked(),
+            .quarterTurns = rotationCombo->currentIndex(),
+            .adaptiveBinarization = binaryCheck->isChecked()};
 }
 
 void PreprocessDialog::refreshPreview()

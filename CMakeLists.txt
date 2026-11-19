@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(yagf2 VERSION 2.1.0 LANGUAGES CXX)
+project(yagf2 VERSION 2.2.0 LANGUAGES CXX)
 include(GNUInstallDirs)
 
 set(CMAKE_CXX_STANDARD 23)
@@ -10,6 +10,7 @@ qt_standard_project_setup()
 set(CMAKE_AUTORCC ON)
 
 add_library(yagf_core STATIC
+    src/core/ocrbenchmark.cpp src/core/ocrbenchmark.h
     src/core/spellchecker.cpp src/core/spellchecker.h
     src/core/verificationqueue.cpp src/core/verificationqueue.h
     src/core/rendersettings.h src/core/correctionretention.cpp src/core/correctionretention.h
@@ -34,6 +35,7 @@ target_include_directories(yagf_imaging PUBLIC src/processing)
 
 # Providers and recognition analysis can be used without the async document controller.
 add_library(yagf_ocr STATIC
+    src/processing/pageorientation.cpp src/processing/pageorientation.h
     src/processing/fontestimator.cpp src/processing/fontestimator.h
     src/processing/specialistocr.cpp src/processing/specialistocr.h
     src/processing/iocrengine.h
@@ -61,10 +63,19 @@ add_library(yagf_export STATIC
 target_link_libraries(yagf_export PUBLIC yagf_core Qt6::Gui PRIVATE yagf_imaging yagf_ocr)
 target_include_directories(yagf_export PUBLIC src/export)
 
+# Experiments use immutable document snapshots and existing provider/source APIs.
+add_library(yagf_experiments STATIC src/experiments/experimentrunner.cpp src/experiments/experimentrunner.h)
+target_link_libraries(yagf_experiments PUBLIC yagf_core yagf_ocr yagf_imaging yagf_export)
+target_include_directories(yagf_experiments PUBLIC src/experiments)
+
+qt_add_executable(yagf2-benchmark src/experiments/main.cpp)
+target_link_libraries(yagf2-benchmark PRIVATE yagf_experiments)
+target_compile_definitions(yagf2-benchmark PRIVATE YAGF_VERSION="${PROJECT_VERSION}")
+
 qt_add_executable(yagf2
     src/ui/blockminiaturelist.cpp src/ui/blockminiaturelist.h
     src/ui/verificationcontroller.cpp src/ui/verificationcontroller.h
-    src/ui/mainwindowreview.cpp
+    src/ui/mainwindowreview.cpp src/ui/experimentdialog.cpp src/ui/experimentdialog.h
     src/main.cpp src/ui/mainwindow.cpp src/ui/mainwindow.h
     src/ui/preprocessdialog.cpp src/ui/preprocessdialog.h
     src/ui/layoutdialog.cpp src/ui/layoutdialog.h resources/icons.qrc)
@@ -73,9 +84,9 @@ target_sources(yagf2 PRIVATE src/ui/documentcommands.cpp src/ui/documentcommands
 target_sources(yagf2 PRIVATE src/ui/aireviewdialog.cpp src/ui/aireviewdialog.h)
 target_sources(yagf2 PRIVATE src/ui/spellhighlighter.cpp src/ui/spellhighlighter.h)
 target_compile_definitions(yagf2 PRIVATE YAGF_VERSION="${PROJECT_VERSION}")
-target_link_libraries(yagf2 PRIVATE yagf_core yagf_processing yagf_export Qt6::Widgets Qt6::Concurrent Qt6::Network)
+target_link_libraries(yagf2 PRIVATE yagf_experiments yagf_core yagf_processing yagf_export Qt6::Widgets Qt6::Concurrent Qt6::Network)
 
-install(TARGETS yagf2 RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS yagf2 yagf2-benchmark RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(FILES packaging/io.github.andrei_b.YAGF.desktop
         DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
 install(FILES resources/yagf.png
@@ -92,6 +103,28 @@ install(FILES COPYING
 include(CTest)
 if(BUILD_TESTING)
     find_package(Qt6 6.2 REQUIRED COMPONENTS Test)
+    qt_add_executable(experimentdialog_tests tests/experimentdialog_tests.cpp src/ui/experimentdialog.cpp src/ui/experimentdialog.h)
+    target_link_libraries(experimentdialog_tests PRIVATE yagf_experiments Qt6::Widgets Qt6::Concurrent Qt6::Test)
+    target_include_directories(experimentdialog_tests PRIVATE src/ui)
+    add_test(NAME experimentdialog_tests COMMAND experimentdialog_tests)
+    set_tests_properties(experimentdialog_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    qt_add_executable(experiment_tests tests/experiment_tests.cpp)
+    target_link_libraries(experiment_tests PRIVATE yagf_experiments Qt6::Test)
+    add_test(NAME experiment_tests COMMAND experiment_tests)
+    set_tests_properties(experiment_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    qt_add_executable(scanneddocument_tests tests/scanneddocument_tests.cpp)
+    target_link_libraries(scanneddocument_tests PRIVATE yagf_processing yagf_export)
+    target_compile_definitions(scanneddocument_tests PRIVATE YAGF_SCAN_PATH="${CMAKE_CURRENT_SOURCE_DIR}/ocr-examples/Scanned Document.pdf")
+    add_test(NAME scanneddocument_tests COMMAND scanneddocument_tests)
+    set_tests_properties(scanneddocument_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;OMP_THREAD_LIMIT=2" SKIP_RETURN_CODE 77)
+    qt_add_executable(remoteocrtiling_tests tests/remoteocrtiling_tests.cpp)
+    target_link_libraries(remoteocrtiling_tests PRIVATE yagf_ocr Qt6::Network Qt6::Test)
+    add_test(NAME remoteocrtiling_tests COMMAND remoteocrtiling_tests)
+    qt_add_executable(preprocessdialog_tests tests/preprocessdialog_tests.cpp src/ui/preprocessdialog.cpp src/ui/preprocessdialog.h)
+    target_link_libraries(preprocessdialog_tests PRIVATE yagf_processing Qt6::Widgets Qt6::Test)
+    target_include_directories(preprocessdialog_tests PRIVATE src/ui)
+    add_test(NAME preprocessdialog_tests COMMAND preprocessdialog_tests)
+    set_tests_properties(preprocessdialog_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     qt_add_executable(verificationcontroller_tests tests/verificationcontroller_tests.cpp
         src/ui/verificationcontroller.cpp src/ui/verificationcontroller.h)
     target_link_libraries(verificationcontroller_tests PRIVATE yagf_core Qt6::Widgets Qt6::Test)
@@ -142,7 +175,7 @@ if(BUILD_TESTING)
     qt_add_executable(mainwindow_tests tests/mainwindow_tests.cpp
         src/ui/blockminiaturelist.cpp src/ui/blockminiaturelist.h
         src/ui/verificationcontroller.cpp src/ui/verificationcontroller.h
-        src/ui/mainwindowreview.cpp
+        src/ui/mainwindowreview.cpp src/ui/experimentdialog.cpp src/ui/experimentdialog.h
         src/ui/mainwindow.cpp src/ui/mainwindow.h
         src/ui/preprocessdialog.cpp src/ui/preprocessdialog.h
         src/ui/layoutdialog.cpp src/ui/layoutdialog.h
@@ -150,7 +183,7 @@ if(BUILD_TESTING)
         src/ui/documentcommands.cpp src/ui/documentcommands.h resources/icons.qrc)
     target_sources(mainwindow_tests PRIVATE src/ui/aireviewdialog.cpp src/ui/aireviewdialog.h)
     target_sources(mainwindow_tests PRIVATE src/ui/spellhighlighter.cpp src/ui/spellhighlighter.h)
-    target_link_libraries(mainwindow_tests PRIVATE yagf_processing yagf_export Qt6::Widgets Qt6::Concurrent Qt6::Network Qt6::Test)
+    target_link_libraries(mainwindow_tests PRIVATE yagf_experiments yagf_processing yagf_export Qt6::Widgets Qt6::Concurrent Qt6::Network Qt6::Test)
     target_include_directories(mainwindow_tests PRIVATE src/ui)
     add_test(NAME mainwindow_tests COMMAND mainwindow_tests)
     set_tests_properties(mainwindow_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
@@ -183,6 +216,9 @@ if(BUILD_TESTING)
     add_test(NAME remoteocrengine_tests COMMAND remoteocrengine_tests)
     find_package(Python3 QUIET COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND)
+        add_test(NAME benchmark_cli_tests COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_benchmark_cli.py $<TARGET_FILE:yagf2-benchmark>)
+        set_tests_properties(benchmark_cli_tests PROPERTIES TIMEOUT 45)
+        add_test(NAME jetson_metrics_tests COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_jetson_metrics.py)
         add_test(NAME remote_ocr_service_tests
             COMMAND ${Python3_EXECUTABLE} -m unittest discover -s ${CMAKE_CURRENT_SOURCE_DIR}/service/tests)
     endif()

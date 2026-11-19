@@ -15,6 +15,11 @@
   </description>
   <launchable type="desktop-id">io.github.andrei_b.YAGF.desktop</launchable>
   <releases>
+    <release version="2.2.0" date="2026-11-19">
+      <description>
+        <p>Compare OCR pipelines on verified calibration and held-out pages, inspect saved readings and resource measurements, and run reproducible desktop or Jetson benchmarks. Improve photographed scans with orientation correction and adaptive binarization.</p>
+      </description>
+    </release>
     <release version="2.1.0" date="2026-11-19">
       <description>
         <p>Document-wide verification queue, correction retention across OCR reruns, and configurable or adaptive PDF and DjVu rendering resolution.</p>
@@ -23,5 +28,6 @@
   </releases>
   <provides>
     <binary>yagf2</binary>
+    <binary>yagf2-benchmark</binary>
   </provides>
 </component>

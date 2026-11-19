@@ -1,6 +1,6 @@
 /build-appimage/
 /dist/
-/service/**/__pycache__/
+__pycache__/
 /build/
 cmake-build-*/
 .idea/

@@ -16,7 +16,11 @@ public:
     std::expected<core::OcrPage, OcrError> recognize(
         const QImage &image, const OcrOptions &options, std::stop_token stop) override;
 
+    QJsonObject lastRunDetails() const override { return runDetails; }
 private:
+    QJsonObject runDetails;
+    std::expected<core::OcrPage, OcrError> recognizeSection(
+        const QImage &image, const OcrOptions &options, std::stop_token stop, int depth);
     QUrl server;
     QString bearerToken;
     Provider provider;

@@ -455,7 +455,9 @@ QJsonObject OcrDocument::toJson() const
                                      {"preprocessing", QJsonObject{
                                          {"deskew_degrees", page.preprocessing.deskewDegrees},
                                          {"auto_contrast", page.preprocessing.autoContrast},
-                                         {"denoise", page.preprocessing.denoise}}},
+                                         {"denoise", page.preprocessing.denoise},
+                                         {"quarter_turns", page.preprocessing.quarterTurns},
+                                         {"adaptive_binarization", page.preprocessing.adaptiveBinarization}}},
                                      {"engine", page.engineId}, {"language", page.language},
                                      {"regions", regionItems}, {"image_regions", imageRegionItems},
                                      {"words", wordItems},
@@ -550,6 +552,13 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
                 return fail(QStringLiteral("Invalid preprocessing values."));
             page.preprocessing = {.deskewDegrees = angle.toDouble(),
                                   .autoContrast = contrast.toBool(), .denoise = denoise.toBool()};
+            if (settings.contains("quarter_turns") &&
+                (!integer(settings, "quarter_turns", &page.preprocessing.quarterTurns) ||
+                 page.preprocessing.quarterTurns < 0 || page.preprocessing.quarterTurns > 3))
+                return fail(QStringLiteral("Invalid page orientation."));
+            if (settings.contains("adaptive_binarization") && !settings.value("adaptive_binarization").isBool())
+                return fail(QStringLiteral("Invalid adaptive binarization setting."));
+            page.preprocessing.adaptiveBinarization = settings.value("adaptive_binarization").toBool();
         }
         if (object.contains("render_dpi") && (!integer(object, "render_dpi", &page.renderDpi) || !validRenderDpi(page.renderDpi)))
             return fail(QStringLiteral("Invalid page rendering resolution."));

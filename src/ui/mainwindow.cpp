@@ -466,6 +466,8 @@ MainWindow::MainWindow()
     connect(verification, &VerificationController::reviewRequested, this, [this](const auto &item) { activateVerification(item, 1); });
     connect(verification, &VerificationController::verifyRequested, this, [this](const auto &item) { activateVerification(item, 2); });
     connect(verification, &VerificationController::discardRequested, this, [this](const auto &item) { activateVerification(item, 3); });
+    auto *experimentsAction = toolsMenu->addAction(tr("OCR experiments…"),this,&MainWindow::openExperiments);
+    experimentsAction->setObjectName(QStringLiteral("ocrExperiments"));
     renderingAction = toolsMenu->addAction(tr("Rendering resolution…"), this, &MainWindow::configureRendering);
     renderingAction->setObjectName(QStringLiteral("renderingResolution"));
 
@@ -1585,10 +1587,11 @@ void MainWindow::improveCurrentPage()
     if (dialog.exec() != QDialog::Accepted) return;
     const core::PreprocessSettings proposed = dialog.settings();
     if (proposed == current) return;
-    const bool geometryChanged = std::abs(proposed.deskewDegrees - current.deskewDegrees) >= 0.01;
+    const bool geometryChanged = std::abs(proposed.deskewDegrees - current.deskewDegrees) >= 0.01 ||
+                                 proposed.quarterTurns != current.quarterTurns;
     if (geometryChanged && existing && (!existing->words.isEmpty() || !existing->imageRegions.isEmpty()) &&
         QMessageBox::warning(this, tr("Rebuild page geometry"),
-            tr("Changing the deskew angle moves the scan and will clear OCR boxes, corrections, and image regions on this page. Continue?"),
+            tr("Changing the rotation or deskew angle moves the scan and will clear OCR boxes, corrections, and image regions on this page. Continue?"),
             QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Yes) return;
     const auto processed = ImageProcessor::apply(rawImage, proposed);
     if (!processed) { showError(processed.error()); return; }

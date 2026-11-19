@@ -7,6 +7,13 @@ import hmac
 import json
 import logging
 import math
+import platform
+import time
+import importlib.metadata
+try:
+    import resource
+except ImportError:
+    resource = None
 import os
 import re
 import struct
@@ -259,6 +266,10 @@ def normalize_kraken_records(records, width, height):
     return words
 
 
+class TranscriptionTruncated(ValueError):
+    """A bounded retry on smaller image sections can recover a dense page."""
+
+
 class PaddleVlBackend:
     """Bridge a running PaddleOCR-VL chat server without inventing word geometry."""
     engine_id = "paddleocr"
@@ -296,7 +307,7 @@ class PaddleVlBackend:
             raise ValueError("PaddleOCR-VL returned no transcription")
         choice = choices[0]
         if choice.get("finish_reason") != "stop":
-            raise ValueError("PaddleOCR-VL did not finish the transcription; try a smaller image region")
+            raise TranscriptionTruncated("PaddleOCR-VL did not finish the transcription; retry smaller image sections")
         message = choice.get("message")
         text = message.get("content") if isinstance(message, dict) else None
         if not isinstance(text, str):
@@ -435,7 +446,35 @@ class KrakenBackend:
                 return normalize_kraken_records(records, width, height)
 
 
+def benchmark_details(backend):
+    """Describe measured resources without treating a remote VL bridge as the GPU host."""
+    remote = isinstance(backend, PaddleVlBackend)
+    packages = {"paddleocr": "paddleocr", "doctr": "python-doctr", "rapidocr": "rapidocr",
+                "surya": "surya-ocr", "kraken": "kraken"}
+    version = "unreported"
+    if not remote:
+        try:
+            version = importlib.metadata.version(packages.get(backend.engine_id, "unknown"))
+        except importlib.metadata.PackageNotFoundError:
+            pass
+    model = getattr(backend, "model", type(backend).__name__)
+    details = {"engine": backend.engine_id, "model": model if isinstance(model, str) else type(backend).__name__,
+               "version": version, "architecture": platform.machine(),
+               "device": "remote upstream" if remote else getattr(backend, "benchmark_device", "unreported"),
+               "peak_rss_scope": "Bridge process lifetime; excludes upstream model" if remote else "Inference service process lifetime"}
+    if remote:
+        details["memory_note"] = "Upstream model memory requires a separate hardware collector"
+    try:
+        with open("/etc/nv_tegra_release", encoding="utf-8") as info:
+            details["jetpack"] = info.readline().strip()[:256]
+    except OSError:
+        pass
+    return details
+
+
 def handler_for(backend, token=""):
+    provenance = benchmark_details(backend)
+    inference_lock = threading.Lock()
     class Handler(BaseHTTPRequestHandler):
         def send_json(self, code, payload):
             data = json.dumps(payload, ensure_ascii=False, allow_nan=False).encode("utf-8")
@@ -484,10 +523,20 @@ def handler_for(backend, token=""):
                 language = request.get("language") or backend.language
                 if not isinstance(language, str) or len(language) > 64:
                     raise ValueError("Invalid language")
-                items = backend.recognize(png, width, height, language)
+                queued = time.perf_counter()
+                with inference_lock:
+                    started = time.perf_counter()
+                    items = backend.recognize(png, width, height, language)
+                    details = dict(provenance, inference_ms=(time.perf_counter()-started)*1000,
+                                   queue_ms=(started-queued)*1000)
+                    if resource is not None:
+                        peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+                        details["peak_rss_bytes"] = peak if platform.system() == "Darwin" else peak*1024
                 self.send_json(200, {"protocol": PROTOCOL, "engine_id": backend.engine_id,
                                      "width": width, "height": height,
-                                     "language": language, backend.result_key: items})
+                                     "language": language, backend.result_key: items, "run_details": details})
+            except TranscriptionTruncated as exc:
+                self.send_json(400, {"error": str(exc), "code": "transcription_truncated"})
             except (ValueError, TypeError, KeyError, binascii.Error, json.JSONDecodeError) as exc:
                 self.send_json(400, {"error": str(exc)})
             except Exception:
@@ -535,6 +584,7 @@ def main():
         backend = SuryaBackend()
     else:
         backend = KrakenBackend(args.model, "cuda:0" if device == "gpu" else device)
+    backend.benchmark_device = device
     server = ThreadingHTTPServer((args.host, args.port), handler_for(backend, token))
     print(f"YAGF OCR service listening on {args.host}:{args.port}", flush=True)
     try:

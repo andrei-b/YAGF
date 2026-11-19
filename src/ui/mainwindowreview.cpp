@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "aireviewdialog.h"
+#include "experimentdialog.h"
 #include "correctionretention.h"
 #include "documentcommands.h"
 #include "imageprocessor.h"
@@ -17,6 +18,14 @@
 #include <QTimer>
 
 namespace yagf::ui {
+void MainWindow::openExperiments()
+{
+    if(processor.isBusy() || exportBusy || originalPath.isEmpty() || !maybeApplyEditor()) return;
+    auto *dialog=new ExperimentDialog(document,this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->show();
+}
+
 void MainWindow::refreshRenderedPageIfNeeded()
 {
     if (processor.isBusy() || exportBusy || !processing::isPagedSource(originalPath)) return;

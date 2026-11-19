@@ -7,6 +7,11 @@ YAGF/
   CMakeLists.txt
   src/
     main.cpp                         application entry point
+    core/ocrbenchmark.{h,cpp}        bounded Unicode CER/WER and saved-geometry diagnostics
+    experiments/experimentrunner.{h,cpp}  immutable pipeline experiments and report aggregation
+    experiments/main.cpp            headless benchmark CLI
+    ui/experimentdialog.{h,cpp}      verified reference workflow, pipeline setup, report inspection
+    processing/pageorientation.{h,cpp}   optional cancellable Tesseract OSD
     core/ocrdocument.{h,cpp}         OCR data, text/JSON export
     core/correctionretention.{h,cpp}  conservative span matching, pending restoration, DPI geometry scaling
     core/verificationqueue.{h,cpp}    document-wide issue analysis with injected spelling checks
@@ -69,6 +74,7 @@ graph TD
 | `yagf_ocr` | OCR providers, specialist readings, font estimation | Gui; Network private to provider implementation |
 | `yagf_processing` | Async document jobs, thumbnails, batching | Concurrent |
 | `yagf_export` | Export orchestration, source loading, layout preparation, painting | Gui; imaging and OCR support private |
+| `yagf_experiments` | Verified reference evaluation, pipeline execution, immutable hypotheses and reports | Gui; source loading and providers through existing targets |
 | `yagf2` | Main window and dialogs | Widgets; Network explicitly for AI review |
 
 Neither imaging nor OCR providers depend on `DocumentProcessor`. Export depends on provider support, not on the asynchronous document controller, widgets, or Qt Concurrent. The UI links the controller and exporters independently. Tests link the smallest relevant target. In particular, core targets compile without Gui headers or linkage, and export-only tests do not link the document controller. The optional Python service and Jetson runtime are separate from the desktop binary. The application uses C++23, including `std::expected` for image-processing errors and `std::span` for skew scoring.
@@ -97,6 +103,14 @@ The `OcrDocument` is the current in-memory source of truth. It contains numbered
 Searchable-scan PDF export paints the source image and an invisible corrected-text layer. Formatted PDF export paints corrected text in the source blocks while retaining image, table, formula, and unreliable decorative-heading regions. PDF/A uses OCRmyPDF in skip-text mode. All formats preserve the existing cancellation and atomic-write behavior. The UI runs export through Qt Concurrent and receives the shared result/progress types; the exporter itself has no UI job-controller dependency.
 
 `pdfpagelayout_tests` supplies a geometry provider directly and checks line placement, image retention, model immutability, fallback, cancellation, and painting without invoking Tesseract or PDF command-line tools. Existing integration tests continue to cover real PDF/DjVu commands, embedded fonts, searchable text, multipage export, and the UI save flow.
+
+## Experiment boundary
+
+`yagf_experiments` consumes immutable document snapshots and provider instances; it has no `DocumentProcessor` or widget dependency. It uses the shared export-page loader to obtain raw source renders, applies candidate preprocessing locally, and runs providers without project vocabulary/correction hints. `ocrbenchmark` in Core scores Unicode code points and tokens with bounded rolling edit-distance rows. Geometry diagnostics are unavailable when transforms/granularity disagree. The runner owns calibration warmups, rotated pipeline ordering, cancellation, input/provenance hashing, hypothesis retention, and pooled report summaries. Selection uses calibration metrics only; held-out results cannot switch an engine. `yagf2-benchmark` and `ExperimentDialog` share this implementation.
+
+Reference confirmation in the dialog modifies only its snapshot. The UI sends progress through queued signals and owns no worker-side document state. Session credentials are omitted from pipeline serialization. Tesseract's optional benchmark memory collection uses a separate process group so cancellation also stops its GNU time child. Remote telemetry declares its scope; the VL bridge cannot measure its upstream GPU model. The read-only Python Jetson collector provides separately timestamped hardware observations.
+
+The source preprocessing model now persists right-angle orientation and adaptive-binarization choices. Fine skew always uses a locally thresholded mask; choosing binarization of the actual OCR image is separate. `pageorientation` owns optional Tesseract OSD, timeouts, and cancellation. The dialog runs it asynchronously. Rotation still invalidates existing OCR geometry after the explicit warning; contrast/denoise/binarization preserve coordinates.
 
 ## Next implementation slices
 

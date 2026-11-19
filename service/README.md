@@ -15,9 +15,9 @@ python service/server.py --engine paddleocr-vl --port 8765 \
 
 In YAGF, choose **Tools → OCR engine… → PaddleOCR (remote service)**, set the service URL to `http://127.0.0.1:8765`, and use language `auto`. The endpoint must be reachable, for example through an SSH forward to the inference computer. Set `YAGF_VL_TOKEN` if the upstream vision server requires a bearer token. The bridge needs only Python's standard library; it runs no local inference model.
 
-You can also start the desktop app with the bridge already selected: `yagf-revival --paddleocr-vl-url http://127.0.0.1:8765 /path/to/scan.png`.
+You can also start the desktop app with the bridge already selected: `yagf2 --paddleocr-vl-url http://127.0.0.1:8765 /path/to/scan.png`.
 
-The VL model transcribes each page or drawn image region as one editable text block. Its source box covers the complete submitted image, and confidence is unknown. It provides no individual word boxes. Draw smaller OCR regions when you want separate blocks. The bridge rejects truncated model responses instead of saving incomplete text. This endpoint serves the YAGF page OCR protocol; the vision server's chat endpoint can separately be used for AI review.
+The VL model transcribes each page or drawn image region as one editable text block. Its source box covers the complete submitted image, and confidence is unknown. It provides no individual word boxes. Draw smaller OCR regions when you want separate blocks. The bridge identifies truncated model responses with `code: transcription_truncated`. YAGF retries these on smaller non-overlapping image sections, preferring low-ink cut lines, with at most two split levels (four leaf sections). It keeps all results in page coordinates and publishes them only when every section succeeds. Repeated failure remains an error rather than saving an incomplete page. Other server failures are not retried this way. This endpoint serves the YAGF page OCR protocol; the vision server's chat endpoint can separately be used for AI review.
 
 ### Running the standard PaddleOCR pipeline
 

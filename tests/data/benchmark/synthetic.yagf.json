@@ -1,0 +1,3831 @@
+{
+    "document": {
+        "context": {
+            "description": "",
+            "infer_from_recognized_text": true
+        },
+        "engine": "synthetic_rendered_ground_truth",
+        "language": "eng",
+        "pages": [
+            {
+                "deleted_words": [
+                ],
+                "engine": "synthetic_rendered_ground_truth",
+                "height": 900,
+                "id": "page-1",
+                "image_regions": [
+                ],
+                "language": "eng",
+                "number": 1,
+                "pending_corrections": [
+                ],
+                "preprocessing": {
+                    "adaptive_binarization": false,
+                    "auto_contrast": false,
+                    "denoise": false,
+                    "deskew_degrees": 0,
+                    "quarter_turns": 0
+                },
+                "reading_order": [
+                    "page-1/region-1/paragraph-1/line-1/word-1",
+                    "page-1/region-1/paragraph-1/line-1/word-2",
+                    "page-1/region-1/paragraph-1/line-1/word-3",
+                    "page-1/region-1/paragraph-1/line-1/word-4",
+                    "page-1/region-1/paragraph-1/line-1/word-5",
+                    "page-1/region-1/paragraph-1/line-1/word-6",
+                    "page-1/region-1/paragraph-1/line-1/word-7",
+                    "page-1/region-1/paragraph-1/line-2/word-8",
+                    "page-1/region-1/paragraph-1/line-2/word-9",
+                    "page-1/region-1/paragraph-1/line-2/word-10",
+                    "page-1/region-1/paragraph-1/line-2/word-11",
+                    "page-1/region-1/paragraph-1/line-2/word-12",
+                    "page-1/region-1/paragraph-1/line-2/word-13",
+                    "page-1/region-1/paragraph-1/line-2/word-14",
+                    "page-1/region-1/paragraph-1/line-2/word-15",
+                    "page-1/region-1/paragraph-1/line-3/word-16",
+                    "page-1/region-1/paragraph-1/line-3/word-17",
+                    "page-1/region-1/paragraph-1/line-3/word-18",
+                    "page-1/region-1/paragraph-1/line-3/word-19",
+                    "page-1/region-1/paragraph-1/line-3/word-20",
+                    "page-1/region-1/paragraph-1/line-3/word-21",
+                    "page-1/region-1/paragraph-1/line-3/word-22",
+                    "page-1/region-1/paragraph-1/line-3/word-23",
+                    "page-1/region-1/paragraph-1/line-4/word-24",
+                    "page-1/region-1/paragraph-1/line-4/word-25",
+                    "page-1/region-1/paragraph-1/line-4/word-26",
+                    "page-1/region-1/paragraph-1/line-4/word-27",
+                    "page-1/region-1/paragraph-1/line-4/word-28",
+                    "page-1/region-1/paragraph-1/line-4/word-29",
+                    "page-1/region-1/paragraph-1/line-4/word-30",
+                    "page-1/region-1/paragraph-1/line-4/word-31",
+                    "page-1/region-1/paragraph-1/line-5/word-32",
+                    "page-1/region-1/paragraph-1/line-5/word-33",
+                    "page-1/region-1/paragraph-1/line-5/word-34",
+                    "page-1/region-1/paragraph-1/line-5/word-35",
+                    "page-1/region-1/paragraph-1/line-5/word-36",
+                    "page-1/region-1/paragraph-1/line-5/word-37",
+                    "page-1/region-1/paragraph-1/line-5/word-38",
+                    "page-1/region-1/paragraph-1/line-6/word-39",
+                    "page-1/region-1/paragraph-1/line-6/word-40",
+                    "page-1/region-1/paragraph-1/line-6/word-41",
+                    "page-1/region-1/paragraph-1/line-6/word-42",
+                    "page-1/region-1/paragraph-1/line-6/word-43",
+                    "page-1/region-1/paragraph-1/line-6/word-44",
+                    "page-1/region-1/paragraph-1/line-6/word-45",
+                    "page-1/region-1/paragraph-1/line-6/word-46",
+                    "page-1/region-1/paragraph-1/line-6/word-47"
+                ],
+                "regions": [
+                    {
+                        "box": {
+                            "height": 348,
+                            "width": 632,
+                            "x": 60,
+                            "y": 147
+                        },
+                        "id": "page-1/region-1",
+                        "paragraphs": [
+                            {
+                                "box": {
+                                    "height": 348,
+                                    "width": 632,
+                                    "x": 60,
+                                    "y": 147
+                                },
+                                "id": "page-1/region-1/paragraph-1",
+                                "lines": [
+                                    {
+                                        "box": {
+                                            "height": 23,
+                                            "width": 632,
+                                            "x": 60,
+                                            "y": 147
+                                        },
+                                        "id": "page-1/region-1/paragraph-1/line-1",
+                                        "word_ids": [
+                                            "page-1/region-1/paragraph-1/line-1/word-1",
+                                            "page-1/region-1/paragraph-1/line-1/word-2",
+                                            "page-1/region-1/paragraph-1/line-1/word-3",
+                                            "page-1/region-1/paragraph-1/line-1/word-4",
+                                            "page-1/region-1/paragraph-1/line-1/word-5",
+                                            "page-1/region-1/paragraph-1/line-1/word-6",
+                                            "page-1/region-1/paragraph-1/line-1/word-7"
+                                        ]
+                                    },
+                                    {
+                                        "box": {
+                                            "height": 23,
+                                            "width": 558,
+                                            "x": 60,
+                                            "y": 212
+                                        },
+                                        "id": "page-1/region-1/paragraph-1/line-2",
+                                        "word_ids": [
+                                            "page-1/region-1/paragraph-1/line-2/word-8",
+                                            "page-1/region-1/paragraph-1/line-2/word-9",
+                                            "page-1/region-1/paragraph-1/line-2/word-10",
+                                            "page-1/region-1/paragraph-1/line-2/word-11",
+                                            "page-1/region-1/paragraph-1/line-2/word-12",
+                                            "page-1/region-1/paragraph-1/line-2/word-13",
+                                            "page-1/region-1/paragraph-1/line-2/word-14",
+                                            "page-1/region-1/paragraph-1/line-2/word-15"
+                                        ]
+                                    },
+                                    {
+                                        "box": {
+                                            "height": 22,
+                                            "width": 536,
+                                            "x": 60,
+                                            "y": 278
+                                        },
+                                        "id": "page-1/region-1/paragraph-1/line-3",
+                                        "word_ids": [
+                                            "page-1/region-1/paragraph-1/line-3/word-16",
+                                            "page-1/region-1/paragraph-1/line-3/word-17",
+                                            "page-1/region-1/paragraph-1/line-3/word-18",
+                                            "page-1/region-1/paragraph-1/line-3/word-19",
+                                            "page-1/region-1/paragraph-1/line-3/word-20",
+                                            "page-1/region-1/paragraph-1/line-3/word-21",
+                                            "page-1/region-1/paragraph-1/line-3/word-22",
+                                            "page-1/region-1/paragraph-1/line-3/word-23"
+                                        ]
+                                    },
+                                    {
+                                        "box": {
+                                            "height": 23,
+                                            "width": 625,
+                                            "x": 60,
+                                            "y": 342
+                                        },
+                                        "id": "page-1/region-1/paragraph-1/line-4",
+                                        "word_ids": [
+                                            "page-1/region-1/paragraph-1/line-4/word-24",
+                                            "page-1/region-1/paragraph-1/line-4/word-25",
+                                            "page-1/region-1/paragraph-1/line-4/word-26",
+                                            "page-1/region-1/paragraph-1/line-4/word-27",
+                                            "page-1/region-1/paragraph-1/line-4/word-28",
+                                            "page-1/region-1/paragraph-1/line-4/word-29",
+                                            "page-1/region-1/paragraph-1/line-4/word-30",
+                                            "page-1/region-1/paragraph-1/line-4/word-31"
+                                        ]
+                                    },
+                                    {
+                                        "box": {
+                                            "height": 22,
+                                            "width": 513,
+                                            "x": 60,
+                                            "y": 408
+                                        },
+                                        "id": "page-1/region-1/paragraph-1/line-5",
+                                        "word_ids": [
+                                            "page-1/region-1/paragraph-1/line-5/word-32",
+                                            "page-1/region-1/paragraph-1/line-5/word-33",
+                                            "page-1/region-1/paragraph-1/line-5/word-34",
+                                            "page-1/region-1/paragraph-1/line-5/word-35",
+                                            "page-1/region-1/paragraph-1/line-5/word-36",
+                                            "page-1/region-1/paragraph-1/line-5/word-37",
+                                            "page-1/region-1/paragraph-1/line-5/word-38"
+                                        ]
+                                    },
+                                    {
+                                        "box": {
+                                            "height": 23,
+                                            "width": 463,
+                                            "x": 60,
+                                            "y": 472
+                                        },
+                                        "id": "page-1/region-1/paragraph-1/line-6",
+                                        "word_ids": [
+                                            "page-1/region-1/paragraph-1/line-6/word-39",
+                                            "page-1/region-1/paragraph-1/line-6/word-40",
+                                            "page-1/region-1/paragraph-1/line-6/word-41",
+                                            "page-1/region-1/paragraph-1/line-6/word-42",
+                                            "page-1/region-1/paragraph-1/line-6/word-43",
+                                            "page-1/region-1/paragraph-1/line-6/word-44",
+                                            "page-1/region-1/paragraph-1/line-6/word-45",
+                                            "page-1/region-1/paragraph-1/line-6/word-46",
+                                            "page-1/region-1/paragraph-1/line-6/word-47"
+                                        ]
+                                    }
+                                ]
+                            }
+                        ],
+                        "type": "text"
+                    }
+                ],
+                "render_dpi": 150,
+                "source_height": 900,
+                "source_width": 1200,
+                "width": 1200,
+                "words": [
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 18,
+                            "width": 81,
+                            "x": 60,
+                            "y": 147
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-1/word-1",
+                        "line": 1,
+                        "original_text": "Verified",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 18,
+                                "width": 81,
+                                "x": 60,
+                                "y": 147
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-1/word-1"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "Verified"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 18,
+                            "width": 94,
+                            "x": 146,
+                            "y": 147
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-1/word-2",
+                        "line": 1,
+                        "original_text": "reference",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 18,
+                                "width": 94,
+                                "x": 146,
+                                "y": 147
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-1/word-2"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "reference"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 19,
+                            "width": 58,
+                            "x": 245,
+                            "y": 151
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-1/word-3",
+                        "line": 1,
+                        "original_text": "pages",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 19,
+                                "width": 58,
+                                "x": 245,
+                                "y": 151
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-1/word-3"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "pages"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 56,
+                            "x": 309,
+                            "y": 148
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-1/word-4",
+                        "line": 1,
+                        "original_text": "make",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 56,
+                                "x": 309,
+                                "y": 148
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-1/word-4"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "make"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 52,
+                            "x": 370,
+                            "y": 148
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-1/word-5",
+                        "line": 1,
+                        "original_text": "OCR",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 52,
+                                "x": 370,
+                                "y": 148
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-1/word-5"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "OCR"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 22,
+                            "width": 127,
+                            "x": 427,
+                            "y": 148
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-1/word-6",
+                        "line": 1,
+                        "original_text": "comparisons",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 22,
+                                "width": 127,
+                                "x": 427,
+                                "y": 148
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-1/word-6"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "comparisons"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 22,
+                            "width": 133,
+                            "x": 559,
+                            "y": 148
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-1/word-7",
+                        "line": 1,
+                        "original_text": "reproducible.",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 22,
+                                "width": 133,
+                                "x": 559,
+                                "y": 148
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-1/word-7"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "reproducible."
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 39,
+                            "x": 60,
+                            "y": 213
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-2/word-8",
+                        "line": 2,
+                        "original_text": "The",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 39,
+                                "x": 60,
+                                "y": 213
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-2/word-8"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "The"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 109,
+                            "x": 105,
+                            "y": 213
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-2/word-9",
+                        "line": 2,
+                        "original_text": "calibration",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 109,
+                                "x": 105,
+                                "y": 213
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-2/word-9"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "calibration"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 15,
+                            "width": 28,
+                            "x": 219,
+                            "y": 215
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-2/word-10",
+                        "line": 2,
+                        "original_text": "set",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 15,
+                                "width": 28,
+                                "x": 219,
+                                "y": 215
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-2/word-10"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "set"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 66,
+                            "x": 253,
+                            "y": 213
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-2/word-11",
+                        "line": 2,
+                        "original_text": "selects",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 66,
+                                "x": 253,
+                                "y": 213
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-2/word-11"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "selects"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 12,
+                            "width": 12,
+                            "x": 325,
+                            "y": 218
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-2/word-12",
+                        "line": 2,
+                        "original_text": "a",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 12,
+                                "width": 12,
+                                "x": 325,
+                                "y": 218
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-2/word-12"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "a"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 100,
+                            "x": 342,
+                            "y": 213
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-2/word-13",
+                        "line": 2,
+                        "original_text": "document",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 100,
+                                "x": 342,
+                                "y": 213
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-2/word-13"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "document"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 23,
+                            "width": 78,
+                            "x": 448,
+                            "y": 212
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-2/word-14",
+                        "line": 2,
+                        "original_text": "specific",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 23,
+                                "width": 78,
+                                "x": 448,
+                                "y": 212
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-2/word-14"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "specific"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 22,
+                            "width": 87,
+                            "x": 531,
+                            "y": 213
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-2/word-15",
+                        "line": 2,
+                        "original_text": "pipeline.",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 22,
+                                "width": 87,
+                                "x": 531,
+                                "y": 213
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-2/word-15"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "pipeline."
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 18,
+                            "x": 60,
+                            "y": 278
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-3/word-16",
+                        "line": 3,
+                        "original_text": "A",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 18,
+                                "x": 60,
+                                "y": 278
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-3/word-16"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "A"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 20,
+                            "width": 82,
+                            "x": 83,
+                            "y": 280
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-3/word-17",
+                        "line": 3,
+                        "original_text": "separate",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 20,
+                                "width": 82,
+                                "x": 83,
+                                "y": 280
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-3/word-17"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "separate"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 45,
+                            "x": 171,
+                            "y": 278
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-3/word-18",
+                        "line": 3,
+                        "original_text": "held",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 45,
+                                "x": 171,
+                                "y": 278
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-3/word-18"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "held"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 15,
+                            "width": 33,
+                            "x": 220,
+                            "y": 280
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-3/word-19",
+                        "line": 3,
+                        "original_text": "out",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 15,
+                                "width": 33,
+                                "x": 220,
+                                "y": 280
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-3/word-19"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "out"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 19,
+                            "width": 49,
+                            "x": 258,
+                            "y": 281
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-3/word-20",
+                        "line": 3,
+                        "original_text": "page",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 19,
+                                "width": 49,
+                                "x": 258,
+                                "y": 281
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-3/word-20"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "page"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 69,
+                            "x": 311,
+                            "y": 278
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-3/word-21",
+                        "line": 3,
+                        "original_text": "checks",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 69,
+                                "x": 311,
+                                "y": 278
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-3/word-21"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "checks"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 32,
+                            "x": 386,
+                            "y": 278
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-3/word-22",
+                        "line": 3,
+                        "original_text": "the",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 32,
+                                "x": 386,
+                                "y": 278
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-3/word-22"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "the"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 174,
+                            "x": 422,
+                            "y": 278
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-3/word-23",
+                        "line": 3,
+                        "original_text": "recommendation.",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 174,
+                                "x": 422,
+                                "y": 278
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-3/word-23"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "recommendation."
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 31,
+                            "x": 60,
+                            "y": 343
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-4/word-24",
+                        "line": 4,
+                        "original_text": "No",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 31,
+                                "x": 60,
+                                "y": 343
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-4/word-24"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "No"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 22,
+                            "width": 112,
+                            "x": 96,
+                            "y": 343
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-4/word-25",
+                        "line": 4,
+                        "original_text": "recognized",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 22,
+                                "width": 112,
+                                "x": 96,
+                                "y": 343
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-4/word-25"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "recognized"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 15,
+                            "width": 39,
+                            "x": 212,
+                            "y": 345
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-4/word-26",
+                        "line": 4,
+                        "original_text": "text",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 15,
+                                "width": 39,
+                                "x": 212,
+                                "y": 345
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-4/word-26"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "text"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 88,
+                            "x": 256,
+                            "y": 343
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-4/word-27",
+                        "line": 4,
+                        "original_text": "becomes",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 88,
+                                "x": 256,
+                                "y": 343
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-4/word-27"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "becomes"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 22,
+                            "width": 72,
+                            "x": 351,
+                            "y": 343
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-4/word-28",
+                        "line": 4,
+                        "original_text": "ground",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 22,
+                                "width": 72,
+                                "x": 351,
+                                "y": 343
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-4/word-28"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "ground"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 49,
+                            "x": 427,
+                            "y": 343
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-4/word-29",
+                        "line": 4,
+                        "original_text": "truth",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 49,
+                                "x": 427,
+                                "y": 343
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-4/word-29"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "truth"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 78,
+                            "x": 480,
+                            "y": 343
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-4/word-30",
+                        "line": 4,
+                        "original_text": "without",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 78,
+                                "x": 480,
+                                "y": 343
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-4/word-30"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "without"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 18,
+                            "width": 122,
+                            "x": 563,
+                            "y": 342
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-4/word-31",
+                        "line": 4,
+                        "original_text": "verification.",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 18,
+                                "width": 122,
+                                "x": 563,
+                                "y": 342
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-4/word-31"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "verification."
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 22,
+                            "width": 74,
+                            "x": 60,
+                            "y": 408
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-5/word-32",
+                        "line": 5,
+                        "original_text": "Timing",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 22,
+                                "width": 74,
+                                "x": 60,
+                                "y": 408
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-5/word-32"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "Timing"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 88,
+                            "x": 138,
+                            "y": 408
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-5/word-33",
+                        "line": 5,
+                        "original_text": "excludes",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 88,
+                                "x": 138,
+                                "y": 408
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-5/word-33"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "excludes"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 19,
+                            "width": 49,
+                            "x": 232,
+                            "y": 411
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-5/word-34",
+                        "line": 5,
+                        "original_text": "page",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 19,
+                                "width": 49,
+                                "x": 232,
+                                "y": 411
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-5/word-34"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "page"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 22,
+                            "width": 98,
+                            "x": 286,
+                            "y": 408
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-5/word-35",
+                        "line": 5,
+                        "original_text": "rendering",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 22,
+                                "width": 98,
+                                "x": 286,
+                                "y": 408
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-5/word-35"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "rendering"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 38,
+                            "x": 388,
+                            "y": 408
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-5/word-36",
+                        "line": 5,
+                        "original_text": "and",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 38,
+                                "x": 388,
+                                "y": 408
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-5/word-36"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "and"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 64,
+                            "x": 430,
+                            "y": 408
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-5/word-37",
+                        "line": 5,
+                        "original_text": "model",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 64,
+                                "x": 430,
+                                "y": 408
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-5/word-37"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "model"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 20,
+                            "width": 73,
+                            "x": 500,
+                            "y": 410
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-5/word-38",
+                        "line": 5,
+                        "original_text": "startup.",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 20,
+                                "width": 73,
+                                "x": 500,
+                                "y": 410
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-5/word-38"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "startup."
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 39,
+                            "x": 60,
+                            "y": 473
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-6/word-39",
+                        "line": 6,
+                        "original_text": "The",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 39,
+                                "x": 60,
+                                "y": 473
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-6/word-39"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "The"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 22,
+                            "width": 58,
+                            "x": 105,
+                            "y": 473
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-6/word-40",
+                        "line": 6,
+                        "original_text": "quick",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 22,
+                                "width": 58,
+                                "x": 105,
+                                "y": 473
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-6/word-40"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "quick"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 66,
+                            "x": 166,
+                            "y": 473
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-6/word-41",
+                        "line": 6,
+                        "original_text": "brown",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 66,
+                                "x": 166,
+                                "y": 473
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-6/word-41"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "brown"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 18,
+                            "width": 34,
+                            "x": 237,
+                            "y": 472
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-6/word-42",
+                        "line": 6,
+                        "original_text": "fox",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 18,
+                                "width": 34,
+                                "x": 237,
+                                "y": 472
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-6/word-42"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "fox"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 22,
+                            "width": 63,
+                            "x": 275,
+                            "y": 473
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-6/word-43",
+                        "line": 6,
+                        "original_text": "jumps",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 22,
+                                "width": 63,
+                                "x": 275,
+                                "y": 473
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-6/word-43"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "jumps"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 12,
+                            "width": 47,
+                            "x": 343,
+                            "y": 478
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-6/word-44",
+                        "line": 6,
+                        "original_text": "over",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 12,
+                                "width": 47,
+                                "x": 343,
+                                "y": 478
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-6/word-44"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "over"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 32,
+                            "x": 394,
+                            "y": 473
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-6/word-45",
+                        "line": 6,
+                        "original_text": "the",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 32,
+                                "x": 394,
+                                "y": 473
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-6/word-45"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "the"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 22,
+                            "width": 44,
+                            "x": 431,
+                            "y": 473
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-6/word-46",
+                        "line": 6,
+                        "original_text": "lazy",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 22,
+                                "width": 44,
+                                "x": 431,
+                                "y": 473
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-6/word-46"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "lazy"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 22,
+                            "width": 44,
+                            "x": 479,
+                            "y": 473
+                        },
+                        "confidence": 100,
+                        "id": "page-1/region-1/paragraph-1/line-6/word-47",
+                        "line": 6,
+                        "original_text": "dog.",
+                        "page": 1,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 22,
+                                "width": 44,
+                                "x": 479,
+                                "y": 473
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-1/region-1/paragraph-1/line-6/word-47"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "dog."
+                    }
+                ]
+            },
+            {
+                "deleted_words": [
+                ],
+                "engine": "synthetic_rendered_ground_truth",
+                "height": 900,
+                "id": "page-2",
+                "image_regions": [
+                ],
+                "language": "eng",
+                "number": 2,
+                "pending_corrections": [
+                ],
+                "preprocessing": {
+                    "adaptive_binarization": false,
+                    "auto_contrast": false,
+                    "denoise": false,
+                    "deskew_degrees": 0,
+                    "quarter_turns": 0
+                },
+                "reading_order": [
+                    "page-2/region-1/paragraph-1/line-1/word-1",
+                    "page-2/region-1/paragraph-1/line-1/word-2",
+                    "page-2/region-1/paragraph-1/line-1/word-3",
+                    "page-2/region-1/paragraph-1/line-1/word-4",
+                    "page-2/region-1/paragraph-1/line-1/word-5",
+                    "page-2/region-1/paragraph-1/line-1/word-6",
+                    "page-2/region-1/paragraph-1/line-1/word-7",
+                    "page-2/region-1/paragraph-1/line-1/word-8",
+                    "page-2/region-1/paragraph-1/line-2/word-9",
+                    "page-2/region-1/paragraph-1/line-2/word-10",
+                    "page-2/region-1/paragraph-1/line-2/word-11",
+                    "page-2/region-1/paragraph-1/line-2/word-12",
+                    "page-2/region-1/paragraph-1/line-2/word-13",
+                    "page-2/region-1/paragraph-1/line-2/word-14",
+                    "page-2/region-1/paragraph-1/line-2/word-15",
+                    "page-2/region-1/paragraph-1/line-2/word-16",
+                    "page-2/region-1/paragraph-1/line-3/word-17",
+                    "page-2/region-1/paragraph-1/line-3/word-18",
+                    "page-2/region-1/paragraph-1/line-3/word-19",
+                    "page-2/region-1/paragraph-1/line-3/word-20",
+                    "page-2/region-1/paragraph-1/line-3/word-21",
+                    "page-2/region-1/paragraph-1/line-3/word-22",
+                    "page-2/region-1/paragraph-1/line-3/word-23",
+                    "page-2/region-1/paragraph-1/line-3/word-24",
+                    "page-2/region-1/paragraph-1/line-4/word-25",
+                    "page-2/region-1/paragraph-1/line-4/word-26",
+                    "page-2/region-1/paragraph-1/line-4/word-27",
+                    "page-2/region-1/paragraph-1/line-4/word-28",
+                    "page-2/region-1/paragraph-1/line-4/word-29",
+                    "page-2/region-1/paragraph-1/line-4/word-30",
+                    "page-2/region-1/paragraph-1/line-4/word-31",
+                    "page-2/region-1/paragraph-1/line-5/word-32",
+                    "page-2/region-1/paragraph-1/line-5/word-33",
+                    "page-2/region-1/paragraph-1/line-5/word-34",
+                    "page-2/region-1/paragraph-1/line-5/word-35",
+                    "page-2/region-1/paragraph-1/line-5/word-36",
+                    "page-2/region-1/paragraph-1/line-5/word-37",
+                    "page-2/region-1/paragraph-1/line-5/word-38",
+                    "page-2/region-1/paragraph-1/line-5/word-39",
+                    "page-2/region-1/paragraph-1/line-6/word-40",
+                    "page-2/region-1/paragraph-1/line-6/word-41",
+                    "page-2/region-1/paragraph-1/line-6/word-42",
+                    "page-2/region-1/paragraph-1/line-6/word-43",
+                    "page-2/region-1/paragraph-1/line-6/word-44",
+                    "page-2/region-1/paragraph-1/line-6/word-45",
+                    "page-2/region-1/paragraph-1/line-6/word-46",
+                    "page-2/region-1/paragraph-1/line-6/word-47"
+                ],
+                "regions": [
+                    {
+                        "box": {
+                            "height": 348,
+                            "width": 773,
+                            "x": 60,
+                            "y": 147
+                        },
+                        "id": "page-2/region-1",
+                        "paragraphs": [
+                            {
+                                "box": {
+                                    "height": 348,
+                                    "width": 773,
+                                    "x": 60,
+                                    "y": 147
+                                },
+                                "id": "page-2/region-1/paragraph-1",
+                                "lines": [
+                                    {
+                                        "box": {
+                                            "height": 23,
+                                            "width": 772,
+                                            "x": 61,
+                                            "y": 147
+                                        },
+                                        "id": "page-2/region-1/paragraph-1/line-1",
+                                        "word_ids": [
+                                            "page-2/region-1/paragraph-1/line-1/word-1",
+                                            "page-2/region-1/paragraph-1/line-1/word-2",
+                                            "page-2/region-1/paragraph-1/line-1/word-3",
+                                            "page-2/region-1/paragraph-1/line-1/word-4",
+                                            "page-2/region-1/paragraph-1/line-1/word-5",
+                                            "page-2/region-1/paragraph-1/line-1/word-6",
+                                            "page-2/region-1/paragraph-1/line-1/word-7",
+                                            "page-2/region-1/paragraph-1/line-1/word-8"
+                                        ]
+                                    },
+                                    {
+                                        "box": {
+                                            "height": 22,
+                                            "width": 581,
+                                            "x": 60,
+                                            "y": 213
+                                        },
+                                        "id": "page-2/region-1/paragraph-1/line-2",
+                                        "word_ids": [
+                                            "page-2/region-1/paragraph-1/line-2/word-9",
+                                            "page-2/region-1/paragraph-1/line-2/word-10",
+                                            "page-2/region-1/paragraph-1/line-2/word-11",
+                                            "page-2/region-1/paragraph-1/line-2/word-12",
+                                            "page-2/region-1/paragraph-1/line-2/word-13",
+                                            "page-2/region-1/paragraph-1/line-2/word-14",
+                                            "page-2/region-1/paragraph-1/line-2/word-15",
+                                            "page-2/region-1/paragraph-1/line-2/word-16"
+                                        ]
+                                    },
+                                    {
+                                        "box": {
+                                            "height": 22,
+                                            "width": 596,
+                                            "x": 61,
+                                            "y": 278
+                                        },
+                                        "id": "page-2/region-1/paragraph-1/line-3",
+                                        "word_ids": [
+                                            "page-2/region-1/paragraph-1/line-3/word-17",
+                                            "page-2/region-1/paragraph-1/line-3/word-18",
+                                            "page-2/region-1/paragraph-1/line-3/word-19",
+                                            "page-2/region-1/paragraph-1/line-3/word-20",
+                                            "page-2/region-1/paragraph-1/line-3/word-21",
+                                            "page-2/region-1/paragraph-1/line-3/word-22",
+                                            "page-2/region-1/paragraph-1/line-3/word-23",
+                                            "page-2/region-1/paragraph-1/line-3/word-24"
+                                        ]
+                                    },
+                                    {
+                                        "box": {
+                                            "height": 22,
+                                            "width": 490,
+                                            "x": 60,
+                                            "y": 343
+                                        },
+                                        "id": "page-2/region-1/paragraph-1/line-4",
+                                        "word_ids": [
+                                            "page-2/region-1/paragraph-1/line-4/word-25",
+                                            "page-2/region-1/paragraph-1/line-4/word-26",
+                                            "page-2/region-1/paragraph-1/line-4/word-27",
+                                            "page-2/region-1/paragraph-1/line-4/word-28",
+                                            "page-2/region-1/paragraph-1/line-4/word-29",
+                                            "page-2/region-1/paragraph-1/line-4/word-30",
+                                            "page-2/region-1/paragraph-1/line-4/word-31"
+                                        ]
+                                    },
+                                    {
+                                        "box": {
+                                            "height": 22,
+                                            "width": 649,
+                                            "x": 60,
+                                            "y": 408
+                                        },
+                                        "id": "page-2/region-1/paragraph-1/line-5",
+                                        "word_ids": [
+                                            "page-2/region-1/paragraph-1/line-5/word-32",
+                                            "page-2/region-1/paragraph-1/line-5/word-33",
+                                            "page-2/region-1/paragraph-1/line-5/word-34",
+                                            "page-2/region-1/paragraph-1/line-5/word-35",
+                                            "page-2/region-1/paragraph-1/line-5/word-36",
+                                            "page-2/region-1/paragraph-1/line-5/word-37",
+                                            "page-2/region-1/paragraph-1/line-5/word-38",
+                                            "page-2/region-1/paragraph-1/line-5/word-39"
+                                        ]
+                                    },
+                                    {
+                                        "box": {
+                                            "height": 23,
+                                            "width": 412,
+                                            "x": 60,
+                                            "y": 472
+                                        },
+                                        "id": "page-2/region-1/paragraph-1/line-6",
+                                        "word_ids": [
+                                            "page-2/region-1/paragraph-1/line-6/word-40",
+                                            "page-2/region-1/paragraph-1/line-6/word-41",
+                                            "page-2/region-1/paragraph-1/line-6/word-42",
+                                            "page-2/region-1/paragraph-1/line-6/word-43",
+                                            "page-2/region-1/paragraph-1/line-6/word-44",
+                                            "page-2/region-1/paragraph-1/line-6/word-45",
+                                            "page-2/region-1/paragraph-1/line-6/word-46",
+                                            "page-2/region-1/paragraph-1/line-6/word-47"
+                                        ]
+                                    }
+                                ]
+                            }
+                        ],
+                        "type": "text"
+                    }
+                ],
+                "render_dpi": 150,
+                "source_height": 900,
+                "source_width": 1200,
+                "width": 1200,
+                "words": [
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 18,
+                            "width": 95,
+                            "x": 61,
+                            "y": 147
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-1/word-1",
+                        "line": 1,
+                        "original_text": "Scientific",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 18,
+                                "width": 95,
+                                "x": 61,
+                                "y": 147
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-1/word-1"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 12,
+                            "italic": false,
+                            "source_font_size_pt": 12,
+                            "source_font_size_px": 0
+                        },
+                        "text": "Scientific"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 60,
+                            "x": 161,
+                            "y": 148
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-1/word-2",
+                        "line": 1,
+                        "original_text": "books",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 60,
+                                "x": 161,
+                                "y": 148
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-1/word-2"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 12,
+                            "italic": false,
+                            "source_font_size_pt": 12,
+                            "source_font_size_px": 0
+                        },
+                        "text": "books"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 76,
+                            "x": 227,
+                            "y": 148
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-1/word-3",
+                        "line": 1,
+                        "original_text": "contain",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 76,
+                                "x": 227,
+                                "y": 148
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-1/word-3"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 12,
+                            "italic": false,
+                            "source_font_size_pt": 12,
+                            "source_font_size_px": 0
+                        },
+                        "text": "contain"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 22,
+                            "width": 116,
+                            "x": 307,
+                            "y": 148
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-1/word-4",
+                        "line": 1,
+                        "original_text": "paragraphs,",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 22,
+                                "width": 116,
+                                "x": 307,
+                                "y": 148
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-1/word-4"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 12,
+                            "italic": false,
+                            "source_font_size_pt": 12,
+                            "source_font_size_px": 0
+                        },
+                        "text": "paragraphs,"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 22,
+                            "width": 92,
+                            "x": 429,
+                            "y": 148
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-1/word-5",
+                        "line": 1,
+                        "original_text": "diagrams",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 22,
+                                "width": 92,
+                                "x": 429,
+                                "y": 148
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-1/word-5"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 12,
+                            "italic": false,
+                            "source_font_size_pt": 12,
+                            "source_font_size_px": 0
+                        },
+                        "text": "diagrams"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 38,
+                            "x": 527,
+                            "y": 148
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-1/word-6",
+                        "line": 1,
+                        "original_text": "and",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 38,
+                                "x": 527,
+                                "y": 148
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-1/word-6"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 12,
+                            "italic": false,
+                            "source_font_size_pt": 12,
+                            "source_font_size_px": 0
+                        },
+                        "text": "and"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 136,
+                            "x": 570,
+                            "y": 148
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-1/word-7",
+                        "line": 1,
+                        "original_text": "mathematical",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 136,
+                                "x": 570,
+                                "y": 148
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-1/word-7"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 12,
+                            "italic": false,
+                            "source_font_size_pt": 12,
+                            "source_font_size_px": 0
+                        },
+                        "text": "mathematical"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 22,
+                            "width": 123,
+                            "x": 710,
+                            "y": 148
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-1/word-8",
+                        "line": 1,
+                        "original_text": "expressions.",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 22,
+                                "width": 123,
+                                "x": 710,
+                                "y": 148
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-1/word-8"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 12,
+                            "italic": false,
+                            "source_font_size_pt": 12,
+                            "source_font_size_px": 0
+                        },
+                        "text": "expressions."
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 39,
+                            "x": 60,
+                            "y": 213
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-2/word-9",
+                        "line": 2,
+                        "original_text": "The",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 39,
+                                "x": 60,
+                                "y": 213
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-2/word-9"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "The"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 22,
+                            "width": 114,
+                            "x": 105,
+                            "y": 213
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-2/word-10",
+                        "line": 2,
+                        "original_text": "experiment",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 22,
+                                "width": 114,
+                                "x": 105,
+                                "y": 213
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-2/word-10"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "experiment"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 74,
+                            "x": 223,
+                            "y": 213
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-2/word-11",
+                        "line": 2,
+                        "original_text": "records",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 74,
+                                "x": 223,
+                                "y": 213
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-2/word-11"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "records"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 22,
+                            "width": 68,
+                            "x": 303,
+                            "y": 213
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-2/word-12",
+                        "line": 2,
+                        "original_text": "engine",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 22,
+                                "width": 68,
+                                "x": 303,
+                                "y": 213
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-2/word-12"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "engine"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 22,
+                            "width": 76,
+                            "x": 377,
+                            "y": 213
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-2/word-13",
+                        "line": 2,
+                        "original_text": "settings",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 22,
+                                "width": 76,
+                                "x": 377,
+                                "y": 213
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-2/word-13"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "settings"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 38,
+                            "x": 459,
+                            "y": 213
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-2/word-14",
+                        "line": 2,
+                        "original_text": "and",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 38,
+                                "x": 459,
+                                "y": 213
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-2/word-14"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "and"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 22,
+                            "width": 62,
+                            "x": 501,
+                            "y": 213
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-2/word-15",
+                        "line": 2,
+                        "original_text": "image",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 22,
+                                "width": 62,
+                                "x": 501,
+                                "y": 213
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-2/word-15"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "image"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 73,
+                            "x": 568,
+                            "y": 213
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-2/word-16",
+                        "line": 2,
+                        "original_text": "hashes.",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 73,
+                                "x": 568,
+                                "y": 213
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-2/word-16"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "hashes."
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 99,
+                            "x": 61,
+                            "y": 278
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-3/word-17",
+                        "line": 3,
+                        "original_text": "Corrected",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 99,
+                                "x": 61,
+                                "y": 278
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-3/word-17"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "Corrected"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 22,
+                            "width": 71,
+                            "x": 164,
+                            "y": 278
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-3/word-18",
+                        "line": 3,
+                        "original_text": "project",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 22,
+                                "width": 71,
+                                "x": 164,
+                                "y": 278
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-3/word-18"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "project"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 15,
+                            "width": 39,
+                            "x": 240,
+                            "y": 280
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-3/word-19",
+                        "line": 3,
+                        "original_text": "text",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 15,
+                                "width": 39,
+                                "x": 240,
+                                "y": 280
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-3/word-19"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "text"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 80,
+                            "x": 284,
+                            "y": 278
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-3/word-20",
+                        "line": 3,
+                        "original_text": "remains",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 80,
+                                "x": 284,
+                                "y": 278
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-3/word-20"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "remains"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 22,
+                            "width": 110,
+                            "x": 369,
+                            "y": 278
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-3/word-21",
+                        "line": 3,
+                        "original_text": "unchanged",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 22,
+                                "width": 110,
+                                "x": 369,
+                                "y": 278
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-3/word-21"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "unchanged"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 22,
+                            "width": 67,
+                            "x": 483,
+                            "y": 278
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-3/word-22",
+                        "line": 3,
+                        "original_text": "during",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 22,
+                                "width": 67,
+                                "x": 483,
+                                "y": 278
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-3/word-22"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "during"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 57,
+                            "x": 555,
+                            "y": 283
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-3/word-23",
+                        "line": 3,
+                        "original_text": "every",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 57,
+                                "x": 555,
+                                "y": 283
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-3/word-23"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "every"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 12,
+                            "width": 40,
+                            "x": 617,
+                            "y": 283
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-3/word-24",
+                        "line": 3,
+                        "original_text": "run.",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 12,
+                                "width": 40,
+                                "x": 617,
+                                "y": 283
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-3/word-24"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "run."
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 22,
+                            "width": 97,
+                            "x": 60,
+                            "y": 343
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-4/word-25",
+                        "line": 4,
+                        "original_text": "Accuracy",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 22,
+                                "width": 97,
+                                "x": 60,
+                                "y": 343
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-4/word-25"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "Accuracy"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 12,
+                            "width": 44,
+                            "x": 161,
+                            "y": 348
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-4/word-26",
+                        "line": 4,
+                        "original_text": "uses",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 12,
+                                "width": 44,
+                                "x": 161,
+                                "y": 348
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-4/word-26"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "uses"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 94,
+                            "x": 211,
+                            "y": 343
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-4/word-27",
+                        "line": 4,
+                        "original_text": "character",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 94,
+                                "x": 211,
+                                "y": 343
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-4/word-27"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "character"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 38,
+                            "x": 309,
+                            "y": 343
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-4/word-28",
+                        "line": 4,
+                        "original_text": "and",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 38,
+                                "x": 309,
+                                "y": 343
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-4/word-28"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "and"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 53,
+                            "x": 351,
+                            "y": 343
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-4/word-29",
+                        "line": 4,
+                        "original_text": "word",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 53,
+                                "x": 351,
+                                "y": 343
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-4/word-29"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "word"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 38,
+                            "x": 409,
+                            "y": 343
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-4/word-30",
+                        "line": 4,
+                        "original_text": "edit",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 38,
+                                "x": 409,
+                                "y": 343
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-4/word-30"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "edit"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 98,
+                            "x": 452,
+                            "y": 343
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-4/word-31",
+                        "line": 4,
+                        "original_text": "distances.",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 98,
+                                "x": 452,
+                                "y": 343
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-4/word-31"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "distances."
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 22,
+                            "width": 82,
+                            "x": 60,
+                            "y": 408
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-5/word-32",
+                        "line": 5,
+                        "original_text": "Missing",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 22,
+                                "width": 82,
+                                "x": 60,
+                                "y": 408
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-5/word-32"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "Missing"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 15,
+                            "width": 144,
+                            "x": 146,
+                            "y": 410
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-5/word-33",
+                        "line": 5,
+                        "original_text": "measurements",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 15,
+                                "width": 144,
+                                "x": 146,
+                                "y": 410
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-5/word-33"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "measurements"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 20,
+                            "width": 41,
+                            "x": 296,
+                            "y": 410
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-5/word-34",
+                        "line": 5,
+                        "original_text": "stay",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 20,
+                                "width": 41,
+                                "x": 296,
+                                "y": 410
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-5/word-34"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "stay"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 95,
+                            "x": 342,
+                            "y": 408
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-5/word-35",
+                        "line": 5,
+                        "original_text": "unknown",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 95,
+                                "x": 342,
+                                "y": 408
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-5/word-35"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "unknown"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 60,
+                            "x": 441,
+                            "y": 408
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-5/word-36",
+                        "line": 5,
+                        "original_text": "rather",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 60,
+                                "x": 441,
+                                "y": 408
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-5/word-36"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "rather"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 45,
+                            "x": 506,
+                            "y": 408
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-5/word-37",
+                        "line": 5,
+                        "original_text": "than",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 45,
+                                "x": 506,
+                                "y": 408
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-5/word-37"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "than"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 22,
+                            "width": 101,
+                            "x": 555,
+                            "y": 408
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-5/word-38",
+                        "line": 5,
+                        "original_text": "becoming",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 22,
+                                "width": 101,
+                                "x": 555,
+                                "y": 408
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-5/word-38"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "becoming"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 12,
+                            "width": 49,
+                            "x": 660,
+                            "y": 413
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-5/word-39",
+                        "line": 5,
+                        "original_text": "zero.",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 12,
+                                "width": 49,
+                                "x": 660,
+                                "y": 413
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-5/word-39"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 11,
+                            "italic": false,
+                            "source_font_size_pt": 11,
+                            "source_font_size_px": 0
+                        },
+                        "text": "zero."
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 50,
+                            "x": 60,
+                            "y": 473
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-6/word-40",
+                        "line": 6,
+                        "original_text": "Pack",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 50,
+                                "x": 60,
+                                "y": 473
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-6/word-40"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 12,
+                            "italic": false,
+                            "source_font_size_pt": 12,
+                            "source_font_size_px": 0
+                        },
+                        "text": "Pack"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 34,
+                            "x": 114,
+                            "y": 478
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-6/word-41",
+                        "line": 6,
+                        "original_text": "my",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 34,
+                                "x": 114,
+                                "y": 478
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-6/word-41"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 12,
+                            "italic": false,
+                            "source_font_size_pt": 12,
+                            "source_font_size_px": 0
+                        },
+                        "text": "my"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 39,
+                            "x": 153,
+                            "y": 473
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-6/word-42",
+                        "line": 6,
+                        "original_text": "box",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 39,
+                                "x": 153,
+                                "y": 473
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-6/word-42"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 12,
+                            "italic": false,
+                            "source_font_size_pt": 12,
+                            "source_font_size_px": 0
+                        },
+                        "text": "box"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 46,
+                            "x": 196,
+                            "y": 473
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-6/word-43",
+                        "line": 6,
+                        "original_text": "with",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 46,
+                                "x": 196,
+                                "y": 473
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-6/word-43"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 12,
+                            "italic": false,
+                            "source_font_size_pt": 12,
+                            "source_font_size_px": 0
+                        },
+                        "text": "with"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 18,
+                            "width": 40,
+                            "x": 247,
+                            "y": 472
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-6/word-44",
+                        "line": 6,
+                        "original_text": "five",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 18,
+                                "width": 40,
+                                "x": 247,
+                                "y": 472
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-6/word-44"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 12,
+                            "italic": false,
+                            "source_font_size_pt": 12,
+                            "source_font_size_px": 0
+                        },
+                        "text": "five"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 17,
+                            "width": 62,
+                            "x": 292,
+                            "y": 473
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-6/word-45",
+                        "line": 6,
+                        "original_text": "dozen",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 17,
+                                "width": 62,
+                                "x": 292,
+                                "y": 473
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-6/word-45"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 12,
+                            "italic": false,
+                            "source_font_size_pt": 12,
+                            "source_font_size_px": 0
+                        },
+                        "text": "dozen"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 22,
+                            "width": 62,
+                            "x": 358,
+                            "y": 473
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-6/word-46",
+                        "line": 6,
+                        "original_text": "liquor",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 22,
+                                "width": 62,
+                                "x": 358,
+                                "y": 473
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-6/word-46"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 12,
+                            "italic": false,
+                            "source_font_size_pt": 12,
+                            "source_font_size_px": 0
+                        },
+                        "text": "liquor"
+                    },
+                    {
+                        "block": 1,
+                        "box": {
+                            "height": 22,
+                            "width": 49,
+                            "x": 423,
+                            "y": 473
+                        },
+                        "confidence": 100,
+                        "id": "page-2/region-1/paragraph-1/line-6/word-47",
+                        "line": 6,
+                        "original_text": "jugs.",
+                        "page": 2,
+                        "paragraph": 1,
+                        "reviewed": true,
+                        "source_boxes": [
+                            {
+                                "height": 22,
+                                "width": 49,
+                                "x": 423,
+                                "y": 473
+                            }
+                        ],
+                        "source_word_ids": [
+                            "page-2/region-1/paragraph-1/line-6/word-47"
+                        ],
+                        "style": {
+                            "bold": false,
+                            "font_family": "",
+                            "font_size_pt": 12,
+                            "italic": false,
+                            "source_font_size_pt": 12,
+                            "source_font_size_px": 0
+                        },
+                        "text": "jugs."
+                    }
+                ]
+            }
+        ],
+        "preserve_formatting": false,
+        "rendering": {
+            "adaptive": false,
+            "dpi": 150
+        },
+        "schema_version": 2,
+        "source": "synthetic-source.pdf",
+        "total_pages": 2
+    },
+    "project_version": 2
+}

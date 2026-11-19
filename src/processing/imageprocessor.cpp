@@ -52,11 +52,45 @@ int otsuThreshold(const std::array<int, 256> &values, int total)
     return std::min(best, 220);
 }
 
+// A separable local mean needs only image-sized byte buffers, not a large
+// 64-bit integral image. Dark ink is measured relative to its nearby paper.
+QImage adaptiveBinarize(const QImage &image)
+{
+    const QImage gray = image.convertToFormat(QImage::Format_Grayscale8);
+    const int width = gray.width(), height = gray.height();
+    const int radius = std::clamp(std::min(width, height) / 60, 15, 75);
+    QImage horizontal(gray.size(), QImage::Format_Grayscale8);
+    QImage binary(gray.size(), QImage::Format_Grayscale8);
+    for (int y = 0; y < height; ++y) {
+        const uchar *row = gray.constScanLine(y);
+        uchar *output = horizontal.scanLine(y);
+        int sum = 0;
+        for (int x = 0; x < std::min(width, radius); ++x) sum += row[x];
+        for (int x = 0; x < width; ++x) {
+            if (x + radius < width) sum += row[x + radius];
+            if (x - radius - 1 >= 0) sum -= row[x - radius - 1];
+            const int count = std::min(width - 1, x + radius) - std::max(0, x - radius) + 1;
+            output[x] = sum / count;
+        }
+    }
+    for (int x = 0; x < width; ++x) {
+        int sum = 0;
+        for (int y = 0; y < std::min(height, radius); ++y) sum += horizontal.constScanLine(y)[x];
+        for (int y = 0; y < height; ++y) {
+            if (y + radius < height) sum += horizontal.constScanLine(y + radius)[x];
+            if (y - radius - 1 >= 0) sum -= horizontal.constScanLine(y - radius - 1)[x];
+            const int count = std::min(height - 1, y + radius) - std::max(0, y - radius) + 1;
+            binary.scanLine(y)[x] = gray.constScanLine(y)[x] < sum / count - 10 ? 0 : 255;
+        }
+    }
+    return binary;
+}
+
 double projectionScore(std::span<const QPoint> ink, int height, int width, double angleDegrees)
 {
     constexpr double pi = 3.14159265358979323846;
     const double slope = std::tan(angleDegrees * pi / 180.0);
-    const int offset = static_cast<int>(std::ceil(width * std::tan(8.0 * pi / 180.0))) + 2;
+    const int offset = static_cast<int>(std::ceil(width * std::tan(16.0 * pi / 180.0))) + 2;
     std::vector<int> rows(static_cast<size_t>(height + 2 * offset + 4));
     for (const QPoint &point : ink) {
         const int row = qRound(point.y() - slope * point.x()) + offset;
@@ -155,35 +189,35 @@ int ImageProcessor::recommendedRenderDpi(const QImage &pilot)
 std::expected<QualityAssessment, QString> ImageProcessor::assess(const QImage &source)
 {
     if (source.isNull()) return std::unexpected(QStringLiteral("Image is empty."));
-    const QImage sampled = (source.width() > 900 || source.height() > 900
-        ? source.scaled(QSize(900, 900), Qt::KeepAspectRatio, Qt::SmoothTransformation)
+    const QImage sampled = (source.width() > 1200 || source.height() > 1200
+        ? source.scaled(QSize(1200, 1200), Qt::KeepAspectRatio, Qt::SmoothTransformation)
         : source).convertToFormat(QImage::Format_Grayscale8);
     const auto values = histogram(sampled);
     const int total = sampled.width() * sampled.height();
     QualityAssessment quality;
     quality.lowLuminance = percentile(values, total, 0.01);
     quality.highLuminance = percentile(values, total, 0.99);
-    const int threshold = otsuThreshold(values, total);
+    const QImage inkMask = adaptiveBinarize(sampled);
     const int x0 = sampled.width() / 20, x1 = sampled.width() - x0;
     const int y0 = sampled.height() / 20, y1 = sampled.height() - y0;
     std::vector<QPoint> ink;
-    for (int y = y0; y < y1; y += 2) {
-        const uchar *row = sampled.constScanLine(y);
-        for (int x = x0; x < x1; x += 2)
-            if (row[x] <= threshold && row[x] < 220) ink.emplace_back(x, y);
+    for (int y = y0; y < y1; ++y) {
+        const uchar *row = inkMask.constScanLine(y);
+        for (int x = x0; x < x1; ++x)
+            if (row[x] == 0) ink.emplace_back(x, y);
     }
-    const int samples = ((x1 - x0 + 1) / 2) * ((y1 - y0 + 1) / 2);
+    const int samples = (x1 - x0) * (y1 - y0);
     if (ink.size() < 80 || ink.size() > static_cast<size_t>(samples * 0.35)) return quality;
     const double baseline = projectionScore(ink, sampled.height(), sampled.width(), 0.0);
     double bestScore = baseline, bestAngle = 0;
-    for (int step = -14; step <= 14; ++step) {
+    for (int step = -30; step <= 30; ++step) {
         const double angle = step * 0.5;
         if (const double score = projectionScore(ink, sampled.height(), sampled.width(), angle); score > bestScore) { bestScore = score; bestAngle = angle; }
     }
     const double coarse = bestAngle;
     for (int step = -5; step <= 5; ++step) {
         const double angle = coarse + step * 0.1;
-        if (angle < -7.0 || angle > 7.0) continue;
+        if (angle < -15.0 || angle > 15.0) continue;
         if (const double score = projectionScore(ink, sampled.height(), sampled.width(), angle); score > bestScore) { bestScore = score; bestAngle = angle; }
     }
     if (std::abs(bestAngle) >= 0.3 && bestScore > baseline * 1.04)
@@ -197,12 +231,17 @@ std::expected<QImage, QString> ImageProcessor::apply(const QImage &source,
     if (source.isNull()) return std::unexpected(QStringLiteral("Image is empty."));
     if (!std::isfinite(settings.deskewDegrees) || std::abs(settings.deskewDegrees) > 15.0)
         return std::unexpected(QStringLiteral("Deskew angle must be within 15 degrees."));
+    if (settings.quarterTurns < 0 || settings.quarterTurns > 3)
+        return std::unexpected(QStringLiteral("Page orientation must be a multiple of 90 degrees."));
     if (settings.isIdentity()) return source;
     if (static_cast<qint64>(source.width()) * source.height() > 80'000'000)
         return std::unexpected(QStringLiteral("Image is too large to preprocess safely."));
     QImage current = source.convertToFormat(QImage::Format_ARGB32);
+    if (settings.quarterTurns)
+        current = current.transformed(QTransform().rotate(settings.quarterTurns * 90), Qt::FastTransformation);
     if (settings.denoise) current = medianDenoise(current).convertToFormat(QImage::Format_ARGB32);
     if (settings.autoContrast) current = stretchContrast(current);
+    if (settings.adaptiveBinarization) current = adaptiveBinarize(current).convertToFormat(QImage::Format_ARGB32);
     if (std::abs(settings.deskewDegrees) >= 0.01) {
         QTransform rotation;
         rotation.rotate(-settings.deskewDegrees);
@@ -213,6 +252,8 @@ std::expected<QImage, QString> ImageProcessor::apply(const QImage &source,
         painter.drawImage(QPoint(0, 0), rotated);
         current = std::move(white);
     }
+    current.setDotsPerMeterX(source.dotsPerMeterX());
+    current.setDotsPerMeterY(source.dotsPerMeterY());
     return current;
 }
 

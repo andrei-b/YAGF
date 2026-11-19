@@ -3,8 +3,13 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QProcess>
+#include <QProcessEnvironment>
 #include <QStandardPaths>
 #include <QTemporaryDir>
+#ifdef Q_OS_UNIX
+#include <csignal>
+#include <unistd.h>
+#endif
 
 namespace yagf::processing {
 
@@ -17,6 +22,7 @@ std::expected<core::OcrPage, OcrError> TesseractEngine::recognize(
 std::expected<core::OcrPage, OcrError> TesseractEngine::recognize(
     const QImage &image, const OcrOptions &options, std::stop_token stop, const std::atomic_bool *cancelled)
 {
+    runDetails = {};
     const auto interrupted = [&] { return stop.stop_requested() || (cancelled && cancelled->load()); };
     if (interrupted()) return std::unexpected(OcrError{{}, true});
     if (image.isNull() || options.language.trimmed().isEmpty() || options.pageNumber < 1)
@@ -40,7 +46,21 @@ std::expected<core::OcrPage, OcrError> TesseractEngine::recognize(
     }
     arguments << QStringLiteral("tsv");
     QProcess process;
-    process.start(QStringLiteral("tesseract"), arguments);
+    auto environment = QProcessEnvironment::systemEnvironment();
+    // Avoid excessive OpenMP workers on document/region queues; honor user overrides.
+    if (!environment.contains("OMP_THREAD_LIMIT")) environment.insert("OMP_THREAD_LIMIT", "2");
+    process.setProcessEnvironment(environment);
+    runDetails["omp_thread_limit"]=environment.value("OMP_THREAD_LIMIT");
+    const QString memoryFile = temporary.filePath(QStringLiteral("peak-rss.txt"));
+    const bool measureMemory=options.collectBenchmarkMetrics && QFile::exists(QStringLiteral("/usr/bin/time"));
+    if(measureMemory) {
+#ifdef Q_OS_UNIX
+        // Cancel GNU time and its recognition child together.
+        process.setChildProcessModifier([]{::setsid();});
+#endif
+        QStringList measured{"-f","%M","-o",memoryFile,"--",QStandardPaths::findExecutable(QStringLiteral("tesseract"))};
+        measured+=arguments;process.start(QStringLiteral("/usr/bin/time"),measured);
+    } else process.start(QStringLiteral("tesseract"), arguments);
     if (!process.waitForStarted(10'000))
         return std::unexpected(OcrError{QStringLiteral("Could not start tesseract: %1")
             .arg(process.errorString())});
@@ -48,6 +68,9 @@ std::expected<core::OcrPage, OcrError> TesseractEngine::recognize(
     timer.start();
     while (process.state() != QProcess::NotRunning) {
         if (interrupted() || timer.elapsed() > 300'000) {
+#ifdef Q_OS_UNIX
+            if(measureMemory && process.processId()>0)::kill(-process.processId(),SIGKILL);
+#endif
             process.kill();
             process.waitForFinished(2000);
             if (interrupted()) return std::unexpected(OcrError{{}, true});
@@ -59,6 +82,13 @@ std::expected<core::OcrPage, OcrError> TesseractEngine::recognize(
     if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0)
         return std::unexpected(OcrError{QStringLiteral("Tesseract failed: %1")
             .arg(QString::fromUtf8(process.readAllStandardError()).trimmed())});
+    if(measureMemory) {
+        QFile memory(memoryFile);
+        if(memory.open(QIODevice::ReadOnly)) {
+            bool ok=false;const auto kib=memory.readAll().trimmed().toLongLong(&ok);
+            if(ok && kib>0){runDetails["peak_rss_bytes"]=kib*1024;runDetails["peak_rss_scope"]="Recognition child process";}
+        }
+    }
     return parseTsv(process.readAllStandardOutput(), image.size(), options);
 }
 

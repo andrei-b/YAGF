@@ -12,12 +12,45 @@
 
 #include <cmath>
 #include <climits>
+#include <algorithm>
+#include <limits>
 
 namespace yagf::processing {
 namespace {
 constexpr auto protocol = "yagf-ocr/1";
 constexpr qsizetype maxPngBytes = 32 * 1024 * 1024;
 constexpr qsizetype maxResponseBytes = 8 * 1024 * 1024;
+
+// Prefer a nearby low-ink line over cutting letters exactly at the midpoint.
+// Measuring relative to each line's paper level tolerates a photographed gutter.
+int splitBoundary(const QImage &image, bool vertical)
+{
+    const QImage gray = image.convertToFormat(QImage::Format_Grayscale8);
+    const int length = vertical ? gray.width() : gray.height();
+    const int cross = vertical ? gray.height() : gray.width();
+    int best = length / 2;
+    double bestScore = std::numeric_limits<double>::max();
+    const int step = std::max(1, cross / 800);
+    for (int position = length * 35 / 100; position <= length * 65 / 100; ++position) {
+        double ink = 0;
+        int total = 0;
+        for (int delta = -1; delta <= 1; ++delta) {
+            int sum = 0, count = 0;
+            for (int k = cross / 20; k < cross * 19 / 20; k += step) {
+                sum += vertical ? gray.constScanLine(k)[position + delta] : gray.constScanLine(position + delta)[k];
+                ++count;
+            }
+            const double threshold = count ? double(sum) / count - 18 : 0;
+            for (int k = cross / 20; k < cross * 19 / 20; k += step) {
+                if ((vertical ? gray.constScanLine(k)[position + delta] : gray.constScanLine(position + delta)[k]) < threshold) ++ink;
+                ++total;
+            }
+        }
+        const double score = ink / std::max(1, total) + 0.015 * std::abs(position - length / 2.0) / length;
+        if (score < bestScore) { best = position; bestScore = score; }
+    }
+    return best;
+}
 
 QString providerName(RemoteOcrEngine::Provider provider)
 {
@@ -157,6 +190,14 @@ EngineCapabilities RemoteOcrEngine::capabilities() const
 std::expected<core::OcrPage, OcrError> RemoteOcrEngine::recognize(
     const QImage &image, const OcrOptions &options, std::stop_token stop)
 {
+    runDetails = {};
+    if(options.collectBenchmarkMetrics)runDetails["inference_ms_scope"]="Successful responses only; client latency includes retries and failures";
+    return recognizeSection(image, options, stop, 0);
+}
+
+std::expected<core::OcrPage, OcrError> RemoteOcrEngine::recognizeSection(
+    const QImage &image, const OcrOptions &options, std::stop_token stop, int depth)
+{
     if (stop.stop_requested()) return std::unexpected(OcrError{{}, true});
     if (image.isNull() || options.pageNumber < 1 ||
         (server.scheme() != QStringLiteral("http") && server.scheme() != QStringLiteral("https")) ||
@@ -212,10 +253,60 @@ std::expected<core::OcrPage, OcrError> RemoteOcrEngine::recognize(
     if (reply->error() != QNetworkReply::NoError || status != 200) {
         const QJsonObject error = QJsonDocument::fromJson(response).object();
         const QString message = error.value(QStringLiteral("error")).toString();
+        if (status == 400 && error.value("code") == "transcription_truncated" &&
+            provider == Provider::PaddleOcr && depth < 2 && std::min(image.width(), image.height()) >= 96) {
+            const bool vertical = image.width() > image.height() * 1.2;
+            const int cut = splitBoundary(image, vertical);
+            const QVector<QRect> sections = vertical
+                ? QVector<QRect>{{0,0,cut,image.height()}, {cut,0,image.width()-cut,image.height()}}
+                : QVector<QRect>{{0,0,image.width(),cut}, {0,cut,image.width(),image.height()-cut}};
+            core::OcrPage page;
+            page.id = QStringLiteral("page-%1").arg(options.pageNumber); page.number = options.pageNumber;
+            page.engineId = id(); page.language = options.language;
+            page.width = page.sourceWidth = image.width(); page.height = page.sourceHeight = image.height();
+            int nextBlock = 1;
+            for (const auto &section : sections) {
+                auto part = recognizeSection(image.copy(section), options, stop, depth + 1);
+                if (!part) return std::unexpected(part.error()); // Never publish only half a page.
+                QHash<int,int> blocks;
+                QHash<QString,QString> regions;
+                for (auto word : part->words) {
+                    if (!blocks.contains(word.block)) blocks.insert(word.block, nextBlock++);
+                    regions.insert(QStringLiteral("page-%1/region-%2").arg(options.pageNumber).arg(word.block),
+                                   QStringLiteral("page-%1/region-%2").arg(options.pageNumber).arg(blocks[word.block]));
+                    word.block = blocks[word.block]; word.id.clear(); word.sourceWordIds.clear();
+                    word.bounds.translate(section.topLeft());
+                    for (auto &box : word.sourceBoxes) box.translate(section.topLeft());
+                    page.words.append(word);
+                }
+                for (auto region : part->regions) {
+                    region.id = regions.value(region.id); region.bounds.translate(section.topLeft());
+                    if (!region.id.isEmpty()) page.regions.append(region);
+                }
+            }
+            page.rebuildHierarchy();
+            return page;
+        }
         return std::unexpected(OcrError{message.isEmpty()
             ? QStringLiteral("Remote OCR failed: %1").arg(reply->errorString()) : message});
     }
-    return parseResponse(response, image.size(), options, provider);
+    auto parsed=parseResponse(response, image.size(), options, provider);
+    if(parsed && options.collectBenchmarkMetrics) {
+        const auto root=QJsonDocument::fromJson(response).object();
+        const auto details=root.value("run_details").toObject();
+        for(const auto &key:{"inference_ms","queue_ms","peak_rss_bytes"}) {
+            const auto v=details.value(QLatin1String(key));
+            if(v.isDouble() && std::isfinite(v.toDouble()) && v.toDouble()>=0) {
+                const double prior=runDetails.value(QLatin1String(key)).toDouble();
+                runDetails[QLatin1String(key)]=QString::fromLatin1(key)=="peak_rss_bytes"?std::max(prior,v.toDouble()):prior+v.toDouble();
+            }
+        }
+        for(const auto &key:{"engine","model","version","device","architecture","jetpack","peak_rss_scope","memory_note"}) {
+            const auto v=details.value(QLatin1String(key));
+            if(v.isString() && v.toString().size()<=1024)runDetails[QLatin1String(key)]=v;
+        }
+    }
+    return parsed;
 }
 
 } // namespace yagf::processing

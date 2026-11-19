@@ -54,4 +54,31 @@ int main()
     assert(qGray(restored->pixel(22, 22)) > 240);
     assert(!ImageProcessor::assess(QImage()).has_value());
     assert(!ImageProcessor::apply(clean, {.deskewDegrees = 25.0}).has_value());
+    // Strong shadows make a global Otsu threshold classify much of the paper
+    // as ink. Local binarization must still recover the text's actual tilt.
+    QImage uneven(1200,900,QImage::Format_RGB32);
+    for(int y=0;y<uneven.height();++y) for(int x=0;x<uneven.width();++x) {
+        const int paper=75+170*x/uneven.width();
+        uneven.setPixel(x,y,qRgb(paper,paper,paper));
+    }
+    {
+        QPainter painter(&uneven);
+        for(int row=0;row<16;++row)for(int column=0;column<30;++column) {
+            const int x=80+column*34, y=80+row*44;
+            const int ink=qMax(0,75+170*x/uneven.width()-55);
+            painter.fillRect(x,y,18,10,QColor(ink,ink,ink));
+        }
+    }
+    uneven.setDotsPerMeterX(11811);uneven.setDotsPerMeterY(11811);
+    const auto tilted=uneven.transformed(QTransform().rotate(5.0),Qt::SmoothTransformation);
+    const auto unevenAssessment=ImageProcessor::assess(tilted);
+    assert(unevenAssessment && std::abs(unevenAssessment->skewDegrees-5.0)<0.6);
+    const auto binary=ImageProcessor::apply(uneven,{.adaptiveBinarization=true});
+    assert(binary && qGray(binary->pixel(10,20))==255 && qGray(binary->pixel(1000,20))==255);
+    assert(qGray(binary->pixel(82,82))==0);
+    assert(binary->dotsPerMeterY()==11811);
+    const auto rotate=ImageProcessor::apply(uneven,{.quarterTurns=1,.adaptiveBinarization=true});
+    assert(rotate && rotate->size()==QSize(900,1200));
+    assert(!ImageProcessor::apply(uneven,{.quarterTurns=4}));
+
 }

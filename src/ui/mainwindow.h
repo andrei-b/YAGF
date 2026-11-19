@@ -126,6 +126,7 @@ private:
     void runOcr();
     void configureOcrEngine();
     void configureRendering();
+    void openExperiments();
     void activateVerification(core::VerificationItem item, int action = 0);
     void finishVerification();
     void refreshRenderedPageIfNeeded();

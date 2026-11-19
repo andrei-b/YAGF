@@ -13,7 +13,7 @@ from types import ModuleType
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from server import (PROTOCOL, DocTrBackend, RapidOcrBackend, SuryaBackend, KrakenBackend, PaddleVlBackend,
+from server import (TranscriptionTruncated, PROTOCOL, DocTrBackend, RapidOcrBackend, SuryaBackend, KrakenBackend, PaddleVlBackend,
                     handler_for, normalize_paddle_result,
                     normalize_doctr_result, normalize_rapid_result,
                     normalize_surya_result, normalize_kraken_records)
@@ -95,6 +95,25 @@ class ServerTests(unittest.TestCase):
         code, result = self.request("POST", "/v1/recognize", self.payload())
         self.assertEqual(code, 200)
         self.assertEqual(result["lines"][0]["box"], [1, 2, 12, 5])
+
+    def test_truncation_has_a_distinct_recoverable_error_code(self):
+        class DenseBackend(FakeBackend):
+            def recognize(self, *args):
+                raise TranscriptionTruncated("Retry smaller sections")
+        server = ThreadingHTTPServer(("127.0.0.1", 0), handler_for(DenseBackend()))
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            connection = http.client.HTTPConnection("127.0.0.1", server.server_port)
+            connection.request("POST", "/v1/recognize", json.dumps(self.payload()), {"Content-Type": "application/json"})
+            response = connection.getresponse()
+            self.assertEqual(response.status, 400)
+            self.assertEqual(json.loads(response.read())["code"], "transcription_truncated")
+            connection.close()
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
 
     def test_auth_and_bad_input(self):
         self.assertEqual(self.request("POST", "/v1/recognize", self.payload(), "wrong")[0], 401)
