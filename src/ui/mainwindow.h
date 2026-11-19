@@ -46,6 +46,7 @@ class QKeyEvent;
 class QUrl;
 class QContextMenuEvent;
 class QComboBox;
+class QProgressDialog;
 
 namespace yagf::ui {
 
@@ -161,6 +162,7 @@ private:
     bool applyCorrection();
     bool maybeApplyEditor();
     void runBatchOcr(bool remainingOnly);
+    void updateRecognitionProgress(qsizetype completed, qsizetype total);
     void editLayout();
     void createRegionFromSelection();
     void improveCurrentPage();
@@ -204,6 +206,7 @@ private:
     QPushButton *ocrButton;
     QCheckBox *mathMode;
     QPushButton *cancelButton;
+    QProgressDialog *recognitionProgress = nullptr;
     QPushButton *previousButton;
     QPushButton *nextButton;
     QAction *scanAction;

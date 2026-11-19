@@ -75,6 +75,7 @@
 #include <QPushButton>
 #include <QPlainTextEdit>
 #include <QProcess>
+#include <QProgressDialog>
 #include <QSignalBlocker>
 #include <QSaveFile>
 #include <QSettings>
@@ -1192,6 +1193,7 @@ MainWindow::MainWindow()
     });
     connect(&processor, &DocumentProcessor::batchProgress, this, [this](qsizetype completed, qsizetype total) {
         status->setText(tr("Batch OCR: %1 of %2 pages complete").arg(completed).arg(total));
+        updateRecognitionProgress(completed, total);
     });
     connect(&processor, &DocumentProcessor::batchFinished, this, [this] {
         status->setText(tr("Batch OCR complete"));
@@ -1236,6 +1238,10 @@ MainWindow::~MainWindow()
 
 void MainWindow::setBusy(bool busy)
 {
+    if (!busy && recognitionProgress) {
+        recognitionProgress->hide();
+        recognitionProgress->reset();
+    }
     const bool blocked = busy || exportBusy;
     verification->setBusy(blocked);
     scanAction->setEnabled(!blocked);
@@ -2204,6 +2210,7 @@ void MainWindow::runBatchOcr(bool remainingOnly)
         != QMessageBox::Yes) return;
     if (!processing::isPagedSource(originalPath)) {
         status->setText(tr("Recognizing the whole page…"));
+        updateRecognitionProgress(0, 1);
         processor.recognize(imagePath, languageEdit->text().trimmed(), currentPage);
         return;
     }
@@ -2221,6 +2228,24 @@ void MainWindow::runBatchOcr(bool remainingOnly)
         return;
     }
     processor.recognizePages(options);
+}
+
+void MainWindow::updateRecognitionProgress(qsizetype completed, qsizetype total)
+{
+    if (!recognitionProgress) {
+        recognitionProgress = new QProgressDialog(this);
+        recognitionProgress->setObjectName(QStringLiteral("recognitionProgressDialog"));
+        recognitionProgress->setWindowTitle(tr("Recognizing pages"));
+        recognitionProgress->setCancelButtonText(tr("Cancel"));
+        recognitionProgress->setMinimumDuration(0);
+        recognitionProgress->setAutoClose(false);
+        recognitionProgress->setAutoReset(false);
+        connect(recognitionProgress, &QProgressDialog::canceled, &processor, &DocumentProcessor::cancel);
+    }
+    recognitionProgress->setRange(0, static_cast<int>(total));
+    recognitionProgress->setLabelText(tr("%1 / %2 pages recognized").arg(completed).arg(total));
+    recognitionProgress->setValue(static_cast<int>(completed));
+    recognitionProgress->show();
 }
 
 void MainWindow::editLayout()

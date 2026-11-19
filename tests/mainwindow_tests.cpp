@@ -27,7 +27,10 @@
 #include <QLabel>
 #include <QListWidget>
 #include <QMenu>
+#include <QMessageBox>
 #include <QPushButton>
+#include <QProgressBar>
+#include <QProgressDialog>
 #include <QRubberBand>
 #include <QSignalSpy>
 #include <QScrollBar>
@@ -215,6 +218,10 @@ int main(int argc, char **argv)
     auto *recognizeWholeDocument = window.findChild<QToolButton *>("recognizeAllButton");
     assert(recognizeWholeDocument && recognizeWholeDocument->isEnabled());
     recognizeWholeDocument->click();
+    auto *singleProgress = window.findChild<QProgressDialog *>("recognitionProgressDialog");
+    assert(singleProgress && singleProgress->isVisible());
+    assert(singleProgress->value() == 0 && singleProgress->maximum() == 1);
+    assert(singleProgress->labelText() == "0 / 1 pages recognized");
     QElapsedTimer timer;
     timer.start();
     while (words->count() != 2 && timer.elapsed() < 3000) {
@@ -222,6 +229,7 @@ int main(int argc, char **argv)
         QThread::msleep(10);
     }
     assert(words->count() == 2);
+    assert(!singleProgress->isVisible());
     QFile args(argsPath);
     assert(args.open(QIODevice::ReadOnly));
     assert(args.readAll().split('\n').contains("eng+deu"));
@@ -1189,14 +1197,65 @@ int main(int argc, char **argv)
     assert(recognizeAll && recognizeAll->isEnabled() && recognizeAll->text() == "Recognize all");
     recognizeAll->click();
     assert(!recognizeAll->isEnabled());
+    auto *batchProgress = batchResolutionWindow.findChild<QProgressDialog *>("recognitionProgressDialog");
+    assert(batchProgress && batchProgress->isVisible());
+    assert(batchProgress->value() == 0 && batchProgress->maximum() == 2);
+    assert(batchProgress->labelText() == "0 / 2 pages recognized");
+    QSignalSpy progressValues(batchProgress->findChild<QProgressBar *>(), &QProgressBar::valueChanged);
+    bool sawFirstPage = false;
+    QObject::connect(batchProgress->findChild<QProgressBar *>(), &QProgressBar::valueChanged,
+                     &batchResolutionWindow, [&](int value) {
+        if (value == 1) {
+            assert(batchProgress->isVisible());
+            assert(batchProgress->labelText() == "1 / 2 pages recognized");
+            sawFirstPage = true;
+        }
+    });
     waitUi([&] { return batchView->scene()->sceneRect().width() == 800; });
     auto *batchWords = batchResolutionWindow.findChild<QListWidget *>("recognizedWords");
     waitUi([&] { return recognizeAll->isEnabled(); });
     assert(batchWords->count() == 2);
+    assert(sawFirstPage && progressValues.contains(QList<QVariant>{2}));
+    assert(!batchProgress->isVisible());
     for (auto *action : batchResolutionWindow.findChildren<QAction *>())
         if (action->text() == "Save project") action->trigger();
     yagf::core::OcrDocument batchLoaded;
     assert(yagf::core::ProjectFile::load(batchResolutionProject, &batchLoaded, &error));
     assert(batchLoaded.pages.size() == 2 && batchLoaded.page(1)->renderDpi == 200 && batchLoaded.page(2)->renderDpi == 200);
 
+    // The dialog cancels the same queue as the toolbar and can be reused.
+    yagf::ui::MainWindow cancelBatchWindow;
+    cancelBatchWindow.show(); cancelBatchWindow.loadSource(resolutionPdf);
+    auto *cancelRecognizeAll = cancelBatchWindow.findChild<QToolButton *>("recognizeAllButton");
+    waitUi([&] { return cancelRecognizeAll->isEnabled(); });
+    cancelRecognizeAll->click();
+    auto *cancelProgress = cancelBatchWindow.findChild<QProgressDialog *>("recognitionProgressDialog");
+    assert(cancelProgress && cancelProgress->isVisible());
+    auto *cancelProgressButton = cancelProgress->findChild<QPushButton *>();
+    assert(cancelProgressButton && cancelProgressButton->text() == "Cancel");
+    cancelProgressButton->click();
+    waitUi([&] { return cancelRecognizeAll->isEnabled(); });
+    assert(!cancelProgress->isVisible());
+    cancelRecognizeAll->click();
+    assert(cancelProgress->isVisible() && cancelProgress->value() == 0 && !cancelProgress->wasCanceled());
+    waitUi([&] { return cancelRecognizeAll->isEnabled(); });
+    assert(!cancelProgress->isVisible());
+
+    // A failed OCR job closes progress before reporting the error.
+    helperScript("tesseract", "#!/bin/sh\necho 'OCR failure fixture' >&2\nexit 1\n");
+    yagf::ui::MainWindow failedRecognitionWindow;
+    failedRecognitionWindow.loadSource(sourcePath);
+    bool sawRecognitionError = false;
+    QTimer errorDialogTimer;
+    QObject::connect(&errorDialogTimer, &QTimer::timeout, &failedRecognitionWindow, [&] {
+        auto *errorDialog = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        if (!errorDialog) return;
+        auto *progress = failedRecognitionWindow.findChild<QProgressDialog *>("recognitionProgressDialog");
+        assert(progress && !progress->isVisible());
+        sawRecognitionError = true;
+        errorDialog->accept();
+    });
+    errorDialogTimer.start(10);
+    failedRecognitionWindow.findChild<QToolButton *>("recognizeAllButton")->click();
+    waitUi([&] { return sawRecognitionError; });
 }
