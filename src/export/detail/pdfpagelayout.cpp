@@ -206,7 +206,7 @@ void recoverBlockLayout(core::OcrPage &page, const QImage &image, const std::ato
             if (word.fontFamily.isEmpty()) word.fontFamily = QStringLiteral("serif");
             if (word.sourceFontSizePx <= 0) {
                 word.sourceFontSizePx = std::max(6, qRound(word.bounds.height() * 1.3));
-                word.fontSizePt = word.sourceFontSizePt = std::clamp(qRound(word.sourceFontSizePx * 72.0 / 150), 6, 72);
+                word.fontSizePt = word.sourceFontSizePt = std::clamp(qRound(word.sourceFontSizePx * 72.0 / page.renderDpi), 6, 72);
             }
             if (block.reviewed && !block.fontFamily.isEmpty()) word.fontFamily = block.fontFamily;
             word.bold = word.bold || block.bold;

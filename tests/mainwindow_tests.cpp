@@ -1,5 +1,12 @@
 #include "mainwindow.h"
 #include "projectfile.h"
+#include "verificationcontroller.h"
+#include "correctionretention.h"
+#include <QListView>
+#include <QPdfWriter>
+#include <QPainter>
+#include <QPageSize>
+#include <QSpinBox>
 
 #include <QAction>
 #include <QApplication>
@@ -764,5 +771,141 @@ int main(int argc, char **argv)
     QFile convertedPdf(converted);
     assert(convertedPdf.open(QIODevice::ReadOnly) && convertedPdf.read(5) == "%PDF-");
     assert(djvuWords->count() == 0);
+
+    // Release 2.1: queue navigation renders the target page, verifies with undo,
+    // and DPI changes preserve corrected text, boxes, and saved project metadata.
+    const QString resolutionPdf = directory.filePath("resolution-source.pdf");
+    {
+        QPdfWriter writer(resolutionPdf);
+        writer.setResolution(150);
+        writer.setPageSize(QPageSize(QSizeF(288, 384), QPageSize::Point));
+        writer.setPageMargins(QMarginsF(0,0,0,0));
+        QPainter painter(&writer);
+        painter.fillRect(0,0,600,800,Qt::white); painter.drawText(20,40,"Page one");
+        assert(writer.newPage()); painter.fillRect(0,0,600,800,Qt::white); painter.drawText(20,40,"Page two");
+    }
+    yagf::core::OcrDocument resolutionBook;
+    resolutionBook.sourcePath = resolutionPdf; resolutionBook.totalPages = 2;
+    yagf::core::OcrPage resolutionPage;
+    resolutionPage.number = 1; resolutionPage.engineId = "tesseract"; resolutionPage.language = "eng";
+    resolutionPage.width = resolutionPage.sourceWidth = 600;
+    resolutionPage.height = resolutionPage.sourceHeight = 800;
+    resolutionPage.words.append({1,1,1,1,QRect(20,30,80,20),"modem","modern",95,true});
+    resolutionBook.replacePage(resolutionPage);
+    resolutionPage = yagf::core::rescalePageGeometry(resolutionPage,1200,1600,1200,1600,300);
+    resolutionPage.number = 2; resolutionPage.words[0].page = 2;
+    resolutionPage.words[0].id = "page-two-word"; resolutionPage.words[0].reviewed = false; resolutionPage.words[0].confidence = 30;
+    resolutionBook.replacePage(resolutionPage);
+    const QString resolutionProject = directory.filePath("resolution.yagf.json");
+    assert(yagf::core::ProjectFile::save(resolutionProject, resolutionBook, &error));
+    yagf::ui::MainWindow resolutionWindow;
+    resolutionWindow.show(); resolutionWindow.loadProject(resolutionProject);
+    auto *resolutionView = resolutionWindow.findChild<yagf::ui::PageView *>();
+    auto *resolutionQueue = resolutionWindow.findChild<yagf::ui::VerificationController *>();
+    auto waitUi = [&](auto condition) {
+        timer.restart();
+        while (!condition() && timer.elapsed() < 10000) { QApplication::processEvents(); QThread::msleep(5); }
+        assert(condition());
+    };
+    waitUi([&] { return resolutionView->scene()->sceneRect().width() == 600; });
+    resolutionWindow.findChild<QAction *>("showVerificationQueue")->trigger();
+    auto *issues = resolutionWindow.findChild<QListView *>("verificationItems");
+    assert(issues && issues->model()->rowCount() == 1);
+    resolutionQueue->navigate(1);
+    waitUi([&] { return resolutionView->scene()->sceneRect().width() == 1200; });
+    auto *resolutionWords = resolutionWindow.findChild<QListWidget *>("recognizedWords");
+    assert(resolutionWords->selectedItems().size() == 1);
+    for (auto *button : resolutionWindow.findChildren<QPushButton *>())
+        if (button->text() == "Mark verified") button->click();
+    waitUi([&] { return issues->model()->rowCount() == 0; });
+    auto *rendering = resolutionWindow.findChild<QAction *>("renderingResolution");
+    assert(rendering && rendering->isEnabled());
+    QTimer::singleShot(0, &resolutionWindow, [&] {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        assert(dialog);
+        auto *dpi = dialog->findChild<QComboBox *>("renderDpi");
+        auto *current = dialog->findChild<QCheckBox *>("applyRenderDpiToCurrent");
+        assert(dpi && current); dpi->setCurrentIndex(dpi->findData(200)); current->setChecked(true); dialog->accept();
+    });
+    rendering->trigger();
+    waitUi([&] { return resolutionView->scene()->sceneRect().width() == 800; });
+    auto saveResolution = [&] {
+        for (auto *action : resolutionWindow.findChildren<QAction *>())
+            if (action->text() == QStringLiteral("Save project")) { action->trigger(); return; }
+        assert(false);
+    };
+    saveResolution();
+    yagf::core::OcrDocument resolutionLoaded;
+    assert(yagf::core::ProjectFile::load(resolutionProject, &resolutionLoaded, &error));
+    assert(resolutionLoaded.rendering.dpi == 200 && resolutionLoaded.page(2)->renderDpi == 200);
+    assert(resolutionLoaded.page(1)->renderDpi == 150 && resolutionLoaded.page(2)->words[0].text == "modern");
+    assert(resolutionLoaded.page(2)->words[0].reviewed && resolutionLoaded.page(2)->words[0].bounds.x() == 27);
+    for (auto *action : resolutionWindow.findChildren<QAction *>())
+        if (action->shortcut() == QKeySequence::Undo) action->trigger();
+    waitUi([&] { return resolutionView->scene()->sceneRect().width() == 1200; });
+    saveResolution();
+    assert(yagf::core::ProjectFile::load(resolutionProject, &resolutionLoaded, &error));
+    assert(resolutionLoaded.page(2)->renderDpi == 300 && !resolutionLoaded.page(2)->words[0].reviewed);
+
+    auto retained = resolutionLoaded.page(2)->words[0];
+    retained.id = "retained-edit"; retained.text = "restored"; retained.reviewed = true;
+    resolutionLoaded.page(2)->pendingCorrections = {retained};
+    const QString pendingProject = directory.filePath("pending.yagf.json");
+    assert(yagf::core::ProjectFile::save(pendingProject, resolutionLoaded, &error));
+    yagf::ui::MainWindow pendingWindow;
+    pendingWindow.show(); pendingWindow.loadProject(pendingProject);
+    auto *pendingView = pendingWindow.findChild<yagf::ui::PageView *>();
+    waitUi([&] { return pendingView->scene()->sceneRect().width() == 600; });
+    auto *pendingQueue = pendingWindow.findChild<yagf::ui::VerificationController *>();
+    pendingQueue->show();
+    auto *pendingFilter = pendingWindow.findChild<QComboBox *>("verificationFilter");
+    pendingFilter->setCurrentIndex(pendingFilter->findData(yagf::core::PendingCorrection));
+    auto *pendingItems = pendingWindow.findChild<QListView *>("verificationItems");
+    assert(pendingItems->model()->rowCount() == 1);
+    pendingQueue->navigate(1);
+    waitUi([&] { return pendingView->scene()->sceneRect().width() == 1200; });
+    QTimer::singleShot(0, &pendingWindow, [&] {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        assert(dialog && dialog->objectName() == "aiReviewDialog");
+        auto *reading = dialog->findChild<QPlainTextEdit *>("verifiedPassage");
+        assert(reading && reading->toPlainText() == "restored"); dialog->accept();
+    });
+    for (auto *button : pendingWindow.findChildren<QPushButton *>())
+        if (button->text() == "Review / restore…") button->click();
+    waitUi([&] { return pendingItems->model()->rowCount() == 0; });
+    for (auto *action : pendingWindow.findChildren<QAction *>())
+        if (action->text() == "Save project") action->trigger();
+    yagf::core::OcrDocument pendingLoaded;
+    assert(yagf::core::ProjectFile::load(pendingProject, &pendingLoaded, &error));
+    assert(pendingLoaded.page(2)->pendingCorrections.isEmpty() && pendingLoaded.page(2)->words[0].text == "restored");
+    for (auto *action : pendingWindow.findChildren<QAction *>())
+        if (action->shortcut() == QKeySequence::Undo) action->trigger();
+    waitUi([&] { return pendingItems->model()->rowCount() == 1; });
+
+    // Changing only the default before batch OCR refreshes the current preview
+    // when the batch creates that page at a different DPI.
+    yagf::core::OcrDocument emptyBook;
+    emptyBook.sourcePath = resolutionPdf; emptyBook.totalPages = 2;
+    const QString batchResolutionProject = directory.filePath("batch-resolution.yagf.json");
+    assert(yagf::core::ProjectFile::save(batchResolutionProject, emptyBook, &error));
+    yagf::ui::MainWindow batchResolutionWindow;
+    batchResolutionWindow.show(); batchResolutionWindow.loadProject(batchResolutionProject);
+    auto *batchView = batchResolutionWindow.findChild<yagf::ui::PageView *>();
+    waitUi([&] { return batchView->scene()->sceneRect().width() == 600; });
+    QTimer::singleShot(0, &batchResolutionWindow, [&] {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget()); assert(dialog);
+        auto *dpi = dialog->findChild<QComboBox *>("renderDpi"); dpi->setCurrentIndex(dpi->findData(200)); dialog->accept();
+    });
+    batchResolutionWindow.findChild<QAction *>("renderingResolution")->trigger();
+    for (auto *action : batchResolutionWindow.findChildren<QAction *>())
+        if (action->text() == "Recognize all pages") action->trigger();
+    waitUi([&] { return batchView->scene()->sceneRect().width() == 800; });
+    auto *batchWords = batchResolutionWindow.findChild<QListWidget *>("recognizedWords");
+    assert(batchWords->count() == 2);
+    for (auto *action : batchResolutionWindow.findChildren<QAction *>())
+        if (action->text() == "Save project") action->trigger();
+    yagf::core::OcrDocument batchLoaded;
+    assert(yagf::core::ProjectFile::load(batchResolutionProject, &batchLoaded, &error));
+    assert(batchLoaded.pages.size() == 2 && batchLoaded.page(1)->renderDpi == 200 && batchLoaded.page(2)->renderDpi == 200);
 
 }

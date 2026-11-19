@@ -334,6 +334,19 @@ std::expected<OcrPage, QString> WordEditor::apply(const OcrPage &page,
     for (int i = 0; i < selection.first(); ++i) words.append(page.words.at(i));
     words += edited;
     for (int i = selection.last() + 1; i < page.words.size(); ++i) words.append(page.words.at(i));
+    QSet<QString> retainedSources;
+    for (const auto &word : words) for (const auto &id : word.sourceWordIds) retainedSources.insert(id);
+    for (const auto &word : old) {
+        if (word.originalText.isEmpty()) continue;
+        bool retained = false;
+        for (const auto &id : word.sourceWordIds) retained |= retainedSources.contains(id);
+        if (!retained) {
+            auto deleted = word;
+            deleted.text.clear(); deleted.reviewed = true; deleted.alternative = {};
+            if (std::ranges::none_of(result.deletedWords, [&](const auto &previous) { return previous.id == deleted.id; }))
+                result.deletedWords.append(deleted);
+        }
+    }
     result.words = std::move(words);
     result.rebuildHierarchy();
     return result;

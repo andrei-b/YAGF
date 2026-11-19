@@ -2,6 +2,7 @@
 
 #include "preprocesssettings.h"
 #include "documentcontext.h"
+#include "rendersettings.h"
 
 #include <QJsonArray>
 #include <QJsonObject>
@@ -89,6 +90,9 @@ struct OcrPage {
     QVector<OcrWord> words;
     QVector<OcrRegion> regions;
     QVector<ImageRegion> imageRegions;
+    int renderDpi = 150;
+    QVector<OcrWord> deletedWords; // Source-linked deletions survive a recognition rerun.
+    QVector<OcrWord> pendingCorrections; // Ambiguous retention is reviewed explicitly.
     [[nodiscard]] QVector<int> specialistSpan(int start) const;
     void rebuildHierarchy();
     bool moveRegion(int index, int direction);
@@ -103,6 +107,7 @@ public:
     int totalPages = 1;
     DocumentContext context;
     bool preserveFormatting = false;
+    RenderSettings rendering;
     QVector<OcrPage> pages;
 
     static bool fromJson(const QJsonObject &json, OcrDocument *result, QString *error);

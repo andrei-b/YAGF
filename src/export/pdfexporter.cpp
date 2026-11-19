@@ -24,9 +24,9 @@ ExportResult failure(const QString &error)
     return {.status = ExportResult::Status::Error, .error = error};
 }
 
-QPageSize pageSizeFor(const QImage &image)
+QPageSize pageSizeFor(const QImage &image, int dpi)
 {
-    constexpr double pointsPerPixel = 72.0 / 150.0;
+    const double pointsPerPixel = 72.0 / dpi;
     return QPageSize(QSizeF(image.width() * pointsPerPixel,
                             image.height() * pointsPerPixel), QPageSize::Point);
 }
@@ -66,30 +66,31 @@ PdfExportResult PdfExporter::write(const core::OcrDocument &document,
             if (cancelled.load()) return {.status = PdfExportResult::Status::Cancelled};
             auto processed = readExportPage(document, number, temporary, cancelled);
             if (!processed) return processed.error();
-            if (isPagedSource(document.sourcePath)) {
-                processed->setDotsPerMeterX(5906);
-                processed->setDotsPerMeterY(5906);
-            }
+            const int dpi = isPagedSource(document.sourcePath) ? qRound(processed->dotsPerMeterY() * 0.0254) : 150;
             const auto *page = document.page(number);
             if (number == 1) {
-                writer.setPageSize(pageSizeFor(*processed));
+                writer.setPageSize(pageSizeFor(*processed, dpi));
                 if (!painter.begin(&writer)) return failure(QStringLiteral("Could not start PDF output."));
             } else {
-                writer.setPageSize(pageSizeFor(*processed));
+                writer.setPageSize(pageSizeFor(*processed, dpi));
                 if (!writer.newPage()) return failure(QStringLiteral("Could not add PDF page %1.").arg(number));
             }
+            painter.save();
+            painter.scale(150.0 / dpi, 150.0 / dpi);
             painter.drawImage(QRect(0, 0, processed->width(), processed->height()), *processed);
             if (page && mode == Mode::FormattedText) {
                 const auto layout = detail::preparePdfPage(*page, *processed, cancelled, recognize);
-                if (!detail::drawFormattedPage(painter, layout, *processed, cancelled))
-                    return {.status = PdfExportResult::Status::Cancelled};
+                if (!detail::drawFormattedPage(painter, layout, *processed, cancelled)) {
+                    painter.restore(); return {.status = PdfExportResult::Status::Cancelled};
+                }
             } else if (page) {
                 painter.save();
                 painter.setPen(Qt::black);
                 painter.setOpacity(0.0);
-                for (const core::OcrWord &word : page->words) detail::drawWord(painter, word);
+                for (const core::OcrWord &word : page->words) detail::drawWord(painter, word, dpi);
                 painter.restore();
             }
+            painter.restore();
             if (progress) progress(number, document.totalPages);
         }
         painter.end();

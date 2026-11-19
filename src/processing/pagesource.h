@@ -17,6 +17,6 @@ struct SourceCommand {
 
 SourceCommand pageCountCommand(const QString &path);
 SourceCommand pageRenderCommand(const QString &path, int page, const QString &outputPrefix,
-                               bool thumbnail = false);
+                               bool thumbnail = false, int dpi = 150);
 
 } // namespace yagf::processing

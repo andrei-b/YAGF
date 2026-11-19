@@ -115,6 +115,43 @@ QImage stretchContrast(const QImage &source)
 
 } // namespace
 
+int ImageProcessor::recommendedRenderDpi(const QImage &pilot)
+{
+    if (pilot.isNull()) return 150;
+    const auto gray = (pilot.width() > 2000 || pilot.height() > 2500
+        ? pilot.scaled(QSize(2000, 2500), Qt::KeepAspectRatio, Qt::SmoothTransformation) : pilot)
+        .convertToFormat(QImage::Format_Grayscale8);
+    const int width = gray.width(), height = gray.height();
+    const int threshold = otsuThreshold(histogram(gray), width * height);
+    QVector<uchar> seen(width * height, 0);
+    QVector<int> components, queue;
+    for (int y = 0; y < height; ++y) for (int x = 0; x < width; ++x) {
+        const int start = y * width + x;
+        if (seen[start] || gray.constScanLine(y)[x] > threshold) continue;
+        queue.clear(); queue.append(start); seen[start] = 1;
+        int left = x, right = x, top = y, bottom = y;
+        for (qsizetype i = 0; i < queue.size(); ++i) {
+            const int px = queue[i] % width, py = queue[i] / width;
+            left = std::min(left, px); right = std::max(right, px);
+            top = std::min(top, py); bottom = std::max(bottom, py);
+            for (int dy = -1; dy <= 1; ++dy) for (int dx = -1; dx <= 1; ++dx) {
+                const int nx = px + dx, ny = py + dy;
+                if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+                const int next = ny * width + nx;
+                if (!seen[next] && gray.constScanLine(ny)[nx] <= threshold) { seen[next] = 1; queue.append(next); }
+            }
+        }
+        const int componentHeight = qRound((bottom - top + 1) * double(pilot.height()) / height);
+        const int componentWidth = qRound((right - left + 1) * double(pilot.width()) / width);
+        if (componentHeight >= 3 && componentHeight <= 60 && componentWidth >= 2 && componentWidth <= 80 && queue.size() >= 3)
+            components.append(componentHeight);
+    }
+    if (components.size() < 12) return 150;
+    std::ranges::sort(components);
+    const int glyph = components[components.size() / 2];
+    return glyph >= 14 ? 150 : glyph >= 11 ? 200 : glyph >= 7 ? 300 : 400;
+}
+
 std::expected<QualityAssessment, QString> ImageProcessor::assess(const QImage &source)
 {
     if (source.isNull()) return std::unexpected(QStringLiteral("Image is empty."));

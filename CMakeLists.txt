@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(yagf2 VERSION 2.0.0 LANGUAGES CXX)
+project(yagf2 VERSION 2.1.0 LANGUAGES CXX)
 include(GNUInstallDirs)
 
 set(CMAKE_CXX_STANDARD 23)
@@ -10,6 +10,9 @@ qt_standard_project_setup()
 set(CMAKE_AUTORCC ON)
 
 add_library(yagf_core STATIC
+    src/core/spellchecker.cpp src/core/spellchecker.h
+    src/core/verificationqueue.cpp src/core/verificationqueue.h
+    src/core/rendersettings.h src/core/correctionretention.cpp src/core/correctionretention.h
     src/core/ocrdocument.cpp src/core/ocrdocument.h src/core/preprocesssettings.h
     src/core/bookvocabulary.cpp src/core/bookvocabulary.h
     src/core/documentcontext.cpp src/core/documentcontext.h
@@ -60,6 +63,8 @@ target_include_directories(yagf_export PUBLIC src/export)
 
 qt_add_executable(yagf2
     src/ui/blockminiaturelist.cpp src/ui/blockminiaturelist.h
+    src/ui/verificationcontroller.cpp src/ui/verificationcontroller.h
+    src/ui/mainwindowreview.cpp
     src/main.cpp src/ui/mainwindow.cpp src/ui/mainwindow.h
     src/ui/preprocessdialog.cpp src/ui/preprocessdialog.h
     src/ui/layoutdialog.cpp src/ui/layoutdialog.h resources/icons.qrc)
@@ -67,6 +72,7 @@ target_sources(yagf2 PRIVATE src/ui/scannerdialog.cpp src/ui/scannerdialog.h)
 target_sources(yagf2 PRIVATE src/ui/documentcommands.cpp src/ui/documentcommands.h)
 target_sources(yagf2 PRIVATE src/ui/aireviewdialog.cpp src/ui/aireviewdialog.h)
 target_sources(yagf2 PRIVATE src/ui/spellhighlighter.cpp src/ui/spellhighlighter.h)
+target_compile_definitions(yagf2 PRIVATE YAGF_VERSION="${PROJECT_VERSION}")
 target_link_libraries(yagf2 PRIVATE yagf_core yagf_processing yagf_export Qt6::Widgets Qt6::Concurrent Qt6::Network)
 
 install(TARGETS yagf2 RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
@@ -86,6 +92,16 @@ install(FILES COPYING
 include(CTest)
 if(BUILD_TESTING)
     find_package(Qt6 6.2 REQUIRED COMPONENTS Test)
+    qt_add_executable(verificationcontroller_tests tests/verificationcontroller_tests.cpp
+        src/ui/verificationcontroller.cpp src/ui/verificationcontroller.h)
+    target_link_libraries(verificationcontroller_tests PRIVATE yagf_core Qt6::Widgets Qt6::Test)
+    target_include_directories(verificationcontroller_tests PRIVATE src/ui)
+    add_test(NAME verificationcontroller_tests COMMAND verificationcontroller_tests)
+    set_tests_properties(verificationcontroller_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    qt_add_executable(release21_tests tests/release21_tests.cpp)
+    target_link_libraries(release21_tests PRIVATE yagf_processing yagf_export Qt6::Test Qt6::Gui)
+    add_test(NAME release21_tests COMMAND release21_tests)
+    set_tests_properties(release21_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     qt_add_executable(pdfpagelayout_tests tests/pdfpagelayout_tests.cpp)
     target_link_libraries(pdfpagelayout_tests PRIVATE yagf_export)
     add_test(NAME pdfpagelayout_tests COMMAND pdfpagelayout_tests)
@@ -102,7 +118,7 @@ if(BUILD_TESTING)
     set_tests_properties(djvu_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" SKIP_RETURN_CODE 77)
     qt_add_executable(spellhighlighter_tests tests/spellhighlighter_tests.cpp
         src/ui/spellhighlighter.cpp src/ui/spellhighlighter.h)
-    target_link_libraries(spellhighlighter_tests PRIVATE Qt6::Widgets)
+    target_link_libraries(spellhighlighter_tests PRIVATE yagf_core Qt6::Widgets)
     target_include_directories(spellhighlighter_tests PRIVATE src/ui)
     add_test(NAME spellhighlighter_tests COMMAND spellhighlighter_tests)
     set_tests_properties(spellhighlighter_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
@@ -125,6 +141,8 @@ if(BUILD_TESTING)
     add_test(NAME documentcommands_tests COMMAND documentcommands_tests)
     qt_add_executable(mainwindow_tests tests/mainwindow_tests.cpp
         src/ui/blockminiaturelist.cpp src/ui/blockminiaturelist.h
+        src/ui/verificationcontroller.cpp src/ui/verificationcontroller.h
+        src/ui/mainwindowreview.cpp
         src/ui/mainwindow.cpp src/ui/mainwindow.h
         src/ui/preprocessdialog.cpp src/ui/preprocessdialog.h
         src/ui/layoutdialog.cpp src/ui/layoutdialog.h

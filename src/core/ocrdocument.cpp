@@ -419,7 +419,9 @@ QJsonObject OcrDocument::toJson() const
 {
     QJsonArray pageItems;
     for (const OcrPage &page : pages) {
-        QJsonArray wordItems, regionItems, imageRegionItems, readingOrder;
+        QJsonArray wordItems, regionItems, imageRegionItems, readingOrder, deletedItems, pendingItems;
+        for (const auto &word : page.deletedWords) deletedItems.append(wordJson(word));
+        for (const auto &word : page.pendingCorrections) pendingItems.append(wordJson(word));
         for (const OcrWord &word : page.words) {
             wordItems.append(wordJson(word));
             readingOrder.append(word.id);
@@ -448,6 +450,8 @@ QJsonObject OcrDocument::toJson() const
                                      {"width", page.width}, {"height", page.height},
                                      {"source_width", page.sourceWidth > 0 ? page.sourceWidth : page.width},
                                      {"source_height", page.sourceHeight > 0 ? page.sourceHeight : page.height},
+                                     {"render_dpi", page.renderDpi},
+                                     {"deleted_words", deletedItems}, {"pending_corrections", pendingItems},
                                      {"preprocessing", QJsonObject{
                                          {"deskew_degrees", page.preprocessing.deskewDegrees},
                                          {"auto_contrast", page.preprocessing.autoContrast},
@@ -459,6 +463,7 @@ QJsonObject OcrDocument::toJson() const
     }
     return {{"schema_version", 2}, {"source", sourcePath}, {"engine", engine},
             {"preserve_formatting", preserveFormatting},
+            {"rendering", QJsonObject{{"dpi", rendering.dpi}, {"adaptive", rendering.adaptive}}},
             {"language", language}, {"total_pages", totalPages}, {"pages", pageItems},
             {"context", QJsonObject{{"description", context.description},
                                     {"infer_from_recognized_text", context.inferFromRecognizedText}}}};
@@ -478,6 +483,13 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
     if (json.contains("preserve_formatting") && !json.value("preserve_formatting").isBool())
         return fail(QStringLiteral("Invalid format preservation mode."));
     parsed.preserveFormatting = json.value("preserve_formatting").toBool();
+    if (json.contains("rendering")) {
+        const auto settings = json.value("rendering");
+        if (!settings.isObject() || !integer(settings.toObject(), "dpi", &parsed.rendering.dpi) ||
+            !validRenderDpi(parsed.rendering.dpi) || !settings.toObject().value("adaptive").isBool())
+            return fail(QStringLiteral("Invalid rendering settings."));
+        parsed.rendering.adaptive = settings.toObject().value("adaptive").toBool();
+    }
     parsed.sourcePath = json.value(QStringLiteral("source")).toString();
     parsed.engine = json.value(QStringLiteral("engine")).toString();
     parsed.language = json.value(QStringLiteral("language")).toString();
@@ -538,6 +550,24 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
                 return fail(QStringLiteral("Invalid preprocessing values."));
             page.preprocessing = {.deskewDegrees = angle.toDouble(),
                                   .autoContrast = contrast.toBool(), .denoise = denoise.toBool()};
+        }
+        if (object.contains("render_dpi") && (!integer(object, "render_dpi", &page.renderDpi) || !validRenderDpi(page.renderDpi)))
+            return fail(QStringLiteral("Invalid page rendering resolution."));
+        for (const auto &key : {QStringLiteral("deleted_words"), QStringLiteral("pending_corrections")}) {
+            if (!object.contains(key)) continue;
+            const auto value = object.value(key);
+            if (!value.isArray() || value.toArray().size() > 100000) return fail(QStringLiteral("Invalid saved corrections."));
+            auto &destination = key == "deleted_words" ? page.deletedWords : page.pendingCorrections;
+            QSet<QString> ids;
+            for (const auto &entry : value.toArray()) {
+                OcrWord word;
+                if (!entry.isObject() || !parseWord(entry.toObject(), page.number, page.width, page.height, &word) ||
+                    word.id.isEmpty() || ids.contains(word.id) || !word.reviewed ||
+                    (key == "deleted_words" && (!word.text.isEmpty() || word.originalText.isEmpty())))
+                    return fail(QStringLiteral("Invalid saved correction."));
+                ids.insert(word.id);
+                destination.append(std::move(word));
+            }
         }
         page.engineId = object.value(QStringLiteral("engine")).toString(parsed.engine);
         page.language = object.value(QStringLiteral("language")).toString(parsed.language);

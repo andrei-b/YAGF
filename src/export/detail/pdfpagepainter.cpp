@@ -12,7 +12,7 @@
 
 namespace yagf::processing::detail {
 
-void drawWord(QPainter &painter, const core::OcrWord &word)
+void drawWord(QPainter &painter, const core::OcrWord &word, int dpi)
 {
     if (word.text.isEmpty() || word.bounds.isEmpty()) return;
     QFont font;
@@ -27,7 +27,7 @@ void drawWord(QPainter &painter, const core::OcrWord &word)
     if (word.layoutBlock || word.text.contains('\n') || word.text.contains('\t')) {
         // Reflow passages with normal character spacing inside their source block.
         font.setPixelSize(fontPixels > 0 ? std::clamp(fontPixels, 8, 512) :
-            std::clamp(word.fontSizePt > 0 ? qRound(word.fontSizePt * 150.0 / 72.0) : 18, 8, 48));
+            std::clamp(word.fontSizePt > 0 ? qRound(word.fontSizePt * double(dpi) / 72.0) : 18, 8, 48));
         QString text = word.text;
         text.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
         text.replace('\r', '\n');
@@ -66,7 +66,7 @@ void drawWord(QPainter &painter, const core::OcrWord &word)
 }
 
 namespace {
-QFont formattedFont(const core::OcrWord &word)
+QFont formattedFont(const core::OcrWord &word, int dpi)
 {
     QFont font;
     if (!word.fontFamily.isEmpty()) font.setFamily(word.fontFamily);
@@ -75,17 +75,17 @@ QFont formattedFont(const core::OcrWord &word)
     font.setStyleStrategy(QFont::StyleStrategy(font.styleStrategy() | QFont::PreferNoShaping));
     const int pixels = word.sourceFontSizePx > 0
         ? qRound(double(word.sourceFontSizePx) * std::max(1, word.fontSizePt) / std::max(1, word.sourceFontSizePt))
-        : word.layoutBlock ? qRound(std::max(8, word.fontSizePt) * 150.0 / 72.0) : qRound(word.bounds.height() * 1.3);
+        : word.layoutBlock ? qRound(std::max(8, word.fontSizePt) * double(dpi) / 72.0) : qRound(word.bounds.height() * 1.3);
     font.setPixelSize(std::clamp(pixels, 6, 512));
     return font;
 }
 
 // Fit by changing font size and wrapping at the block width. Scaling a completed
 // paragraph also shrinks its width and moves its lines away from the source layout.
-void drawFormattedWord(QPainter &painter, const core::OcrWord &word)
+void drawFormattedWord(QPainter &painter, const core::OcrWord &word, int dpi)
 {
     if (word.text.isEmpty() || word.bounds.isEmpty()) return;
-    QFont font = formattedFont(word);
+    QFont font = formattedFont(word, dpi);
     painter.save();
     painter.setClipRect(word.bounds, Qt::IntersectClip);
     const bool acrossLines = std::ranges::any_of(word.sourceBoxes, [&](const QRect &box) {
@@ -109,7 +109,7 @@ void drawFormattedWord(QPainter &painter, const core::OcrWord &word)
             fragment.bounds = word.sourceBoxes[i];
             fragment.sourceBoxes.clear();
             fragment.text = word.text.mid(start, end - start);
-            drawFormattedWord(painter, fragment);
+            drawFormattedWord(painter, fragment, dpi);
             start = end;
         }
     } else if (word.layoutBlock || word.text.contains('\n') || word.text.contains('\t')) {
@@ -198,9 +198,9 @@ bool drawFormattedPage(QPainter &painter, const PdfPageLayout &layout, const QIm
             painter.save();
             painter.setClipping(false);
             painter.setOpacity(0);
-            drawWord(painter, word);
+            drawWord(painter, word, page.renderDpi);
             painter.restore();
-        } else drawFormattedWord(painter, word);
+        } else drawFormattedWord(painter, word, page.renderDpi);
     }
     painter.restore();
     return true;

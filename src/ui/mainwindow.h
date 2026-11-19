@@ -2,6 +2,7 @@
 
 #include "ocrdocument.h"
 #include "correctionmemory.h"
+#include "verificationqueue.h"
 
 #include <optional>
 #include "documentprocessor.h"
@@ -45,6 +46,7 @@ class QComboBox;
 namespace yagf::ui {
 
 class SpellHighlighter;
+class VerificationController;
 
 class PageView : public QGraphicsView {
     Q_OBJECT
@@ -123,6 +125,10 @@ private:
     void updatePageControls();
     void runOcr();
     void configureOcrEngine();
+    void configureRendering();
+    void activateVerification(core::VerificationItem item, int action = 0);
+    void finishVerification();
+    void refreshRenderedPageIfNeeded();
     void configureSpecialists();
     void configureDocumentContext();
     void reviewNextSpecialist();
@@ -171,6 +177,10 @@ private:
     QListWidget *regionList = nullptr;
     QTextEdit *selectionEditor;
     SpellHighlighter *spellHighlighter = nullptr;
+    VerificationController *verification = nullptr;
+    QAction *renderingAction = nullptr;
+    std::optional<core::VerificationItem> verificationTarget;
+    int verificationAction = 0;
     QComboBox *spellLanguage = nullptr;
     QAction *spellCheckAction = nullptr;
     QLabel *selectionLabel;

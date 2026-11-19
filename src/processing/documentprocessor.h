@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QHash>
 #include <QProcess>
 #include <QFutureWatcher>
 #include <QRect>
@@ -37,7 +38,8 @@ public:
     void setSpecialists(std::unique_ptr<IOcrEngine> formulas, std::unique_ptr<IOcrEngine> prose);
     void resetSource();
     void openDocument(const QString &path);
-    void renderDocumentPage(int pageNumber);
+    void renderDocumentPage(int pageNumber, int dpiOverride = 0);
+    int renderedDpi(int pageNumber) const;
     void startThumbnails(int pageCount);
     void recognize(const QString &imagePath, const QString &language, int pageNumber);
     void recognizeRegion(const QString &imagePath, const QString &language,
@@ -59,6 +61,11 @@ signals:
 private:
     enum class Job : quint8 { None, DocumentInfo, DocumentRender, Ocr, BatchRender, BatchOcr };
     void discardRenderedPage(Job finishedJob);
+    int selectedRenderDpi(int number) const;
+    QString pagePrefix(int number) const;
+    QString pageFile(int number) const;
+    void selectRenderDpi(int number, int dpiOverride = 0);
+    bool adaptRenderedPage(int number);
     void start(Job job, const QString &program, const QStringList &arguments);
     void startNextThumbnail();
     void startNextBatchPage();
@@ -95,6 +102,9 @@ private:
     QVector<BatchPageOptions> batchPages;
     qsizetype batchIndex = 0;
     QSize batchSourceSize;
+    QHash<int, int> renderedDpis;
+    QHash<int, int> readyDpis;
+    bool adaptivePilot = false;
 };
 
 } // namespace yagf::processing

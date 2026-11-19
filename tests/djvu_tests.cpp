@@ -3,6 +3,7 @@
 #include "exportpage.h"
 #include "pagesource.h"
 #include "projectfile.h"
+#include "correctionretention.h"
 
 #include <QElapsedTimer>
 #include <QFile>
@@ -122,6 +123,11 @@ int main(int argc, char **argv)
         assert(!thumbnails[page].isNull());
         assert(thumbnails[page].width() <= 160 && thumbnails[page].height() <= 160);
     }
+    // Explicit rendering DPI must scale DjVu pixels just like PDF pixels.
+    processor.renderDocumentPage(1, 300);
+    waitFor([&] { return rendered[1].size() == sizes[0] * 2; });
+    processor.renderDocumentPage(1, 150);
+    waitFor([&] { return rendered[1].size() == sizes[0]; });
     // Plain conversion requires no recognized pages.
     core::OcrDocument document;
     document.sourcePath = source;
@@ -173,6 +179,15 @@ int main(int argc, char **argv)
     QTemporaryDir exportedPage;
     const auto restoredImage = processing::readExportPage(restored, 2, exportedPage, cancelled);
     assert(restoredImage && restoredImage->size() == sizes[1]);
+
+    auto mixedDpi = restored;
+    mixedDpi.replacePage(core::rescalePageGeometry(*restored.page(2), sizes[1].width() * 2,
+        sizes[1].height() * 2, sizes[1].width() * 2, sizes[1].height() * 2, 300));
+    const auto highDpiPage = processing::readExportPage(mixedDpi, 2, exportedPage, cancelled);
+    assert(highDpiPage && highDpiPage->size() == sizes[1] * 2);
+    const QString mixedDpiPdf = directory.filePath("mixed-dpi-djvu.pdf");
+    assert(processing::PdfExporter::write(mixedDpi, mixedDpiPdf, false, cancelled).status == processing::ExportResult::Status::Success);
+    assert(run("pdftotext", {mixedDpiPdf, "-"}).contains("SecondFix"));
 
     // Cancelling a decode must discard a partial image instead of caching it.
     processing::DocumentProcessor interruptedRender;

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <QHash>
+#include "spellchecker.h"
 #include <QStringList>
 #include <QSyntaxHighlighter>
 
@@ -24,10 +24,7 @@ protected:
     void highlightBlock(const QString &text) override;
 
 private:
-    struct Dictionaries;
-    std::unique_ptr<Dictionaries> dictionaries;
-    QHash<QString, bool> cache;
-    QStringList requested;
+    core::SpellChecker checker;
     bool enabled = true;
 };
 

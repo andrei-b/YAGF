@@ -19,6 +19,8 @@ struct QualityAssessment {
 
 class ImageProcessor {
 public:
+    // Inspect a 150-DPI pilot; small printed components request a higher render DPI.
+    [[nodiscard]] static int recommendedRenderDpi(const QImage &pilot);
     [[nodiscard]] static std::expected<QualityAssessment, QString> assess(const QImage &source);
     [[nodiscard]] static std::expected<QImage, QString> apply(
         const QImage &source, const core::PreprocessSettings &settings);

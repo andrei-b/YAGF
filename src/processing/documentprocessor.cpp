@@ -42,9 +42,16 @@ DocumentProcessor::DocumentProcessor(QObject *parent, const core::OcrDocument *s
             else { job = Job::None; emit busyChanged(false); emit failed(message); }
             return;
         }
+        if (finishedJob == Job::DocumentRender || finishedJob == Job::BatchRender) {
+            const int number = finishedJob == Job::BatchRender ? batchPages.at(batchIndex).number : requestedPage;
+            if (adaptRenderedPage(number)) {
+                const auto command = pageRenderCommand(documentSource, number, pagePrefix(number), false, selectedRenderDpi(number));
+                process.start(command.program, command.arguments);
+                return;
+            }
+        }
         if (finishedJob == Job::BatchRender) {
-            prepareBatchImage(pageRenderCommand(documentSource, batchPages.at(batchIndex).number,
-                temporaryDir.filePath(renderPrefix + QString::number(batchPages.at(batchIndex).number))).outputPath);
+            prepareBatchImage(pageFile(batchPages.at(batchIndex).number));
             return;
         }
         job = Job::None;
@@ -57,10 +64,10 @@ DocumentProcessor::DocumentProcessor(QObject *parent, const core::OcrDocument *s
                 ? info.trimmed().toInt() : match.hasMatch() ? match.captured(1).toInt() : 0;
             if (count < 1 || count > 100000) emit failed(tr("Could not read a valid document page count."));
             else emit documentOpened(count);
-        } else if (finishedJob == Job::DocumentRender)
-            emit pageRendered(requestedPage,
-                pageRenderCommand(documentSource, requestedPage,
-                    temporaryDir.filePath(renderPrefix + QString::number(requestedPage))).outputPath);
+        } else if (finishedJob == Job::DocumentRender) {
+            readyDpis[requestedPage] = selectedRenderDpi(requestedPage);
+            emit pageRendered(requestedPage, pageFile(requestedPage));
+        }
     });
     connect(&process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
         if (error == QProcess::FailedToStart) {
@@ -186,6 +193,9 @@ void DocumentProcessor::resetSource()
     }
     documentSource.clear();
     renderPrefix.clear();
+    renderedDpis.clear();
+    readyDpis.clear();
+    adaptivePilot = false;
 }
 
 void DocumentProcessor::startThumbnails(int pageCount)
@@ -205,17 +215,53 @@ void DocumentProcessor::startNextThumbnail()
     thumbnailProcess.start(command.program, command.arguments);
 }
 
-void DocumentProcessor::renderDocumentPage(int pageNumber)
+int DocumentProcessor::selectedRenderDpi(int number) const { return renderedDpis.value(number, 150); }
+int DocumentProcessor::renderedDpi(int number) const { return readyDpis.value(number, 150); }
+
+QString DocumentProcessor::pagePrefix(int number) const
+{
+    return temporaryDir.filePath(renderPrefix + QStringLiteral("page-%1-%2").arg(number).arg(selectedRenderDpi(number)));
+}
+
+QString DocumentProcessor::pageFile(int number) const
+{
+    return pageRenderCommand(documentSource, number, pagePrefix(number), false, selectedRenderDpi(number)).outputPath;
+}
+
+void DocumentProcessor::selectRenderDpi(int number, int overrideDpi)
+{
+    const auto *page = book ? book->page(number) : nullptr;
+    if (overrideDpi == -1) renderedDpis[number] = 150;
+    else if (core::validRenderDpi(overrideDpi)) renderedDpis[number] = overrideDpi;
+    else if (page) renderedDpis[number] = page->renderDpi;
+    else renderedDpis[number] = book && !book->rendering.adaptive ? book->rendering.dpi : 150;
+    adaptivePilot = overrideDpi == -1 || (!overrideDpi && !page && book && book->rendering.adaptive && selectedRenderDpi(number) == 150);
+}
+
+bool DocumentProcessor::adaptRenderedPage(int number)
+{
+    if (!adaptivePilot) return false;
+    adaptivePilot = false;
+    const QImage pilot(pageFile(number));
+    int dpi = ImageProcessor::recommendedRenderDpi(pilot);
+    while (dpi > 150 && double(pilot.width()) * pilot.height() * dpi * dpi / (150.0 * 150.0) > 80000000)
+        dpi = dpi == 400 ? 300 : dpi == 300 ? 200 : 150;
+    if (dpi == 150 || pilot.isNull()) return false;
+    renderedDpis[number] = dpi;
+    return true;
+}
+
+void DocumentProcessor::renderDocumentPage(int pageNumber, int dpiOverride)
 {
     if (isBusy() || documentSource.isEmpty() || pageNumber < 1) return;
     requestedPage = pageNumber;
-    const QString outputPrefix = temporaryDir.filePath(renderPrefix + QString::number(pageNumber));
-    const auto command = pageRenderCommand(documentSource, pageNumber, outputPrefix);
-    const QString imagePath = command.outputPath;
-    if (QFileInfo::exists(imagePath)) {
-        emit pageRendered(pageNumber, imagePath);
-        return;
+    selectRenderDpi(pageNumber, dpiOverride);
+    if (QFileInfo::exists(pageFile(pageNumber))) adaptRenderedPage(pageNumber);
+    if (QFileInfo::exists(pageFile(pageNumber))) {
+        readyDpis[pageNumber] = selectedRenderDpi(pageNumber);
+        emit pageRendered(pageNumber, pageFile(pageNumber)); return;
     }
+    const auto command = pageRenderCommand(documentSource, pageNumber, pagePrefix(pageNumber), false, selectedRenderDpi(pageNumber));
     start(Job::DocumentRender, command.program, command.arguments);
 }
 
@@ -223,8 +269,7 @@ void DocumentProcessor::discardRenderedPage(Job finishedJob)
 {
     if (finishedJob != Job::DocumentRender && finishedJob != Job::BatchRender) return;
     const int number = finishedJob == Job::BatchRender ? batchPages.value(batchIndex).number : requestedPage;
-    QFile::remove(pageRenderCommand(documentSource, number,
-        temporaryDir.filePath(renderPrefix + QString::number(number))).outputPath);
+    QFile::remove(pageFile(number));
 }
 
 void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
@@ -233,6 +278,10 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
     if ((!batch && isBusy()) || (batch && batchPages.isEmpty())) return;
     options.preserveFormatting = book && book->preserveFormatting;
     const bool pagedSource = book && isPagedSource(book->sourcePath);
+    const auto *savedPage = book ? book->page(options.pageNumber) : nullptr;
+    const int jobDpi = pagedSource ? (batch ? selectedRenderDpi(options.pageNumber) : renderedDpi(options.pageNumber)) : 150;
+    const QSize savedImageSize = savedPage ? QSize(savedPage->width, savedPage->height) : QSize{};
+    const int savedDpi = savedPage ? savedPage->renderDpi : jobDpi;
     if (book && engine->id() == "tesseract") {
         if (!batch || batchIndex == 0 || vocabularyLanguage != options.language ||
             nextEvidencePage > options.pageNumber) {
@@ -262,7 +311,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
     ocrStop = std::stop_source{};
     const std::stop_token token = ocrStop.get_token();
     if (!wasBusy) emit busyChanged(true);
-    ocrWatcher.setFuture(QtConcurrent::run([this, path, image, options, region, token, formulaRegions, pagedSource] {
+    ocrWatcher.setFuture(QtConcurrent::run([this, path, image, options, region, token, formulaRegions, pagedSource, jobDpi, savedImageSize, savedDpi, batch] {
         OcrJobResult result;
         QImage input = image;
         if (input.isNull()) {
@@ -275,6 +324,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
                 return result;
             }
         }
+        const int dpi = pagedSource && !batch && savedImageSize == input.size() ? savedDpi : jobDpi;
         if (!region.isEmpty()) {
             const QRect bounded = region.intersected(input.rect());
             if (bounded.isEmpty()) {
@@ -287,13 +337,14 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
             input = input.copy(bounded);
         }
         if (pagedSource && options.preserveFormatting) {
-            input.setDotsPerMeterX(5906); // PDF/DjVu pages are rendered at 150 DPI.
-            input.setDotsPerMeterY(5906);
+            input.setDotsPerMeterX(qRound(dpi / 0.0254));
+            input.setDotsPerMeterY(qRound(dpi / 0.0254));
         }
         result.outcome = engine->recognize(input, options, token);
         if (result.outcome) {
             core::OcrPage &page = *result.outcome;
             page.engineId = engine->id();
+            page.renderDpi = dpi;
             if (page.number != options.pageNumber || page.width != input.width() ||
                 page.height != input.height()) {
                 result.outcome = std::unexpected(OcrError{
@@ -374,8 +425,9 @@ void DocumentProcessor::startNextBatchPage()
         return;
     }
     const int number = batchPages.at(batchIndex).number;
-    const QString outputPrefix = temporaryDir.filePath(renderPrefix + QString::number(number));
-    const auto command = pageRenderCommand(documentSource, number, outputPrefix);
+    selectRenderDpi(number);
+    if (QFileInfo::exists(pageFile(number))) adaptRenderedPage(number);
+    const auto command = pageRenderCommand(documentSource, number, pagePrefix(number), false, selectedRenderDpi(number));
     const QString imagePath = command.outputPath;
     if (QFileInfo::exists(imagePath)) {
         prepareBatchImage(imagePath);
@@ -396,6 +448,7 @@ void DocumentProcessor::prepareBatchImage(const QString &path)
     }
     const auto processed = ImageProcessor::apply(source, batchPages.at(batchIndex).preprocessing);
     if (!processed) { finishBatchError(processed.error()); return; }
+    readyDpis[batchPages.at(batchIndex).number] = selectedRenderDpi(batchPages.at(batchIndex).number);
     batchSourceSize = source.size();
     startOcrImage({}, *processed,
         {.language = batchPages.at(batchIndex).language,

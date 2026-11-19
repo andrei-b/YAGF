@@ -1,4 +1,5 @@
 #include "pagesource.h"
+#include "rendersettings.h"
 
 #include <QFileInfo>
 
@@ -20,16 +21,17 @@ SourceCommand pageCountCommand(const QString &path)
     return {"pdfinfo", {path}, {}};
 }
 
-SourceCommand pageRenderCommand(const QString &path, int page, const QString &prefix, bool thumbnail)
+SourceCommand pageRenderCommand(const QString &path, int page, const QString &prefix, bool thumbnail, int dpi)
 {
+    if (!core::validRenderDpi(dpi)) dpi = 150;
     if (pageSourceKind(path) == PageSourceKind::DjVu) {
         const QString output = prefix + ".ppm";
         return {"ddjvu", {"-format=ppm", "-page=" + QString::number(page),
-                          thumbnail ? QStringLiteral("-size=160x160") : QStringLiteral("-scale=150"),
+                          thumbnail ? QStringLiteral("-size=160x160") : QStringLiteral("-scale=%1").arg(dpi),
                           path, output}, output};
     }
     QStringList arguments{"-f", QString::number(page), "-l", QString::number(page), "-singlefile"};
-    arguments += thumbnail ? QStringList{"-scale-to", "160"} : QStringList{"-r", "150"};
+    arguments += thumbnail ? QStringList{"-scale-to", "160"} : QStringList{"-r", QString::number(dpi)};
     arguments += QStringList{"-png", path, prefix};
     return {"pdftoppm", arguments, prefix + ".png"};
 }

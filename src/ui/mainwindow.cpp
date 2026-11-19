@@ -10,11 +10,13 @@
 #include "scannerdialog.h"
 #include "documentcommands.h"
 #include "wordeditor.h"
+#include "correctionretention.h"
 #include "remoteocrengine.h"
 #include "tesseractengine.h"
 #include "aireviewdialog.h"
 #include "regiongeometry.h"
 #include "spellhighlighter.h"
+#include "verificationcontroller.h"
 #include "pagesource.h"
 
 #include <QCloseEvent>
@@ -156,36 +158,14 @@ bool overlapsWord(const OcrWord &word, const QRect &selection)
 void carryCorrections(OcrPage &fresh, const OcrPage *oldPage, bool estimateFormatting)
 {
     if (!oldPage) return;
-    fresh.imageRegions = oldPage->imageRegions;
+    core::retainCorrections(fresh, *oldPage, estimateFormatting);
     const bool structured = fresh.engineId == "surya-remote" || oldPage->engineId == "surya-remote";
     const bool sameEngine = oldPage->engineId == fresh.engineId;
-    // Keep manual layout on a matching block. IDs alone can be reused for
-    // completely different content after switching recognition engines.
     QSet<int> matchingBlocks;
-    for (OcrWord &word : fresh.words) {
-        for (const OcrWord &old : oldPage->words) {
-            if (old.bounds != word.bounds || old.originalText != word.originalText) continue;
+    for (const auto &word : fresh.words) for (const auto &old : oldPage->words)
+        if ((word.bounds == old.bounds && word.originalText == old.originalText) ||
+            (word.reviewed && old.reviewed && word.id == old.id && word.text == old.text))
             if (structured && sameEngine && word.block == old.block) matchingBlocks.insert(word.block);
-            word.id = old.id;
-            if (old.reviewed || !estimateFormatting) {
-                word.bold = old.bold;
-                word.italic = old.italic;
-                word.fontFamily = old.fontFamily;
-                word.fontSizePt = old.fontSizePt;
-                word.sourceFontSizePt = old.sourceFontSizePt;
-                word.sourceFontSizePx = old.sourceFontSizePx;
-            }
-            word.sourceWordIds = old.sourceWordIds;
-            word.sourceBoxes = old.sourceBoxes;
-            if (old.reviewed) {
-                word.text = old.text;
-                word.reviewed = true;
-                word.readingEngine = old.readingEngine;
-                word.alternative = {};
-            }
-            break;
-        }
-    }
     if (structured) {
         QHash<QString, core::OcrRegion> oldRegions;
         for (const auto &region : oldPage->regions) oldRegions.insert(region.id, region);
@@ -475,6 +455,20 @@ MainWindow::MainWindow()
     auto *fileMenu = menuBar()->addMenu(tr("&File"));
     auto *editMenu = menuBar()->addMenu(tr("&Edit"));
     auto *toolsMenu = menuBar()->addMenu(tr("&Tools"));
+    verification = new VerificationController(this, document);
+    auto *queueAction = toolsMenu->addAction(tr("Verification queue"), verification, &VerificationController::show);
+    queueAction->setObjectName(QStringLiteral("showVerificationQueue"));
+    auto *nextIssue = toolsMenu->addAction(tr("Next verification issue"), this, [this] { verification->navigate(1); });
+    nextIssue->setShortcut(QKeySequence(Qt::Key_F4));
+    auto *previousIssue = toolsMenu->addAction(tr("Previous verification issue"), this, [this] { verification->navigate(-1); });
+    previousIssue->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_F4));
+    connect(verification, &VerificationController::activateRequested, this, [this](const auto &item) { activateVerification(item); });
+    connect(verification, &VerificationController::reviewRequested, this, [this](const auto &item) { activateVerification(item, 1); });
+    connect(verification, &VerificationController::verifyRequested, this, [this](const auto &item) { activateVerification(item, 2); });
+    connect(verification, &VerificationController::discardRequested, this, [this](const auto &item) { activateVerification(item, 3); });
+    renderingAction = toolsMenu->addAction(tr("Rendering resolution…"), this, &MainWindow::configureRendering);
+    renderingAction->setObjectName(QStringLiteral("renderingResolution"));
+
     undoAction = editMenu->addAction(tr("Undo"), this, [this] {
         if (!processor.isBusy() && !exportBusy && maybeApplyEditor()) undoStack.undo();
     });
@@ -883,11 +877,15 @@ MainWindow::MainWindow()
     connect(&processor, &DocumentProcessor::busyChanged, this, &MainWindow::setBusy);
     connect(&processor, &DocumentProcessor::failed, this, [this](const QString &message) {
         queuedImageRegions.clear();
+        verificationTarget.reset();
+        refreshRenderedPageIfNeeded();
         showError(message);
     });
     connect(&processor, &DocumentProcessor::cancelled, this, [this] {
         queuedImageRegions.clear();
+        verificationTarget.reset();
         status->setText(tr("Cancelled"));
+        refreshRenderedPageIfNeeded();
     });
     connect(&processor, &DocumentProcessor::documentOpened, this, [this](int count) {
         if (!projectPath.isEmpty() && document.totalPages != count) {
@@ -941,30 +939,12 @@ MainWindow::MainWindow()
         }
         if (region.isEmpty()) carryCorrections(newPage, oldPage, document.preserveFormatting);
         else if (oldPage) {
-            for (OcrWord &word : newPage.words) {
-                for (const OcrWord &old : oldPage->words) {
-                    if (old.bounds == word.bounds && old.originalText == word.originalText) {
-                        word.id = old.id;
-                        if (old.reviewed || !document.preserveFormatting) {
-                            word.bold = old.bold;
-                            word.italic = old.italic;
-                            word.fontFamily = old.fontFamily;
-                            word.fontSizePt = old.fontSizePt;
-                            word.sourceFontSizePt = old.sourceFontSizePt;
-                            word.sourceFontSizePx = old.sourceFontSizePx;
-                        }
-                        word.sourceWordIds = old.sourceWordIds;
-                        word.sourceBoxes = old.sourceBoxes;
-                        if (old.reviewed) {
-                            word.text = old.text;
-                            word.reviewed = true;
-                            word.readingEngine = old.readingEngine;
-                            word.alternative = {};
-                        }
-                        break;
-                    }
-                }
-            }
+            auto previous = *oldPage;
+            previous.words.removeIf([&](const auto &word) { return !overlapsWord(word, region); });
+            previous.pendingCorrections.removeIf([&](const auto &word) { return !overlapsWord(word, region); });
+            previous.deletedWords.removeIf([&](const auto &word) { return !overlapsWord(word, region); });
+            newPage.width = size.width(); newPage.height = size.height();
+            core::retainCorrections(newPage, previous, document.preserveFormatting);
         }
         document.sourcePath = originalPath;
         document.engine = newPage.engineId;
@@ -983,6 +963,9 @@ MainWindow::MainWindow()
                 merged.sourceWidth = rawImage.width();
                 merged.sourceHeight = rawImage.height();
             }
+            merged.renderDpi = newPage.renderDpi;
+            merged.pendingCorrections.removeIf([&](const auto &word) { return overlapsWord(word, region); });
+            merged.pendingCorrections += newPage.pendingCorrections;
             merged.engineId = newPage.engineId;
             merged.language = newPage.language;
             int maxBlock = 0;
@@ -1061,6 +1044,7 @@ MainWindow::MainWindow()
     });
     connect(&processor, &DocumentProcessor::batchFinished, this, [this] {
         status->setText(tr("Batch OCR complete"));
+        refreshRenderedPageIfNeeded();
     });
     connect(this, &MainWindow::exportProgress, this, [this](qsizetype completed, qsizetype total) {
         if (exportBusy) status->setText(tr("Export: %1 of %2 pages").arg(completed).arg(total));
@@ -1079,7 +1063,9 @@ MainWindow::MainWindow()
     connect(&undoStack, &QUndoStack::indexChanged, this, [this] {
         correctionMemory.reset();
         const OcrPage *page = document.page(currentPage);
-        if (page && !rawImagePath.isEmpty() && page->preprocessing != displayedPreprocessing)
+        if (page && processing::isPagedSource(originalPath) && !rawImagePath.isEmpty() && page->renderDpi != processor.renderedDpi(currentPage))
+            showPage(currentPage);
+        else if (page && !rawImagePath.isEmpty() && page->preprocessing != displayedPreprocessing)
             loadImage(rawImagePath);
         else showDocument();
         refreshDirty();
@@ -1099,6 +1085,8 @@ MainWindow::~MainWindow()
 void MainWindow::setBusy(bool busy)
 {
     const bool blocked = busy || exportBusy;
+    verification->setBusy(blocked);
+    renderingAction->setEnabled(!blocked && processing::isPagedSource(originalPath));
     undoAction->setEnabled(!blocked && undoStack.canUndo());
     redoAction->setEnabled(!blocked && undoStack.canRedo());
     ocrButton->setEnabled(!blocked && !imagePath.isEmpty());
@@ -1129,6 +1117,7 @@ void MainWindow::updatePageControls()
     pageSpin->setMaximum(pageCount);
     pageSpin->setValue(currentPage);
     const bool available = !processor.isBusy() && !exportBusy;
+    if (renderingAction) renderingAction->setEnabled(available && processing::isPagedSource(originalPath));
     if (preserveFormattingAction) preserveFormattingAction->setEnabled(available);
     if (formattedPdfAction) formattedPdfAction->setEnabled(available && document.wordCount() > 0);
     if (convertDjVuAction) convertDjVuAction->setEnabled(available && !imagePath.isEmpty() &&
@@ -1253,6 +1242,7 @@ void MainWindow::loadSource(const QString &path)
     }
     if (!maybeSave()) return;
     processor.resetSource();
+    verificationTarget.reset();
     originalPath = QFileInfo(path).absoluteFilePath();
     projectPath.clear();
     document = {};
@@ -1330,6 +1320,7 @@ void MainWindow::loadProject(const QString &path)
     undoStack.clear();
     originalPath = loaded.sourcePath;
     projectPath = path;
+    verificationTarget.reset();
     document = std::move(loaded);
     {
         const QSignalBlocker blocker(preserveFormattingAction);
@@ -1488,6 +1479,20 @@ void MainWindow::loadImage(const QString &path)
         return;
     }
     const OcrPage *page = document.page(currentPage);
+    const int dpi = processing::isPagedSource(originalPath) ? processor.renderedDpi(currentPage) : 150;
+    if (page && page->renderDpi != dpi && processing::isPagedSource(originalPath)) {
+        const double ratio = double(dpi) / page->renderDpi;
+        if (std::abs(source.width() - page->sourceWidth * ratio) > 2 ||
+            std::abs(source.height() - page->sourceHeight * ratio) > 2) {
+            showError(tr("The source dimensions changed independently of the rendering resolution.")); return;
+        }
+        const auto scaledImage = ImageProcessor::apply(source, page->preprocessing);
+        if (!scaledImage) { showError(scaledImage.error()); return; }
+        auto scaled = core::rescalePageGeometry(*page, scaledImage->width(), scaledImage->height(), source.width(), source.height(), dpi);
+        document.replacePage(std::move(scaled));
+        page = document.page(currentPage);
+        externalDirty = true; refreshDirty();
+    }
     if (page && (page->sourceWidth != source.width() || page->sourceHeight != source.height())) {
         showError(tr("The source image size changed since this project was saved."));
         return;
@@ -1529,8 +1534,9 @@ void MainWindow::loadImage(const QString &path)
     view->fitPage();
     showDocument();
     setBusy(false);
-    status->setText(tr("Page ready: %1 × %2%3").arg(image.width()).arg(image.height())
+    status->setText(tr("Page ready: %1 × %2 · %3 DPI%4").arg(image.width()).arg(image.height()).arg(dpi)
                     .arg(settings.isIdentity() ? QString() : tr(" · improved")));
+    finishVerification();
 }
 
 void MainWindow::showPage(int number)
@@ -1599,8 +1605,11 @@ void MainWindow::improveCurrentPage()
     page.width = processed->width();
     page.height = processed->height();
     page.preprocessing = proposed;
+    page.renderDpi = processing::isPagedSource(originalPath) ? processor.renderedDpi(currentPage) : 150;
     if (geometryChanged) {
         page.words.clear();
+        page.deletedWords.clear();
+        page.pendingCorrections.clear();
         page.regions.clear();
         page.imageRegions.clear();
         selectedImageRegion = -1;
@@ -2019,6 +2028,7 @@ void MainWindow::createRegionFromSelection()
 
 void MainWindow::showDocument()
 {
+    if (verification) verification->invalidate(currentPage);
     const QSignalBlocker blockListSignals(wordList);
     const QSignalBlocker blockRegionSignals(regionList);
     wordList->clear();
@@ -2035,6 +2045,9 @@ void MainWindow::showDocument()
     imageRegionBoxes.clear();
     displayedWords.clear();
     OcrPage *page = document.page(currentPage);
+    // Batch OCR may have used a new default DPI. Wait for its render before
+    // painting new geometry over the previous preview.
+    if (page && !rawImage.isNull() && (page->sourceWidth != rawImage.width() || page->sourceHeight != rawImage.height())) return;
     formattedPdfAction->setEnabled(!processor.isBusy() && !exportBusy && document.wordCount() > 0);
     nextSpecialistAction->setEnabled(!processor.isBusy() && !exportBusy && !imagePath.isEmpty() &&
         page && !page->words.isEmpty());
@@ -2144,6 +2157,7 @@ void MainWindow::selectRegion(const QRectF &bounds)
         edited.sourceWidth = rawImage.width();
         edited.sourceHeight = rawImage.height();
         edited.preprocessing = displayedPreprocessing;
+        edited.renderDpi = processing::isPagedSource(originalPath) ? processor.renderedDpi(currentPage) : 150;
     }
     edited.imageRegions.append({QUuid::createUuid().toString(QUuid::WithoutBraces), area});
     selectedImageRegion = static_cast<int>(edited.imageRegions.size()) - 1;

@@ -8,6 +8,10 @@ YAGF/
   src/
     main.cpp                         application entry point
     core/ocrdocument.{h,cpp}         OCR data, text/JSON export
+    core/correctionretention.{h,cpp}  conservative span matching, pending restoration, DPI geometry scaling
+    core/verificationqueue.{h,cpp}    document-wide issue analysis with injected spelling checks
+    core/spellchecker.{h,cpp}         optional Enchant runtime backend shared by editor and queue
+    core/rendersettings.h            supported render resolutions and persisted policy
     core/wordeditor.{h,cpp}          source-linked split, merge, insert, delete
     core/projectfile.{h,cpp}         versioned and portable project save/load
     core/preprocesssettings.h         per-page, persisted quality options
@@ -26,6 +30,8 @@ YAGF/
     export/detail/pagebackground.{h,cpp}  paper-color sampling
     export/detail/exportcommand.{h,cpp}   cancellable export subprocesses
     ui/mainwindow.{h,cpp}            page view, selection, editing, user actions
+    ui/verificationcontroller.{h,cpp} queue dock, list model, filtering, navigation
+    ui/mainwindowreview.cpp           document/UI glue for review and render settings
     ui/preprocessdialog.{h,cpp}       before/after preview and quality controls
     ui/layoutdialog.{h,cpp}           region geometry, type, and reading order
     ui/documentcommands.{h,cpp}       undoable page and layout commands
@@ -69,17 +75,17 @@ Neither imaging nor OCR providers depend on `DocumentProcessor`. Export depends 
 
 ## Data ownership
 
-The `OcrDocument` is the current in-memory source of truth. It contains numbered pages with user-drawn image regions and recognized regions, paragraphs, lines, and words. Image regions are independent of OCR words, so they can be drawn before recognition and survive OCR page rebuilds. Stable IDs connect each line to its words; the project file also records an explicit word-ID reading order for each page. Each word stores a union box and source fragments, original reading, corrected reading, source word IDs, confidence, review state, and font family, bold/italic/size styling, and source pixel-size estimates. Plain text, layout HTML, JSON, and the project file read from this document. The UI draws the current page's boxes and word list from it. `WordEditor` aligns unchanged words and maps split, merged, inserted, and deleted text onto page geometry. Qt undo commands keep before/after page snapshots and restore hierarchy and reading order together.
+The `OcrDocument` is the current in-memory source of truth. It contains numbered pages with user-drawn image regions and recognized regions, paragraphs, lines, and words. Image regions are independent of OCR words, so they can be drawn before recognition and survive OCR page rebuilds. Stable IDs connect each line to its words; the project file also records an explicit word-ID reading order for each page. Each word stores a union box and source fragments, original reading, corrected reading, source word IDs, confidence, review state, and font family, bold/italic/size styling, and source pixel-size estimates. Plain text, layout HTML, JSON, and the project file read from this document. The UI draws the current page's boxes and word list from it. `WordEditor` aligns unchanged words and maps split, merged, inserted, and deleted text onto page geometry. Qt undo commands keep before/after page snapshots and restore hierarchy and reading order together. Pages also retain source-linked deletions and pending corrections. `retainCorrections` groups related verified words and matches contiguous fresh OCR spans using text similarity and geometry, with ambiguity thresholds; unmatched work remains pending. `restorePendingCorrection` applies a user-approved reading to current words or restores it at its saved position. The verification analyzer deduplicates reasons per word and accepts an injected spelling callback; it needs no widgets or Enchant itself. `SpellChecker` dynamically loads optional Enchant 2 through Qt Core's QLibrary. The dock controller owns the list model, filters, coalesced refreshes, and navigation signals; MainWindow owns page loading and undoable document changes.
 
 ## Processing boundary
 
 `IOcrEngine` accepts a `QImage`, options, and `std::stop_token`, and returns a normalized `OcrPage` or error. `TesseractEngine` owns its subprocess and TSV parser. `RemoteOcrEngine` encodes a PNG, calls the versioned Python HTTP service, and validates PaddleOCR line geometry or docTR word geometry and reading order. `DocumentProcessor` runs the engine on a Qt Concurrent worker, owns PDF rendering and thumbnail subprocesses, schedules batch pages, and propagates cancellation. The UI receives normalized pages and translates region coordinates back to the source page. The core library has no Gui, recognition provider, widget, process, Python, or Jetson dependency. External commands receive argument lists, never shell command strings.
 
-`ImageProcessor` estimates page skew and luminance range, then applies optional denoise, contrast stretching, and rotation. `MainWindow` keeps the original image in memory, writes the processed page to a temporary PNG for recognition, and displays that same processed image. Project files store settings and both source and processed dimensions; reopening a project recreates the temporary image from the source. Changing rotation invalidates OCR geometry for that page.
+`ImageProcessor` estimates page skew and luminance range, then applies optional denoise, contrast stretching, and rotation. `MainWindow` keeps the original image in memory, writes the processed page to a temporary PNG for recognition, and displays that same processed image. Project files store settings and both source and processed dimensions; reopening a project recreates the temporary image from the source. Changing rotation invalidates OCR geometry for that page. Rendering policy lives on the document, while each page stores its actual DPI. Render caches include page number and DPI; saved page DPI takes precedence over the default policy. Adaptive rendering analyzes a 150 DPI pilot using `recommendedRenderDpi` and selects a supported resolution, bounded by estimated pixel count. Explicit DPI changes scale all processed coordinates and source dimensions together; undo to an older page snapshot triggers a render at that snapshot's DPI. Arbitrary source-size changes still fail validation.
 
 ## Export boundary
 
-`ExportResult` and `ExportProgress` are shared contracts in `exporttypes.h`. Scientific HTML and verified sample exports each have their own public header; neither includes or uses the PDF exporter. `readExportPage` owns source decoding, orientation, preprocessing, and source-dimension validation. Each exporter uses that common loader. External export commands share one cancellable, timed runner.
+`ExportResult` and `ExportProgress` are shared contracts in `exporttypes.h`. Scientific HTML and verified sample exports each have their own public header; neither includes or uses the PDF exporter. `readExportPage` owns source decoding, orientation, preprocessing, and source-dimension validation. Each exporter uses that common loader, which renders at saved per-page DPI and records it on the returned image. The PDF writer converts pixels to physical points using that DPI, so mixed-resolution documents retain page size and block positions. External export commands share one cancellable, timed runner.
 
 `PdfExporter` owns the PDF writer, page sequence, source loading, optional OCRmyPDF conversion, and atomic destination replacement. It composes two separate operations for formatted output:
 
