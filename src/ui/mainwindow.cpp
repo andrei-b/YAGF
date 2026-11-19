@@ -99,6 +99,13 @@ using processing::ImageProcessor;
 using processing::BatchPageOptions;
 
 namespace {
+void addToolbarSeparator(QToolBar *toolbar)
+{
+    auto *action = toolbar->addSeparator();
+    // Keep the styled width while the toolbar settles its initial layout.
+    toolbar->widgetForAction(action)->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Minimum);
+}
+
 QIcon recognizeActionIcon()
 {
     return QIcon::fromTheme(QStringLiteral("document-scan"),
@@ -498,7 +505,7 @@ MainWindow::MainWindow()
     saveAction->setToolTip(tr("Save the current project"));
     fileMenu->addAction(tr("Save project as…"), this, &MainWindow::saveProjectAs);
     fileMenu->addAction(tr("Save portable project folder…"), this, &MainWindow::savePortableProject);
-    toolbar->addSeparator();
+    addToolbarSeparator(toolbar);
     previousButton = new QPushButton(QIcon(QStringLiteral(":/legacy/back.png")), {}, this);
     previousButton->setObjectName(QStringLiteral("pageNavButton"));
     previousButton->setToolTip(tr("Previous page"));
@@ -519,7 +526,7 @@ MainWindow::MainWindow()
     connect(nextButton, &QPushButton::clicked, this, [this] { showPage(currentPage + 1); });
     connect(pageSpin, &QSpinBox::valueChanged, this, &MainWindow::showPage);
     updatePageControls();
-    toolbar->addSeparator();
+    addToolbarSeparator(toolbar);
     auto *modeGroup = new QActionGroup(this);
     auto *panAction = toolbar->addAction(tr("Pan"));
     panAction->setCheckable(true);
@@ -540,7 +547,7 @@ MainWindow::MainWindow()
                                      tr("Zoom in"), this, [this] { view->zoomBy(1.25); });
     zoomIn->setToolTip(tr("Zoom in"));
     qobject_cast<QToolButton *>(toolbar->widgetForAction(zoomIn))->setToolButtonStyle(Qt::ToolButtonIconOnly);
-    toolbar->addSeparator();
+    addToolbarSeparator(toolbar);
     improveAction = toolbar->addAction(tr("Improve page…"), this, &MainWindow::improveCurrentPage);
     improveAction->setObjectName(QStringLiteral("improvePageAction"));
     improveAction->setEnabled(false);
@@ -598,7 +605,7 @@ MainWindow::MainWindow()
             status->setText(tr("Cancelling export…"));
         }
     });
-    toolbar->addSeparator();
+    addToolbarSeparator(toolbar);
     auto *languageLabel = new QLabel(tr("OCR"), this);
     languageLabel->setObjectName(QStringLiteral("toolbarCaption"));
     toolbar->addWidget(languageLabel);
@@ -775,7 +782,7 @@ MainWindow::MainWindow()
             const QSignalBlocker blocker(fontPicker);
             fontPicker->setCurrentFont(format.font());
         });
-    formatToolbar->addSeparator();
+    addToolbarSeparator(formatToolbar);
     spellCheckAction = formatToolbar->addAction(tr("Spell check"));
     spellCheckAction->setObjectName(QStringLiteral("spellCheckAction"));
     spellCheckAction->setCheckable(true);

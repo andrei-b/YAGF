@@ -28,6 +28,7 @@
 #include <QTextEdit>
 #include <QThread>
 #include <QTimer>
+#include <QToolBar>
 #include <QUrl>
 #include <QTest>
 #include <QSplitter>
@@ -219,6 +220,26 @@ int main(int argc, char **argv)
     regionWindow.loadSource(sourcePath);
     regionWindow.show();
     QApplication::processEvents();
+    const auto separatorWidths = [&] {
+        QVector<int> widths;
+        for (auto *toolbar : regionWindow.findChildren<QToolBar *>())
+            for (auto *action : toolbar->actions()) if (action->isSeparator()) {
+                auto *separator = toolbar->widgetForAction(action);
+                if (!separator->isVisible()) continue;
+                assert(separator->width() == separator->sizeHint().width());
+                widths.append(separator->width());
+            }
+        assert(!widths.isEmpty());
+        return widths;
+    };
+    const QSize startupSize = regionWindow.size();
+    const auto startupSeparators = separatorWidths();
+    regionWindow.resize(startupSize + QSize(90, 30));
+    QApplication::processEvents();
+    separatorWidths();
+    regionWindow.resize(startupSize);
+    QApplication::processEvents();
+    assert(separatorWidths() == startupSeparators);
     auto *pageView = regionWindow.findChild<yagf::ui::PageView *>(QStringLiteral("pagePreview"));
     auto *regions = regionWindow.findChild<QListWidget *>(QStringLiteral("imageRegions"));
     auto *regionWords = regionWindow.findChild<QListWidget *>(QStringLiteral("recognizedWords"));
