@@ -95,6 +95,42 @@ int main()
     assert(qGray(legacy->pixel(20,5)) == 0 && qGray(guided->pixel(20,5)) == 255);
     assert(qGray(guided->pixel(423,390)) == 0);
     assert(ImageProcessor::estimateInkThreshold(speckled, {}) == 0);
+    const auto leveled = ImageProcessor::apply(uneven, {.levelShadows=true});
+    assert(leveled && qGray(leveled->pixel(15, 30)) > 220);
+    assert(qGray(leveled->pixel(895, 30)) > 235);
+    assert(qGray(leveled->pixel(82, 82)) + 55 < qGray(leveled->pixel(82, 70)));
+
+    for (int sign : {-1, 1}) {
+        // Generate a curved target with known, independent pixel coordinates.
+        QImage curve(800, 600, QImage::Format_RGB32);
+        curve.fill(Qt::white);
+        for (int x = 20; x < 780; ++x) {
+            if (x % 17 < 4) continue;
+            const double t = x / 799.;
+            const int displacement = qRound(sign * 30 * 4*t*(1-t));
+            for (int baseline = 50; baseline <= 550; baseline += 40)
+                for (int y = baseline; y < baseline+7; ++y)
+                    curve.setPixelColor(x, y+displacement, Qt::black);
+        }
+        // Symbols on the page boundaries must survive as well.
+        curve.setPixelColor(0, 0, Qt::red);
+        curve.setPixelColor(400, 599, Qt::blue);
+        const auto estimated = ImageProcessor::estimateBendPercent(curve);
+        assert(estimated && std::abs(*estimated - sign*5.) < .65);
+        const auto flat = ImageProcessor::apply(curve, {.bendPercent=sign*5.});
+        assert(flat && flat->size() == QSize(800, 630));
+        const int margin = sign > 0 ? 30 : 0;
+        assert(flat->pixelColor(0, margin) == Qt::red);
+        assert(flat->pixelColor(400, 599 + margin - sign*30) == Qt::blue);
+        for (int x : {208, 401, 685})
+            assert(flat->pixelColor(x, 132 + margin) == Qt::black);
+        const auto residual = ImageProcessor::estimateBendPercent(*flat);
+        assert(residual && *residual == 0.);
+    }
+    assert(!ImageProcessor::apply(clean, {.bendPercent=9}));
+    QImage blank(800, 600, QImage::Format_RGB32);
+    blank.fill(Qt::white);
+    assert(!ImageProcessor::estimateBendPercent(blank));
     const auto rotate=ImageProcessor::apply(uneven,{.quarterTurns=1,.adaptiveBinarization=true});
     assert(rotate && rotate->size()==QSize(900,1200));
     assert(!ImageProcessor::apply(uneven,{.quarterTurns=4}));

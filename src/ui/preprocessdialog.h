@@ -37,6 +37,8 @@ private:
     QImage previewSource, analysisSource;
     QComboBox *rotationCombo;
     QCheckBox *binaryCheck;
+    QCheckBox *shadowCheck;
+    QDoubleSpinBox *bendSpin;
     QPushButton *orientationButton;
     QFutureWatcher<std::expected<processing::PageOrientation, processing::OcrError>> orientationWatcher;
     std::stop_source orientationStop;

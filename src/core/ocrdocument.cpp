@@ -458,7 +458,8 @@ QJsonObject OcrDocument::toJson() const
                                          {"denoise", page.preprocessing.denoise},
                                          {"quarter_turns", page.preprocessing.quarterTurns},
                                          {"adaptive_binarization", page.preprocessing.adaptiveBinarization},
-                                         {"ink_threshold", page.preprocessing.inkThreshold}}},
+                                         {"ink_threshold", page.preprocessing.inkThreshold},
+                                         {"bend_percent", page.preprocessing.bendPercent}, {"level_shadows", page.preprocessing.levelShadows}}},
                                      {"engine", page.engineId}, {"language", page.language},
                                      {"regions", regionItems}, {"image_regions", imageRegionItems},
                                      {"words", wordItems},
@@ -559,6 +560,15 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
                 return fail(QStringLiteral("Invalid page orientation."));
             if (settings.contains("adaptive_binarization") && !settings.value("adaptive_binarization").isBool())
                 return fail(QStringLiteral("Invalid adaptive binarization setting."));
+            if (settings.contains("bend_percent")) {
+                const auto bend = settings.value("bend_percent");
+                if (!bend.isDouble() || !std::isfinite(bend.toDouble()) || std::abs(bend.toDouble()) > PreprocessSettings::maxBendPercent)
+                    return fail(QStringLiteral("Invalid page bend."));
+                page.preprocessing.bendPercent = bend.toDouble();
+            }
+            if (settings.contains("level_shadows") && !settings.value("level_shadows").isBool())
+                return fail(QStringLiteral("Invalid shadow correction setting."));
+            page.preprocessing.levelShadows = settings.value("level_shadows").toBool();
             if (settings.contains("ink_threshold") &&
                 (!integer(settings, "ink_threshold", &page.preprocessing.inkThreshold) ||
                  page.preprocessing.inkThreshold < 0 || page.preprocessing.inkThreshold > 255))

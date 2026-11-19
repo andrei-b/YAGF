@@ -6,6 +6,7 @@
 #include <QString>
 
 #include <expected>
+#include <optional>
 
 namespace yagf::processing {
 
@@ -20,6 +21,7 @@ struct QualityAssessment {
 class ImageProcessor {
 public:
     [[nodiscard]] static QImage normalizedTextPilot(const QImage &pilot);
+    [[nodiscard]] static std::optional<double> estimateBendPercent(const QImage &upright);
     // Estimate ink/paper separation from confident word boxes on the same pilot image.
     [[nodiscard]] static int estimateInkThreshold(const QImage &pilot, const QVector<QRect> &words);
     // Inspect a 150-DPI pilot; small printed components request a higher render DPI.

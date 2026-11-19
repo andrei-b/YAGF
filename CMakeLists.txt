@@ -28,7 +28,7 @@ target_include_directories(yagf_core PUBLIC src/core)
 # Image/source operations have no OCR, network, or job-controller dependency.
 add_library(yagf_imaging STATIC
     src/processing/pagesource.cpp src/processing/pagesource.h
-    src/processing/imageprocessor.cpp src/processing/imageprocessor.h
+    src/processing/imageprocessor.cpp src/processing/imageprocessor.h src/processing/pagebend.cpp
     src/processing/symbolshape.cpp src/processing/symbolshape.h)
 target_link_libraries(yagf_imaging PUBLIC yagf_core Qt6::Gui)
 target_include_directories(yagf_imaging PUBLIC src/processing)

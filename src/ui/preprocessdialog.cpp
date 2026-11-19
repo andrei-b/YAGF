@@ -74,6 +74,39 @@ PreprocessDialog::PreprocessDialog(const QImage &source, core::PreprocessSetting
     filters->addWidget(resetButton);
     layout->addLayout(filters);
 
+    auto *curvature = new QHBoxLayout;
+    shadowCheck = new QCheckBox(tr("Level shadows"), this);
+    shadowCheck->setChecked(initial.levelShadows);
+    shadowCheck->setToolTip(tr("Even out paper brightness across a photographed page before recognition."));
+    bendSpin = new QDoubleSpinBox(this);
+    bendSpin->setObjectName("pageBend");
+    bendSpin->setRange(-core::PreprocessSettings::maxBendPercent, core::PreprocessSettings::maxBendPercent);
+    bendSpin->setDecimals(1);
+    bendSpin->setSingleStep(.1);
+    bendSpin->setSuffix("%");
+    bendSpin->setValue(initial.bendPercent);
+    bendSpin->setToolTip(tr("How far the middle of a text line bows relative to the page height. Positive means downward."));
+    auto *detectBend = new QPushButton(tr("Detect bend"), this);
+    curvature->addWidget(shadowCheck);
+    curvature->addWidget(new QLabel(tr("Line bend:"), this));
+    curvature->addWidget(bendSpin);
+    curvature->addWidget(detectBend);
+    curvature->addStretch();
+    layout->addLayout(curvature);
+    connect(bendSpin, &QDoubleSpinBox::valueChanged, this, &PreprocessDialog::refreshPreview);
+    connect(detectBend, &QPushButton::clicked, this, [this] {
+        const auto upright = processing::ImageProcessor::apply(analysisSource,
+            {.quarterTurns = rotationCombo->currentIndex(), .levelShadows = shadowCheck->isChecked()});
+        if (!upright) { messageLabel->setText(upright.error()); return; }
+        const auto bend = processing::ImageProcessor::estimateBendPercent(*upright);
+        if (bend) {
+            bendSpin->setValue(*bend);
+            messageLabel->setText(tr("Estimated line bend: %1% of page height.").arg(bendSpin->value(), 0, 'f', 1));
+        } else {
+            messageLabel->setText(tr("Too little agreement between text rows. Adjust Line bend using the preview."));
+        }
+    });
+
     auto *images = new QHBoxLayout();
     auto *beforeColumn = new QVBoxLayout();
     beforeColumn->addWidget(new QLabel(tr("Original"), this));
@@ -100,13 +133,16 @@ PreprocessDialog::PreprocessDialog(const QImage &source, core::PreprocessSetting
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     layout->addWidget(buttons);
     connect(binaryCheck, &QCheckBox::toggled, this, &PreprocessDialog::refreshPreview);
-    connect(rotationCombo, &QComboBox::currentIndexChanged, this, [this] { angleSpin->setValue(0); refreshPreview(); });
+    connect(rotationCombo, &QComboBox::currentIndexChanged, this, [this] { angleSpin->setValue(0); bendSpin->setValue(0); refreshPreview(); });
     connect(angleSpin, &QDoubleSpinBox::valueChanged, this, &PreprocessDialog::refreshPreview);
     const auto changedFilter = [this] { inkThreshold = 0; refreshPreview(); };
+    connect(shadowCheck, &QCheckBox::toggled, this, changedFilter);
     connect(contrastCheck, &QCheckBox::toggled, this, changedFilter);
     connect(denoiseCheck, &QCheckBox::toggled, this, changedFilter);
     connect(resetButton, &QPushButton::clicked, this, [this] {
         inkThreshold = 0;
+        bendSpin->setValue(0);
+        shadowCheck->setChecked(false);
         rotationCombo->setCurrentIndex(0);
         binaryCheck->setChecked(false);
         angleSpin->setValue(0.0);
@@ -152,7 +188,9 @@ PreprocessDialog::~PreprocessDialog()
 
 void PreprocessDialog::detectSkew()
 {
-    const auto rotated = processing::ImageProcessor::apply(analysisSource, {.quarterTurns = rotationCombo->currentIndex()});
+    const auto rotated = processing::ImageProcessor::apply(analysisSource,
+        {.quarterTurns = rotationCombo->currentIndex(), .bendPercent = bendSpin->value(),
+         .levelShadows = shadowCheck->isChecked()});
     if (!rotated) { messageLabel->setText(rotated.error()); return; }
     const auto assessment = processing::ImageProcessor::assess(*rotated);
     if (!assessment) { messageLabel->setText(assessment.error()); return; }
@@ -207,12 +245,15 @@ core::PreprocessSettings PreprocessDialog::settings() const
             .denoise = denoiseCheck->isChecked(),
             .quarterTurns = rotationCombo->currentIndex(),
             .adaptiveBinarization = binaryCheck->isChecked(),
-            .inkThreshold = binaryCheck->isChecked() ? inkThreshold : 0};
+            .inkThreshold = binaryCheck->isChecked() ? inkThreshold : 0,
+            .bendPercent = bendSpin->value(), .levelShadows = shadowCheck->isChecked()};
 }
 
 void PreprocessDialog::refreshPreview()
 {
-    const auto preview = processing::ImageProcessor::apply(inkThreshold && binaryCheck->isChecked() ? analysisSource : previewSource, settings());
+    const auto filters = settings();
+    const bool usePilot = filters.inkThreshold || filters.levelShadows || filters.bendPercent != 0;
+    const auto preview = processing::ImageProcessor::apply(usePilot ? analysisSource : previewSource, filters);
     if (!preview) {
         messageLabel->setText(preview.error());
         return;

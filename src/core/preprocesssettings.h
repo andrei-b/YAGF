@@ -13,10 +13,14 @@ struct PreprocessSettings {
 
     int inkThreshold = 0; // Local darkness threshold learned from pilot words; zero uses the original filter.
 
+    static constexpr double maxBendPercent = 8.;
+    double bendPercent = 0.; // Downward sag at the center as a percentage of upright page height.
+    bool levelShadows = false;
+
     bool operator==(const PreprocessSettings &) const = default;
     [[nodiscard]] bool isIdentity() const
     {
-        return std::abs(deskewDegrees) < 0.01 && !autoContrast && !denoise && quarterTurns == 0 && !adaptiveBinarization;
+        return std::abs(deskewDegrees) < 0.01 && !autoContrast && !denoise && quarterTurns == 0 && !adaptiveBinarization && bendPercent == 0 && !levelShadows;
     }
 };
 

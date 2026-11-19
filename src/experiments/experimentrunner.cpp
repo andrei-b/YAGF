@@ -31,7 +31,8 @@ namespace {
 QString digest(const QByteArray &bytes) {return QString::fromLatin1(QCryptographicHash::hash(bytes,QCryptographicHash::Sha256).toHex());}
 QJsonObject preprocessing(const core::PreprocessSettings &settings) {
     return {{"quarter_turns",settings.quarterTurns},{"deskew_degrees",settings.deskewDegrees},
-        {"contrast",settings.autoContrast},{"denoise",settings.denoise},{"binarize",settings.adaptiveBinarization},{"ink_threshold",settings.inkThreshold}};
+        {"contrast",settings.autoContrast},{"denoise",settings.denoise},{"binarize",settings.adaptiveBinarization},{"ink_threshold",settings.inkThreshold},
+        {"bend_percent",settings.bendPercent},{"level_shadows",settings.levelShadows}};
 }
 QJsonObject localHost() {
     return {{"os",QSysInfo::prettyProductName()},{"architecture",QSysInfo::currentCpuArchitecture()},
@@ -139,16 +140,19 @@ std::expected<QJsonObject,QString> runExperiment(const core::OcrDocument &docume
             if(!raw){finish(raw.error().error.isEmpty()?QStringLiteral("Cancelled"):raw.error().error);continue;}
             const int dpi=processing::isPagedSource(document.sourcePath)?qRound(raw->dotsPerMeterY()*.0254):150;
             auto settings=original->preprocessing;
-            if(!p.savedFilters){settings.autoContrast=false;settings.denoise=false;settings.adaptiveBinarization=false;settings.inkThreshold=0;}
+            if(!p.savedFilters){settings.autoContrast=false;settings.denoise=false;settings.adaptiveBinarization=false;settings.inkThreshold=0;settings.levelShadows=false;}
             settings.autoContrast|=p.contrast;settings.denoise|=p.denoise;
             settings.adaptiveBinarization|=p.binarize;
             if(p.autoDeskew) {
                 auto binary=processing::ImageProcessor::apply(*raw,{.adaptiveBinarization=true});
                 if(!binary){finish(binary.error());continue;}
                 auto rotation=processing::detectPageOrientation(*binary,stop);
-                if(rotation)settings.quarterTurns=rotation->quarterTurns;
+                if(rotation) {
+                    if (settings.quarterTurns != rotation->quarterTurns) settings.bendPercent = 0;
+                    settings.quarterTurns=rotation->quarterTurns;
+                }
                 else record["orientation_note"]=rotation.error().message;
-                auto upright=processing::ImageProcessor::apply(*raw,{.quarterTurns=settings.quarterTurns});
+                auto upright=processing::ImageProcessor::apply(*raw,{.quarterTurns=settings.quarterTurns, .bendPercent=settings.bendPercent, .levelShadows=settings.levelShadows});
                 if(!upright){finish(upright.error());continue;}
                 auto assessment=processing::ImageProcessor::assess(*upright);
                 if(assessment)settings.deskewDegrees=assessment->skewDegrees;
@@ -183,7 +187,7 @@ std::expected<QJsonObject,QString> runExperiment(const core::OcrDocument &docume
             if(!outcome){finish(outcome.error().cancelled?QStringLiteral("Cancelled"):outcome.error().message);continue;}
             if(outcome->number!=ref.number || outcome->width!=input->width() || outcome->height!=input->height()){finish("Inconsistent provider geometry");continue;}
             auto truth=core::rescalePageGeometry(*original,input->width(),input->height(),raw->width(),raw->height(),dpi);
-            const bool sameFrame=settings.quarterTurns==original->preprocessing.quarterTurns &&
+            const bool sameFrame=settings.bendPercent==original->preprocessing.bendPercent && settings.quarterTurns==original->preprocessing.quarterTurns &&
                 std::abs(settings.deskewDegrees-original->preprocessing.deskewDegrees)<.01;
             auto scores=core::scoreRecognition(truth,*outcome,sameFrame && engine->capabilities().supportsWordBoxes,stop);
             if(!scores){finish(scores.error());continue;}

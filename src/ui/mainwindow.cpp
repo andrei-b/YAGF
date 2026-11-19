@@ -1605,10 +1605,12 @@ void MainWindow::improveCurrentPage()
     const core::PreprocessSettings proposed = dialog.settings();
     if (proposed == current) return;
     const bool geometryChanged = std::abs(proposed.deskewDegrees - current.deskewDegrees) >= 0.01 ||
-                                 proposed.quarterTurns != current.quarterTurns;
-    if (geometryChanged && existing && (!existing->words.isEmpty() || !existing->imageRegions.isEmpty()) &&
+                                 proposed.quarterTurns != current.quarterTurns || proposed.bendPercent != current.bendPercent;
+    if (geometryChanged && existing &&
+        (!existing->words.isEmpty() || !existing->imageRegions.isEmpty() || !existing->regions.isEmpty() ||
+         !existing->deletedWords.isEmpty() || !existing->pendingCorrections.isEmpty()) &&
         QMessageBox::warning(this, tr("Rebuild page geometry"),
-            tr("Changing the rotation or deskew angle moves the scan and will clear OCR boxes, corrections, and image regions on this page. Continue?"),
+            tr("Changing the rotation, deskew angle, or bend moves the scan and will clear OCR boxes, corrections, and image regions on this page. Continue?"),
             QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Yes) return;
     const auto processed = ImageProcessor::apply(rawImage, proposed);
     if (!processed) { showError(processed.error()); return; }

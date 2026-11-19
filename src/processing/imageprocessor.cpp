@@ -158,6 +158,60 @@ double projectionScore(std::span<const QPoint> ink, int height, int width, doubl
     return score;
 }
 
+// Estimate paper brightness from the lighter pixels of each tile. Interpolate
+// the estimates before dividing, so crossing a tile edge cannot split a stroke.
+QImage levelPaper(const QImage &source)
+{
+    const auto gray = source.convertToFormat(QImage::Format_Grayscale8);
+    const int tile = std::clamp(std::min(gray.width(), gray.height()) / 24, 16, 128);
+    const int cols = std::max(1, gray.width() / tile), rows = std::max(1, gray.height() / tile);
+    QImage paper(cols, rows, QImage::Format_Grayscale8);
+    for (int r = 0; r < rows; ++r) {
+        const int top = qint64(r) * gray.height() / rows, bottom = qint64(r+1) * gray.height() / rows;
+        for (int c = 0; c < cols; ++c) {
+            const int left = qint64(c) * gray.width() / cols, right = qint64(c+1) * gray.width() / cols;
+            std::array<int, 256> counts{};
+            for (int y = top; y < bottom; ++y) {
+                const auto *line = gray.constScanLine(y);
+                for (int x = left; x < right; ++x) ++counts[line[x]];
+            }
+            paper.scanLine(r)[c] = percentile(counts, (bottom-top)*(right-left), .85);
+        }
+    }
+    const auto background = paper.scaled(gray.size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation)
+                                 .convertToFormat(QImage::Format_Grayscale8);
+    QImage result(gray.size(), QImage::Format_Grayscale8);
+    for (int y = 0; y < gray.height(); ++y) {
+        const auto *line = gray.constScanLine(y), *light = background.constScanLine(y);
+        auto *out = result.scanLine(y);
+        for (int x = 0; x < gray.width(); ++x)
+            out[x] = std::min(255, 248 * line[x] / std::max(48, int(light[x])));
+    }
+    return result;
+}
+
+// Copy vertical strips without resampling narrow strokes. Extra white margin
+// keeps content at both edges when the columns shift up or down.
+QImage flattenBend(const QImage &source, int sag)
+{
+    QImage flat(source.width(), source.height() + std::abs(sag), QImage::Format_ARGB32);
+    if (flat.isNull()) return {};
+    flat.fill(Qt::white);
+    QPainter painter(&flat);
+    const auto shift = [&](int x) {
+        const double t = double(x) / std::max(1, source.width()-1);
+        return std::max(0, sag) - qRound(4. * sag * t * (1.-t));
+    };
+    for (int start = 0; start < source.width();) {
+        const int offset = shift(start);
+        int end = start+1;
+        while (end < source.width() && shift(end) == offset) ++end;
+        painter.drawImage(QPoint(start, offset), source, QRect(start, 0, end-start, source.height()));
+        start = end;
+    }
+    return flat;
+}
+
 QImage medianDenoise(const QImage &source)
 {
     const QImage gray = source.convertToFormat(QImage::Format_Grayscale8);
@@ -343,12 +397,22 @@ std::expected<QImage, QString> ImageProcessor::apply(const QImage &source,
         return std::unexpected(QStringLiteral("Deskew angle must be within 15 degrees."));
     if (settings.quarterTurns < 0 || settings.quarterTurns > 3)
         return std::unexpected(QStringLiteral("Page orientation must be a multiple of 90 degrees."));
+    if (!std::isfinite(settings.bendPercent) || std::abs(settings.bendPercent) > core::PreprocessSettings::maxBendPercent)
+        return std::unexpected(QStringLiteral("Page bend is outside the supported range."));
     if (settings.isIdentity()) return source;
     if (static_cast<qint64>(source.width()) * source.height() > 80'000'000)
         return std::unexpected(QStringLiteral("Image is too large to preprocess safely."));
     QImage current = source.convertToFormat(QImage::Format_ARGB32);
     if (settings.quarterTurns)
         current = current.transformed(QTransform().rotate(settings.quarterTurns * 90), Qt::FastTransformation);
+    if (settings.levelShadows) current = levelPaper(current).convertToFormat(QImage::Format_ARGB32);
+    const int sag = qRound(settings.bendPercent * current.height() / 100.);
+    if (sag) {
+        if (qint64(current.width()) * (current.height() + std::abs(sag)) > 80'000'000)
+            return std::unexpected(QStringLiteral("Straightened page is too large to preprocess."));
+        current = flattenBend(current, sag);
+        if (current.isNull()) return std::unexpected(QStringLiteral("Could not allocate the straightened page."));
+    }
     if (settings.denoise) current = medianDenoise(current).convertToFormat(QImage::Format_ARGB32);
     if (settings.autoContrast) current = stretchContrast(current);
     if (settings.adaptiveBinarization) current = adaptiveBinarize(current, settings.inkThreshold).convertToFormat(QImage::Format_ARGB32);
