@@ -75,6 +75,8 @@ struct ImageRegion {
     QRect bounds;
     QString language; // Empty inherits the page recognition language.
     bool notText = false;
+    QString content; // Empty inherits the page engine. Otherwise text, math or mixed.
+    bool autoDetected = false;
 };
 
 struct OcrPage {

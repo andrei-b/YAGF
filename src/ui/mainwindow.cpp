@@ -43,6 +43,7 @@
 #include <QGraphicsPathItem>
 #include <QGraphicsRectItem>
 #include <QGraphicsScene>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QImageReader>
 #include <QImageIOHandler>
@@ -163,6 +164,14 @@ QIcon textStyleActionIcon(bool bold)
                             QIcon(pixmap));
 }
 
+QString contentLabel(const QString &content)
+{
+    if (content == "text") return QObject::tr("Text");
+    if (content == "math") return QObject::tr("Math");
+    if (content == "mixed") return QObject::tr("Text + math");
+    return QObject::tr("Use page engine");
+}
+
 bool overlapsBox(const QRect &box, const QRect &selection)
 {
     if (selection.contains(box.center())) return true;
@@ -183,9 +192,11 @@ bool overlapsWord(const OcrWord &word, const QRect &selection)
 void carryCorrections(OcrPage &fresh, const OcrPage *oldPage, bool estimateFormatting)
 {
     if (!oldPage) return;
+    auto detectedBlocks = std::move(fresh.imageRegions);
     core::retainCorrections(fresh, *oldPage, estimateFormatting);
+    if (!detectedBlocks.isEmpty() || fresh.engineId == "local-mixed") fresh.imageRegions = std::move(detectedBlocks);
     const auto hasLayout = [](const QString &engine) {
-        return engine == "surya-remote" || engine == "rapid-latex-ocr";
+        return engine == "surya-remote" || engine == "rapid-latex-ocr" || engine == "local-mixed";
     };
     const bool structured = hasLayout(fresh.engineId) || hasLayout(oldPage->engineId);
     const bool sameEngine = oldPage->engineId == fresh.engineId;
@@ -630,9 +641,9 @@ MainWindow::MainWindow()
     ocrButton->setObjectName(QStringLiteral("primaryButton"));
     toolbar->addWidget(ocrButton);
     connect(ocrButton, &QPushButton::clicked, this, &MainWindow::runOcr);
-    mathMode = new QCheckBox(tr("Math OCR"), this);
+    mathMode = new QCheckBox(tr("Math only"), this);
     mathMode->setObjectName(QStringLiteral("mathOcrMode"));
-    mathMode->setToolTip(tr("Recognize rows of printed equations as LaTeX on this computer."));
+    mathMode->setToolTip(tr("Use the formula engine for every row. Leave unchecked for automatic text and math recognition with local Tesseract."));
     toolbar->addWidget(mathMode);
     connect(mathMode, &QCheckBox::toggled, this, [this](bool enabled) {
         processor.setMathMode(enabled);
@@ -688,7 +699,7 @@ MainWindow::MainWindow()
     pdfAction = pdfMenu->addAction(tr("Export searchable PDF…"), this, [this] { exportPdf(false); });
     formattedPdfAction = pdfMenu->addAction(tr("Export formatted PDF…"), this, [this] { exportPdf(false, true); });
     formattedPdfAction->setObjectName(QStringLiteral("exportFormattedPdfAction"));
-    formattedPdfAction->setToolTip(tr("Recreate corrected text using matching fonts in the original page blocks."));
+    formattedPdfAction->setToolTip(tr("Recreate corrected text and optionally typeset recognized formulas."));
     formattedPdfAction->setEnabled(false);
     pdfaAction = pdfMenu->addAction(tr("Export archival PDF/A…"), this, [this] { exportPdf(true); });
     convertDjVuAction = pdfMenu->addAction(tr("Convert DjVu to PDF…"), this, &MainWindow::convertDjVuToPdf);
@@ -753,6 +764,17 @@ MainWindow::MainWindow()
         "Select a block and press Shift+F10 to open its menu from the keyboard."));
     regionList->setMinimumHeight(80);
     blocksLayout->addWidget(regionList, 1);
+    splitBlocksButton = new QPushButton(tr("Smart split"), blocksPanel);
+    splitBlocksButton->setObjectName("smartSplit");
+    splitBlocksButton->setToolTip(tr("Detect text, math and mixed blocks using the OCR language."));
+    splitBlocksButton->setEnabled(false);
+    blocksLayout->addWidget(splitBlocksButton);
+    connect(splitBlocksButton, &QPushButton::clicked, this, [this] {
+        if (!maybeApplyEditor()) return;
+        mathMode->setChecked(false);
+        status->setText(tr("Detecting text and math blocks…"));
+        processor.splitBlocks(imagePath, languageEdit->text(), currentPage);
+    });
     deleteRegionButton = new QPushButton(tr("Delete region"), blocksPanel);
     deleteRegionButton->setIcon(removeBlockIcon());
     deleteRegionButton->setObjectName(QStringLiteral("deleteRegionButton"));
@@ -1001,6 +1023,25 @@ MainWindow::MainWindow()
     connect(&processor, &DocumentProcessor::specialistWarning, this, [this](const QString &message) {
         statusBar()->showMessage(message, 30000);
     });
+    connect(&processor, &DocumentProcessor::blocksSplit, this, [this](OcrPage split) {
+        const auto *old = document.page(currentPage);
+        const QString language = split.language;
+        auto blocks = std::move(split.imageRegions);
+        OcrPage page = old ? *old : std::move(split);
+        if (!old) {
+            page.engineId.clear();
+            page.sourceWidth = rawImage.width();
+            page.sourceHeight = rawImage.height();
+            page.preprocessing = displayedPreprocessing;
+        }
+        page.imageRegions = std::move(blocks);
+        page.language = language;
+        selectedRegionIds.clear();
+        selectedImageRegion = -1;
+        const auto count = page.imageRegions.size();
+        undoStack.push(new ReplacePageCommand(document, currentPage, std::move(page), tr("Smart split")));
+        status->setText(tr("%1 blocks detected. Review their types, then click Recognize.").arg(count));
+    });
     connect(&processor, &DocumentProcessor::recognized, this,
             [this](OcrPage newPage, const QPoint &offset, const QRect &region) {
         QImageReader reader(imagePath);
@@ -1043,6 +1084,11 @@ MainWindow::MainWindow()
         } else {
             OcrPage merged;
             if (oldPage) merged = *oldPage;
+            for (const auto &detected : newPage.imageRegions) {
+                auto target = std::ranges::find(merged.imageRegions, detected.id, &ImageRegion::id);
+                if (target != merged.imageRegions.end() && target->content.isEmpty())
+                    target->content = detected.content;
+            }
             merged.id = QStringLiteral("page-%1").arg(currentPage);
             merged.number = currentPage;
             merged.width = size.width();
@@ -1093,6 +1139,10 @@ MainWindow::MainWindow()
             status->setText(tr("Recognized region %1 of %2")
                             .arg(nextQueuedImageRegion).arg(queuedImageRegions.size()));
             runNextImageRegion();
+        } else if (const auto *recognized = document.page(currentPage); recognized->engineId == "local-mixed") {
+            const auto math = std::ranges::count_if(recognized->words, [](const auto &word) { return word.layoutBlock; });
+            status->setText(tr("Page %1 · %2 blocks · %3 text words · %4 formulas")
+                .arg(currentPage).arg(recognized->imageRegions.size()).arg(recognized->words.size() - math).arg(math));
         } else status->setText((mathMode->isChecked() ? tr("Page %1: %2 formulas recognized")
                                                    : tr("Page %1: %2 words recognized"))
                              .arg(currentPage).arg(document.page(currentPage)->words.size()));
@@ -1170,6 +1220,7 @@ void MainWindow::setBusy(bool busy)
     verification->setBusy(blocked);
     scanAction->setEnabled(!blocked);
     mathMode->setEnabled(!blocked);
+    splitBlocksButton->setEnabled(!blocked && !imagePath.isEmpty());
     renderingAction->setEnabled(!blocked && processing::isPagedSource(originalPath));
     undoAction->setEnabled(!blocked && undoStack.canUndo());
     redoAction->setEnabled(!blocked && undoStack.canRedo());
@@ -1418,7 +1469,11 @@ void MainWindow::loadProject(const QString &path)
     correctionMemory.reset();
     externalDirty = false;
     mathMode->setChecked(document.mathOcr);
-    if (!mathMode->isChecked() && document.engine == processor.engineId() && !document.language.isEmpty())
+    if (const auto *first = document.page(1); first && !mathMode->isChecked() &&
+        std::ranges::any_of(first->imageRegions, [](const auto &r) { return !r.content.isEmpty(); }) &&
+        !first->language.isEmpty())
+        languageEdit->setText(first->language);
+    else if (!mathMode->isChecked() && (document.engine == processor.engineId() || document.engine == "local-mixed") && !document.language.isEmpty())
         languageEdit->setText(document.engine == "tesseract"
             ? processing::TesseractEngine::modelLanguage(document.language) : document.language);
     dirty = false;
@@ -1673,7 +1728,7 @@ void MainWindow::showPage(int number)
     currentPage = number;
     updatePageControls();
     if (const OcrPage *page = document.page(number);
-        page && !mathMode->isChecked() && page->engineId == processor.engineId() && !page->language.isEmpty())
+        page && !mathMode->isChecked() && (page->engineId == processor.engineId() || page->engineId == "local-mixed") && !page->language.isEmpty())
         languageEdit->setText(page->engineId == "tesseract"
             ? processing::TesseractEngine::modelLanguage(page->language) : page->language);
     wordList->clear();
@@ -1800,6 +1855,12 @@ void MainWindow::runOcr()
         if (hasCorrections && QMessageBox::question(this, tr("Recognize image regions"),
             tr("Some selected regions contain corrected text. New OCR may replace unmatched corrections. Continue?"))
             != QMessageBox::Yes) return;
+        if (targets.size() > 1 && processor.engineId() == "tesseract" &&
+            std::ranges::all_of(targets, [](const auto &r) { return !r.content.isEmpty(); })) {
+            status->setText(tr("Recognizing selected blocks…"));
+            processor.recognizeTypedRegions(imagePath, languageEdit->text(), currentPage, targets);
+            return;
+        }
         queuedImageRegions = std::move(targets);
         nextQueuedImageRegion = 0;
         runNextImageRegion();
@@ -2265,10 +2326,13 @@ void MainWindow::showDocument()
         box->setData(2, region.notText);
         box->setZValue(4);
         box->setAcceptedMouseButtons(Qt::NoButton);
-        box->setToolTip(tr("Region %1 · drag to move; drag an edge to resize").arg(i + 1));
+        box->setToolTip(tr("Region %1 · %2").arg(i + 1)
+            .arg(region.notText ? tr("Not a text") : contentLabel(region.content)));
         imageRegionBoxes.append(box);
-        const QString language = region.notText ? tr("Not a text") :
+        QString language = region.notText ? tr("Not a text") :
             region.language.isEmpty() ? tr("Page language") : region.language;
+        if (!region.notText && !region.content.isEmpty())
+            language = contentLabel(region.content) + QStringLiteral(" · ") + language;
         auto *item = new QListWidgetItem(QIcon(QPixmap::fromImage(regionPreview.copy(region.bounds)
             .scaled(regionList->iconSize(), Qt::KeepAspectRatio, Qt::SmoothTransformation))),
             tr("Block %1 · %2\n%3 × %4 px").arg(i + 1).arg(language)
@@ -2276,7 +2340,7 @@ void MainWindow::showDocument()
         item->setData(Qt::UserRole, region.id);
         item->setSizeHint(regionList->gridSize());
         item->setTextAlignment(Qt::AlignHCenter);
-        item->setToolTip(tr("Block %1 · %2\nRight-click to select its language or remove it.")
+        item->setToolTip(tr("Block %1 · %2\nRight-click to change its content type or language.")
             .arg(i + 1).arg(language));
         if (region.notText) item->setForeground(QColor(110, 110, 110));
     }
@@ -2355,9 +2419,13 @@ void MainWindow::refreshImageRegionSelection(bool updateWords)
     for (int i = 0; i < imageRegionBoxes.size(); ++i) {
         const bool active = selectedRegionIds.contains(page->imageRegions[i].id);
         const bool notText = page->imageRegions[i].notText;
-        imageRegionBoxes[i]->setPen(QPen(active ? QColor(210, 65, 25) : notText ? QColor(110, 110, 110) : QColor(25, 135, 55),
-                                         active ? 3 : 2, notText ? Qt::DashLine : Qt::SolidLine));
-        imageRegionBoxes[i]->setBrush(active ? QColor(230, 90, 35, 45) : notText ? QColor(100, 100, 100, 20) : QColor(35, 160, 70, 35));
+        const auto &kind = page->imageRegions[i].content;
+        QColor color = notText ? QColor(110, 110, 110) : kind == "math" ? QColor(49, 93, 172) :
+            kind == "mixed" ? QColor(127, 72, 153) : QColor(25, 135, 55);
+        if (active) color = QColor(210, 65, 25);
+        imageRegionBoxes[i]->setPen(QPen(color, active ? 3 : 2, notText ? Qt::DashLine : Qt::SolidLine));
+        color.setAlpha(active ? 45 : 30);
+        imageRegionBoxes[i]->setBrush(color);
     }
     deleteRegionButton->setEnabled(selectedImageRegion >= 0 && !processor.isBusy() && !exportBusy);
     regionOcrButton->setEnabled(rows.size() == 1 && !page->imageRegions[selectedImageRegion].notText &&
@@ -2401,6 +2469,7 @@ void MainWindow::moveImageRegion(int index, const QRectF &bounds)
         if (i != index && area.intersects(page->imageRegions[i].bounds)) { showDocument(); return; }
     OcrPage edited = *page;
     edited.imageRegions[index].bounds = area;
+    edited.imageRegions[index].autoDetected = false;
     selectedImageRegion = index;
     undoStack.push(new ReplacePageCommand(document, currentPage, std::move(edited), tr("Move image region")));
 }
@@ -2430,6 +2499,7 @@ void MainWindow::setBlockLanguage(int index, const QString &language, bool notTe
     OcrPage edited = *document.page(currentPage);
     auto &region = edited.imageRegions[index];
     if (region.language == language && region.notText == notText) return;
+    region.autoDetected = false;
     region.language = language;
     region.notText = notText;
     if (notText) edited.words.removeIf([&](const OcrWord &word) { return overlapsWord(word, region.bounds); });
@@ -2461,7 +2531,7 @@ void MainWindow::showBlockContextMenu(int index, const QPoint &globalPosition)
     addLanguage(tr("Use page language (%1)").arg(languageEdit->text()), {});
     addLanguage(tr("Not a text"), region.language, true);
     languages->addSeparator();
-    const bool tesseract = processor.engineId() == QStringLiteral("tesseract");
+    const bool tesseract = !region.content.isEmpty() || processor.engineId() == QStringLiteral("tesseract");
     const QStringList labels{tr("Automatic"), tr("English"), tr("German"), tr("French"), tr("Spanish"),
         tr("Italian"), tr("Portuguese"), tr("Russian"), tr("Ukrainian"), tr("Chinese"), tr("Japanese"),
         tr("Korean"), tr("Arabic"), tr("Hebrew")};
@@ -2477,6 +2547,19 @@ void MainWindow::showBlockContextMenu(int index, const QPoint &globalPosition)
         if (ok && QRegularExpression(QStringLiteral("^[A-Za-z0-9_+/-]{1,64}$")).match(code).hasMatch())
             setBlockLanguage(index, code, false);
     });
+    auto *contents = menu.addMenu(tr("Block content"));
+    for (const auto &kind : QStringList{"", "text", "math", "mixed"}) {
+        auto *action = contents->addAction(contentLabel(kind));
+        action->setCheckable(true);
+        action->setChecked(!region.notText && region.content == kind);
+        connect(action, &QAction::triggered, this, [this, index, kind] {
+            OcrPage changed = *document.page(currentPage);
+            changed.imageRegions[index].autoDetected = false;
+            changed.imageRegions[index].content = kind;
+            changed.imageRegions[index].notText = false;
+            undoStack.push(new ReplacePageCommand(document, currentPage, std::move(changed), tr("Set block content")));
+        });
+    }
     auto *remove = menu.addAction(removeBlockIcon(), tr("Remove block"));
     remove->setIconVisibleInMenu(true);
     connect(remove, &QAction::triggered, this, [this, index] { deleteImageRegion(index); });
@@ -2810,9 +2893,25 @@ void MainWindow::chooseExportPath(const QString &title, const QString &filter, c
 {
     ExportSaveDialog dialog(this, title, {}, filter);
     dialog.imageExport = format == ExportFormat::ScanImage;
-    if (dialog.imageExport) dialog.setOption(QFileDialog::DontUseNativeDialog);
+    const bool formatted = format == ExportFormat::FormattedPdf;
+    if (dialog.imageExport || formatted) dialog.setOption(QFileDialog::DontUseNativeDialog);
     dialog.setAcceptMode(QFileDialog::AcceptSave);
     if (!dialog.imageExport) dialog.setDefaultSuffix(suffix);
+    QCheckBox *typeset = nullptr;
+    QSettings settings(QStringLiteral("YAGF"), QStringLiteral("YAGF Revival"));
+    const QString typesetKey = QStringLiteral("export/typesetFormulas");
+    if (formatted) {
+        const bool available = processing::PdfExporter::hasPdfLatex();
+        typeset = new QCheckBox(available ? tr("Typeset math formulas") :
+            tr("Typeset math formulas (requires pdfLaTeX)"), &dialog);
+        typeset->setObjectName(QStringLiteral("typesetFormulas"));
+        typeset->setToolTip(tr("Use LaTeX to draw equations. Leave unchecked to keep formulas as scanned."));
+        typeset->setEnabled(available);
+        typeset->setChecked(available && settings.value(typesetKey, false).toBool());
+        if (auto *grid = qobject_cast<QGridLayout *>(dialog.layout()))
+            grid->addWidget(typeset, grid->rowCount(), 1);
+        else dialog.layout()->addWidget(typeset);
+    }
     if (dialog.exec() != QDialog::Accepted) return;
     const QString path = dialog.selectedFiles().value(0);
     if (path.isEmpty()) return;
@@ -2820,10 +2919,12 @@ void MainWindow::chooseExportPath(const QString &title, const QString &filter, c
         showError(tr("Choose a destination separate from the source and project files."));
         return;
     }
-    startExport(path, format);
+    const bool typesetFormulas = typeset && typeset->isChecked();
+    if (typeset && typeset->isEnabled()) settings.setValue(typesetKey, typesetFormulas);
+    startExport(path, format, typesetFormulas);
 }
 
-void MainWindow::startExport(const QString &path, ExportFormat format)
+void MainWindow::startExport(const QString &path, ExportFormat format, bool typesetFormulas)
 {
     exportPath = path;
     exportCancel = std::make_shared<std::atomic_bool>(false);
@@ -2832,7 +2933,7 @@ void MainWindow::startExport(const QString &path, ExportFormat format)
     status->setText(tr("Preparing export…"));
     const OcrDocument snapshot = document;
     const auto cancel = exportCancel;
-    exportWatcher.setFuture(QtConcurrent::run([this, snapshot, path, format, cancel, pageNumber = currentPage] {
+    exportWatcher.setFuture(QtConcurrent::run([this, snapshot, path, format, typesetFormulas, cancel, pageNumber = currentPage] {
         const auto progress = [this](qsizetype completed, qsizetype total) {
             emit exportProgress(completed, total);
         };
@@ -2848,7 +2949,8 @@ void MainWindow::startExport(const QString &path, ExportFormat format)
             return processing::VerifiedSampleExporter::write(snapshot, path, *cancel, progress);
         return processing::PdfExporter::write(snapshot, path, format == ExportFormat::ArchivalPdf, *cancel, progress,
             format == ExportFormat::FormattedPdf ? processing::PdfExporter::Mode::FormattedText :
-                                                  processing::PdfExporter::Mode::SearchableScan);
+                                                  processing::PdfExporter::Mode::SearchableScan,
+            typesetFormulas ? processing::PdfExporter::FormulaStyle::Typeset : processing::PdfExporter::FormulaStyle::Scanned);
     }));
 }
 

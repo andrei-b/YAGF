@@ -13,6 +13,6 @@ struct PdfPageLayout;
 QSet<QString> formulaWordIds(const core::OcrPage &page);
 void drawWord(QPainter &painter, const core::OcrWord &word, int dpi, bool formula);
 bool drawFormattedPage(QPainter &painter, const PdfPageLayout &layout, const QImage &image,
-                       const std::atomic_bool &cancelled);
+                       const std::atomic_bool &cancelled, const QSet<QString> &formulaWords = {});
 
 } // namespace yagf::processing::detail

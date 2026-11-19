@@ -1,0 +1,11 @@
+{
+  "project_version": 2,
+  "document": {
+    "schema_version": 2,
+    "source": "russian-math.png",
+    "engine": "tesseract",
+    "language": "rus",
+    "total_pages": 1,
+    "pages": []
+  }
+}

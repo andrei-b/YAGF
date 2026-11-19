@@ -42,7 +42,10 @@ public:
     void renderDocumentPage(int pageNumber, int dpiOverride = 0);
     int renderedDpi(int pageNumber) const;
     void startThumbnails(int pageCount);
+    void splitBlocks(const QString &imagePath, const QString &language, int pageNumber);
     void recognize(const QString &imagePath, const QString &language, int pageNumber);
+    void recognizeTypedRegions(const QString &imagePath, const QString &language, int pageNumber,
+                               const QVector<core::ImageRegion> &selected);
     void recognizeRegion(const QString &imagePath, const QString &language,
                          int pageNumber, const QRect &region);
     void recognizePages(const QVector<BatchPageOptions> &pages);
@@ -52,6 +55,7 @@ signals:
     void documentOpened(int pageCount);
     void pageRendered(int pageNumber, const QString &imagePath);
     void thumbnailReady(int pageNumber, const QString &imagePath);
+    void blocksSplit(core::OcrPage page);
     void recognized(core::OcrPage page, const QPoint &offset, const QRect &region);
     void batchPageRecognized(core::OcrPage page, const QSize &sourceSize);
     void batchProgress(qsizetype completed, qsizetype total);
@@ -60,7 +64,7 @@ signals:
     void failed(const QString &message);
     void specialistWarning(const QString &message);
 private:
-    enum class Job : quint8 { None, DocumentInfo, DocumentRender, Ocr, BatchRender, BatchOcr };
+    enum class Job : quint8 { None, DocumentInfo, DocumentRender, Ocr, SplitBlocks, BatchRender, BatchOcr };
     void discardRenderedPage(Job finishedJob);
     int selectedRenderDpi(int number) const;
     QString pagePrefix(int number) const;
@@ -73,13 +77,14 @@ private:
     void prepareBatchImage(const QString &path);
     void finishBatchError(const QString &message);
     void startOcrImage(const QString &path, const QImage &image, OcrOptions options,
-                       const QRect &region, bool batch);
+                       const QRect &region, bool batch, bool splitOnly = false, QVector<core::ImageRegion> selected = {});
 
     struct OcrJobResult {
         std::expected<core::OcrPage, OcrError> outcome;
         QStringList warnings;
         QPoint offset;
         QRect region;
+        QVector<core::ImageRegion> selected;
     };
 
     const core::OcrDocument *book; // Read only on the owning thread, before starting an OCR job.

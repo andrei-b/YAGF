@@ -445,7 +445,7 @@ QJsonObject OcrDocument::toJson(bool includeRestoredPixels) const
         }
         for (const ImageRegion &region : page.imageRegions)
             imageRegionItems.append(QJsonObject{{"id", region.id}, {"box", boxJson(region.bounds)},
-                {"language", region.language}, {"not_text", region.notText}});
+                {"language", region.language}, {"not_text", region.notText}, {"content", region.content}, {"auto_detected", region.autoDetected}});
         QJsonObject item{{"id", page.id}, {"number", page.number},
                                      {"width", page.width}, {"height", page.height},
                                      {"source_width", page.sourceWidth > 0 ? page.sourceWidth : page.width},
@@ -622,6 +622,13 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
                 if ((item.contains("language") && (!item.value("language").isString() || item.value("language").toString().size() > 64)) ||
                     (item.contains("not_text") && !item.value("not_text").isBool()))
                     return fail(QStringLiteral("Invalid image region language or type."));
+                if (item.contains("auto_detected") && !item.value("auto_detected").isBool())
+                    return fail(QStringLiteral("Invalid automatic block flag."));
+                region.autoDetected = item.value("auto_detected").toBool();
+                region.content = item.value("content").toString();
+                if (item.contains("content") && (!item.value("content").isString() ||
+                    !(region.content.isEmpty() || region.content == "text" || region.content == "math" || region.content == "mixed")))
+                    return fail(QStringLiteral("Invalid image region content."));
                 region.language = item.value("language").toString();
                 region.notText = item.value("not_text").toBool();
                 region.id = item.value(QStringLiteral("id")).toString();

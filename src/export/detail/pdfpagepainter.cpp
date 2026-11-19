@@ -191,11 +191,11 @@ void drawFormattedWord(QPainter &painter, const core::OcrWord &word, int dpi)
 }
 
 bool drawFormattedPage(QPainter &painter, const PdfPageLayout &layout, const QImage &image,
-                       const std::atomic_bool &cancelled)
+                       const std::atomic_bool &cancelled, const QSet<QString> &formulaWords)
 {
     if (cancelled.load()) return false;
     const auto &page = layout.page;
-    const auto formulas = formulaWordIds(page);
+    const auto formulas = formulaWordIds(page) + formulaWords;
     const auto &graphics = layout.graphics;
     const auto &rasterWords = layout.rasterWords;
     const auto &textAreas = layout.textAreas;
@@ -210,7 +210,7 @@ bool drawFormattedPage(QPainter &painter, const PdfPageLayout &layout, const QIm
     painter.setPen(Qt::black);
     for (const auto &word : page.words) {
         if (cancelled.load()) { painter.restore(); return false; }
-        if (rasterWords.contains(word.id)) {
+        if (rasterWords.contains(word.id) || formulaWords.contains(word.id)) {
             // Preserve content-stream reading order for retained raster text too.
             painter.save();
             painter.setClipping(false);

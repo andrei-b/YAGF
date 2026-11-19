@@ -69,6 +69,7 @@ void recoverBlockLayout(core::OcrPage &page, const QImage &image, const std::ato
         const auto tokens = block.text.split(QRegularExpression(QStringLiteral(R"(\s+)")), Qt::SkipEmptyParts);
         const auto lines = block.text.split(QRegularExpression(QStringLiteral("[\r\n]+")), Qt::SkipEmptyParts);
         if (!block.layoutBlock || tokens.size() < 12 || lines.size() < 3 || lines.size() > 256 ||
+            block.text.contains(QStringLiteral("\\(")) || block.text.contains(QStringLiteral("\\[")) ||
             graphicsWords.contains(block.id) || !image.rect().contains(block.bounds)) {
             words.append(block); continue;
         }
@@ -263,12 +264,21 @@ PdfPageLayout preparePdfPage(const core::OcrPage &source, const QImage &image,
     auto &rasterWords = result.rasterWords;
     rasterWords = retainedText;
     auto &textAreas = result.textAreas;
+    QSet<QString> nonemptyWords;
+    for (const auto &word : page.words)
+        if (!word.text.trimmed().isEmpty()) nonemptyWords.insert(word.id);
     for (const auto &region : page.regions) {
         bool retained = false;
+        bool hasText = false;
         for (const auto &paragraph : region.paragraphs) for (const auto &line : paragraph.lines)
-            for (const auto &id : line.wordIds) retained |= retainedText.contains(id);
-        // Keep table ruling and mathematical/illustration layout from the scan.
-        if (retained || region.isFigure() || region.type == "table" || region.type == "formula" || region.type == "equation") {
+            for (const auto &id : line.wordIds) {
+                retained |= retainedText.contains(id);
+                hasText |= nonemptyWords.contains(id);
+            }
+        // Retain the original artwork and table ruling. Formulas are set separately.
+        const bool emptyEquation = (region.type == "formula" || region.type == "equation")
+            && !hasText;
+        if (retained || region.isFigure() || region.type == "table" || emptyEquation) {
             graphics += region.bounds;
             for (const auto &paragraph : region.paragraphs) for (const auto &line : paragraph.lines)
                 for (const auto &id : line.wordIds) rasterWords.insert(id);

@@ -19,6 +19,12 @@ QString MathOcrEngine::pythonPath()
 std::expected<core::OcrPage, OcrError> MathOcrEngine::recognize(
     const QImage &image, const OcrOptions &options, std::stop_token stop)
 {
+    return recognizeBoxes(image, options, stop, {});
+}
+
+std::expected<core::OcrPage, OcrError> MathOcrEngine::recognizeBoxes(
+    const QImage &image, const OcrOptions &options, std::stop_token stop, const QList<QRect> &boxes)
+{
     if (stop.stop_requested()) return std::unexpected(OcrError{{}, true});
     const QString python = pythonPath();
     if (!QFileInfo(python).isExecutable())
@@ -30,7 +36,18 @@ std::expected<core::OcrPage, OcrError> MathOcrEngine::recognize(
         return std::unexpected(OcrError{QStringLiteral("Could not prepare the local math OCR input.")});
 
     QProcess process;
-    process.start(python, {script, input});
+    QStringList arguments{script, input};
+    if (!boxes.isEmpty()) {
+        QJsonArray crops;
+        for (const auto &box : boxes)
+            crops.append(QJsonArray{box.x(), box.y(), box.x() + box.width(), box.y() + box.height()});
+        QFile file(temporary.filePath("boxes.json"));
+        const auto data = QJsonDocument(crops).toJson(QJsonDocument::Compact);
+        if (!file.open(QIODevice::WriteOnly) || file.write(data) != data.size() || !file.flush())
+            return std::unexpected(OcrError{QStringLiteral("Could not prepare equation crops.")});
+        arguments.append(file.fileName());
+    }
+    process.start(python, arguments);
     if (!process.waitForStarted())
         return std::unexpected(OcrError{process.errorString()});
     QElapsedTimer timer;

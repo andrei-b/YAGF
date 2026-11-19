@@ -23,6 +23,7 @@ struct OcrOptions {
     QStringList userWords;
     bool preserveFormatting = false;
     bool collectBenchmarkMetrics = false;
+    bool singleTextLine = false;
 };
 
 struct OcrError {

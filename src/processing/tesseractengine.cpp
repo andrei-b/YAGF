@@ -22,6 +22,7 @@ QString TesseractEngine::modelLanguage(const QString &language)
     for (QString &code : languages) {
         code = code.trimmed();
         if (code == QStringLiteral("en")) code = QStringLiteral("eng");
+        else if (code == QStringLiteral("ru")) code = QStringLiteral("rus");
         else if (code == QStringLiteral("de")) code = QStringLiteral("deu");
     }
     languages.removeDuplicates();
@@ -54,6 +55,7 @@ std::expected<core::OcrPage, OcrError> TesseractEngine::recognize(
     OcrOptions resolved = options;
     resolved.language = modelLanguage(options.language);
     QStringList arguments{imagePath, QStringLiteral("stdout"), QStringLiteral("-l"), resolved.language};
+    if (options.singleTextLine) arguments << QStringLiteral("--psm") << QStringLiteral("7");
     if (!options.userWords.isEmpty()) {
         QFile vocabulary(temporary.filePath(QStringLiteral("book-words.txt")));
         const QByteArray data = options.userWords.join('\n').toUtf8() + '\n';

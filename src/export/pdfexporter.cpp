@@ -4,6 +4,8 @@
 #include "detail/exportcommand.h"
 #include "detail/pdfpagelayout.h"
 #include "detail/pdfpagepainter.h"
+#include "detail/pdfformulas.h"
+#include "detail/pagebackground.h"
 
 #include <QFile>
 #include <QFileInfo>
@@ -31,14 +33,22 @@ QPageSize pageSizeFor(const QImage &image, int dpiX, int dpiY)
 
 } // namespace
 
+bool PdfExporter::hasPdfLatex()
+{
+    return !QStandardPaths::findExecutable(QStringLiteral("pdflatex")).isEmpty();
+}
+
 PdfExportResult PdfExporter::write(const core::OcrDocument &document,
                                    const QString &destination, bool archive,
-                                   const std::atomic_bool &cancelled, const Progress &progress, Mode mode)
+                                   const std::atomic_bool &cancelled, const Progress &progress, Mode mode,
+                                   FormulaStyle formulas)
 {
     if (document.sourcePath.isEmpty() || document.totalPages < 1 || destination.isEmpty())
         return failure(QStringLiteral("A source document and destination are required."));
     if (archive && QStandardPaths::findExecutable(QStringLiteral("ocrmypdf")).isEmpty())
         return failure(QStringLiteral("OCRmyPDF is required for PDF/A export."));
+    if (mode == Mode::FormattedText && formulas == FormulaStyle::Typeset && !hasPdfLatex())
+        formulas = FormulaStyle::Scanned;
     QTemporaryDir temporary;
     if (!temporary.isValid()) return failure(QStringLiteral("Could not create temporary export files."));
     TesseractEngine layoutEngine;
@@ -51,6 +61,8 @@ PdfExportResult PdfExporter::write(const core::OcrDocument &document,
             return std::move(*layout);
         };
     }
+    QVector<detail::PdfFormulaPage> mathPages;
+    bool hasFormulas = false;
     const QString rawPdf = temporary.filePath(QStringLiteral("searchable.pdf"));
     const QString archivePdf = temporary.filePath(QStringLiteral("archive.pdf"));
     {
@@ -78,13 +90,46 @@ PdfExportResult PdfExporter::write(const core::OcrDocument &document,
             }
             painter.save();
             painter.scale(150.0 / dpiX, 150.0 / dpiY);
-            painter.drawImage(QRect(0, 0, processed->width(), processed->height()), *processed);
+            detail::PdfFormulaPage math;
             if (page && mode == Mode::FormattedText) {
-                const auto layout = detail::preparePdfPage(*page, *processed, cancelled, recognize);
-                if (!detail::drawFormattedPage(painter, layout, *processed, cancelled)) {
+                auto layout = detail::preparePdfPage(*page, *processed, cancelled, recognize);
+                math = detail::collectPdfFormulas(layout.page,
+                    formulas == FormulaStyle::Scanned ? QRegion{} : layout.graphics);
+                math.dpiX = dpiX;
+                math.dpiY = dpiY;
+                if (formulas == FormulaStyle::Scanned) {
+                    for (const auto &region : layout.page.regions)
+                        if (region.type == "equation" || region.type == "formula") layout.graphics += region.bounds;
+                    for (const auto &word : layout.page.words) {
+                        if (!math.wordIds.contains(word.id)) continue;
+                        layout.graphics += word.bounds;
+                        for (const auto &fragment : word.sourceBoxes) layout.graphics += fragment;
+                    }
+                }
+                if (formulas == FormulaStyle::Scanned || math.formulas.isEmpty()) {
+                    painter.drawImage(processed->rect(), *processed);
+                } else {
+                    hasFormulas = true;
+                    // Remove the original formula pixels from the embedded background itself.
+                    auto background = processed->convertToFormat(QImage::Format_RGB32);
+                    QPainter erase(&background);
+                    erase.setClipRegion(QRegion(background.rect()).subtracted(layout.graphics));
+                    for (const auto &word : layout.page.words) if (math.wordIds.contains(word.id)) {
+                        erase.fillRect(word.bounds, detail::paperColor(*processed, word.bounds));
+                        for (const auto &fragment : word.sourceBoxes)
+                            erase.fillRect(fragment, detail::paperColor(*processed, fragment));
+                    }
+                    erase.end();
+                    painter.drawImage(background.rect(), background);
+                }
+                if (!detail::drawFormattedPage(painter, layout, *processed, cancelled, math.wordIds)) {
                     painter.restore(); return {.status = PdfExportResult::Status::Cancelled};
                 }
-            } else if (page && mode == Mode::SearchableScan) {
+            } else {
+                painter.drawImage(processed->rect(), *processed);
+            }
+            if (mode == Mode::FormattedText && formulas == FormulaStyle::Typeset) mathPages.append(std::move(math));
+            if (page && mode == Mode::SearchableScan) {
                 painter.save();
                 painter.setPen(Qt::black);
                 painter.setOpacity(0.0);
@@ -102,10 +147,15 @@ PdfExportResult PdfExporter::write(const core::OcrDocument &document,
     if (!QFileInfo::exists(rawPdf) || QFileInfo(rawPdf).size() == 0)
         return failure(QStringLiteral("PDF output is empty."));
     QString completedPath = rawPdf;
+    if (hasFormulas) {
+        const auto result = detail::typesetPdfFormulas(mathPages, temporary, cancelled);
+        if (result.status != PdfExportResult::Status::Success) return result;
+        completedPath = temporary.filePath("typeset.pdf");
+    }
     if (archive) {
         const auto converted = detail::runExportCommand(QStringLiteral("ocrmypdf"),
             {QStringLiteral("--skip-text"), QStringLiteral("--output-type"), QStringLiteral("pdfa"),
-             QStringLiteral("--optimize"), QStringLiteral("0"), rawPdf, archivePdf}, cancelled);
+             QStringLiteral("--optimize"), QStringLiteral("0"), completedPath, archivePdf}, cancelled);
         if (converted.status != PdfExportResult::Status::Success) return converted;
         completedPath = archivePdf;
     }

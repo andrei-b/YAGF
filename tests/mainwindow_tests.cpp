@@ -741,9 +741,14 @@ int main(int argc, char **argv)
     assert(formattedPdf && formattedPdf->isEnabled());
     const QString formattedPath = directory.filePath("formatted-from-ui.pdf");
     QApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
+    // This fixture contains only prose. Exercise the checkbox even on machines without TeX.
+    assert(QFile::link(scriptPath, directory.filePath("pdflatex")));
     QTimer::singleShot(0, &contextWindow, [&] {
         auto *dialog = qobject_cast<QFileDialog *>(QApplication::activeModalWidget());
         assert(dialog && dialog->windowTitle() == "Export formatted PDF");
+        auto *typeset = dialog->findChild<QCheckBox *>("typesetFormulas");
+        assert(typeset && typeset->isVisible() && typeset->isEnabled() && !typeset->isChecked());
+        typeset->setChecked(true);
         dialog->selectFile(formattedPath);
         QMetaObject::invokeMethod(dialog, "accept", Qt::DirectConnection);
     });
@@ -755,6 +760,38 @@ int main(int argc, char **argv)
     }
     QFile formattedFile(formattedPath);
     assert(formattedFile.open(QIODevice::ReadOnly) && formattedFile.read(5) == "%PDF-");
+    const auto toolsPath = qgetenv("PATH");
+    QTemporaryDir noTools;
+    assert(noTools.isValid());
+    qputenv("PATH", QFile::encodeName(noTools.path()));
+    const auto withoutTex = directory.filePath("without-tex.pdf");
+    QTimer::singleShot(0, &contextWindow, [&] {
+        auto *dialog = qobject_cast<QFileDialog *>(QApplication::activeModalWidget());
+        assert(dialog);
+        auto *typeset = dialog->findChild<QCheckBox *>("typesetFormulas");
+        assert(typeset && !typeset->isEnabled() && !typeset->isChecked() && typeset->text().contains("pdfLaTeX"));
+        dialog->selectFile(withoutTex);
+        QMetaObject::invokeMethod(dialog, "accept", Qt::DirectConnection);
+    });
+    formattedPdf->trigger();
+    timer.restart();
+    while (!formattedPdf->isEnabled() && timer.elapsed() < 5000) {
+        QApplication::processEvents();
+        QThread::msleep(5);
+    }
+    assert(formattedPdf->isEnabled() && QFileInfo(withoutTex).size() > 0);
+    qputenv("PATH", toolsPath);
+    for (int i = 0; i < 2; ++i) {
+        QTimer::singleShot(0, &contextWindow, [] {
+            auto *dialog = qobject_cast<QFileDialog *>(QApplication::activeModalWidget());
+            assert(dialog);
+            auto *typeset = dialog->findChild<QCheckBox *>("typesetFormulas");
+            assert(typeset && typeset->isChecked());
+            typeset->setChecked(false);
+            dialog->reject();
+        });
+        formattedPdf->trigger();
+    }
     // Loading a different source resets the book-specific description and inference setting.
     contextWindow.loadSource(sourcePath);
     inspectContext({}, true, false, false);

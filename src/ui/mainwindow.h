@@ -173,7 +173,7 @@ private:
     void exportVerifiedSamples();
     void exportScientificBook();
     void chooseExportPath(const QString &title, const QString &filter, const QString &suffix, ExportFormat format);
-    void startExport(const QString &path, ExportFormat format);
+    void startExport(const QString &path, ExportFormat format, bool typesetFormulas);
     void setBusy(bool busy);
     void showError(const QString &message);
 
@@ -193,6 +193,7 @@ private:
     QLabel *selectionLabel;
     QPushButton *applyButton;
     QPushButton *regionOcrButton;
+    QPushButton *splitBlocksButton;
     QPushButton *reviewWordButton;
     QPushButton *deleteRegionButton = nullptr;
     QLineEdit *languageEdit;

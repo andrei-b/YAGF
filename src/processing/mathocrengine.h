@@ -10,6 +10,8 @@ public:
     EngineCapabilities capabilities() const override
     { return {.supportsRegions = true, .supportsLayout = true}; }
     static QString pythonPath();
+    std::expected<core::OcrPage, OcrError> recognizeBoxes(
+        const QImage &image, const OcrOptions &options, std::stop_token stop, const QList<QRect> &boxes);
     std::expected<core::OcrPage, OcrError> recognize(
         const QImage &image, const OcrOptions &options, std::stop_token stop) override;
 };

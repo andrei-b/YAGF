@@ -25,13 +25,14 @@ def equation_boxes(gray):
         yield int(columns[0]), top, int(columns[-1]) + 1, bottom
 
 
-def recognize(path):
+def recognize(path, boxes=None):
     with Image.open(path) as source:
         gray = source.convert("L")
         if "A" in source.getbands() or "transparency" in source.info:
             white = Image.new("L", source.size, 255)
             gray = Image.composite(gray, white, source.convert("RGBA").getchannel("A"))
-    boxes = list(equation_boxes(gray))
+    if boxes is None:
+        boxes = list(equation_boxes(gray))
     if not boxes:
         return []
     models = Path(rapid_latex_ocr.__file__).parent / "models"
@@ -52,4 +53,5 @@ def recognize(path):
 
 
 if __name__ == "__main__":
-    print(json.dumps(recognize(sys.argv[1])))
+    boxes = json.loads(Path(sys.argv[2]).read_text()) if len(sys.argv) > 2 else None
+    print(json.dumps(recognize(sys.argv[1], boxes)))

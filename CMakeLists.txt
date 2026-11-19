@@ -40,6 +40,7 @@ add_library(yagf_ocr STATIC
     src/processing/pageorientation.cpp src/processing/pageorientation.h
     src/processing/fontestimator.cpp src/processing/fontestimator.h
     src/processing/specialistocr.cpp src/processing/specialistocr.h
+    src/processing/smartblocks.cpp src/processing/smartblocks.h
     src/processing/mathocrengine.cpp src/processing/mathocrengine.h
     src/processing/iocrengine.h
     src/processing/tesseractengine.cpp src/processing/tesseractengine.h
@@ -64,6 +65,7 @@ add_library(yagf_export STATIC
     src/export/detail/exportcommand.cpp src/export/detail/exportcommand.h
     src/export/detail/pagebackground.cpp src/export/detail/pagebackground.h
     src/export/detail/pdfpagelayout.cpp src/export/detail/pdfpagelayout.h
+    src/export/detail/pdfformulas.cpp src/export/detail/pdfformulas.h
     src/export/detail/pdfpagepainter.cpp src/export/detail/pdfpagepainter.h)
 target_link_libraries(yagf_export PUBLIC yagf_core Qt6::Gui PRIVATE yagf_imaging yagf_ocr)
 target_include_directories(yagf_export PUBLIC src/export)
@@ -214,7 +216,7 @@ if(BUILD_TESTING)
     target_link_libraries(scientificbook_tests PRIVATE yagf_export)
     add_test(NAME scientificbook_tests COMMAND scientificbook_tests)
     qt_add_executable(mathrecognition_tests tests/mathrecognition_tests.cpp)
-    target_link_libraries(mathrecognition_tests PRIVATE yagf_ocr yagf_export Qt6::Test)
+    target_link_libraries(mathrecognition_tests PRIVATE yagf_processing yagf_export Qt6::Test)
     target_compile_definitions(mathrecognition_tests PRIVATE MATH_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data/math")
     add_test(NAME mathrecognition_tests COMMAND mathrecognition_tests)
     set_tests_properties(mathrecognition_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;OMP_THREAD_LIMIT=2")

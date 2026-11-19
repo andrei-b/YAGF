@@ -14,11 +14,12 @@ ExportResult failure(const QString &error)
 }
 
 ExportResult runExportCommand(const QString &program, const QStringList &arguments,
-                           const std::atomic_bool &cancelled)
+                           const std::atomic_bool &cancelled, const QString &workingDirectory)
 {
     if (QStandardPaths::findExecutable(program).isEmpty())
         return failure(QStringLiteral("%1 is not installed or is not on PATH.").arg(program));
     QProcess process;
+    if (!workingDirectory.isEmpty()) process.setWorkingDirectory(workingDirectory);
     process.start(program, arguments);
     if (!process.waitForStarted(10'000))
         return failure(QStringLiteral("Could not start %1: %2").arg(program, process.errorString()));

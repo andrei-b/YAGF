@@ -1,6 +1,8 @@
 #include "exportpage.h"
+#include "documentprocessor.h"
 #include "pdfexporter.h"
 #include "mathocrengine.h"
+#include "smartblocks.h"
 #include "projectfile.h"
 #include "remoteocrengine.h"
 #include "scientificbookexporter.h"
@@ -138,6 +140,63 @@ private slots:
         for (const auto &region : page->regions) QCOMPARE(region.type, "equation");
     }
 
+    void russianTextAndMath()
+    {
+        QProcess models;
+        models.start("tesseract", {"--list-langs"});
+        if (!models.waitForFinished() || !models.readAllStandardOutput().split('\n').contains("rus"))
+            QSKIP("Requires the Russian Tesseract model");
+        const QImage image(QStringLiteral(MATH_FIXTURE_DIR "/../../../examples/math-review/russian-math.png"));
+        QVERIFY(!image.isNull());
+        const processing::OcrOptions options{.language = "rus", .pageNumber = 1};
+        const auto split = processing::recognizeSmartBlocks(image, options, {}, true, {});
+        QVERIFY2(split, qPrintable(split ? QString() : split.error().message));
+        QStringList kinds;
+        for (const auto &block : split->imageRegions) kinds.append(block.content);
+        QCOMPARE(kinds, (QStringList{"text", "math", "mixed"}));
+        QVERIFY(split->words.isEmpty());
+        const auto &paragraph = split->imageRegions.first();
+        QVERIFY(paragraph.autoDetected);
+        const auto prose = processing::recognizeSmartBlocks(image, options, {paragraph}, false, {}, false);
+        QVERIFY2(prose, qPrintable(prose ? QString() : prose.error().message));
+        QCOMPARE(prose->words.size(), 6);
+        for (const auto &word : prose->words) {
+            QVERIFY(!word.layoutBlock);
+            QVERIFY(paragraph.bounds.contains(word.bounds.center()));
+        }
+        core::OcrDocument book;
+        book.sourcePath = "russian-math.png";
+        book.replacePage(*split);
+        core::OcrDocument loaded;
+        QString error;
+        QVERIFY2(core::OcrDocument::fromJson(book.toJson(), &loaded, &error), qPrintable(error));
+        QCOMPARE(loaded.pages.first().imageRegions.last().content, "mixed");
+        // Start as the Recognize button does, without any saved blocks or split step.
+        core::OcrDocument fresh;
+        fresh.sourcePath = QStringLiteral(MATH_FIXTURE_DIR "/../../../examples/math-review/russian-math.png");
+        processing::DocumentProcessor processor(nullptr, &fresh);
+        QSignalSpy success(&processor, &processing::DocumentProcessor::recognized);
+        QSignalSpy failure(&processor, &processing::DocumentProcessor::failed);
+        QSignalSpy warnings(&processor, &processing::DocumentProcessor::specialistWarning);
+        processor.recognize(fresh.sourcePath, "rus", 1);
+        QTRY_VERIFY_WITH_TIMEOUT(!success.isEmpty() || !failure.isEmpty(), 60000);
+        QVERIFY2(failure.isEmpty(), qPrintable(failure.isEmpty() ? QString() : failure.first().first().toString()));
+        const auto read = success.first().first().value<core::OcrPage>();
+        QStringList automaticTypes;
+        for (const auto &block : read.imageRegions) automaticTypes.append(block.content);
+        QCOMPARE(automaticTypes, kinds);
+        book.replacePage(read);
+        if (processing::MathOcrEngine::pythonPath().isEmpty()) {
+            QVERIFY(!warnings.isEmpty());
+            QCOMPARE(read.engineId, "tesseract");
+            QVERIFY(book.plainText().contains(QStringLiteral("Рассмотрим")));
+            return;
+        }
+        QCOMPARE(book.plainText().simplified(),
+            QStringLiteral(R"(Рассмотрим простой пример. Сначала запишем равенство. \frac{1}{2}+\frac{1}{4}=\frac{3}{4} Уравнение \(x^{2}+1=10\) имеет решение.)"));
+        QCOMPARE(read.regions[2].type, "equation");
+    }
+
     void liveSurya()
     {
         const auto endpoint = qEnvironmentVariable("YAGF_TEST_SURYA_URL");
@@ -159,6 +218,115 @@ private slots:
                 mismatches.append(QString("Page %1: expected %2, read [%3]").arg(i + 1).arg(expected, actual));
         }
         QVERIFY2(mismatches.isEmpty(), qPrintable(mismatches.join('\n')));
+    }
+
+    void formattedMathWithoutTex()
+    {
+        const auto &scan = scans.first();
+        core::OcrDocument book;
+        book.sourcePath = temporary.filePath("source-equation.png");
+        QVERIFY(scan.save(book.sourcePath));
+        core::OcrPage page;
+        page.width = page.sourceWidth = scan.width();
+        page.height = page.sourceHeight = scan.height();
+        const QString latex = references.first();
+        page.words.append({1, 1, 1, 1, inkBounds(scan), latex, latex, 95});
+        page.rebuildHierarchy();
+        page.regions.first().type = "equation";
+        book.replacePage(page);
+
+        using Pdf = processing::PdfExporter;
+        const auto path = temporary.filePath("scanned-equation-without-tex.pdf");
+        const auto toolsPath = qgetenv("PATH");
+        qputenv("PATH", QFile::encodeName(temporary.path()));
+        const bool available = Pdf::hasPdfLatex();
+        const auto result = Pdf::write(book, path, false, false, {}, Pdf::Mode::FormattedText, Pdf::FormulaStyle::Typeset);
+        qputenv("PATH", toolsPath);
+        QVERIFY(!available);
+        QVERIFY2(result.status == processing::ExportResult::Status::Success, qPrintable(result.error));
+        core::OcrDocument exported;
+        exported.sourcePath = path;
+        auto rendered = processing::readExportPage(exported, 1, temporary, false);
+        QVERIFY2(rendered, qPrintable(rendered ? QString() : rendered.error().error));
+        QVERIFY(unmatchedInk(scan, *rendered) < .01);
+        QVERIFY(unmatchedInk(*rendered, scan) < .01);
+        if (!QStandardPaths::findExecutable("pdftotext").isEmpty()) {
+            QProcess extract;
+            extract.start("pdftotext", {"-raw", path, "-"});
+            QVERIFY(extract.waitForFinished());
+            QCOMPARE(QString::fromUtf8(extract.readAllStandardOutput()).trimmed(), latex);
+        }
+    }
+
+    void typesetEditedMath()
+    {
+        if (QStandardPaths::findExecutable("pdflatex").isEmpty() || QStandardPaths::findExecutable("pdftotext").isEmpty())
+            QSKIP("Requires pdflatex and Poppler");
+        core::OcrDocument book;
+        book.sourcePath = temporary.filePath("formula-source.png");
+        QImage scan(600, 300, QImage::Format_RGB32);
+        scan.fill(Qt::white); // Any visible ink in the result must come from typesetting.
+        QVERIFY(scan.save(book.sourcePath));
+        core::OcrPage page;
+        page.number = 1;
+        page.width = page.sourceWidth = scan.width();
+        page.height = page.sourceHeight = scan.height();
+        const QString display = R"(\begin{pmatrix}x_1&\sqrt{2}\\1&\frac{1}{2}\end{pmatrix})";
+        const QString inlineMath = R"(\(x^{3}+1=9\))";
+        const QString prose = R"(For \(x=2\), the value is \(x^3=8\).)";
+        const QStringList readings{display, inlineMath, prose};
+        const QList<QRect> boxes{{40,30,180,80}, {100,145,110,28}, {18,210,480,35}};
+        for (int i = 0; i < readings.size(); ++i) {
+            core::OcrWord word{1, i+1, 1, 1, boxes[i], "old", readings[i], 90};
+            word.layoutBlock = true;
+            page.words.append(word);
+        }
+        page.rebuildHierarchy();
+        page.regions[0].type = "equation";
+        book.replacePage(page);
+        using Pdf = processing::PdfExporter;
+        const auto name = temporary.filePath("typeset.pdf");
+        const auto written = Pdf::write(book, name, false, false, {}, Pdf::Mode::FormattedText, Pdf::FormulaStyle::Typeset);
+        QVERIFY2(written.status == processing::ExportResult::Status::Success, qPrintable(written.error));
+        QProcess extract;
+        extract.start("pdftotext", {"-raw", name, "-"});
+        QVERIFY(extract.waitForFinished());
+        QCOMPARE(QString::fromUtf8(extract.readAllStandardOutput()).simplified(), readings.join(' '));
+        if (!QStandardPaths::findExecutable("pdffonts").isEmpty()) {
+            QProcess fonts;
+            fonts.start("pdffonts", {name});
+            QVERIFY(fonts.waitForFinished());
+            QVERIFY(fonts.readAllStandardOutput().contains("CMMI")); // Native Computer Modern math font.
+        }
+        auto rendered = book;
+        rendered.sourcePath = name;
+        auto img = processing::readExportPage(rendered, 1, temporary, false);
+        QVERIFY(img);
+        for (const auto &box : boxes) QVERIFY(!inkBounds(img->copy(box)).isEmpty());
+        QFile previous(name);
+        QVERIFY(previous.open(QIODevice::ReadOnly));
+        const auto saved = previous.readAll();
+        previous.close();
+        book.pages[0].words[0].text = R"(\unknownformat{x})";
+        const auto failed = Pdf::write(book, name, false, false, {}, Pdf::Mode::FormattedText, Pdf::FormulaStyle::Typeset);
+        QCOMPARE(failed.status, processing::ExportResult::Status::Error);
+        QVERIFY(failed.error.contains("page 1") && failed.error.contains("unknownformat"));
+        QVERIFY(previous.open(QIODevice::ReadOnly));
+        QCOMPARE(previous.readAll(), saved);
+
+        // The default formatted export can preserve even an unsupported formula.
+        // With a blank source, both display and inline formula crops must stay blank.
+        const auto scanned = temporary.filePath("scanned-formulas.pdf");
+        const auto kept = Pdf::write(book, scanned, false, false, {}, Pdf::Mode::FormattedText);
+        QVERIFY2(kept.status == processing::ExportResult::Status::Success, qPrintable(kept.error));
+        rendered.sourcePath = scanned;
+        img = processing::readExportPage(rendered, 1, temporary, false);
+        QVERIFY(img);
+        for (const auto &box : boxes) QVERIFY(inkBounds(img->copy(box)).isEmpty());
+        extract.start("pdftotext", {"-raw", scanned, "-"});
+        QVERIFY(extract.waitForFinished());
+        QCOMPARE(QString::fromUtf8(extract.readAllStandardOutput()).simplified(),
+                 QStringList({book.pages[0].words[0].text, inlineMath, prose}).join(' '));
     }
 
     void reviewedExports()
@@ -208,9 +376,13 @@ private slots:
         }
         if (QStandardPaths::findExecutable("pdftotext").isEmpty()) QSKIP("PDF text checks require pdftotext");
         using Pdf = processing::PdfExporter;
-        for (auto mode : {Pdf::Mode::SearchableScan, Pdf::Mode::FormattedText}) {
+        for (const auto &[mode, style] : {std::pair{Pdf::Mode::SearchableScan, Pdf::FormulaStyle::Scanned},
+                                          std::pair{Pdf::Mode::FormattedText, Pdf::FormulaStyle::Scanned},
+                                          std::pair{Pdf::Mode::FormattedText, Pdf::FormulaStyle::Typeset}}) {
+            if (style == Pdf::FormulaStyle::Typeset && QStandardPaths::findExecutable("pdflatex").isEmpty())
+                QSKIP("Formula typesetting requires pdflatex");
             const auto pdf = temporary.filePath("reviewed.pdf");
-            const auto written = Pdf::write(restored, pdf, false, false, {}, mode);
+            const auto written = Pdf::write(restored, pdf, false, false, {}, mode, style);
             QVERIFY2(written.status == processing::ExportResult::Status::Success, qPrintable(written.error));
             QProcess extract;
             extract.start("pdftotext", {"-raw", pdf, "-"});
@@ -220,12 +392,27 @@ private slots:
             QCOMPARE(pages.size(), expected.size()+1);
             auto exported = referenceBook();
             exported.sourcePath = pdf;
+            if (style == Pdf::FormulaStyle::Typeset && !QStandardPaths::findExecutable("gs").isEmpty()) {
+                // Strip every raster image. All eight equations must still be visible.
+                exported.sourcePath = temporary.filePath("vector-only.pdf");
+                QCOMPARE(QProcess::execute("gs", {"-q", "-dSAFER", "-dBATCH", "-dNOPAUSE", "-dFILTERIMAGE",
+                    "-sDEVICE=pdfwrite", "-sOutputFile=" + exported.sourcePath, pdf}), 0);
+            }
             for (int i = 0; i < expected.size(); ++i) {
                 QCOMPARE(pages[i].trimmed(), expected[i]);
                 const auto image = processing::readExportPage(exported, i+1, temporary, false);
                 QVERIFY2(image, qPrintable(image ? QString() : image.error().error));
-                QVERIFY(unmatchedInk(scans[i], *image) < .01);
-                QVERIFY(unmatchedInk(*image, scans[i]) < .01);
+                if (style == Pdf::FormulaStyle::Scanned) {
+                    QVERIFY(unmatchedInk(scans[i], *image) < .01);
+                    QVERIFY(unmatchedInk(*image, scans[i]) < .01);
+                } else {
+                    const auto target = inkBounds(scans[i]);
+                    const auto rendered = inkBounds(*image);
+                    QVERIFY2(!rendered.isEmpty() && target.adjusted(-3,-3,3,3).contains(rendered),
+                             qPrintable(QString("Misplaced typeset equation on page %1").arg(i+1)));
+                    QVERIFY(rendered.width() > target.width() * 0.75);
+                    QVERIFY(rendered.height() > target.height() * 0.75);
+                }
             }
         }
     }
