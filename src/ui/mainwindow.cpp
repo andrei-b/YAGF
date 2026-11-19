@@ -607,6 +607,10 @@ MainWindow::MainWindow()
                                              &MainWindow::createRegionFromSelection);
     remainingAction = toolsMenu->addAction(tr("Recognize remaining pages"), this, [this] { runBatchOcr(true); });
     batchAction = toolsMenu->addAction(tr("Recognize all pages"), this, [this] { runBatchOcr(false); });
+    batchAction->setObjectName(QStringLiteral("recognizeAllAction"));
+    batchAction->setIcon(recognizeActionIcon());
+    batchAction->setIconText(tr("Recognize all"));
+    batchAction->setToolTip(tr("Recognize every page in the open document, including pages already recognized."));
     preserveFormattingAction = toolsMenu->addAction(tr("Preserve formatting"));
     preserveFormattingAction->setObjectName(QStringLiteral("preserveFormattingAction"));
     preserveFormattingAction->setCheckable(true);
@@ -643,6 +647,11 @@ MainWindow::MainWindow()
     ocrButton->setObjectName(QStringLiteral("primaryButton"));
     toolbar->addWidget(ocrButton);
     connect(ocrButton, &QPushButton::clicked, this, &MainWindow::runOcr);
+    auto *recognizeAll = new QToolButton(this);
+    recognizeAll->setObjectName(QStringLiteral("recognizeAllButton"));
+    recognizeAll->setDefaultAction(batchAction);
+    recognizeAll->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    toolbar->addWidget(recognizeAll);
     mathMode = new QCheckBox(tr("Math only"), this);
     mathMode->setObjectName(QStringLiteral("mathOcrMode"));
     mathMode->setToolTip(tr("Use the formula engine for every row. Leave unchecked for automatic text and math recognition with local Tesseract."));
@@ -1252,7 +1261,6 @@ void MainWindow::setBusy(bool busy)
     deleteRegionButton->setEnabled(!blocked && selectedImageRegion >= 0);
     improveAction->setEnabled(!blocked && !rawImage.isNull());
     restoreAction->setEnabled(!blocked && !rawImage.isNull());
-    batchAction->setEnabled(!blocked && pageCount > 1 && processing::isPagedSource(originalPath));
     layoutAction->setEnabled(!blocked && document.page(currentPage) && !document.page(currentPage)->regions.isEmpty());
     createRegionAction->setEnabled(!blocked && !selectedWords.isEmpty() &&
         document.page(currentPage) && selectedWords.size() < document.page(currentPage)->words.size());
@@ -1286,9 +1294,9 @@ void MainWindow::updatePageControls()
         pageList->setCurrentRow(currentPage - 1);
         pageList->setEnabled(available);
     }
-    if (batchAction) batchAction->setEnabled(available && pageCount > 1 &&
-        processing::isPagedSource(originalPath));
-    if (remainingAction) remainingAction->setEnabled(batchAction->isEnabled());
+    if (batchAction) batchAction->setEnabled(available && !imagePath.isEmpty());
+    if (remainingAction) remainingAction->setEnabled(available && !imagePath.isEmpty() &&
+        processing::isPagedSource(originalPath) && pageCount > 1);
     if (documentContextAction) documentContextAction->setEnabled(available && !originalPath.isEmpty());
     if (nextSpecialistAction) nextSpecialistAction->setEnabled(available && !imagePath.isEmpty() &&
         document.page(currentPage) && !document.page(currentPage)->words.isEmpty());
@@ -2185,8 +2193,7 @@ void MainWindow::chooseOcrLanguages()
 
 void MainWindow::runBatchOcr(bool remainingOnly)
 {
-    if (processor.isBusy() || pageCount < 2 ||
-        !processing::isPagedSource(originalPath) || !maybeApplyEditor()) return;
+    if (processor.isBusy() || exportBusy || imagePath.isEmpty() || !maybeApplyEditor()) return;
     bool hasCorrections = false;
     if (!remainingOnly) {
         for (const OcrPage &page : document.pages)
@@ -2195,6 +2202,11 @@ void MainWindow::runBatchOcr(bool remainingOnly)
     if (hasCorrections && QMessageBox::question(this, tr("Recognize all pages again"),
         tr("Matching corrections will be kept, but unmatched words may be replaced. Continue?"))
         != QMessageBox::Yes) return;
+    if (!processing::isPagedSource(originalPath)) {
+        status->setText(tr("Recognizing the whole page…"));
+        processor.recognize(imagePath, languageEdit->text().trimmed(), currentPage);
+        return;
+    }
     QVector<BatchPageOptions> options;
     options.reserve(pageCount);
     for (int number = 1; number <= pageCount; ++number) {

@@ -39,6 +39,7 @@
 #include <QThread>
 #include <QTimer>
 #include <QToolBar>
+#include <QToolButton>
 #include <QUrl>
 #include <QTest>
 #include <QSplitter>
@@ -211,7 +212,9 @@ int main(int argc, char **argv)
         if (action->text() == QStringLiteral("Redo")) redo = action;
     }
     assert(undo && redo);
-    recognize->click();
+    auto *recognizeWholeDocument = window.findChild<QToolButton *>("recognizeAllButton");
+    assert(recognizeWholeDocument && recognizeWholeDocument->isEnabled());
+    recognizeWholeDocument->click();
     QElapsedTimer timer;
     timer.start();
     while (words->count() != 2 && timer.elapsed() < 3000) {
@@ -1182,10 +1185,13 @@ int main(int argc, char **argv)
         auto *dpi = dialog->findChild<QComboBox *>("renderDpi"); dpi->setCurrentIndex(dpi->findData(200)); dialog->accept();
     });
     batchResolutionWindow.findChild<QAction *>("renderingResolution")->trigger();
-    for (auto *action : batchResolutionWindow.findChildren<QAction *>())
-        if (action->text() == "Recognize all pages") action->trigger();
+    auto *recognizeAll = batchResolutionWindow.findChild<QToolButton *>("recognizeAllButton");
+    assert(recognizeAll && recognizeAll->isEnabled() && recognizeAll->text() == "Recognize all");
+    recognizeAll->click();
+    assert(!recognizeAll->isEnabled());
     waitUi([&] { return batchView->scene()->sceneRect().width() == 800; });
     auto *batchWords = batchResolutionWindow.findChild<QListWidget *>("recognizedWords");
+    waitUi([&] { return recognizeAll->isEnabled(); });
     assert(batchWords->count() == 2);
     for (auto *action : batchResolutionWindow.findChildren<QAction *>())
         if (action->text() == "Save project") action->trigger();
