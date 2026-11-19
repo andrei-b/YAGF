@@ -12,6 +12,7 @@ public:
     QStringList activeDictionaries() const;
     QString statusText() const;
     void setLanguages(const QStringList &languages);
+    QStringList suggestions(const QString &word) const;
     bool isMisspelled(const QString &word);
 private:
     struct Dictionaries;

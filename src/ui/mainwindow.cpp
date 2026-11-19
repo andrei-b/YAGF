@@ -496,6 +496,10 @@ MainWindow::MainWindow()
     pasteAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+V")));
     fileMenu->addAction(tr("Open project"), this, &MainWindow::openProject);
     fileMenu->addAction(tr("Open portable project folder…"), this, &MainWindow::openPortableProject);
+    recentProjectsMenu = fileMenu->addMenu(tr("Recent projects"));
+    recentProjectsMenu->setObjectName(QStringLiteral("recentProjectsMenu"));
+    connect(fileMenu, &QMenu::aboutToShow, this, &MainWindow::refreshRecentProjects);
+    refreshRecentProjects();
     fileMenu->addAction(tr("Save project"), this, &MainWindow::saveProject);
     auto *saveAction = toolbar->addAction(style()->standardIcon(QStyle::SP_DialogSaveButton),
                                           tr("Save"), this, &MainWindow::saveProject);
@@ -619,13 +623,8 @@ MainWindow::MainWindow()
     toolbar->addWidget(languagePickerButton);
     connect(languagePickerButton, &QToolButton::clicked, this, &MainWindow::chooseOcrLanguages);
     fileMenu->addSeparator();
-    fileMenu->addAction(tr("Export text"), this, &MainWindow::exportText);
-    fileMenu->addAction(tr("Export scientific book as HTML…"), this, &MainWindow::exportScientificBook);
-    fileMenu->addAction(tr("Export layout HTML"), this, &MainWindow::exportHtml);
-    fileMenu->addAction(tr("Export verified corrections…"), this, &MainWindow::exportVerifiedSamples);
-    fileMenu->addAction(tr("Export JSON"), this, &MainWindow::exportJson);
-    fileMenu->addSeparator();
-    auto *scanMenu = fileMenu->addMenu(tr("Export scan"));
+    auto *exportMenu = fileMenu->addMenu(tr("Export"));
+    auto *scanMenu = exportMenu->addMenu(tr("Scans"));
     scanExportAction = scanMenu->menuAction();
     scanExportAction->setEnabled(false);
     scanMenu->addAction(tr("Current page as PNG…"), this, [this] {
@@ -637,17 +636,26 @@ MainWindow::MainWindow()
     scanMenu->addAction(tr("All pages as PDF…"), this, [this] {
         chooseExportPath(tr("Export scanned document"), tr("PDF files (*.pdf)"), "pdf", ExportFormat::ScanPdf);
     });
-    pdfAction = fileMenu->addAction(tr("Export searchable PDF…"), this, [this] { exportPdf(false); });
-    formattedPdfAction = fileMenu->addAction(tr("Export formatted PDF…"), this, [this] { exportPdf(false, true); });
+    auto *pdfMenu = exportMenu->addMenu(tr("PDF"));
+    pdfAction = pdfMenu->addAction(tr("Export searchable PDF…"), this, [this] { exportPdf(false); });
+    formattedPdfAction = pdfMenu->addAction(tr("Export formatted PDF…"), this, [this] { exportPdf(false, true); });
     formattedPdfAction->setObjectName(QStringLiteral("exportFormattedPdfAction"));
     formattedPdfAction->setToolTip(tr("Recreate corrected text using matching fonts in the original page blocks."));
     formattedPdfAction->setEnabled(false);
-    pdfaAction = fileMenu->addAction(tr("Export archival PDF/A…"), this, [this] { exportPdf(true); });
-    convertDjVuAction = fileMenu->addAction(tr("Convert DjVu to PDF…"), this, &MainWindow::convertDjVuToPdf);
+    pdfaAction = pdfMenu->addAction(tr("Export archival PDF/A…"), this, [this] { exportPdf(true); });
+    convertDjVuAction = pdfMenu->addAction(tr("Convert DjVu to PDF…"), this, &MainWindow::convertDjVuToPdf);
     convertDjVuAction->setObjectName(QStringLiteral("convertDjVuAction"));
     convertDjVuAction->setEnabled(false);
     pdfAction->setEnabled(false);
     pdfaAction->setEnabled(false);
+
+    auto *textMenu = exportMenu->addMenu(tr("Text and HTML"));
+    textMenu->addAction(tr("Plain text…"), this, &MainWindow::exportText);
+    textMenu->addAction(tr("Layout HTML…"), this, &MainWindow::exportHtml);
+    textMenu->addAction(tr("Scientific book as HTML…"), this, &MainWindow::exportScientificBook);
+    auto *dataMenu = exportMenu->addMenu(tr("OCR data"));
+    dataMenu->addAction(tr("Structured OCR as JSON…"), this, &MainWindow::exportJson);
+    dataMenu->addAction(tr("Verified corrections…"), this, &MainWindow::exportVerifiedSamples);
 
     auto *splitter = new QSplitter(this);
     splitter->setObjectName(QStringLiteral("workspaceSplitter"));
@@ -739,7 +747,7 @@ MainWindow::MainWindow()
     selectionEditor->setPlaceholderText(tr("Select words on the page or drag a region, then edit here."));
     selectionEditor->setAcceptRichText(true);
     selectionEditor->setMinimumHeight(120);
-    spellHighlighter = new SpellHighlighter(selectionEditor->document());
+    spellHighlighter = new SpellHighlighter(selectionEditor);
     auto *wordPanel = new QWidget(editorSplitter);
     auto *wordLayout = new QVBoxLayout(wordPanel);
     wordLayout->setContentsMargins(0, 8, 0, 0);
@@ -1336,6 +1344,7 @@ void MainWindow::loadProject(const QString &path)
     undoStack.clear();
     originalPath = loaded.sourcePath;
     projectPath = path;
+    rememberProject();
     verificationTarget.reset();
     document = std::move(loaded);
     {
@@ -1382,6 +1391,39 @@ void MainWindow::loadProject(const QString &path)
     }
 }
 
+void MainWindow::rememberProject()
+{
+    QSettings settings(QStringLiteral("YAGF"), QStringLiteral("YAGF Revival"));
+    const QString path = QDir::cleanPath(QFileInfo(projectPath).absoluteFilePath());
+    QStringList recent = settings.value("projects/recent").toStringList();
+    recent.removeAll(path);
+    recent.prepend(path);
+    settings.setValue("projects/recent", recent.mid(0, 10));
+}
+
+void MainWindow::refreshRecentProjects()
+{
+    recentProjectsMenu->clear();
+    QSettings settings(QStringLiteral("YAGF"), QStringLiteral("YAGF Revival"));
+    const QStringList paths = settings.value("projects/recent").toStringList();
+    if (paths.isEmpty()) {
+        recentProjectsMenu->addAction(tr("No recent projects"))->setEnabled(false);
+        return;
+    }
+    for (const QString &path : paths) {
+        const bool exists = QFileInfo::exists(path);
+        QString label = QDir::toNativeSeparators(path);
+        if (!exists) label = tr("%1 (missing)").arg(label);
+        auto *action = recentProjectsMenu->addAction(label.replace('&', "&&"), this, [this, path] { loadProject(path); });
+        action->setEnabled(exists && !processor.isBusy() && !exportBusy);
+        action->setData(path);
+    }
+    recentProjectsMenu->addSeparator();
+    recentProjectsMenu->addAction(tr("Clear recent projects"), this, [] {
+        QSettings(QStringLiteral("YAGF"), QStringLiteral("YAGF Revival")).remove("projects/recent");
+    });
+}
+
 bool MainWindow::saveProject()
 {
     if (!maybeApplyEditor()) return false;
@@ -1396,6 +1438,7 @@ bool MainWindow::saveProject()
     const bool saved = portable ? ProjectFile::savePortable(projectPath, document, &error)
                                 : ProjectFile::save(projectPath, document, &error);
     if (!saved) { showError(error); return false; }
+    rememberProject();
     externalDirty = false;
     undoStack.setClean();
     dirty = false;
@@ -1419,6 +1462,7 @@ bool MainWindow::saveProjectAs()
     QString error;
     if (!ProjectFile::save(path, document, &error)) { showError(error); return false; }
     projectPath = std::move(path);
+    rememberProject();
     externalDirty = false;
     undoStack.setClean();
     dirty = false;
@@ -1441,6 +1485,7 @@ bool MainWindow::savePortableProject()
     QString error;
     if (!ProjectFile::savePortable(directory, document, &error)) { showError(error); return false; }
     projectPath = directory;
+    rememberProject();
     externalDirty = false;
     undoStack.setClean();
     dirty = false;
@@ -2348,7 +2393,8 @@ void MainWindow::refreshSpellLanguage()
     }
     const QSignalBlocker blocker(selectionEditor);
     spellHighlighter->setLanguages(languages);
-    spellCheckAction->setToolTip(spellHighlighter->statusText());
+    spellCheckAction->setToolTip(spellCheckAction->isChecked() && !spellHighlighter->activeDictionaries().isEmpty()
+        ? tr("Right-click an underlined word for replacements.") : spellHighlighter->statusText());
     spellLanguage->setToolTip(spellHighlighter->statusText());
 }
 

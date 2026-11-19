@@ -1,6 +1,9 @@
 #include "spellhighlighter.h"
 
 #include <QApplication>
+#include <QContextMenuEvent>
+#include <QMenu>
+#include <QTimer>
 #include <QTextBlock>
 #include <QTextCursor>
 #include <QTextDocument>
@@ -27,7 +30,7 @@ int main(int argc, char **argv)
     document.setUndoRedoEnabled(false);
     document.setUndoRedoEnabled(true);
     document.setModified(false);
-    SpellHighlighter spelling(&document);
+    SpellHighlighter spelling(&editor);
     spelling.setLanguages({"zz_ZZ"});
     assert(spelling.activeDictionaries().isEmpty());
     assert(!spelling.isMisspelled("anything"));
@@ -77,6 +80,29 @@ int main(int argc, char **argv)
     QApplication::processEvents();
     assert(document.toPlainText() == originalText && underlines().size() == 1);
     assert(!document.isUndoAvailable());
+
+    // Select the second occurrence through the real editor menu.
+    document.setHtml("<p>speling, <b>speling</b>!</p>");
+    spelling.rehighlight();
+    QTextCursor typo(&document);
+    typo.setPosition(12);
+    const QPoint point = editor.cursorRect(typo).center();
+    QTimer::singleShot(0, &editor, [&] {
+        auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+        assert(menu);
+        QAction *replacement = nullptr;
+        for (auto *action : menu->actions())
+            if (action->text() == "spelling") replacement = action;
+        assert(replacement);
+        replacement->trigger();
+        menu->close();
+    });
+    QContextMenuEvent context(QContextMenuEvent::Mouse, point, editor.viewport()->mapToGlobal(point));
+    QApplication::sendEvent(editor.viewport(), &context);
+    assert(document.toPlainText() == "speling, spelling!");
+    assert(editor.textCursor().charFormat().fontWeight() >= QFont::Bold);
+    document.undo();
+    assert(document.toPlainText() == "speling, speling!");
 
     if (std::ranges::any_of(available, [](const QString &code) { return code.startsWith("de_"); })) {
         spelling.setLanguages({"eng+deu"});

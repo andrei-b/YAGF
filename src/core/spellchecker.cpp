@@ -4,6 +4,11 @@
 
 namespace yagf::core {
 namespace {
+QString normalizedWord(const QString &word)
+{
+    return word.normalized(QString::NormalizationForm_C).replace(QChar(0x2019), QLatin1Char('\''));
+}
+
 QString dictionaryCode(QString code)
 {
     code.replace('-', '_');
@@ -28,6 +33,8 @@ struct SpellChecker::Dictionaries {
     Dictionary *(*request)(Broker *, const char *) = nullptr;
     void (*freeDictionary)(Broker *, Dictionary *) = nullptr;
     int (*check)(Dictionary *, const char *, qptrdiff) = nullptr;
+    char **(*suggest)(Dictionary *, const char *, qptrdiff, size_t *) = nullptr;
+    void (*freeSuggestions)(Dictionary *, char **) = nullptr;
     QStringList available, active;
     QVector<Dictionary *> loaded;
     QString status;
@@ -40,6 +47,8 @@ struct SpellChecker::Dictionaries {
         request = reinterpret_cast<decltype(request)>(library.resolve("enchant_broker_request_dict"));
         freeDictionary = reinterpret_cast<decltype(freeDictionary)>(library.resolve("enchant_broker_free_dict"));
         check = reinterpret_cast<decltype(check)>(library.resolve("enchant_dict_check"));
+        suggest = reinterpret_cast<decltype(suggest)>(library.resolve("enchant_dict_suggest"));
+        freeSuggestions = reinterpret_cast<decltype(freeSuggestions)>(library.resolve("enchant_dict_free_string_list"));
         if (!init || !freeBroker || !list || !request || !freeDictionary || !check) return;
         broker = init();
         if (!broker) return;
@@ -112,7 +121,7 @@ void SpellChecker::setLanguages(const QStringList &languages)
 bool SpellChecker::isMisspelled(const QString &word)
 {
     if (dictionaries->loaded.isEmpty() || word.size() <= 1) return false;
-    const QString normalized = word.normalized(QString::NormalizationForm_C).replace(QChar(0x2019), QLatin1Char('\''));
+    const QString normalized = normalizedWord(word);
     if (cache.contains(normalized)) return cache.value(normalized);
     const QByteArray utf8 = normalized.toUtf8();
     bool misspelled = true;
@@ -123,5 +132,33 @@ bool SpellChecker::isMisspelled(const QString &word)
     return misspelled;
 }
 
+QStringList SpellChecker::suggestions(const QString &word) const
+{
+    constexpr int limit = 8;
+    if (!dictionaries->suggest || !dictionaries->freeSuggestions) return {};
+    const auto utf8 = normalizedWord(word).toUtf8();
+    QVector<QStringList> candidates;
+    for (auto *dictionary : dictionaries->loaded) {
+        size_t count = 0;
+        char **list = dictionaries->suggest(dictionary, utf8.constData(), utf8.size(), &count);
+        if (!list) continue;
+        QStringList ranked;
+        for (size_t i = 0; i < count && ranked.size() < limit; ++i) {
+            const auto candidate = QString::fromUtf8(list[i]);
+            if (!candidate.isEmpty() && candidate != word && !ranked.contains(candidate))
+                ranked.append(candidate);
+        }
+        dictionaries->freeSuggestions(dictionary, list);
+        candidates.append(ranked);
+    }
+    QStringList result;
+    for (int rank = 0; rank < limit; ++rank) {
+        for (const auto &list : candidates) {
+            if (rank < list.size() && !result.contains(list[rank])) result.append(list[rank]);
+            if (result.size() == limit) return result;
+        }
+    }
+    return result;
+}
 
 }

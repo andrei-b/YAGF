@@ -102,6 +102,13 @@ int main(int argc, char **argv)
         for (auto *candidate : window.findChildren<QAction *>())
             if (candidate->text() == titles[i]) action = candidate;
         assert(action && action->isEnabled());
+        auto *group = qobject_cast<QMenu *>(action->parent());
+        assert(group && group->title() == "Scans");
+        auto *exports = qobject_cast<QMenu *>(group->parent());
+        assert(exports && exports->title() == "Export");
+        QStringList groups;
+        for (auto *entry : exports->actions()) groups.append(entry->text());
+        assert((groups == QStringList{"Scans", "PDF", "Text and HTML", "OCR data"}));
         const QString destination = directory.filePath("scan." + suffixes[i]);
         QTimer::singleShot(0, &window, [&] {
             auto *dialog = qobject_cast<QFileDialog *>(QApplication::activeModalWidget());
@@ -550,6 +557,28 @@ int main(int argc, char **argv)
     assert(contextAction && !contextAction->isEnabled());
     contextWindow.loadProject(bookPath);
     assert(contextAction->isEnabled());
+    // Recent projects persist across windows. Reopening an entry moves it to the front.
+    const QString portable = directory.filePath("recent.yagfproj");
+    assert(yagf::core::ProjectFile::savePortable(portable, book, &error));
+    {
+        yagf::ui::MainWindow other;
+        other.loadProject(portable);
+    }
+    auto *recent = contextWindow.findChild<QMenu *>("recentProjectsMenu");
+    assert(recent);
+    auto *fileMenu = qobject_cast<QMenu *>(recent->parent());
+    assert(fileMenu);
+    fileMenu->aboutToShow();
+    assert(recent->actions()[0]->data().toString() == portable);
+    assert(recent->actions()[1]->data().toString() == bookPath);
+    recent->actions()[1]->trigger();
+    fileMenu->aboutToShow();
+    assert(recent->actions()[0]->data().toString() == bookPath);
+    assert(recent->actions()[1]->data().toString() == portable);
+    recent->actions().last()->trigger();
+    fileMenu->aboutToShow();
+    assert(recent->actions().size() == 1 && !recent->actions()[0]->isEnabled());
+
     auto *preserveFormat = contextWindow.findChild<QAction *>("preserveFormattingAction");
     assert(preserveFormat && preserveFormat->isEnabled() && !preserveFormat->isChecked());
     auto *formattedWords = contextWindow.findChild<QListWidget *>("recognizedWords");

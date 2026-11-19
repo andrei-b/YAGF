@@ -35,6 +35,7 @@ class QTabWidget;
 class QTextEdit;
 class QRubberBand;
 class QAction;
+class QMenu;
 class QMimeData;
 class QDragEnterEvent;
 class QDropEvent;
@@ -113,6 +114,9 @@ private:
     QString saveImportedImage(const QImage &image);
     void openProject();
     void openPortableProject();
+    void rememberProject();
+    void refreshRecentProjects();
+    QMenu *recentProjectsMenu;
     bool savePortableProject();
     bool saveProject();
     bool saveProjectAs();
