@@ -118,7 +118,7 @@ public:
     [[nodiscard]] qsizetype wordCount() const;
     [[nodiscard]] QString plainText() const;
     [[nodiscard]] QString layoutHtml() const;
-    [[nodiscard]] QJsonObject toJson() const;
+    [[nodiscard]] QJsonObject toJson(bool includeRestoredPixels = true) const;
 };
 
 } // namespace yagf::core

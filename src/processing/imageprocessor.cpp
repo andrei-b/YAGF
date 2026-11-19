@@ -1,4 +1,6 @@
 #include "imageprocessor.h"
+#include <QBuffer>
+#include <QImageReader>
 
 #include <QPainter>
 #include <QTransform>
@@ -402,7 +404,20 @@ std::expected<QImage, QString> ImageProcessor::apply(const QImage &source,
     if (settings.isIdentity()) return source;
     if (static_cast<qint64>(source.width()) * source.height() > 80'000'000)
         return std::unexpected(QStringLiteral("Image is too large to preprocess safely."));
-    QImage current = source.convertToFormat(QImage::Format_ARGB32);
+    QImage current = source;
+    if (!settings.restoredPng.isEmpty()) {
+        QBuffer buffer;
+        buffer.setData(settings.restoredPng);
+        buffer.open(QIODevice::ReadOnly);
+        QImageReader reader(&buffer, "PNG");
+        const QSize size = reader.size();
+        if (size.isEmpty() || qint64(size.width()) * size.height() > 80'000'000)
+            return std::unexpected(QStringLiteral("Invalid restored page dimensions."));
+        reader.setScaledSize(source.size());
+        current = reader.read();
+        if (current.isNull()) return std::unexpected(reader.errorString());
+    }
+    current = current.convertToFormat(QImage::Format_ARGB32);
     if (settings.quarterTurns)
         current = current.transformed(QTransform().rotate(settings.quarterTurns * 90), Qt::FastTransformation);
     if (settings.levelShadows) current = levelPaper(current).convertToFormat(QImage::Format_ARGB32);

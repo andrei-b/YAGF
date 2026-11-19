@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cmath>
+#include <QByteArray>
 
 namespace yagf::core {
 
@@ -17,10 +18,12 @@ struct PreprocessSettings {
     double bendPercent = 0.; // Downward sag at the center as a percentage of upright page height.
     bool levelShadows = false;
 
+    QByteArray restoredPng; // Full page before rotation and tonal preprocessing.
+
     bool operator==(const PreprocessSettings &) const = default;
     [[nodiscard]] bool isIdentity() const
     {
-        return std::abs(deskewDegrees) < 0.01 && !autoContrast && !denoise && quarterTurns == 0 && !adaptiveBinarization && bendPercent == 0 && !levelShadows;
+        return std::abs(deskewDegrees) < 0.01 && !autoContrast && !denoise && quarterTurns == 0 && !adaptiveBinarization && bendPercent == 0 && !levelShadows && restoredPng.isEmpty();
     }
 };
 

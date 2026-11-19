@@ -415,7 +415,7 @@ QString OcrDocument::layoutHtml() const
     return html + QStringLiteral("</body></html>");
 }
 
-QJsonObject OcrDocument::toJson() const
+QJsonObject OcrDocument::toJson(bool includeRestoredPixels) const
 {
     QJsonArray pageItems;
     for (const OcrPage &page : pages) {
@@ -446,7 +446,7 @@ QJsonObject OcrDocument::toJson() const
         for (const ImageRegion &region : page.imageRegions)
             imageRegionItems.append(QJsonObject{{"id", region.id}, {"box", boxJson(region.bounds)},
                 {"language", region.language}, {"not_text", region.notText}});
-        pageItems.append(QJsonObject{{"id", page.id}, {"number", page.number},
+        QJsonObject item{{"id", page.id}, {"number", page.number},
                                      {"width", page.width}, {"height", page.height},
                                      {"source_width", page.sourceWidth > 0 ? page.sourceWidth : page.width},
                                      {"source_height", page.sourceHeight > 0 ? page.sourceHeight : page.height},
@@ -463,7 +463,10 @@ QJsonObject OcrDocument::toJson() const
                                      {"engine", page.engineId}, {"language", page.language},
                                      {"regions", regionItems}, {"image_regions", imageRegionItems},
                                      {"words", wordItems},
-                                     {"reading_order", readingOrder}});
+                                     {"reading_order", readingOrder}};
+        if (includeRestoredPixels && !page.preprocessing.restoredPng.isEmpty())
+            item.insert("restored_page_png", QString::fromLatin1(page.preprocessing.restoredPng.toBase64()));
+        pageItems.append(item);
     }
     return {{"schema_version", 2}, {"source", sourcePath}, {"engine", engine},
             {"preserve_formatting", preserveFormatting},
@@ -574,6 +577,15 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
                  page.preprocessing.inkThreshold < 0 || page.preprocessing.inkThreshold > 255))
                 return fail(QStringLiteral("Invalid ink threshold."));
             page.preprocessing.adaptiveBinarization = settings.value("adaptive_binarization").toBool();
+        }
+        if (object.contains("restored_page_png")) {
+            const auto encoded = object.value("restored_page_png").toString();
+            if (encoded.isEmpty() || encoded.size() > 400'000'000)
+                return fail(QStringLiteral("Invalid restored page data."));
+            auto png = QByteArray::fromBase64Encoding(encoded.toLatin1(), QByteArray::AbortOnBase64DecodingErrors);
+            if (!png || !png.decoded.startsWith(QByteArray::fromHex("89504e470d0a1a0a")))
+                return fail(QStringLiteral("Invalid restored page PNG."));
+            page.preprocessing.restoredPng = std::move(png.decoded);
         }
         if (object.contains("render_dpi") && (!integer(object, "render_dpi", &page.renderDpi) || !validRenderDpi(page.renderDpi)))
             return fail(QStringLiteral("Invalid page rendering resolution."));

@@ -95,7 +95,7 @@ int main(int argc, char **argv)
     assert(words && editor);
     // Export a fresh scan before OCR produces any page records.
     QApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
-    const QStringList titles{"Current page as PNG…", "Current page as JPEG…", "All pages as PDF…"};
+    const QStringList titles{"Current page as image…", "Current page as image…", "All pages as PDF…"};
     const QStringList suffixes{"png", "jpg", "pdf"};
     for (int i = 0; i < titles.size(); ++i) {
         QAction *action = nullptr;
@@ -109,11 +109,16 @@ int main(int argc, char **argv)
         QStringList groups;
         for (auto *entry : exports->actions()) groups.append(entry->text());
         assert((groups == QStringList{"Scans", "PDF", "Text and HTML", "OCR data"}));
-        const QString destination = directory.filePath("scan." + suffixes[i]);
+        const QString stem = directory.filePath("scan");
+        const QString destination = stem + "." + suffixes[i];
         QTimer::singleShot(0, &window, [&] {
             auto *dialog = qobject_cast<QFileDialog *>(QApplication::activeModalWidget());
             assert(dialog);
-            dialog->selectFile(destination);
+            if (i < 2) {
+                assert(dialog->nameFilters().size() == 2);
+                dialog->selectNameFilter(dialog->nameFilters().at(i));
+            }
+            dialog->selectFile(i < 2 ? stem : destination);
             QMetaObject::invokeMethod(dialog, "accept", Qt::DirectConnection);
         });
         action->trigger();
@@ -133,6 +138,37 @@ int main(int argc, char **argv)
         } else {
             QFile pdf(destination);
             assert(pdf.open(QIODevice::ReadOnly) && pdf.read(5) == "%PDF-");
+        }
+    }
+    auto *restorePage = window.findChild<QAction *>("restorePageAction");
+    assert(restorePage && restorePage->isEnabled());
+    QTimer::singleShot(0, &window, [&] {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        assert(dialog);
+        auto *canvas = dialog->findChild<QWidget *>("restorationCanvas");
+        auto *tool = dialog->findChild<QComboBox *>("restorationTool");
+        auto *apply = dialog->findChild<QPushButton *>("applyRegion");
+        auto *ok = dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Ok);
+        assert(tool && canvas && apply && !ok->isEnabled());
+        tool->setCurrentIndex(1);
+        const auto center = canvas->rect().center();
+        QTest::mousePress(canvas, Qt::LeftButton, {}, center-QPoint(30, 15));
+        QTest::mouseRelease(canvas, Qt::LeftButton, {}, center+QPoint(30, 15));
+        assert(apply->isEnabled());
+        apply->click();
+        QElapsedTimer timer;
+        timer.start();
+        while (!ok->isEnabled() && timer.elapsed() < 5000) QTest::qWait(10);
+        assert(ok->isEnabled());
+        ok->click();
+    });
+    restorePage->trigger();
+    // The edit uses the same page-level undo history as the OCR editor.
+    for (auto *action : window.findChildren<QAction *>()) {
+        if (action->shortcut() == QKeySequence::Undo) {
+            assert(action->isEnabled());
+            action->trigger();
+            break;
         }
     }
     QPushButton *recognize = nullptr, *apply = nullptr;

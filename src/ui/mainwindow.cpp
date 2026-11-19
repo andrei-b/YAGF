@@ -6,6 +6,8 @@
 #include "blockminiaturelist.h"
 #include "projectfile.h"
 #include "preprocessdialog.h"
+#include "restorationdialog.h"
+#include <QBuffer>
 #include "imageprocessor.h"
 #include "layoutdialog.h"
 #include "scannerdialog.h"
@@ -102,6 +104,28 @@ using processing::ImageProcessor;
 using processing::BatchPageOptions;
 
 namespace {
+class ExportSaveDialog : public QFileDialog {
+public:
+    using QFileDialog::QFileDialog;
+    bool imageExport = false;
+    void accept() override
+    {
+        if (imageExport) {
+            const bool jpeg = selectedNameFilter() == nameFilters().last();
+            setDefaultSuffix(jpeg ? "jpg" : "png");
+            const QFileInfo file(selectedFiles().value(0));
+            const auto ext = file.suffix().toLower();
+            if (!file.isDir() && ext != "png" && ext != "jpg" && ext != "jpeg") {
+                QMessageBox::information(this, tr("Export scanned page"), tr("Choose a PNG or JPEG filename."));
+                return;
+            }
+            if (!file.isDir() && ((ext == "png") == jpeg))
+                selectFile(file.dir().filePath(file.completeBaseName() + "." + defaultSuffix()));
+        }
+        QFileDialog::accept();
+    }
+};
+
 void addToolbarSeparator(QToolBar *toolbar)
 {
     auto *action = toolbar->addSeparator();
@@ -551,8 +575,11 @@ MainWindow::MainWindow()
     addToolbarSeparator(toolbar);
     improveAction = toolbar->addAction(tr("Improve page…"), this, &MainWindow::improveCurrentPage);
     improveAction->setObjectName(QStringLiteral("improvePageAction"));
-    improveAction->setEnabled(false);
     toolsMenu->addAction(improveAction);
+    restoreAction = toolsMenu->addAction(tr("Restore damaged page…"), this, &MainWindow::restoreCurrentPage);
+    restoreAction->setObjectName(QStringLiteral("restorePageAction"));
+    improveAction->setEnabled(false);
+    restoreAction->setEnabled(false);
     layoutAction = toolsMenu->addAction(tr("Edit layout…"), this, &MainWindow::editLayout);
     createRegionAction = toolsMenu->addAction(tr("Create region from selection"), this,
                                              &MainWindow::createRegionFromSelection);
@@ -627,11 +654,8 @@ MainWindow::MainWindow()
     auto *scanMenu = exportMenu->addMenu(tr("Scans"));
     scanExportAction = scanMenu->menuAction();
     scanExportAction->setEnabled(false);
-    scanMenu->addAction(tr("Current page as PNG…"), this, [this] {
-        chooseExportPath(tr("Export page as PNG"), tr("PNG image (*.png)"), "png", ExportFormat::ScanPng);
-    });
-    scanMenu->addAction(tr("Current page as JPEG…"), this, [this] {
-        chooseExportPath(tr("Export page as JPEG"), tr("JPEG image (*.jpg *.jpeg)"), "jpg", ExportFormat::ScanJpeg);
+    scanMenu->addAction(tr("Current page as image…"), this, [this] {
+        chooseExportPath(tr("Export scanned page"), tr("PNG image (*.png);;JPEG image (*.jpg *.jpeg)"), "png", ExportFormat::ScanImage);
     });
     scanMenu->addAction(tr("All pages as PDF…"), this, [this] {
         chooseExportPath(tr("Export scanned document"), tr("PDF files (*.pdf)"), "pdf", ExportFormat::ScanPdf);
@@ -1088,7 +1112,8 @@ MainWindow::MainWindow()
         const OcrPage *page = document.page(currentPage);
         if (page && processing::isPagedSource(originalPath) && !rawImagePath.isEmpty() && page->renderDpi != processor.renderedDpi(currentPage))
             showPage(currentPage);
-        else if (page && !rawImagePath.isEmpty() && page->preprocessing != displayedPreprocessing)
+        else if (!rawImagePath.isEmpty() && (page ? page->preprocessing != displayedPreprocessing
+                                                      : !displayedPreprocessing.isIdentity()))
             loadImage(rawImagePath);
         else showDocument();
         refreshDirty();
@@ -1125,6 +1150,7 @@ void MainWindow::setBusy(bool busy)
     regionList->setEnabled(!blocked);
     deleteRegionButton->setEnabled(!blocked && selectedImageRegion >= 0);
     improveAction->setEnabled(!blocked && !rawImage.isNull());
+    restoreAction->setEnabled(!blocked && !rawImage.isNull());
     batchAction->setEnabled(!blocked && pageCount > 1 && processing::isPagedSource(originalPath));
     layoutAction->setEnabled(!blocked && document.page(currentPage) && !document.page(currentPage)->regions.isEmpty());
     createRegionAction->setEnabled(!blocked && !selectedWords.isEmpty() &&
@@ -1295,6 +1321,7 @@ void MainWindow::loadSource(const QString &path)
     rawImage = {};
     ocrButton->setEnabled(false);
     improveAction->setEnabled(false);
+    restoreAction->setEnabled(false);
     layoutAction->setEnabled(false);
     createRegionAction->setEnabled(false);
     batchAction->setEnabled(false);
@@ -1375,6 +1402,7 @@ void MainWindow::loadProject(const QString &path)
     rawImagePath.clear();
     rawImage = {};
     improveAction->setEnabled(false);
+    restoreAction->setEnabled(false);
     layoutAction->setEnabled(false);
     createRegionAction->setEnabled(false);
     batchAction->setEnabled(false);
@@ -1629,6 +1657,7 @@ void MainWindow::showPage(int number)
     rawImage = {};
     ocrButton->setEnabled(false);
     improveAction->setEnabled(false);
+    restoreAction->setEnabled(false);
     layoutAction->setEnabled(false);
     createRegionAction->setEnabled(false);
     if (processing::isPagedSource(originalPath)) {
@@ -1644,18 +1673,46 @@ void MainWindow::improveCurrentPage()
     if (rawImage.isNull() || processor.isBusy() || !maybeApplyEditor()) return;
     const OcrPage *existing = document.page(currentPage);
     const core::PreprocessSettings current = existing ? existing->preprocessing : core::PreprocessSettings{};
-    PreprocessDialog dialog(rawImage, current, this, processor.engineId() == QStringLiteral("tesseract")
+    const auto base = ImageProcessor::apply(rawImage, {.restoredPng = current.restoredPng});
+    if (!base) { showError(base.error()); return; }
+    PreprocessDialog dialog(*base, current, this, processor.engineId() == QStringLiteral("tesseract")
         ? languageEdit->text().trimmed() : QStringLiteral("eng"));
     if (dialog.exec() != QDialog::Accepted) return;
-    const core::PreprocessSettings proposed = dialog.settings();
+    auto proposed = dialog.settings();
+    proposed.restoredPng = current.restoredPng;
     if (proposed == current) return;
     const bool geometryChanged = std::abs(proposed.deskewDegrees - current.deskewDegrees) >= 0.01 ||
                                  proposed.quarterTurns != current.quarterTurns || proposed.bendPercent != current.bendPercent;
+    applyPagePreprocessing(proposed, geometryChanged);
+}
+
+void MainWindow::restoreCurrentPage()
+{
+    if (rawImage.isNull() || processor.isBusy() || exportBusy || !maybeApplyEditor()) return;
+    const auto *page = document.page(currentPage);
+    auto settings = page ? page->preprocessing : core::PreprocessSettings{};
+    const auto base = ImageProcessor::apply(rawImage, {.restoredPng = settings.restoredPng});
+    if (!base) { showError(base.error()); return; }
+    RestorationDialog dialog(rawImage, *base, this);
+    if (dialog.exec() != QDialog::Accepted) return;
+    QByteArray png;
+    QBuffer buffer(&png);
+    if (!buffer.open(QIODevice::WriteOnly) || !dialog.resultImage().save(&buffer, "PNG")) {
+        showError(tr("Could not save the restored page."));
+        return;
+    }
+    settings.restoredPng = std::move(png);
+    applyPagePreprocessing(settings, dialog.geometryChanged());
+}
+
+void MainWindow::applyPagePreprocessing(const core::PreprocessSettings &proposed, bool geometryChanged)
+{
+    const auto *existing = document.page(currentPage);
     if (geometryChanged && existing &&
         (!existing->words.isEmpty() || !existing->imageRegions.isEmpty() || !existing->regions.isEmpty() ||
          !existing->deletedWords.isEmpty() || !existing->pendingCorrections.isEmpty()) &&
         QMessageBox::warning(this, tr("Rebuild page geometry"),
-            tr("Changing the rotation, deskew angle, or bend moves the scan and will clear OCR boxes, corrections, and image regions on this page. Continue?"),
+            tr("Changing page geometry moves the text and will clear OCR boxes, corrections, and image regions on this page. Continue?"),
             QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Yes) return;
     const auto processed = ImageProcessor::apply(rawImage, proposed);
     if (!processed) { showError(processed.error()); return; }
@@ -2660,7 +2717,7 @@ void MainWindow::exportJson()
     if (path.isEmpty()) return;
     QFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) { showError(file.errorString()); return; }
-    file.write(QJsonDocument(document.toJson()).toJson(QJsonDocument::Indented));
+    file.write(QJsonDocument(document.toJson(false)).toJson(QJsonDocument::Indented));
 }
 
 void MainWindow::convertDjVuToPdf()
@@ -2706,9 +2763,11 @@ void MainWindow::exportVerifiedSamples()
 
 void MainWindow::chooseExportPath(const QString &title, const QString &filter, const QString &suffix, ExportFormat format)
 {
-    QFileDialog dialog(this, title, {}, filter);
+    ExportSaveDialog dialog(this, title, {}, filter);
+    dialog.imageExport = format == ExportFormat::ScanImage;
+    if (dialog.imageExport) dialog.setOption(QFileDialog::DontUseNativeDialog);
     dialog.setAcceptMode(QFileDialog::AcceptSave);
-    dialog.setDefaultSuffix(suffix);
+    if (!dialog.imageExport) dialog.setDefaultSuffix(suffix);
     if (dialog.exec() != QDialog::Accepted) return;
     const QString path = dialog.selectedFiles().value(0);
     if (path.isEmpty()) return;
@@ -2732,9 +2791,9 @@ void MainWindow::startExport(const QString &path, ExportFormat format)
         const auto progress = [this](qsizetype completed, qsizetype total) {
             emit exportProgress(completed, total);
         };
-        if (format == ExportFormat::ScanPng || format == ExportFormat::ScanJpeg)
+        if (format == ExportFormat::ScanImage)
             return processing::writeScanPage(snapshot, pageNumber, path,
-                format == ExportFormat::ScanPng ? "PNG" : "JPEG", *cancel);
+                QFileInfo(path).suffix().compare("png", Qt::CaseInsensitive) == 0 ? "PNG" : "JPEG", *cancel);
         if (format == ExportFormat::ScanPdf)
             return processing::PdfExporter::write(snapshot, path, false, *cancel, progress,
                                                   processing::PdfExporter::Mode::ImageOnly);

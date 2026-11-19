@@ -5,6 +5,7 @@ include(GNUInstallDirs)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+find_package(OpenCV 4.4 REQUIRED COMPONENTS core imgproc features2d calib3d)
 find_package(Qt6 6.2 REQUIRED COMPONENTS Core Gui Widgets Concurrent Network)
 qt_standard_project_setup()
 set(CMAKE_AUTORCC ON)
@@ -27,10 +28,11 @@ target_include_directories(yagf_core PUBLIC src/core)
 
 # Image/source operations have no OCR, network, or job-controller dependency.
 add_library(yagf_imaging STATIC
+    src/processing/pagerestoration.cpp src/processing/pagerestoration.h
     src/processing/pagesource.cpp src/processing/pagesource.h
     src/processing/imageprocessor.cpp src/processing/imageprocessor.h src/processing/pagebend.cpp
     src/processing/symbolshape.cpp src/processing/symbolshape.h)
-target_link_libraries(yagf_imaging PUBLIC yagf_core Qt6::Gui)
+target_link_libraries(yagf_imaging PUBLIC yagf_core Qt6::Gui PRIVATE ${OpenCV_LIBS})
 target_include_directories(yagf_imaging PUBLIC src/processing)
 
 # Providers and recognition analysis can be used without the async document controller.
@@ -78,6 +80,7 @@ qt_add_executable(yagf2
     src/ui/verificationcontroller.cpp src/ui/verificationcontroller.h
     src/ui/mainwindowreview.cpp src/ui/experimentdialog.cpp src/ui/experimentdialog.h
     src/main.cpp src/ui/mainwindow.cpp src/ui/mainwindow.h
+    src/ui/restorationdialog.cpp src/ui/restorationdialog.h
     src/ui/preprocessdialog.cpp src/ui/preprocessdialog.h
     src/ui/layoutdialog.cpp src/ui/layoutdialog.h resources/icons.qrc)
 target_sources(yagf2 PRIVATE src/ui/scannerdialog.cpp src/ui/scannerdialog.h)
@@ -178,6 +181,7 @@ if(BUILD_TESTING)
         src/ui/verificationcontroller.cpp src/ui/verificationcontroller.h
         src/ui/mainwindowreview.cpp src/ui/experimentdialog.cpp src/ui/experimentdialog.h
         src/ui/mainwindow.cpp src/ui/mainwindow.h
+        src/ui/restorationdialog.cpp src/ui/restorationdialog.h
         src/ui/preprocessdialog.cpp src/ui/preprocessdialog.h
         src/ui/layoutdialog.cpp src/ui/layoutdialog.h
         src/ui/scannerdialog.cpp src/ui/scannerdialog.h
@@ -197,6 +201,10 @@ if(BUILD_TESTING)
     qt_add_executable(projectfile_tests tests/projectfile_tests.cpp)
     target_link_libraries(projectfile_tests PRIVATE yagf_core)
     add_test(NAME projectfile_tests COMMAND projectfile_tests)
+    qt_add_executable(pagerestoration_tests tests/pagerestoration_tests.cpp)
+    target_link_libraries(pagerestoration_tests PRIVATE yagf_export yagf_imaging)
+    add_test(NAME pagerestoration_tests COMMAND pagerestoration_tests)
+    set_tests_properties(pagerestoration_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     qt_add_executable(imageprocessor_tests tests/imageprocessor_tests.cpp)
     target_link_libraries(imageprocessor_tests PRIVATE yagf_imaging)
     add_test(NAME imageprocessor_tests COMMAND imageprocessor_tests)

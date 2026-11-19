@@ -162,10 +162,12 @@ private:
     void editLayout();
     void createRegionFromSelection();
     void improveCurrentPage();
+    void restoreCurrentPage();
+    void applyPagePreprocessing(const core::PreprocessSettings &proposed, bool geometryChanged);
     void exportText();
     void exportHtml();
     void exportJson();
-    enum class ExportFormat : quint8 { Pdf, FormattedPdf, ArchivalPdf, Samples, ScientificBook, ScanPng, ScanJpeg, ScanPdf };
+    enum class ExportFormat : quint8 { Pdf, FormattedPdf, ArchivalPdf, Samples, ScientificBook, ScanImage, ScanPdf };
     void exportPdf(bool archive, bool formatted = false);
     void convertDjVuToPdf();
     void exportVerifiedSamples();
@@ -201,6 +203,7 @@ private:
     QPushButton *previousButton;
     QPushButton *nextButton;
     QAction *improveAction;
+    QAction *restoreAction;
     QAction *batchAction = nullptr;
     QAction *remainingAction = nullptr;
     QAction *layoutAction = nullptr;

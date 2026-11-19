@@ -94,8 +94,8 @@ std::expected<QJsonObject,QString> runExperiment(const core::OcrDocument &docume
         const auto *page=document.page(ref.number);
         core::OcrDocument snapshot;snapshot.sourcePath=QFileInfo(document.sourcePath).fileName();snapshot.totalPages=document.totalPages;snapshot.pages={*page};
         references.append(QJsonObject{{"page",ref.number},{"split",ref.heldOut?"held_out":"calibration"},
-            {"text",core::benchmarkText(*page)},{"sha256",digest(QJsonDocument(snapshot.toJson()).toJson(QJsonDocument::Compact))},
-            {"page_snapshot",snapshot.toJson()}});
+            {"text",core::benchmarkText(*page)},{"sha256",digest(QJsonDocument(snapshot.toJson(false)).toJson(QJsonDocument::Compact))},
+            {"page_snapshot",snapshot.toJson(false)}});
     }
     for(const auto &p:plan.pipelines)pipelines.append(p.toJson());
     QJsonObject report{{"schema","yagf-experiment/1"},{"application_version",QCoreApplication::applicationVersion()},{"started_utc",QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
@@ -144,7 +144,7 @@ std::expected<QJsonObject,QString> runExperiment(const core::OcrDocument &docume
             settings.autoContrast|=p.contrast;settings.denoise|=p.denoise;
             settings.adaptiveBinarization|=p.binarize;
             if(p.autoDeskew) {
-                auto binary=processing::ImageProcessor::apply(*raw,{.adaptiveBinarization=true});
+                auto binary=processing::ImageProcessor::apply(*raw,{.adaptiveBinarization=true, .restoredPng=settings.restoredPng});
                 if(!binary){finish(binary.error());continue;}
                 auto rotation=processing::detectPageOrientation(*binary,stop);
                 if(rotation) {
@@ -152,7 +152,7 @@ std::expected<QJsonObject,QString> runExperiment(const core::OcrDocument &docume
                     settings.quarterTurns=rotation->quarterTurns;
                 }
                 else record["orientation_note"]=rotation.error().message;
-                auto upright=processing::ImageProcessor::apply(*raw,{.quarterTurns=settings.quarterTurns, .bendPercent=settings.bendPercent, .levelShadows=settings.levelShadows});
+                auto upright=processing::ImageProcessor::apply(*raw,{.quarterTurns=settings.quarterTurns, .bendPercent=settings.bendPercent, .levelShadows=settings.levelShadows, .restoredPng=settings.restoredPng});
                 if(!upright){finish(upright.error());continue;}
                 auto assessment=processing::ImageProcessor::assess(*upright);
                 if(assessment)settings.deskewDegrees=assessment->skewDegrees;
@@ -193,7 +193,7 @@ std::expected<QJsonObject,QString> runExperiment(const core::OcrDocument &docume
             if(!scores){finish(scores.error());continue;}
             record["scores"]=scores->toJson();
             outcome->sourceWidth=raw->width();outcome->sourceHeight=raw->height();outcome->renderDpi=dpi;outcome->preprocessing=settings;
-            core::OcrDocument hypothesis;hypothesis.sourcePath=QFileInfo(document.sourcePath).fileName();hypothesis.totalPages=document.totalPages;hypothesis.pages={*outcome};record["hypothesis"]=hypothesis.toJson();
+            core::OcrDocument hypothesis;hypothesis.sourcePath=QFileInfo(document.sourcePath).fileName();hypothesis.totalPages=document.totalPages;hypothesis.pages={*outcome};record["hypothesis"]=hypothesis.toJson(false);
             finish();
         }
       }
