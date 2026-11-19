@@ -96,7 +96,7 @@ int main(int argc, char **argv)
     auto *spellingLanguage = window.findChild<QComboBox *>("spellLanguage");
     auto *editorSplit = window.findChild<QSplitter *>("textEditorSplitter");
     assert(spellCheck && spellCheck->isChecked() && spellingLanguage && editorSplit && editorSplit->count() == 2);
-    assert(editor->minimumHeight() >= 280);
+    assert(editor->minimumHeight() == 120);
     auto *language = window.findChild<QLineEdit *>(QStringLiteral("languageField"));
     QAction *picker = nullptr;
     for (QAction *action : window.findChildren<QAction *>())
@@ -240,6 +240,26 @@ int main(int argc, char **argv)
     regionWindow.resize(startupSize);
     QApplication::processEvents();
     assert(separatorWidths() == startupSeparators);
+    const auto dragDivider = [&](const char *name, int delta) {
+        auto *divider = regionWindow.findChild<QSplitter *>(name);
+        assert(divider && divider->orientation() == Qt::Vertical && divider->count() == 2);
+        const auto before = divider->sizes();
+        auto *handle = divider->handle(1);
+        assert(handle->isVisible() && handle->height() >= 8);
+        const QPoint from = handle->rect().center();
+        const QPoint to = from + QPoint(0, delta);
+        QTest::mousePress(handle, Qt::LeftButton, {}, from);
+        QTest::mouseMove(handle, to);
+        QTest::mouseRelease(handle, Qt::LeftButton, {}, to);
+        QApplication::processEvents();
+        const auto after = divider->sizes();
+        assert(delta > 0 ? after[0] > before[0] : after[0] < before[0]);
+        assert(delta > 0 ? after[1] < before[1] : after[1] > before[1]);
+        divider->setSizes(before);
+        QApplication::processEvents();
+    };
+    dragDivider("navigationSplitter", 50);
+    dragDivider("textEditorSplitter", -70);
     auto *pageView = regionWindow.findChild<yagf::ui::PageView *>(QStringLiteral("pagePreview"));
     auto *regions = regionWindow.findChild<QListWidget *>(QStringLiteral("imageRegions"));
     auto *regionWords = regionWindow.findChild<QListWidget *>(QStringLiteral("recognizedWords"));

@@ -139,3 +139,11 @@ QLineEdit:focus, QSpinBox:focus, QComboBox:focus { border-color: #6aa5e8; }
 QStatusBar { background: #ffffff; color: #718096; border-top: 1px solid #dce4ee; }
 QStatusBar QLabel { color: #718096; padding: 2px 8px; }
 QSplitter#workspaceSplitter::handle { background: #dce4ee; }
+QSplitter#navigationSplitter::handle,
+QSplitter#textEditorSplitter::handle {
+    background: #dce4ee;
+    border-radius: 3px;
+    margin: 2px 0;
+}
+QSplitter#navigationSplitter::handle:hover,
+QSplitter#textEditorSplitter::handle:hover { background: #9dbde2; }
