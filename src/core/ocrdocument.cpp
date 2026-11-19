@@ -469,7 +469,7 @@ QJsonObject OcrDocument::toJson(bool includeRestoredPixels) const
         pageItems.append(item);
     }
     return {{"schema_version", 2}, {"source", sourcePath}, {"engine", engine},
-            {"preserve_formatting", preserveFormatting},
+            {"preserve_formatting", preserveFormatting}, {"math_ocr", mathOcr},
             {"rendering", QJsonObject{{"dpi", rendering.dpi}, {"adaptive", rendering.adaptive}}},
             {"language", language}, {"total_pages", totalPages}, {"pages", pageItems},
             {"context", QJsonObject{{"description", context.description},
@@ -489,6 +489,9 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
     OcrDocument parsed;
     if (json.contains("preserve_formatting") && !json.value("preserve_formatting").isBool())
         return fail(QStringLiteral("Invalid format preservation mode."));
+    if (json.contains("math_ocr") && !json.value("math_ocr").isBool())
+        return fail(QStringLiteral("Invalid math OCR mode."));
+    parsed.mathOcr = json.value("math_ocr").toBool();
     parsed.preserveFormatting = json.value("preserve_formatting").toBool();
     if (json.contains("rendering")) {
         const auto settings = json.value("rendering");

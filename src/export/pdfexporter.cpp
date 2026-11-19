@@ -88,7 +88,9 @@ PdfExportResult PdfExporter::write(const core::OcrDocument &document,
                 painter.save();
                 painter.setPen(Qt::black);
                 painter.setOpacity(0.0);
-                for (const core::OcrWord &word : page->words) detail::drawWord(painter, word, dpiY);
+                const auto formulas = detail::formulaWordIds(*page);
+                for (const core::OcrWord &word : page->words)
+                    detail::drawWord(painter, word, dpiY, formulas.contains(word.id));
                 painter.restore();
             }
             painter.restore();

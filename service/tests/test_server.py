@@ -61,6 +61,28 @@ class FakeBackend:
         return [{"text": "Hello world", "confidence": 0.9, "box": [1, 2, 12, 5]}]
 
 
+class MathTranscriptionTests(unittest.TestCase):
+    def test_inline_and_display_math(self):
+        # Surya returns HTML. Decode its entities without consuming TeX alignment
+        # markers, line breaks, subscript braces or the surrounding prose.
+        matrix = r"\begin{pmatrix}a_{1}&amp;-b^{2}\\0&amp;\sqrt{x}\end{pmatrix}"
+        cases = [
+            ("Text", r"<p>If <math>a_{1}&lt;b^{2}</math>, use <math>-x</math>.</p>",
+             r"If \(a_{1}<b^{2}\), use \(-x\)."),
+            ("Equation", f"<math>{matrix}</math>",
+             r"\[\begin{pmatrix}a_{1}&-b^{2}\\0&\sqrt{x}\end{pmatrix}\]"),
+            ("Formula", r"<math>\frac{-1}{x^{2}}</math>", r"\[\frac{-1}{x^{2}}\]"),
+        ]
+        for label, html, expected in cases:
+            with self.subTest(label=label):
+                block = SimpleNamespace(label=label, html=html, reading_order=0,
+                                        polygon=[(0, 0), (20, 0), (20, 10), (0, 10)],
+                                        confidence=0.95, skipped=False, error=False)
+                [item] = normalize_surya_result([SimpleNamespace(blocks=[block])], 20, 10)
+                self.assertEqual(item["text"], expected)
+                self.assertEqual(item["type"], label.lower())
+
+
 class ServerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

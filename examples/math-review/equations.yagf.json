@@ -1,0 +1,136 @@
+{
+  "project_version": 2,
+  "document": {
+    "schema_version": 2,
+    "math_ocr": true,
+    "source": "equations.png",
+    "engine": "tesseract",
+    "language": "eng",
+    "total_pages": 1,
+    "pages": [
+      {
+        "number": 1,
+        "width": 502,
+        "height": 296,
+        "words": [
+          {
+            "page": 1,
+            "block": 1,
+            "paragraph": 1,
+            "line": 1,
+            "box": {
+              "x": 190,
+              "y": 79,
+              "width": 21,
+              "height": 21
+            },
+            "original_text": "x",
+            "text": "x",
+            "confidence": 0.0,
+            "reviewed": false,
+            "specialist_reading": {
+              "engine": "RapidLaTeXOCR",
+              "text": "x^{2}+1=10",
+              "source_tokens": [
+                "x",
+                "+1=10"
+              ],
+              "formula": true
+            }
+          },
+          {
+            "page": 1,
+            "block": 1,
+            "paragraph": 1,
+            "line": 1,
+            "box": {
+              "x": 218,
+              "y": 79,
+              "width": 94,
+              "height": 23
+            },
+            "original_text": "+1=10",
+            "text": "+1=10",
+            "confidence": 0.0,
+            "reviewed": false
+          },
+          {
+            "page": 1,
+            "block": 2,
+            "paragraph": 1,
+            "line": 1,
+            "box": {
+              "x": 196,
+              "y": 216,
+              "width": 12,
+              "height": 50
+            },
+            "original_text": "Nie",
+            "text": "Nie",
+            "confidence": 71.0,
+            "reviewed": false,
+            "specialist_reading": {
+              "engine": "RapidLaTeXOCR",
+              "text": "{\\frac{1}{2}}+{\\frac{1}{4}}={\\frac{3}{4}}+1",
+              "source_tokens": [
+                "Nie",
+                "mle",
+                "el",
+                "co"
+              ],
+              "formula": true
+            }
+          },
+          {
+            "page": 1,
+            "block": 2,
+            "paragraph": 1,
+            "line": 1,
+            "box": {
+              "x": 244,
+              "y": 216,
+              "width": 12,
+              "height": 50
+            },
+            "original_text": "mle",
+            "text": "mle",
+            "confidence": 33.0,
+            "reviewed": false
+          },
+          {
+            "page": 1,
+            "block": 2,
+            "paragraph": 1,
+            "line": 1,
+            "box": {
+              "x": 293,
+              "y": 243,
+              "width": 13,
+              "height": 23
+            },
+            "original_text": "el",
+            "text": "el",
+            "confidence": 39.0,
+            "reviewed": false
+          },
+          {
+            "page": 1,
+            "block": 2,
+            "paragraph": 1,
+            "line": 1,
+            "box": {
+              "x": 288,
+              "y": 215,
+              "width": 24,
+              "height": 23
+            },
+            "original_text": "co",
+            "text": "co",
+            "confidence": 55.0,
+            "reviewed": false
+          }
+        ]
+      }
+    ]
+  }
+}

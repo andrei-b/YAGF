@@ -12,7 +12,19 @@
 
 namespace yagf::processing::detail {
 
-void drawWord(QPainter &painter, const core::OcrWord &word, int dpi)
+QSet<QString> formulaWordIds(const core::OcrPage &page)
+{
+    QSet<QString> ids;
+    for (const auto &region : page.regions) {
+        if (region.type != "equation" && region.type != "formula") continue;
+        for (const auto &paragraph : region.paragraphs)
+            for (const auto &line : paragraph.lines)
+                for (const auto &id : line.wordIds) ids.insert(id);
+    }
+    return ids;
+}
+
+void drawWord(QPainter &painter, const core::OcrWord &word, int dpi, bool formula)
 {
     if (word.text.isEmpty() || word.bounds.isEmpty()) return;
     QFont font;
@@ -34,9 +46,11 @@ void drawWord(QPainter &painter, const core::OcrWord &word, int dpi)
         text.replace('\n', QChar(0x2028));
         QTextLayout layout(text, font);
         QTextOption option;
-        option.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
+        // A typeset fraction can be much narrower than its LaTeX source. Preserve
+        // explicit lines and fit the hidden transcript without splitting commands.
+        option.setWrapMode(formula ? QTextOption::NoWrap : QTextOption::WrapAtWordBoundaryOrAnywhere);
         layout.setTextOption(option);
-        qreal height = 0;
+        qreal height = 0, width = 0;
         layout.beginLayout();
         while (true) {
             auto line = layout.createLine();
@@ -44,9 +58,11 @@ void drawWord(QPainter &painter, const core::OcrWord &word, int dpi)
             line.setLineWidth(word.bounds.width());
             line.setPosition(QPointF(0, height));
             height += line.height();
+            width = std::max(width, line.naturalTextWidth());
         }
         layout.endLayout();
-        const qreal scale = std::min<qreal>(1, word.bounds.height() / std::max<qreal>(1, height));
+        qreal scale = std::min<qreal>(1, word.bounds.height() / std::max<qreal>(1, height));
+        if (formula && width > 0) scale = std::min(scale, word.bounds.width() / width);
         painter.save();
         painter.translate(word.bounds.topLeft());
         painter.scale(scale, scale);
@@ -179,6 +195,7 @@ bool drawFormattedPage(QPainter &painter, const PdfPageLayout &layout, const QIm
 {
     if (cancelled.load()) return false;
     const auto &page = layout.page;
+    const auto formulas = formulaWordIds(page);
     const auto &graphics = layout.graphics;
     const auto &rasterWords = layout.rasterWords;
     const auto &textAreas = layout.textAreas;
@@ -198,7 +215,7 @@ bool drawFormattedPage(QPainter &painter, const PdfPageLayout &layout, const QIm
             painter.save();
             painter.setClipping(false);
             painter.setOpacity(0);
-            drawWord(painter, word, page.renderDpi);
+            drawWord(painter, word, page.renderDpi, formulas.contains(word.id));
             painter.restore();
         } else drawFormattedWord(painter, word, page.renderDpi);
     }

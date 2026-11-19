@@ -184,7 +184,10 @@ void carryCorrections(OcrPage &fresh, const OcrPage *oldPage, bool estimateForma
 {
     if (!oldPage) return;
     core::retainCorrections(fresh, *oldPage, estimateFormatting);
-    const bool structured = fresh.engineId == "surya-remote" || oldPage->engineId == "surya-remote";
+    const auto hasLayout = [](const QString &engine) {
+        return engine == "surya-remote" || engine == "rapid-latex-ocr";
+    };
+    const bool structured = hasLayout(fresh.engineId) || hasLayout(oldPage->engineId);
     const bool sameEngine = oldPage->engineId == fresh.engineId;
     QSet<int> matchingBlocks;
     for (const auto &word : fresh.words) for (const auto &old : oldPage->words)
@@ -627,6 +630,21 @@ MainWindow::MainWindow()
     ocrButton->setObjectName(QStringLiteral("primaryButton"));
     toolbar->addWidget(ocrButton);
     connect(ocrButton, &QPushButton::clicked, this, &MainWindow::runOcr);
+    mathMode = new QCheckBox(tr("Math OCR"), this);
+    mathMode->setObjectName(QStringLiteral("mathOcrMode"));
+    mathMode->setToolTip(tr("Recognize rows of printed equations as LaTeX on this computer."));
+    toolbar->addWidget(mathMode);
+    connect(mathMode, &QCheckBox::toggled, this, [this](bool enabled) {
+        processor.setMathMode(enabled);
+        if (document.mathOcr != enabled) {
+            document.mathOcr = enabled;
+            if (!originalPath.isEmpty()) { externalDirty = true; refreshDirty(); }
+        }
+        languageEdit->setEnabled(!enabled);
+        const bool tesseract = processor.engineId() == "tesseract";
+        languagePickerAction->setEnabled(tesseract);
+        languagePickerButton->setEnabled(tesseract);
+    });
     cancelButton = new QPushButton(tr("Cancel"), this);
     cancelButton->setObjectName(QStringLiteral("secondaryButton"));
     cancelButton->setEnabled(false);
@@ -1075,7 +1093,8 @@ MainWindow::MainWindow()
             status->setText(tr("Recognized region %1 of %2")
                             .arg(nextQueuedImageRegion).arg(queuedImageRegions.size()));
             runNextImageRegion();
-        } else status->setText(tr("Page %1: %2 words recognized")
+        } else status->setText((mathMode->isChecked() ? tr("Page %1: %2 formulas recognized")
+                                                   : tr("Page %1: %2 words recognized"))
                              .arg(currentPage).arg(document.page(currentPage)->words.size()));
     });
     connect(&processor, &DocumentProcessor::batchPageRecognized, this,
@@ -1150,6 +1169,7 @@ void MainWindow::setBusy(bool busy)
     const bool blocked = busy || exportBusy;
     verification->setBusy(blocked);
     scanAction->setEnabled(!blocked);
+    mathMode->setEnabled(!blocked);
     renderingAction->setEnabled(!blocked && processing::isPagedSource(originalPath));
     undoAction->setEnabled(!blocked && undoStack.canUndo());
     redoAction->setEnabled(!blocked && undoStack.canRedo());
@@ -1313,6 +1333,7 @@ void MainWindow::loadSource(const QString &path)
     projectPath.clear();
     document = {};
     document.preserveFormatting = preserveFormattingAction->isChecked();
+    document.mathOcr = mathMode->isChecked();
     correctionMemory.reset();
     document.sourcePath = originalPath;
     undoStack.clear();
@@ -1396,7 +1417,8 @@ void MainWindow::loadProject(const QString &path)
     }
     correctionMemory.reset();
     externalDirty = false;
-    if (document.engine == processor.engineId() && !document.language.isEmpty())
+    mathMode->setChecked(document.mathOcr);
+    if (!mathMode->isChecked() && document.engine == processor.engineId() && !document.language.isEmpty())
         languageEdit->setText(document.engine == "tesseract"
             ? processing::TesseractEngine::modelLanguage(document.language) : document.language);
     dirty = false;
@@ -1651,7 +1673,7 @@ void MainWindow::showPage(int number)
     currentPage = number;
     updatePageControls();
     if (const OcrPage *page = document.page(number);
-        page && page->engineId == processor.engineId() && !page->language.isEmpty())
+        page && !mathMode->isChecked() && page->engineId == processor.engineId() && !page->language.isEmpty())
         languageEdit->setText(page->engineId == "tesseract"
             ? processing::TesseractEngine::modelLanguage(page->language) : page->language);
     wordList->clear();
@@ -1808,6 +1830,7 @@ bool MainWindow::usePaddleVlService(const QUrl &url)
     if (processor.isBusy() || exportBusy || (url.scheme() != "http" && url.scheme() != "https") ||
         url.host().isEmpty() || !url.userInfo().isEmpty() || url.hasQuery() || url.hasFragment() ||
         (!url.path().isEmpty() && url.path() != "/")) return false;
+    mathMode->setChecked(false);
     processor.setEngine(std::make_unique<processing::RemoteOcrEngine>(url));
     languageEdit->setText(QStringLiteral("auto"));
     languageEdit->setReadOnly(false);
@@ -1871,6 +1894,7 @@ void MainWindow::configureOcrEngine()
     token->setEnabled(provider->currentIndex() != 0);
     if (dialog.exec() != QDialog::Accepted) return;
     if (provider->currentIndex() == 0) {
+        mathMode->setChecked(false);
         processor.setEngine(std::make_unique<processing::TesseractEngine>());
         languageEdit->setText(processing::TesseractEngine::modelLanguage(languageEdit->text()));
     } else {
@@ -1887,6 +1911,7 @@ void MainWindow::configureOcrEngine()
                                  selected == 3 ? Provider::RapidOcr :
                                  selected == 4 ? Provider::Surya :
                                  selected == 5 ? Provider::Kraken : Provider::PaddleOcr;
+        mathMode->setChecked(false);
         processor.setEngine(std::make_unique<processing::RemoteOcrEngine>(url, token->text(),
             backend));
         settings.setValue(settingKeys.at(selected), url.toString());

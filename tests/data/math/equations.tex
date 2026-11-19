@@ -1,0 +1,15 @@
+% One centered equation per page, in the order used by mathrecognition_tests.
+\documentclass[12pt]{article}
+\usepackage[paperwidth=85mm,paperheight=25mm,margin=3mm]{geometry}
+\pagestyle{empty}
+\newcommand{\sample}[1]{\vspace*{\fill}\centerline{$\displaystyle #1$}\vspace*{\fill}\newpage}
+\begin{document}
+\sample{12 + 34 = 46}
+\sample{19 - 7 = 12}
+\sample{3 < 5}
+\sample{x^{2} + 1 = 10}
+\sample{a_{1} + a_{2} = 7}
+\sample{\frac{1}{2} + \frac{1}{4} = \frac{3}{4}}
+\sample{\sqrt{x+1} = 3}
+\sample{\sum_{i=1}^{n} i = \frac{n(n+1)}{2}}
+\end{document}

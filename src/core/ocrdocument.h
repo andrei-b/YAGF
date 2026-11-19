@@ -107,6 +107,7 @@ public:
     int totalPages = 1;
     DocumentContext context;
     bool preserveFormatting = false;
+    bool mathOcr = false;
     RenderSettings rendering;
     QVector<OcrPage> pages;
 

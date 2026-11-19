@@ -111,6 +111,19 @@ Tesseract provides the first reading and word positions. Lines containing common
 
 Choose **Tools → Review next specialist reading…** on the current page to compare a differing transcription with the original and the scan. **Copy specialist reading to editor** lets you use or edit it. **Ask AI for readings** uses the marked crop, nearby text and both transcriptions to propose a context-based reading. You can also select consecutive words and use **Review passage…** with a configured vision model independently of specialist OCR. Only **Use correction** changes the document. Pending alternatives survive saving and reopening the project. Accepted verbatim specialist readings record the contributing engine and support Undo.
 
+### Local math OCR
+
+Open [the two-equation example](examples/math-review/equations.yagf.json) and click **Recognize**. The project enables **Math OCR** on the toolbar. For a new scan, check **Math OCR** before recognizing the page or selected regions. Each separated row of printed mathematics becomes an editable LaTeX block. On a page mixing prose and equations, select the equation regions first. Clear the checkbox to return to the text engine.
+
+The optional CPU engine uses RapidLaTeXOCR. Set up its local Python environment and download the weights once:
+
+```sh
+math_env="${XDG_DATA_HOME:-$HOME/.local/share}/yagf2/math-ocr/venv"
+python3 -m venv "$math_env"
+"$math_env/bin/python" -m pip install rapid-latex-ocr==0.0.9 requests 'numpy<2' 'opencv-python<4.12'
+"$math_env/bin/python" -c 'from rapid_latex_ocr import LaTeXOCR; LaTeXOCR()'
+```
+
 ## Scientific books
 
 Choose **Tools → OCR engine… → Surya**, open a scan, and recognize the page or use **Tools → Recognize all pages** for a PDF. The Surya service detects layout, predicts reading order, and transcribes inline and display mathematics into LaTeX. Tables retain row and cell boundaries, header cells, and merged-cell spans. Figures and diagrams retain their source rectangles even when they contain no recognized text. See the [service setup](service/README.md#surya).
@@ -118,6 +131,8 @@ Choose **Tools → OCR engine… → Surya**, open a scan, and recognize the pag
 Select one layout block to edit its transcription. In a table, tabs separate cells and newlines separate rows. In **Tools → Edit layout…**, compare the ordered regions with the page, correct a label or figure crop, and move regions up or down. Save the project to retain these edits.
 
 **File → Export → Text and HTML → Scientific book as HTML…** writes a self-contained, reflowable document in the reviewed reading order. It includes selectable LaTeX source, HTML tables and embedded PNG figure crops. A caption immediately above or below a single figure or table stays with it. Ambiguous and separated captions remain at their reading positions. Plain text and JSON exports also include the LaTeX transcription. Check equations, table alignment and multi-column order against the scan before publication.
+
+Run `ctest --test-dir build -V -R '^mathrecognition_tests$'` to check the eight typeset equations in [the math test sheet](tests/data/math/equations.pdf). The test rasterizes each page at 300 DPI and compares local English Tesseract output with the reference. Verbose output shows the actual transcription for each known mismatch. Set `YAGF_STRICT_MATH_OCR=1` to make every mismatch fail. A separate check saves and reopens reviewed equations, verifies their text and HTML exports, and compares both the searchable text and the visible formula in the exported PDFs. These checks use Poppler and the local English model. The specialist response tests use fixtures. To measure a running Surya model on the same scans, set `YAGF_TEST_SURYA_URL` to its base URL and run `QT_QPA_PLATFORM=offscreen build/mathrecognition_tests liveSurya`. It compares LaTeX source after removing whitespace and outer math delimiters.
 
 ## Learn from corrections
 

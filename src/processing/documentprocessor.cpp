@@ -3,6 +3,7 @@
 
 #include "imageprocessor.h"
 #include "tesseractengine.h"
+#include "mathocrengine.h"
 #include "symbolshape.h"
 #include "specialistocr.h"
 #include "pagesource.h"
@@ -150,7 +151,20 @@ void DocumentProcessor::setSpecialists(std::unique_ptr<IOcrEngine> formulas, std
 
 void DocumentProcessor::setEngine(std::unique_ptr<IOcrEngine> replacement)
 {
-    if (!isBusy() && replacement) engine = std::move(replacement);
+    if (isBusy() || !replacement) return;
+    textEngine.reset();
+    engine = std::move(replacement);
+}
+
+void DocumentProcessor::setMathMode(bool enabled)
+{
+    if (isBusy() || enabled == bool(textEngine)) return;
+    if (enabled) {
+        textEngine = std::move(engine);
+        engine = std::make_unique<MathOcrEngine>();
+    } else {
+        engine = std::move(textEngine);
+    }
 }
 
 void DocumentProcessor::start(Job requestedJob, const QString &program, const QStringList &arguments)

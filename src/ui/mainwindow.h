@@ -30,6 +30,7 @@ class QLineEdit;
 class QToolButton;
 class QListWidget;
 class QPushButton;
+class QCheckBox;
 class QCloseEvent;
 class QSpinBox;
 class QTabWidget;
@@ -198,6 +199,7 @@ private:
     QToolButton *languagePickerButton;
     QLabel *status;
     QPushButton *ocrButton;
+    QCheckBox *mathMode;
     QPushButton *cancelButton;
     QPushButton *previousButton;
     QPushButton *nextButton;

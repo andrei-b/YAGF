@@ -159,7 +159,7 @@ class BlockTextParser(HTMLParser):
 
     def handle_starttag(self, tag, attrs):
         if tag == "math":
-            self.append(r"\[" if self.label == "equation" else r"\(")
+            self.append(r"\[" if self.label in ("equation", "formula") else r"\(")
         elif tag == "tr":
             self.rows.append([])
             self.append("\n")
@@ -178,7 +178,7 @@ class BlockTextParser(HTMLParser):
 
     def handle_endtag(self, tag):
         if tag == "math":
-            self.append(r"\]" if self.label == "equation" else r"\)")
+            self.append(r"\]" if self.label in ("equation", "formula") else r"\)")
         elif tag in ("td", "th") and self.cell_parts is not None:
             self.rows[-1][-1]["text"] = " ".join("".join(self.cell_parts).split())
             self.cell_parts = None
