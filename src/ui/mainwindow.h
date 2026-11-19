@@ -161,7 +161,7 @@ private:
     void exportText();
     void exportHtml();
     void exportJson();
-    enum class ExportFormat : quint8 { Pdf, FormattedPdf, ArchivalPdf, Samples, ScientificBook };
+    enum class ExportFormat : quint8 { Pdf, FormattedPdf, ArchivalPdf, Samples, ScientificBook, ScanPng, ScanJpeg, ScanPdf };
     void exportPdf(bool archive, bool formatted = false);
     void convertDjVuToPdf();
     void exportVerifiedSamples();
@@ -201,6 +201,7 @@ private:
     QAction *remainingAction = nullptr;
     QAction *layoutAction = nullptr;
     QAction *createRegionAction = nullptr;
+    QAction *scanExportAction = nullptr;
     QAction *pdfAction = nullptr;
     QAction *formattedPdfAction = nullptr;
     QAction *pdfaAction = nullptr;

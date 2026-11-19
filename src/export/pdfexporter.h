@@ -11,7 +11,7 @@ using PdfExportResult = ExportResult;
 
 class PdfExporter {
 public:
-    enum class Mode : quint8 { SearchableScan, FormattedText };
+    enum class Mode : quint8 { SearchableScan, FormattedText, ImageOnly };
     using Progress = ExportProgress;
 
     [[nodiscard]] static PdfExportResult write(const core::OcrDocument &document,

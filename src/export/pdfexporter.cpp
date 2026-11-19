@@ -1,6 +1,5 @@
 #include "pdfexporter.h"
 #include "exportpage.h"
-#include "pagesource.h"
 #include "tesseractengine.h"
 #include "detail/exportcommand.h"
 #include "detail/pdfpagelayout.h"
@@ -24,11 +23,10 @@ ExportResult failure(const QString &error)
     return {.status = ExportResult::Status::Error, .error = error};
 }
 
-QPageSize pageSizeFor(const QImage &image, int dpi)
+QPageSize pageSizeFor(const QImage &image, int dpiX, int dpiY)
 {
-    const double pointsPerPixel = 72.0 / dpi;
-    return QPageSize(QSizeF(image.width() * pointsPerPixel,
-                            image.height() * pointsPerPixel), QPageSize::Point);
+    return QPageSize(QSizeF(image.width() * 72.0 / dpiX,
+                            image.height() * 72.0 / dpiY), QPageSize::Point);
 }
 
 } // namespace
@@ -59,35 +57,38 @@ PdfExportResult PdfExporter::write(const core::OcrDocument &document,
         QPdfWriter writer(rawPdf);
         writer.setResolution(150);
         writer.setPageMargins(QMarginsF(0, 0, 0, 0));
-        writer.setTitle(QStringLiteral("YAGF searchable document"));
+        writer.setTitle(mode == Mode::ImageOnly ? QStringLiteral("Scanned document") : QStringLiteral("YAGF searchable document"));
         writer.setCreator(QStringLiteral("YAGF 2"));
         QPainter painter;
         for (int number = 1; number <= document.totalPages; ++number) {
             if (cancelled.load()) return {.status = PdfExportResult::Status::Cancelled};
-            auto processed = readExportPage(document, number, temporary, cancelled);
+            auto processed = readExportPage(document, number, temporary, cancelled, mode == Mode::ImageOnly);
             if (!processed) return processed.error();
-            const int dpi = isPagedSource(document.sourcePath) ? qRound(processed->dotsPerMeterY() * 0.0254) : 150;
+            const int dpi = qRound(processed->dotsPerMeterY() * 0.0254);
+            const int dpiY = dpi > 0 ? dpi : 150;
+            const int horizontal = qRound(processed->dotsPerMeterX() * 0.0254);
+            const int dpiX = horizontal > 0 ? horizontal : dpiY;
             const auto *page = document.page(number);
             if (number == 1) {
-                writer.setPageSize(pageSizeFor(*processed, dpi));
+                writer.setPageSize(pageSizeFor(*processed, dpiX, dpiY));
                 if (!painter.begin(&writer)) return failure(QStringLiteral("Could not start PDF output."));
             } else {
-                writer.setPageSize(pageSizeFor(*processed, dpi));
+                writer.setPageSize(pageSizeFor(*processed, dpiX, dpiY));
                 if (!writer.newPage()) return failure(QStringLiteral("Could not add PDF page %1.").arg(number));
             }
             painter.save();
-            painter.scale(150.0 / dpi, 150.0 / dpi);
+            painter.scale(150.0 / dpiX, 150.0 / dpiY);
             painter.drawImage(QRect(0, 0, processed->width(), processed->height()), *processed);
             if (page && mode == Mode::FormattedText) {
                 const auto layout = detail::preparePdfPage(*page, *processed, cancelled, recognize);
                 if (!detail::drawFormattedPage(painter, layout, *processed, cancelled)) {
                     painter.restore(); return {.status = PdfExportResult::Status::Cancelled};
                 }
-            } else if (page) {
+            } else if (page && mode == Mode::SearchableScan) {
                 painter.save();
                 painter.setPen(Qt::black);
                 painter.setOpacity(0.0);
-                for (const core::OcrWord &word : page->words) detail::drawWord(painter, word, dpi);
+                for (const core::OcrWord &word : page->words) detail::drawWord(painter, word, dpiY);
                 painter.restore();
             }
             painter.restore();

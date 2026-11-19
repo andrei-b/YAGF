@@ -18,6 +18,7 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileDialog>
+#include <QImageReader>
 #include <QFileInfo>
 #include <QGraphicsRectItem>
 #include <QGraphicsScene>
@@ -92,6 +93,41 @@ int main(int argc, char **argv)
     auto *words = window.findChild<QListWidget *>(QStringLiteral("recognizedWords"));
     auto *editor = window.findChild<QTextEdit *>(QStringLiteral("recognizedTextEditor"));
     assert(words && editor);
+    // Export a fresh scan before OCR produces any page records.
+    QApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
+    const QStringList titles{"Current page as PNG…", "Current page as JPEG…", "All pages as PDF…"};
+    const QStringList suffixes{"png", "jpg", "pdf"};
+    for (int i = 0; i < titles.size(); ++i) {
+        QAction *action = nullptr;
+        for (auto *candidate : window.findChildren<QAction *>())
+            if (candidate->text() == titles[i]) action = candidate;
+        assert(action && action->isEnabled());
+        const QString destination = directory.filePath("scan." + suffixes[i]);
+        QTimer::singleShot(0, &window, [&] {
+            auto *dialog = qobject_cast<QFileDialog *>(QApplication::activeModalWidget());
+            assert(dialog);
+            dialog->selectFile(destination);
+            QMetaObject::invokeMethod(dialog, "accept", Qt::DirectConnection);
+        });
+        action->trigger();
+        QElapsedTimer wait;
+        wait.start();
+        auto *ocrButton = window.findChild<QPushButton *>("primaryButton");
+        assert(ocrButton);
+        while ((!QFileInfo::exists(destination) || !ocrButton->isEnabled()) && wait.elapsed() < 5000) {
+            QApplication::processEvents();
+            QThread::msleep(5);
+        }
+        QApplication::processEvents();
+        if (i < 2) {
+            QImageReader reader(destination);
+            assert(reader.format().toLower() == (i == 0 ? "png" : "jpeg"));
+            assert(reader.read().size() == image.size());
+        } else {
+            QFile pdf(destination);
+            assert(pdf.open(QIODevice::ReadOnly) && pdf.read(5) == "%PDF-");
+        }
+    }
     QPushButton *recognize = nullptr, *apply = nullptr;
     for (QPushButton *button : window.findChildren<QPushButton *>()) {
         if (button->text() == QStringLiteral("Recognize")) recognize = button;

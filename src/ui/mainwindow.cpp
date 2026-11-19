@@ -1,4 +1,5 @@
 #include "pdfexporter.h"
+#include "exportpage.h"
 #include "scientificbookexporter.h"
 #include "verifiedsampleexporter.h"
 #include "mainwindow.h"
@@ -624,6 +625,18 @@ MainWindow::MainWindow()
     fileMenu->addAction(tr("Export verified corrections…"), this, &MainWindow::exportVerifiedSamples);
     fileMenu->addAction(tr("Export JSON"), this, &MainWindow::exportJson);
     fileMenu->addSeparator();
+    auto *scanMenu = fileMenu->addMenu(tr("Export scan"));
+    scanExportAction = scanMenu->menuAction();
+    scanExportAction->setEnabled(false);
+    scanMenu->addAction(tr("Current page as PNG…"), this, [this] {
+        chooseExportPath(tr("Export page as PNG"), tr("PNG image (*.png)"), "png", ExportFormat::ScanPng);
+    });
+    scanMenu->addAction(tr("Current page as JPEG…"), this, [this] {
+        chooseExportPath(tr("Export page as JPEG"), tr("JPEG image (*.jpg *.jpeg)"), "jpg", ExportFormat::ScanJpeg);
+    });
+    scanMenu->addAction(tr("All pages as PDF…"), this, [this] {
+        chooseExportPath(tr("Export scanned document"), tr("PDF files (*.pdf)"), "pdf", ExportFormat::ScanPdf);
+    });
     pdfAction = fileMenu->addAction(tr("Export searchable PDF…"), this, [this] { exportPdf(false); });
     formattedPdfAction = fileMenu->addAction(tr("Export formatted PDF…"), this, [this] { exportPdf(false, true); });
     formattedPdfAction->setObjectName(QStringLiteral("exportFormattedPdfAction"));
@@ -1121,6 +1134,7 @@ void MainWindow::updatePageControls()
     const bool available = !processor.isBusy() && !exportBusy;
     if (renderingAction) renderingAction->setEnabled(available && processing::isPagedSource(originalPath));
     if (preserveFormattingAction) preserveFormattingAction->setEnabled(available);
+    if (scanExportAction) scanExportAction->setEnabled(available && !imagePath.isEmpty());
     if (formattedPdfAction) formattedPdfAction->setEnabled(available && document.wordCount() > 0);
     if (convertDjVuAction) convertDjVuAction->setEnabled(available && !imagePath.isEmpty() &&
         processing::pageSourceKind(originalPath) == processing::PageSourceKind::DjVu);
@@ -2666,10 +2680,16 @@ void MainWindow::startExport(const QString &path, ExportFormat format)
     status->setText(tr("Preparing export…"));
     const OcrDocument snapshot = document;
     const auto cancel = exportCancel;
-    exportWatcher.setFuture(QtConcurrent::run([this, snapshot, path, format, cancel] {
+    exportWatcher.setFuture(QtConcurrent::run([this, snapshot, path, format, cancel, pageNumber = currentPage] {
         const auto progress = [this](qsizetype completed, qsizetype total) {
             emit exportProgress(completed, total);
         };
+        if (format == ExportFormat::ScanPng || format == ExportFormat::ScanJpeg)
+            return processing::writeScanPage(snapshot, pageNumber, path,
+                format == ExportFormat::ScanPng ? "PNG" : "JPEG", *cancel);
+        if (format == ExportFormat::ScanPdf)
+            return processing::PdfExporter::write(snapshot, path, false, *cancel, progress,
+                                                  processing::PdfExporter::Mode::ImageOnly);
         if (format == ExportFormat::ScientificBook)
             return processing::ScientificBookExporter::write(snapshot, path, *cancel, progress);
         if (format == ExportFormat::Samples)

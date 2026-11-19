@@ -12,6 +12,9 @@ namespace yagf::processing {
 // Recreate the editor's oriented, preprocessed page at OCR resolution.
 std::expected<QImage, ExportResult> readExportPage(const core::OcrDocument &document, int number,
                                                    const QTemporaryDir &temporary,
-                                                   const std::atomic_bool &cancelled);
+                                                   const std::atomic_bool &cancelled, bool preserveImageDpi = false);
+
+ExportResult writeScanPage(const core::OcrDocument &document, int number, const QString &destination,
+                           const QByteArray &format, const std::atomic_bool &cancelled);
 
 } // namespace yagf::processing

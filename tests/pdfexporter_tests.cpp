@@ -1,5 +1,6 @@
 #include "verifiedsampleexporter.h"
 #include "pdfexporter.h"
+#include "exportpage.h"
 
 #include <QGuiApplication>
 #include <QFontDatabase>
@@ -305,6 +306,14 @@ int main(int argc, char **argv)
     OcrDocument oriented = sampleDocument(20, 40, photoPath);
     assert(PdfExporter::write(oriented, directory.filePath(QStringLiteral("rotated.pdf")),
                               false, cancelled).status == PdfExportResult::Status::Success);
+    // Raster export uses the prepared page, including EXIF orientation and saved rotation.
+    oriented.page(1)->preprocessing.quarterTurns = 1;
+    oriented.page(1)->width = 40;
+    oriented.page(1)->height = 20;
+    const QString rotatedPng = directory.filePath("rotated.png");
+    assert(yagf::processing::writeScanPage(oriented, 1, rotatedPng, "PNG", cancelled).status ==
+           PdfExportResult::Status::Success);
+    assert(QImage(rotatedPng).size() == QSize(40, 20));
     if (!QStandardPaths::findExecutable(QStringLiteral("ocrmypdf")).isEmpty()) {
         const QString archivePath = directory.filePath(QStringLiteral("archive.pdf"));
         const auto archived = PdfExporter::write(document, archivePath, true, cancelled);
@@ -363,6 +372,12 @@ int main(int argc, char **argv)
         const QByteArray multiText = extract.readAllStandardOutput();
         assert(multiText.contains("FirstFix"));
         assert(multiText.contains("SecondFix"));
+        const QString scanPdf = directory.filePath("scan-multi.pdf");
+        assert(PdfExporter::write(pages, scanPdf, false, cancelled, {}, PdfExporter::Mode::ImageOnly).status ==
+               PdfExportResult::Status::Success);
+        extract.start("pdftotext", {scanPdf, "-"});
+        assert(extract.waitForFinished(10000) && extract.exitCode() == 0);
+        assert(extract.readAllStandardOutput() == QByteArray("\f\f"));
         const QString formattedMulti = directory.filePath("formatted-multi.pdf");
         assert(PdfExporter::write(pages, formattedMulti, false, cancelled, {}, PdfExporter::Mode::FormattedText).status ==
                PdfExportResult::Status::Success);

@@ -21,6 +21,10 @@ ctest --test-dir build --output-on-failure
 
 Qt 6 development packages are required. Install Tesseract and language data to recognize images. PDF import and searchable PDF export also require Poppler's `pdfinfo` and `pdftoppm` commands. PDF/A export additionally requires OCRmyPDF. Scanning requires SANE's `scanimage` command and a configured scanner backend. Missing tools are reported in the app.
 
+For German OCR on Ubuntu, install `tesseract-ocr-deu`, then select `deu` under **Tools → Choose OCR languages…**. Select both `eng` and `deu` for mixed English and German documents.
+
+Use **File → Export scan** to save the current page as PNG or JPEG, or all pages together as an image-only PDF. Export is available as soon as a scan opens and includes applied rotation and cleanup.
+
 DjVu input requires DjVuLibre's `djvused` and `ddjvu` commands (`sudo apt install djvulibre-bin` on Ubuntu). Open `.djvu` or `.djv` files through **File → Open image, PDF or DjVu…**, drag and drop, or the command line. Multipage DjVu documents support page miniatures, regions, preprocessing, batch OCR, and projects. **File → Convert DjVu to PDF…** converts all pages without requiring OCR; recognition and corrections are included as searchable text when available. Conversion runs in the background with progress and cancellation, and keeps the original DjVu file. Pages use the project rendering resolution, shared by the editor and all image-based exports (150 DPI by default). Existing DjVu text layers, annotations, and bookmarks are not imported; run OCR in YAGF for searchable output.
 
 ## Version 2.2 experiments and photographed scans
