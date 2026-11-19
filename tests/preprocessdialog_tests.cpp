@@ -12,6 +12,38 @@ using namespace yagf::ui;
 class PreprocessDialogTests : public QObject {
     Q_OBJECT
 private slots:
+    void textGuidedSettings() {
+        QTemporaryDir dir;
+        QFile helper(dir.filePath("tesseract"));
+        QVERIFY(helper.open(QIODevice::WriteOnly));
+        QByteArray tsv("level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n");
+        QImage image(600,400,QImage::Format_RGB32);
+        image.fill(QColor(195,195,195));
+        QPainter painter(&image);
+        for (int line=0; line<3; ++line) {
+            for (int word=0; word<5; ++word) {
+                const int x=35+100*word, y=50+100*line+5*word;
+                for (int offset=1; offset<30; offset+=6)
+                    painter.fillRect(x+offset,y,2,13,QColor(85,85,85));
+                tsv += QString("5\t1\t1\t1\t%1\t%2\t%3\t%4\t30\t13\t96\ttext\n")
+                    .arg(line+1).arg(word+1).arg(x).arg(y).toUtf8();
+            }
+        }
+        painter.end();
+        helper.write("#!/bin/sh\ncat <<'TSV'\n"+tsv+"TSV\n");
+        helper.close();
+        QVERIFY(helper.setPermissions(QFile::ReadOwner|QFile::WriteOwner|QFile::ExeOwner));
+        const QByteArray oldPath=qgetenv("PATH");
+        qputenv("PATH",QFile::encodeName(dir.path())+':'+oldPath);
+        PreprocessDialog dialog(image,{});
+        auto *button=dialog.findChild<QPushButton *>("analyzeText");
+        QVERIFY(button);
+        button->click();
+        QTRY_VERIFY_WITH_TIMEOUT(dialog.settings().adaptiveBinarization,5000);
+        qputenv("PATH",oldPath);
+        QVERIFY(std::abs(dialog.settings().deskewDegrees-2.86)<0.1);
+        QVERIFY(dialog.settings().inkThreshold>10);
+    }
     void settingsAndOrientation() {
         QTemporaryDir dir;QVERIFY(dir.isValid());QFile helper(dir.filePath("tesseract"));QVERIFY(helper.open(QIODevice::WriteOnly));
         helper.write("#!/bin/sh\nprintf 'Rotate: 270\\nOrientation confidence: 20.0\\n'\n");helper.close();QVERIFY(helper.setPermissions(QFile::ReadOwner|QFile::WriteOwner|QFile::ExeOwner));

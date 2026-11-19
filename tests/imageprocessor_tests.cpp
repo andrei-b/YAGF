@@ -77,6 +77,24 @@ int main()
     assert(binary && qGray(binary->pixel(10,20))==255 && qGray(binary->pixel(1000,20))==255);
     assert(qGray(binary->pixel(82,82))==0);
     assert(binary->dotsPerMeterY()==11811);
+    // Confident words calibrate the entire page, including unread strokes
+    // outside those boxes. Speckles on the paper should disappear.
+    QImage speckled = uneven;
+    for (int y = 5; y < 55; y += 7) {
+        for (int x = 20; x < 1100; x += 9) {
+            const int speck = qGray(uneven.pixel(x, y)) - 25;
+            speckled.setPixel(x, y, qRgb(speck, speck, speck));
+        }
+    }
+    const QVector<QRect> boxes{{76,76,28,18}, {110,76,28,18}, {144,76,28,18}};
+    const int threshold = ImageProcessor::estimateInkThreshold(speckled, boxes);
+    assert(threshold > 0);
+    const auto guided = ImageProcessor::apply(speckled, {.adaptiveBinarization=true, .inkThreshold=threshold});
+    const auto legacy = ImageProcessor::apply(speckled, {.adaptiveBinarization=true});
+    assert(guided && legacy);
+    assert(qGray(legacy->pixel(20,5)) == 0 && qGray(guided->pixel(20,5)) == 255);
+    assert(qGray(guided->pixel(423,390)) == 0);
+    assert(ImageProcessor::estimateInkThreshold(speckled, {}) == 0);
     const auto rotate=ImageProcessor::apply(uneven,{.quarterTurns=1,.adaptiveBinarization=true});
     assert(rotate && rotate->size()==QSize(900,1200));
     assert(!ImageProcessor::apply(uneven,{.quarterTurns=4}));

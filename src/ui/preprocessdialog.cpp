@@ -9,13 +9,14 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPixmap>
+#include <QProgressDialog>
 #include <QPushButton>
 #include <QVBoxLayout>
 
 namespace yagf::ui {
 
-PreprocessDialog::PreprocessDialog(const QImage &source, core::PreprocessSettings initial, QWidget *parent)
-    : QDialog(parent), previewSource(source.width() > 460 || source.height() > 550
+PreprocessDialog::PreprocessDialog(const QImage &source, core::PreprocessSettings initial, QWidget *parent, QString language)
+    : QDialog(parent), pilotLanguage(std::move(language)), inkThreshold(initial.inkThreshold), previewSource(source.width() > 460 || source.height() > 550
         ? source.scaled(QSize(460, 550), Qt::KeepAspectRatio, Qt::SmoothTransformation) : source)
 {
     analysisSource = source.width() > 2200 || source.height() > 2200
@@ -49,6 +50,11 @@ PreprocessDialog::PreprocessDialog(const QImage &source, core::PreprocessSetting
     controls->addWidget(angleSpin);
     controls->addWidget(detectButton);
     controls->addWidget(orientationButton);
+    auto *textButton = new QPushButton(tr("Analyze text and ink"), this);
+    textButton->setObjectName(QStringLiteral("analyzeText"));
+    textButton->setToolTip(tr("Run a local Tesseract pilot to estimate fine skew and separate text strokes from paper."));
+    controls->addWidget(textButton);
+    connect(textButton, &QPushButton::clicked, this, &PreprocessDialog::analyzeText);
     controls->addStretch();
     layout->addLayout(controls);
     auto *filters = new QHBoxLayout();
@@ -96,9 +102,11 @@ PreprocessDialog::PreprocessDialog(const QImage &source, core::PreprocessSetting
     connect(binaryCheck, &QCheckBox::toggled, this, &PreprocessDialog::refreshPreview);
     connect(rotationCombo, &QComboBox::currentIndexChanged, this, [this] { angleSpin->setValue(0); refreshPreview(); });
     connect(angleSpin, &QDoubleSpinBox::valueChanged, this, &PreprocessDialog::refreshPreview);
-    connect(contrastCheck, &QCheckBox::toggled, this, &PreprocessDialog::refreshPreview);
-    connect(denoiseCheck, &QCheckBox::toggled, this, &PreprocessDialog::refreshPreview);
+    const auto changedFilter = [this] { inkThreshold = 0; refreshPreview(); };
+    connect(contrastCheck, &QCheckBox::toggled, this, changedFilter);
+    connect(denoiseCheck, &QCheckBox::toggled, this, changedFilter);
     connect(resetButton, &QPushButton::clicked, this, [this] {
+        inkThreshold = 0;
         rotationCombo->setCurrentIndex(0);
         binaryCheck->setChecked(false);
         angleSpin->setValue(0.0);
@@ -115,11 +123,29 @@ PreprocessDialog::PreprocessDialog(const QImage &source, core::PreprocessSetting
         if (!result && !result.error().cancelled)
             messageLabel->setText(result.error().message + tr(" Fine skew at the selected rotation: %1°.").arg(angleSpin->value(),0,'f',1));
     });
+    connect(&textWatcher, &QFutureWatcherBase::finished, this, [this] {
+        if (textStop.stop_requested()) return;
+        const auto result = textWatcher.result();
+        if (!result) { messageLabel->setText(result.error().message); return; }
+        if (result->skewDegrees) angleSpin->setValue(*result->skewDegrees);
+        if (result->inkThreshold) {
+            inkThreshold = result->inkThreshold;
+            binaryCheck->setChecked(true);
+        }
+        messageLabel->setText(tr("%1 confident words. ").arg(result->wordCount)
+            + (result->skewDegrees ? tr("Skew %1° from %2 lines. ").arg(angleSpin->value()).arg(result->lineCount)
+                                   : tr("Insufficient line agreement to change skew. "))
+            + (result->inkThreshold ? tr("Ink separation estimated from word pixels.")
+                                    : tr("Insufficient ink samples to change binarization.")));
+        refreshPreview();
+    });
     refreshPreview();
 }
 
 PreprocessDialog::~PreprocessDialog()
 {
+    textStop.request_stop();
+    if (textWatcher.isRunning()) textWatcher.waitForFinished();
     orientationStop.request_stop();
     if (orientationWatcher.isRunning()) orientationWatcher.waitForFinished();
 }
@@ -133,6 +159,30 @@ void PreprocessDialog::detectSkew()
     angleSpin->setValue(assessment->skewDegrees);
     messageLabel->setText(tr("Detected fine skew: %1° after %2° clockwise rotation. Detection used local binarization to suppress shadows.")
         .arg(assessment->skewDegrees,0,'f',1).arg(rotationCombo->currentIndex()*90));
+}
+
+void PreprocessDialog::analyzeText()
+{
+    if (textWatcher.isRunning() || orientationWatcher.isRunning()) return;
+    auto *progress = new QProgressDialog(tr("Recognizing sample words and measuring text lines…"),
+                                         tr("Cancel"), 0, 0, this);
+    progress->setAttribute(Qt::WA_DeleteOnClose);
+    progress->setWindowModality(Qt::WindowModal);
+    progress->setMinimumDuration(0);
+    textStop = std::stop_source{};
+    connect(progress, &QProgressDialog::canceled, this, [this] { textStop.request_stop(); });
+    connect(&textWatcher, &QFutureWatcherBase::finished, progress, &QWidget::close);
+    const auto input = analysisSource;
+    auto filters = settings();
+    filters.deskewDegrees = 0;
+    filters.adaptiveBinarization = false;
+    textWatcher.setFuture(QtConcurrent::run([input, filters, language = pilotLanguage, stop = textStop.get_token()] {
+        const auto pilot = processing::ImageProcessor::apply(input, filters);
+        if (!pilot) return std::expected<processing::TextGuidance, processing::OcrError>(
+            std::unexpected(processing::OcrError{pilot.error()}));
+        return processing::analyzeTextPilot(*pilot, language, stop);
+    }));
+    progress->show();
 }
 
 void PreprocessDialog::detectOrientation()
@@ -156,12 +206,13 @@ core::PreprocessSettings PreprocessDialog::settings() const
             .autoContrast = contrastCheck->isChecked(),
             .denoise = denoiseCheck->isChecked(),
             .quarterTurns = rotationCombo->currentIndex(),
-            .adaptiveBinarization = binaryCheck->isChecked()};
+            .adaptiveBinarization = binaryCheck->isChecked(),
+            .inkThreshold = binaryCheck->isChecked() ? inkThreshold : 0};
 }
 
 void PreprocessDialog::refreshPreview()
 {
-    const auto preview = processing::ImageProcessor::apply(previewSource, settings());
+    const auto preview = processing::ImageProcessor::apply(inkThreshold && binaryCheck->isChecked() ? analysisSource : previewSource, settings());
     if (!preview) {
         messageLabel->setText(preview.error());
         return;

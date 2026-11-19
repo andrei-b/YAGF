@@ -457,7 +457,8 @@ QJsonObject OcrDocument::toJson() const
                                          {"auto_contrast", page.preprocessing.autoContrast},
                                          {"denoise", page.preprocessing.denoise},
                                          {"quarter_turns", page.preprocessing.quarterTurns},
-                                         {"adaptive_binarization", page.preprocessing.adaptiveBinarization}}},
+                                         {"adaptive_binarization", page.preprocessing.adaptiveBinarization},
+                                         {"ink_threshold", page.preprocessing.inkThreshold}}},
                                      {"engine", page.engineId}, {"language", page.language},
                                      {"regions", regionItems}, {"image_regions", imageRegionItems},
                                      {"words", wordItems},
@@ -558,6 +559,10 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
                 return fail(QStringLiteral("Invalid page orientation."));
             if (settings.contains("adaptive_binarization") && !settings.value("adaptive_binarization").isBool())
                 return fail(QStringLiteral("Invalid adaptive binarization setting."));
+            if (settings.contains("ink_threshold") &&
+                (!integer(settings, "ink_threshold", &page.preprocessing.inkThreshold) ||
+                 page.preprocessing.inkThreshold < 0 || page.preprocessing.inkThreshold > 255))
+                return fail(QStringLiteral("Invalid ink threshold."));
             page.preprocessing.adaptiveBinarization = settings.value("adaptive_binarization").toBool();
         }
         if (object.contains("render_dpi") && (!integer(object, "render_dpi", &page.renderDpi) || !validRenderDpi(page.renderDpi)))

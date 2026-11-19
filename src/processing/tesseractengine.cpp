@@ -13,6 +13,21 @@
 
 namespace yagf::processing {
 
+QString TesseractEngine::modelLanguage(const QString &language)
+{
+    // Region settings and imported projects can carry the short provider codes.
+    const auto selected = language.trimmed();
+    if (selected.isEmpty() || selected == QStringLiteral("auto")) return QStringLiteral("eng");
+    QStringList languages = selected.split('+');
+    for (QString &code : languages) {
+        code = code.trimmed();
+        if (code == QStringLiteral("en")) code = QStringLiteral("eng");
+        else if (code == QStringLiteral("de")) code = QStringLiteral("deu");
+    }
+    languages.removeDuplicates();
+    return languages.join('+');
+}
+
 std::expected<core::OcrPage, OcrError> TesseractEngine::recognize(
     const QImage &image, const OcrOptions &options, std::stop_token stop)
 {
@@ -25,7 +40,7 @@ std::expected<core::OcrPage, OcrError> TesseractEngine::recognize(
     runDetails = {};
     const auto interrupted = [&] { return stop.stop_requested() || (cancelled && cancelled->load()); };
     if (interrupted()) return std::unexpected(OcrError{{}, true});
-    if (image.isNull() || options.language.trimmed().isEmpty() || options.pageNumber < 1)
+    if (image.isNull() || options.pageNumber < 1)
         return std::unexpected(OcrError{QStringLiteral("Invalid OCR image or options.")});
     if (QStandardPaths::findExecutable(QStringLiteral("tesseract")).isEmpty())
         return std::unexpected(OcrError{QStringLiteral("tesseract is not installed or is not on PATH.")});
@@ -36,7 +51,9 @@ std::expected<core::OcrPage, OcrError> TesseractEngine::recognize(
     if (!image.save(imagePath, "PNG"))
         return std::unexpected(OcrError{QStringLiteral("Could not prepare the OCR image.")});
     if (interrupted()) return std::unexpected(OcrError{{}, true});
-    QStringList arguments{imagePath, QStringLiteral("stdout"), QStringLiteral("-l"), options.language};
+    OcrOptions resolved = options;
+    resolved.language = modelLanguage(options.language);
+    QStringList arguments{imagePath, QStringLiteral("stdout"), QStringLiteral("-l"), resolved.language};
     if (!options.userWords.isEmpty()) {
         QFile vocabulary(temporary.filePath(QStringLiteral("book-words.txt")));
         const QByteArray data = options.userWords.join('\n').toUtf8() + '\n';
@@ -89,7 +106,7 @@ std::expected<core::OcrPage, OcrError> TesseractEngine::recognize(
             if(ok && kib>0){runDetails["peak_rss_bytes"]=kib*1024;runDetails["peak_rss_scope"]="Recognition child process";}
         }
     }
-    return parseTsv(process.readAllStandardOutput(), image.size(), options);
+    return parseTsv(process.readAllStandardOutput(), image.size(), resolved);
 }
 
 std::expected<core::OcrPage, OcrError> TesseractEngine::parseTsv(

@@ -45,7 +45,8 @@ target_link_libraries(yagf_ocr PUBLIC yagf_core Qt6::Gui PRIVATE Qt6::Network)
 target_include_directories(yagf_ocr PUBLIC src/processing)
 
 add_library(yagf_processing STATIC
-    src/processing/documentprocessor.cpp src/processing/documentprocessor.h)
+    src/processing/documentprocessor.cpp src/processing/documentprocessor.h
+    src/processing/textguidedanalysis.cpp src/processing/textguidedanalysis.h)
 target_link_libraries(yagf_processing PUBLIC yagf_imaging yagf_ocr Qt6::Concurrent)
 target_include_directories(yagf_processing PUBLIC src/processing)
 

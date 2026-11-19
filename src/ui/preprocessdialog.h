@@ -2,6 +2,7 @@
 
 #include "preprocesssettings.h"
 #include "pageorientation.h"
+#include "textguidedanalysis.h"
 #include <QFutureWatcher>
 #include <stop_token>
 
@@ -19,13 +20,19 @@ namespace yagf::ui {
 class PreprocessDialog : public QDialog {
     Q_OBJECT
 public:
-    PreprocessDialog(const QImage &source, core::PreprocessSettings initial, QWidget *parent = nullptr);
+    PreprocessDialog(const QImage &source, core::PreprocessSettings initial, QWidget *parent = nullptr,
+                     QString pilotLanguage = QStringLiteral("eng"));
     ~PreprocessDialog() override;
     [[nodiscard]] core::PreprocessSettings settings() const;
 private:
     void refreshPreview();
     void detectSkew();
     void detectOrientation();
+    void analyzeText();
+    QString pilotLanguage;
+    int inkThreshold;
+    QFutureWatcher<std::expected<processing::TextGuidance, processing::OcrError>> textWatcher;
+    std::stop_source textStop;
 
     QImage previewSource, analysisSource;
     QComboBox *rotationCombo;

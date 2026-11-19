@@ -11,6 +11,8 @@ struct PreprocessSettings {
     int quarterTurns = 0; // Clockwise, applied before fine deskew.
     bool adaptiveBinarization = false;
 
+    int inkThreshold = 0; // Local darkness threshold learned from pilot words; zero uses the original filter.
+
     bool operator==(const PreprocessSettings &) const = default;
     [[nodiscard]] bool isIdentity() const
     {

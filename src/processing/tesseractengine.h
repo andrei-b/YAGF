@@ -17,6 +17,7 @@ public:
         const QImage &image, const OcrOptions &options, std::stop_token stop,
         const std::atomic_bool *cancelled);
 
+    static QString modelLanguage(const QString &language);
     QJsonObject lastRunDetails() const override { return runDetails; }
     static std::expected<core::OcrPage, OcrError> parseTsv(
         const QByteArray &tsv, const QSize &imageSize, const OcrOptions &options);

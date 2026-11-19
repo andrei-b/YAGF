@@ -35,7 +35,7 @@ int main()
     original.page(1)->words[0].bold = true;
     original.page(1)->words[0].italic = true;
     original.page(1)->words[0].fontSizePt = 15;
-    original.page(1)->preprocessing = {.deskewDegrees = 1.5, .autoContrast = true, .denoise = false, .quarterTurns = 3, .adaptiveBinarization = true};
+    original.page(1)->preprocessing = {.deskewDegrees = 1.5, .autoContrast = true, .denoise = false, .quarterTurns = 3, .adaptiveBinarization = true, .inkThreshold = 31};
     original.page(1)->sourceWidth = 198;
     original.page(1)->sourceHeight = 98;
     original.page(1)->imageRegions = {{QStringLiteral("selected-area"), QRect(5, 8, 95, 60)}};
@@ -72,6 +72,7 @@ int main()
     assert(loaded.page(1)->preprocessing.deskewDegrees == 1.5);
     assert(loaded.page(1)->preprocessing.autoContrast);
     assert(loaded.page(1)->preprocessing.quarterTurns==3 && loaded.page(1)->preprocessing.adaptiveBinarization);
+    assert(loaded.page(1)->preprocessing.inkThreshold == 31);
     assert(loaded.page(1)->sourceWidth == 198);
     assert(loaded.page(1)->imageRegions.size() == 1);
     assert(loaded.page(1)->imageRegions.first().bounds == QRect(5, 8, 95, 60));

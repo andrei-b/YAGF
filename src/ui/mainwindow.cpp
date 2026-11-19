@@ -1331,7 +1331,8 @@ void MainWindow::loadProject(const QString &path)
     correctionMemory.reset();
     externalDirty = false;
     if (document.engine == processor.engineId() && !document.language.isEmpty())
-        languageEdit->setText(document.language);
+        languageEdit->setText(document.engine == "tesseract"
+            ? processing::TesseractEngine::modelLanguage(document.language) : document.language);
     dirty = false;
     updateTitle();
     wordList->clear();
@@ -1549,7 +1550,8 @@ void MainWindow::showPage(int number)
     updatePageControls();
     if (const OcrPage *page = document.page(number);
         page && page->engineId == processor.engineId() && !page->language.isEmpty())
-        languageEdit->setText(page->language);
+        languageEdit->setText(page->engineId == "tesseract"
+            ? processing::TesseractEngine::modelLanguage(page->language) : page->language);
     wordList->clear();
     displayedWords.clear();
     selectedWords.clear();
@@ -1583,7 +1585,8 @@ void MainWindow::improveCurrentPage()
     if (rawImage.isNull() || processor.isBusy() || !maybeApplyEditor()) return;
     const OcrPage *existing = document.page(currentPage);
     const core::PreprocessSettings current = existing ? existing->preprocessing : core::PreprocessSettings{};
-    PreprocessDialog dialog(rawImage, current, this);
+    PreprocessDialog dialog(rawImage, current, this, processor.engineId() == QStringLiteral("tesseract")
+        ? languageEdit->text().trimmed() : QStringLiteral("eng"));
     if (dialog.exec() != QDialog::Accepted) return;
     const core::PreprocessSettings proposed = dialog.settings();
     if (proposed == current) return;
@@ -1735,8 +1738,7 @@ void MainWindow::configureOcrEngine()
     if (dialog.exec() != QDialog::Accepted) return;
     if (provider->currentIndex() == 0) {
         processor.setEngine(std::make_unique<processing::TesseractEngine>());
-        if (languageEdit->text() == QStringLiteral("en") || languageEdit->text() == QStringLiteral("auto"))
-            languageEdit->setText(QStringLiteral("eng"));
+        languageEdit->setText(processing::TesseractEngine::modelLanguage(languageEdit->text()));
     } else {
         const QUrl url = QUrl::fromUserInput(address->text().trimmed());
         if ((url.scheme() != QStringLiteral("http") && url.scheme() != QStringLiteral("https")) ||

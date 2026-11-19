@@ -785,9 +785,10 @@ int main(int argc, char **argv)
         assert(writer.newPage()); painter.fillRect(0,0,600,800,Qt::white); painter.drawText(20,40,"Page two");
     }
     yagf::core::OcrDocument resolutionBook;
+    resolutionBook.engine = "tesseract"; resolutionBook.language = "en";
     resolutionBook.sourcePath = resolutionPdf; resolutionBook.totalPages = 2;
     yagf::core::OcrPage resolutionPage;
-    resolutionPage.number = 1; resolutionPage.engineId = "tesseract"; resolutionPage.language = "eng";
+    resolutionPage.number = 1; resolutionPage.engineId = "tesseract"; resolutionPage.language = "en";
     resolutionPage.width = resolutionPage.sourceWidth = 600;
     resolutionPage.height = resolutionPage.sourceHeight = 800;
     resolutionPage.words.append({1,1,1,1,QRect(20,30,80,20),"modem","modern",95,true});
@@ -800,6 +801,8 @@ int main(int argc, char **argv)
     assert(yagf::core::ProjectFile::save(resolutionProject, resolutionBook, &error));
     yagf::ui::MainWindow resolutionWindow;
     resolutionWindow.show(); resolutionWindow.loadProject(resolutionProject);
+    auto *inheritedLanguage = resolutionWindow.findChild<QLineEdit *>("languageField");
+    assert(inheritedLanguage && inheritedLanguage->text() == "eng");
     auto *resolutionView = resolutionWindow.findChild<yagf::ui::PageView *>();
     auto *resolutionQueue = resolutionWindow.findChild<yagf::ui::VerificationController *>();
     auto waitUi = [&](auto condition) {
@@ -813,6 +816,7 @@ int main(int argc, char **argv)
     assert(issues && issues->model()->rowCount() == 1);
     resolutionQueue->navigate(1);
     waitUi([&] { return resolutionView->scene()->sceneRect().width() == 1200; });
+    assert(inheritedLanguage->text() == "eng");
     auto *resolutionWords = resolutionWindow.findChild<QListWidget *>("recognizedWords");
     assert(resolutionWords->selectedItems().size() == 1);
     for (auto *button : resolutionWindow.findChildren<QPushButton *>())

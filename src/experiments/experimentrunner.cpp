@@ -31,7 +31,7 @@ namespace {
 QString digest(const QByteArray &bytes) {return QString::fromLatin1(QCryptographicHash::hash(bytes,QCryptographicHash::Sha256).toHex());}
 QJsonObject preprocessing(const core::PreprocessSettings &settings) {
     return {{"quarter_turns",settings.quarterTurns},{"deskew_degrees",settings.deskewDegrees},
-        {"contrast",settings.autoContrast},{"denoise",settings.denoise},{"binarize",settings.adaptiveBinarization}};
+        {"contrast",settings.autoContrast},{"denoise",settings.denoise},{"binarize",settings.adaptiveBinarization},{"ink_threshold",settings.inkThreshold}};
 }
 QJsonObject localHost() {
     return {{"os",QSysInfo::prettyProductName()},{"architecture",QSysInfo::currentCpuArchitecture()},
@@ -139,7 +139,7 @@ std::expected<QJsonObject,QString> runExperiment(const core::OcrDocument &docume
             if(!raw){finish(raw.error().error.isEmpty()?QStringLiteral("Cancelled"):raw.error().error);continue;}
             const int dpi=processing::isPagedSource(document.sourcePath)?qRound(raw->dotsPerMeterY()*.0254):150;
             auto settings=original->preprocessing;
-            if(!p.savedFilters){settings.autoContrast=false;settings.denoise=false;settings.adaptiveBinarization=false;}
+            if(!p.savedFilters){settings.autoContrast=false;settings.denoise=false;settings.adaptiveBinarization=false;settings.inkThreshold=0;}
             settings.autoContrast|=p.contrast;settings.denoise|=p.denoise;
             settings.adaptiveBinarization|=p.binarize;
             if(p.autoDeskew) {

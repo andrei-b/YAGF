@@ -54,13 +54,13 @@ int otsuThreshold(const std::array<int, 256> &values, int total)
 
 // A separable local mean needs only image-sized byte buffers, not a large
 // 64-bit integral image. Dark ink is measured relative to its nearby paper.
-QImage adaptiveBinarize(const QImage &image)
+QImage localDarkness(const QImage &image)
 {
     const QImage gray = image.convertToFormat(QImage::Format_Grayscale8);
     const int width = gray.width(), height = gray.height();
     const int radius = std::clamp(std::min(width, height) / 60, 15, 75);
     QImage horizontal(gray.size(), QImage::Format_Grayscale8);
-    QImage binary(gray.size(), QImage::Format_Grayscale8);
+    QImage darkness(gray.size(), QImage::Format_Grayscale8);
     for (int y = 0; y < height; ++y) {
         const uchar *row = gray.constScanLine(y);
         uchar *output = horizontal.scanLine(y);
@@ -73,14 +73,71 @@ QImage adaptiveBinarize(const QImage &image)
             output[x] = sum / count;
         }
     }
-    for (int x = 0; x < width; ++x) {
-        int sum = 0;
-        for (int y = 0; y < std::min(height, radius); ++y) sum += horizontal.constScanLine(y)[x];
-        for (int y = 0; y < height; ++y) {
-            if (y + radius < height) sum += horizontal.constScanLine(y + radius)[x];
-            if (y - radius - 1 >= 0) sum -= horizontal.constScanLine(y - radius - 1)[x];
-            const int count = std::min(height - 1, y + radius) - std::max(0, y - radius) + 1;
-            binary.scanLine(y)[x] = gray.constScanLine(y)[x] < sum / count - 10 ? 0 : 255;
+    std::vector<int> sums(width);
+    const auto accumulateRow = [&](int y, int sign) {
+        const auto *row = horizontal.constScanLine(y);
+        for (int x = 0; x < width; ++x) sums[x] += sign * row[x];
+    };
+    for (int y = 0; y < std::min(height, radius); ++y) accumulateRow(y, 1);
+    for (int y = 0; y < height; ++y) {
+        if (y + radius < height) accumulateRow(y + radius, 1);
+        if (y > radius) accumulateRow(y - radius - 1, -1);
+        const int count = std::min(height - 1, y + radius) - std::max(0, y - radius) + 1;
+        auto *out = darkness.scanLine(y);
+        const auto *row = gray.constScanLine(y);
+        for (int x = 0; x < width; ++x) out[x] = std::max(0, sums[x] / count - row[x]);
+    }
+    return darkness;
+}
+
+QImage smoothGrain(const QImage &source)
+{
+    // Separable 1-2-1 Gaussian kernel. The small support preserves narrow strokes.
+    const auto gray = source.convertToFormat(QImage::Format_Grayscale8);
+    QImage horizontal(gray.size(), QImage::Format_Grayscale8);
+    QImage result(gray.size(), QImage::Format_Grayscale8);
+    for (int y = 0; y < gray.height(); ++y) {
+        const auto *row = gray.constScanLine(y);
+        auto *out = horizontal.scanLine(y);
+        for (int x = 0; x < gray.width(); ++x)
+            out[x] = (row[std::max(0, x-1)] + 2*row[x] + row[std::min(gray.width()-1, x+1)] + 2) / 4;
+    }
+    for (int y = 0; y < gray.height(); ++y) {
+        const auto *above = horizontal.constScanLine(std::max(0, y-1));
+        const auto *row = horizontal.constScanLine(y);
+        const auto *below = horizontal.constScanLine(std::min(gray.height()-1, y+1));
+        auto *out = result.scanLine(y);
+        for (int x = 0; x < gray.width(); ++x)
+            out[x] = (above[x] + 2*row[x] + below[x] + 2) / 4;
+    }
+    return result;
+}
+
+QImage adaptiveBinarize(const QImage &image, int inkThreshold = 0)
+{
+    QImage darkness = localDarkness(inkThreshold ? smoothGrain(image) : image);
+    if (inkThreshold == 0) {
+        for (int y = 0; y < darkness.height(); ++y) {
+            uchar *row = darkness.scanLine(y);
+            for (int x = 0; x < darkness.width(); ++x) row[x] = row[x] > 10 ? 0 : 255;
+        }
+        return darkness;
+    }
+    QImage binary(darkness.size(), QImage::Format_Grayscale8);
+    for (int y = 0; y < darkness.height(); ++y) {
+        const uchar *row = darkness.constScanLine(y);
+        uchar *out = binary.scanLine(y);
+        for (int x = 0; x < darkness.width(); ++x) {
+            bool ink = row[x] > inkThreshold;
+            // Retain weak antialiased edges immediately touching a strong stroke.
+            if (!ink && row[x] > 3 * inkThreshold / 4) {
+                for (int dy = std::max(0, y-1); dy <= std::min(y+1, darkness.height()-1) && !ink; ++dy) {
+                    const auto *neighbor = darkness.constScanLine(dy);
+                    for (int dx = std::max(0, x-1); dx <= std::min(x+1, darkness.width()-1); ++dx)
+                        ink |= neighbor[dx] > inkThreshold;
+                }
+            }
+            out[x] = ink ? 0 : 255;
         }
     }
     return binary;
@@ -148,6 +205,59 @@ QImage stretchContrast(const QImage &source)
 }
 
 } // namespace
+
+QImage ImageProcessor::normalizedTextPilot(const QImage &pilot)
+{
+    // Suppress isolated paper grain before leveling illumination. Keeping the same
+    // canvas lets us use recovered word boxes to sample the original gray values.
+    const QImage darkness = localDarkness(smoothGrain(pilot));
+    const int threshold = std::max(4, otsuThreshold(histogram(darkness), darkness.width() * darkness.height()));
+    QImage normalized(darkness.size(), QImage::Format_Grayscale8);
+    for (int y = 0; y < darkness.height(); ++y) {
+        const auto *row = darkness.constScanLine(y);
+        auto *out = normalized.scanLine(y);
+        for (int x = 0; x < darkness.width(); ++x) out[x] = row[x] > threshold ? 0 : 255;
+    }
+    normalized.setDotsPerMeterX(pilot.dotsPerMeterX());
+    normalized.setDotsPerMeterY(pilot.dotsPerMeterY());
+    return normalized;
+}
+
+int ImageProcessor::estimateInkThreshold(const QImage &pilot, const QVector<QRect> &words)
+{
+    if (pilot.isNull() || words.size() < 3) return 0;
+    const auto darkness = localDarkness(smoothGrain(pilot));
+    QVector<int> thresholds;
+    for (const QRect &box : words) {
+        const auto rect = box.intersected(pilot.rect());
+        if (rect.isEmpty()) continue;
+        std::array<int, 256> counts{};
+        // Limit the influence and cost of very large boxes.
+        const int stride = std::max(1, std::max(rect.width(), rect.height()) / 100);
+        int samples = 0;
+        for (int y = rect.top(); y <= rect.bottom(); y += stride) {
+            const auto *row = darkness.constScanLine(y);
+            for (int x = rect.left(); x <= rect.right(); x += stride) {
+                ++counts[row[x]];
+                ++samples;
+            }
+        }
+        const int split = otsuThreshold(counts, samples);
+        int paperCount = 0, paperSum = 0, inkSum = 0;
+        for (int i = 0; i < 256; ++i) {
+            if (i <= split) { paperCount += counts[i]; paperSum += i * counts[i]; }
+            else inkSum += i * counts[i];
+        }
+        const int inkCount = samples - paperCount;
+        if (std::min(inkCount, paperCount) < std::max(3, samples / 20)) continue;
+        const int paper = paperSum / paperCount, ink = inkSum / inkCount;
+        if (ink - paper >= 8) thresholds.append((ink + paper) / 2);
+    }
+    if (thresholds.size() < 3) return 0;
+    std::ranges::sort(thresholds);
+    // Favor the lighter text samples on mixed-contrast pages.
+    return std::clamp(thresholds[thresholds.size() / 4], 4, 64);
+}
 
 int ImageProcessor::recommendedRenderDpi(const QImage &pilot)
 {
@@ -241,7 +351,7 @@ std::expected<QImage, QString> ImageProcessor::apply(const QImage &source,
         current = current.transformed(QTransform().rotate(settings.quarterTurns * 90), Qt::FastTransformation);
     if (settings.denoise) current = medianDenoise(current).convertToFormat(QImage::Format_ARGB32);
     if (settings.autoContrast) current = stretchContrast(current);
-    if (settings.adaptiveBinarization) current = adaptiveBinarize(current).convertToFormat(QImage::Format_ARGB32);
+    if (settings.adaptiveBinarization) current = adaptiveBinarize(current, settings.inkThreshold).convertToFormat(QImage::Format_ARGB32);
     if (std::abs(settings.deskewDegrees) >= 0.01) {
         QTransform rotation;
         rotation.rotate(-settings.deskewDegrees);

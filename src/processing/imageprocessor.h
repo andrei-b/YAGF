@@ -19,6 +19,9 @@ struct QualityAssessment {
 
 class ImageProcessor {
 public:
+    [[nodiscard]] static QImage normalizedTextPilot(const QImage &pilot);
+    // Estimate ink/paper separation from confident word boxes on the same pilot image.
+    [[nodiscard]] static int estimateInkThreshold(const QImage &pilot, const QVector<QRect> &words);
     // Inspect a 150-DPI pilot; small printed components request a higher render DPI.
     [[nodiscard]] static int recommendedRenderDpi(const QImage &pilot);
     [[nodiscard]] static std::expected<QualityAssessment, QString> assess(const QImage &source);

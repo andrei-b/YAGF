@@ -78,7 +78,7 @@ int main(int argc, char **argv)
     fixture.close();
     QFile script(scriptPath);
     assert(script.open(QIODevice::WriteOnly));
-    const QByteArray body = "#!/bin/sh\ncat \"$TEST_TSV_FILE\"\n";
+    const QByteArray body = "#!/bin/sh\n[ \"$3\" = -l ] && [ \"$4\" = \"$TEST_MODEL_LANGUAGE\" ] || exit 1\ncat \"$TEST_TSV_FILE\"\n";
     assert(script.write(body) == body.size());
     script.close();
     assert(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
@@ -88,8 +88,16 @@ int main(int argc, char **argv)
     image.fill(Qt::white);
     TesseractEngine engine;
     assert(engine.capabilities().supportsConfidence);
+    qputenv("TEST_MODEL_LANGUAGE", "eng");
     auto recognized = engine.recognize(image, {.language = QStringLiteral("eng")}, {});
     assert(recognized && recognized->words.size() == 2);
+    for (const QString &language : {QString{}, QStringLiteral("auto"), QStringLiteral("en")}) {
+        auto english = engine.recognize(image, {.language = language}, {});
+        assert(english && english->language == "eng");
+    }
+    qputenv("TEST_MODEL_LANGUAGE", "deu+eng");
+    auto mixed = engine.recognize(image, {.language = QStringLiteral("de+en+eng")}, {});
+    assert(mixed && mixed->language == "deu+eng");
     std::stop_source stopped;
     stopped.request_stop();
     auto cancelled = engine.recognize(image, {.language = QStringLiteral("eng")}, stopped.get_token());

@@ -283,6 +283,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
     const QSize savedImageSize = savedPage ? QSize(savedPage->width, savedPage->height) : QSize{};
     const int savedDpi = savedPage ? savedPage->renderDpi : jobDpi;
     if (book && engine->id() == "tesseract") {
+        options.language = TesseractEngine::modelLanguage(options.language);
         if (!batch || batchIndex == 0 || vocabularyLanguage != options.language ||
             nextEvidencePage > options.pageNumber) {
             batchVocabulary = {};
@@ -292,7 +293,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
         // In a sparse project a high page number can have very few recognized predecessors.
         for (const auto &page : book->pages) {
             if (page.number >= nextEvidencePage && page.number < options.pageNumber &&
-                page.language == options.language) batchVocabulary.addPage(page);
+                TesseractEngine::modelLanguage(page.language) == options.language) batchVocabulary.addPage(page);
         }
         nextEvidencePage = options.pageNumber;
         options.userWords = batchVocabulary.terms();
