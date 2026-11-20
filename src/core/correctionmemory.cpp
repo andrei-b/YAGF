@@ -1,5 +1,6 @@
 #include "correctionmemory.h"
 #include "bookvocabulary.h"
+#include "formulatext.h"
 
 #include <algorithm>
 
@@ -44,7 +45,7 @@ bool oneEditApart(QStringView a, QStringView b)
 
 bool isVerifiedCorrection(const OcrWord &word)
 {
-    return hasOriginalWordBox(word) && word.reviewed && word.originalText != word.text &&
+    return hasOriginalWordBox(word) && word.reviewed && word.originalText != formulaSourceText(word) &&
         singleToken(word.originalText) && singleToken(word.text);
 }
 

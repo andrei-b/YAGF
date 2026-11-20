@@ -169,6 +169,7 @@ private:
     void showPageContextMenu(const QPoint &position);
     void showPageActions(int pageNumber, const QPoint &globalPosition);
     void showBlockContextMenu(int index, const QPoint &globalPosition);
+    void copyBlockImage(int index);
     void setBlockLanguage(int index, const QString &language, bool notText);
     QString blockLanguage(const core::ImageRegion &region) const;
     void refreshImageRegionSelection(bool updateWords);
@@ -193,7 +194,8 @@ private:
     void exportText();
     void exportHtml();
     void exportJson();
-    enum class ExportFormat : quint8 { Pdf, FormattedPdf, ArchivalPdf, Samples, ScientificBook, ScanImage, ScanPdf };
+    void exportLatex();
+    enum class ExportFormat : quint8 { Pdf, FormattedPdf, ArchivalPdf, Samples, ScientificBook, LatexDocument, ScanImage, ScanPdf };
     void exportPdf(bool archive, bool formatted = false);
     void convertDjVuToPdf();
     void exportVerifiedSamples();
@@ -230,6 +232,7 @@ private:
     QToolButton *ocrButton;
     QAction *recognizeAction = nullptr;
     QAction *mathMode;
+    QAction *unicodeFormulasAction = nullptr;
     QPushButton *cancelButton;
     QAction *cancelRecognitionAction = nullptr;
     QAction *cancelExportAction = nullptr;

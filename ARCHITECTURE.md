@@ -95,6 +95,10 @@ The `OcrDocument` is the current in-memory source of truth. It contains numbered
 
 ## Export boundary
 
+`formulatext` in Core converts bounded formula expressions to linear Unicode, identifies delimited spans, and validates retained source against the current visible reading. `OcrDocument::unicodeFormulas` stores the project choice. Unicode words retain canonical `latexText` for editing and export; text edits invalidate that retained source so later formatting never replaces an edited reading with stale LaTeX. The representation switch snapshots pages and mode in one undo command. Recognition applies the choice after analysis, while raw OCR bypasses conversion.
+
+`LatexDocumentExporter` writes reviewed text, formulas, tables and figure crops through an atomic destination file. It escapes prose and reuses the math-command validator, with known Unicode support for document sources. Figure assets are staged alongside the destination and published in a unique directory before committing the `.tex` file; cancellation or failure removes only new assets. The source supports pdfLaTeX for Latin/Cyrillic and LuaLaTeX with fontspec/unicode-math. Formula editing and PDF typesetting read validated canonical formula text independently of the visible output mode.
+
 `ExportResult` and `ExportProgress` are shared contracts in `exporttypes.h`. Scientific HTML and verified sample exports each have their own public header; neither includes or uses the PDF exporter. `readExportPage` owns source decoding, orientation, preprocessing, and source-dimension validation. Each exporter uses that common loader, which renders at saved per-page DPI and records it on the returned image. The PDF writer converts pixels to physical points using that DPI, so mixed-resolution documents retain page size and block positions. External export commands share one cancellable, timed runner.
 
 `PdfExporter` owns the PDF writer, page sequence, source loading, optional OCRmyPDF conversion, and atomic destination replacement. It composes two separate operations for formatted output:

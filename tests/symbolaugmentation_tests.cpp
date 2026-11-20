@@ -1,6 +1,7 @@
 #include "symbolfixture.h"
 #include "projectfile.h"
 #include "documentprocessor.h"
+#include "formulatext.h"
 #include <QApplication>
 #include <QElapsedTimer>
 #include <QThread>
@@ -89,6 +90,22 @@ int main(int argc,char **argv)
         QObject::connect(&processor,&processing::DocumentProcessor::failed,&app,[&](const QString &e) { qFatal("%s",qPrintable(e)); });
         QObject::connect(&processor,&processing::DocumentProcessor::recognized,&app,[&](const auto &reading,const auto &,const auto &) {
             finished=true; assert(reading.words[0].text==(raw ? "ф" : "ψ")); assert(reading.words[2].text=="ф");
+        });
+        processor.recognize(book.sourcePath,"rus",1); QElapsedTimer timer; timer.start();
+        while (!finished && timer.elapsed()<10000) { QApplication::processEvents(); QThread::msleep(5); }
+        assert(finished);
+    }
+    // Output formatting also applies to fresh recognition, with raw OCR bypass.
+    for (const auto &[unicode,raw]:QVector<QPair<bool,bool>>{{false,false},{true,false},{true,true}}) {
+        auto jobBook=book; jobBook.symbolRules.clear(); jobBook.unicodeFormulas=unicode; jobBook.useRawOcrOutput=raw;
+        auto provider=std::make_unique<SymbolFixtureEngine>(); provider->page=page; provider->page.words.resize(1);
+        auto &word=provider->page.words[0]; word.text=word.originalText=R"(\(p_3=2\))"; word.reviewed=false; word.layoutBlock=false; word.alternative={};
+        if (raw) provider->name="tesseract";
+        processing::DocumentProcessor processor(nullptr,&jobBook); processor.setEngine(std::move(provider)); bool finished=false;
+        QObject::connect(&processor,&processing::DocumentProcessor::failed,&app,[&](const QString &e) { qFatal("%s",qPrintable(e)); });
+        QObject::connect(&processor,&processing::DocumentProcessor::recognized,&app,[&](const auto &reading,const auto &,const auto &) {
+            finished=true; assert(reading.words[0].text==(unicode && !raw ? QString("p₃=2") : QString(R"(\(p_3=2\))")));
+            assert(core::formulaSourceText(reading.words[0])==R"(\(p_3=2\))");
         });
         processor.recognize(book.sourcePath,"rus",1); QElapsedTimer timer; timer.start();
         while (!finished && timer.elapsed()<10000) { QApplication::processEvents(); QThread::msleep(5); }

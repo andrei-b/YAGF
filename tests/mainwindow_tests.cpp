@@ -5,6 +5,8 @@
 #include "imageprocessor.h"
 #include "symbolfixture.h"
 #include "symbolrulesdialog.h"
+#include "formulatext.h"
+#include <QClipboard>
 #include <QListView>
 #include <QPdfWriter>
 #include <QPainter>
@@ -1573,6 +1575,65 @@ int main(int argc, char **argv)
         assert(!yagf::core::symbolRuleTrained(saved.symbolRules[0]) && saved.page(1)->words[0].text=="ф");
         for (auto *action:symbolWindow.findChildren<QAction *>()) if (action->shortcut()==QKeySequence::Undo) action->trigger();
         assert(saveBook().symbolRules.isEmpty());
+    }
+
+    // Unicode output is reversible, keeps formula editing and LaTeX export,
+    // and block copying uses source pixels from the processed display.
+    {
+        QImage source(200,100,QImage::Format_RGB32);
+        for (int y=0;y<source.height();++y) for (int x=0;x<source.width();++x) source.setPixel(x,y,qRgb(x,y,(x+y)%256));
+        yagf::core::OcrDocument book; book.sourcePath=directory.filePath("formula-output.png"); assert(source.save(book.sourcePath));
+        book.engine="fixture"; book.language="rus";
+        yagf::core::OcrPage page; page.number=1; page.sourceWidth=200; page.sourceHeight=100;
+        page.preprocessing={.deskewDegrees=2,.quarterTurns=1};
+        const auto processed=yagf::processing::ImageProcessor::apply(source,page.preprocessing); assert(processed);
+        page.width=processed->width(); page.height=processed->height(); page.language="rus"; page.engineId="fixture";
+        page.words.append({1,1,1,1,{5,5,90,20},R"(справа: \(p_3=2\))",R"(справа: \(p_3=2\))",90}); page.words[0].layoutBlock=true;
+        page.imageRegions={{"copy-block",{10,40,50,60},{},true}}; book.replacePage(page);
+        const auto project=directory.filePath("formula-output.yagf.json"); assert(yagf::core::ProjectFile::save(project,book,&error));
+        yagf::ui::MainWindow formulaWindow; formulaWindow.show(); formulaWindow.loadProject(project);
+        auto *items=formulaWindow.findChild<QListWidget *>("recognizedWords"); waitUi([&] { return items->count()==1; });
+        auto *unicode=formulaWindow.findChild<QAction *>("unicodeFormulaOutputAction"); assert(unicode && !unicode->isChecked()); unicode->setChecked(true);
+        items->setCurrentRow(0);
+        auto *editor=formulaWindow.findChild<QTextEdit *>("recognizedTextEditor"); assert(editor->toPlainText()=="справа: p₃=2");
+        const auto saveBook=[&] {
+            for (auto *action:formulaWindow.findChildren<QAction *>()) if (action->text()=="Save project") action->trigger();
+            yagf::core::OcrDocument saved; assert(yagf::core::ProjectFile::load(project,&saved,&error)); return saved;
+        };
+        const auto saved=saveBook(); assert(saved.unicodeFormulas && saved.page(1)->words[0].latexText==R"(справа: \(p_3=2\))");
+        QAction *undo=nullptr;
+        for (auto *action:formulaWindow.findChildren<QAction *>()) if (action->shortcut()==QKeySequence::Undo) undo=action;
+        assert(undo);
+        QTimer::singleShot(0,&formulaWindow,[&] {
+            auto *dialog=qobject_cast<QDialog *>(QApplication::activeModalWidget()); assert(dialog && dialog->objectName()=="formulaEditor");
+            auto *text=dialog->findChild<QPlainTextEdit *>("formulaSource"); assert(text && text->toPlainText()=="p_3=2"); text->setPlainText("p_3=7");
+            dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Save)->click();
+        });
+        auto *edit=formulaWindow.findChild<QAction *>("editFormulaAction"); assert(edit && edit->isEnabled()); edit->trigger();
+        assert(editor->toPlainText()=="справа: p₃=7"); undo->trigger();
+        items->setCurrentRow(0); assert(editor->toPlainText()=="справа: p₃=2");
+        unicode->setChecked(false); assert(!unicode->isChecked()); items->setCurrentRow(0); assert(editor->toPlainText()==R"(справа: \(p_3=2\))");
+        undo->trigger(); assert(unicode->isChecked());
+        const auto tex=directory.filePath("ui-document.tex");
+        QTimer::singleShot(0,&formulaWindow,[&] {
+            auto *dialog=qobject_cast<QFileDialog *>(QApplication::activeModalWidget()); assert(dialog && dialog->windowTitle()=="Export LaTeX document");
+            dialog->selectFile(tex); QMetaObject::invokeMethod(dialog,"accept",Qt::DirectConnection);
+        });
+        formulaWindow.findChild<QAction *>("exportLatexDocumentAction")->trigger();
+        waitUi([&] { return QFile::exists(tex) && unicode->isEnabled(); });
+        QFile output(tex); assert(output.open(QIODevice::ReadOnly)); const auto data=output.readAll(); assert(data.contains("p_3=2") && data.contains("\\begin{document}"));
+        auto *view=formulaWindow.findChild<yagf::ui::PageView *>(); view->zoomBy(1.7); view->centerOn(page.imageRegions[0].bounds.center());
+        QApplication::clipboard()->clear();
+        const auto title=formulaWindow.windowTitle();
+        QTimer::singleShot(0,&formulaWindow,[&] {
+            auto *menu=qobject_cast<QMenu *>(QApplication::activePopupWidget()); assert(menu && menu->objectName()=="blockContextMenu");
+            auto *copy=menu->findChild<QAction *>("copyBlockImageAction"); assert(copy && copy->isEnabled()); copy->trigger(); menu->close();
+        });
+        const auto point=view->mapFromScene(page.imageRegions[0].bounds.center());
+        QContextMenuEvent event(QContextMenuEvent::Mouse,point,view->viewport()->mapToGlobal(point)); QApplication::sendEvent(view->viewport(),&event);
+        const auto clipboard=QApplication::clipboard()->image().convertToFormat(QImage::Format_ARGB32);
+        assert(clipboard==processed->copy(page.imageRegions[0].bounds).convertToFormat(QImage::Format_ARGB32));
+        assert(formulaWindow.windowTitle()==title);
     }
 
     // A failed OCR job closes progress before reporting the error.

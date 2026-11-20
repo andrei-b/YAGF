@@ -20,6 +20,7 @@
 #include <QUuid>
 #include <QtConcurrentRun>
 #include "symbolaugmentation.h"
+#include "formulatext.h"
 
 #include <algorithm>
 
@@ -327,6 +328,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
 {
     if ((!batch && isBusy()) || (batch && batchPages.isEmpty())) return;
     options.preserveFormatting = book && book->preserveFormatting;
+    const bool unicodeFormulas=book && book->unicodeFormulas;
     QVector<core::SymbolRule> symbolRules = book ? book->symbolRules : QVector<core::SymbolRule>{};
     if (auto shared = core::loadSymbolLibrary(); shared) {
         for (const auto &rule : *shared)
@@ -385,7 +387,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
     ocrStop = std::stop_source{};
     const std::stop_token token = ocrStop.get_token();
     if (!wasBusy) emit busyChanged(true);
-    ocrWatcher.setFuture(QtConcurrent::run([this, path, image, options, region, token, formulaRegions, pagedSource, jobDpi, savedImageSize, savedDpi, batch, blocks, smart, automatic, splitOnly, selected, rawOutput, symbolRules] {
+    ocrWatcher.setFuture(QtConcurrent::run([this, path, image, options, region, token, formulaRegions, pagedSource, jobDpi, savedImageSize, savedDpi, batch, blocks, smart, automatic, splitOnly, selected, rawOutput, symbolRules, unicodeFormulas] {
         OcrJobResult result;
         result.selected = selected;
         QImage input = image;
@@ -516,6 +518,9 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
             }
             if (result.outcome && !rawOutput && !splitOnly)
                 applySymbolRules(page, input, symbolRules, token);
+            if (result.outcome && !rawOutput && !splitOnly && unicodeFormulas)
+                if (const int unsupported=core::setFormulaOutput(page,true);unsupported)
+                    result.warnings.append(QStringLiteral("%1 formula(s) retained LaTeX because their Unicode conversion is unsupported.").arg(unsupported));
             if (token.stop_requested()) result.outcome = std::unexpected(OcrError{{}, true});
         }
         return result;

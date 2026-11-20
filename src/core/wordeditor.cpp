@@ -20,6 +20,7 @@ void setText(OcrWord &word, const EditedWord &edit, bool reviewed = true)
     if (word.text != edit.text) {
         word.alternative = {};
         word.readingEngine.clear();
+        word.latexText.clear();
     }
     word.text = edit.text;
     if (edit.layoutBlock.has_value()) word.layoutBlock = *edit.layoutBlock;

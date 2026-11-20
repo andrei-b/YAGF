@@ -65,6 +65,7 @@ QJsonObject wordJson(const OcrWord &word)
                                    {"font_size_pt", word.fontSizePt},
                                    {"source_font_size_pt", word.sourceFontSizePt}}}};
     if (!word.readingEngine.isEmpty()) result.insert("reading_engine", word.readingEngine);
+    if (!word.latexText.isEmpty()) result.insert("latex_text", word.latexText);
     if (!word.alternative.sourceTokens.isEmpty()) {
         const auto &a = word.alternative;
         result.insert("specialist_reading", QJsonObject{{"engine", a.engine}, {"text", a.text},
@@ -87,6 +88,8 @@ bool parseWord(const QJsonObject &json, int pageNumber, int width, int height, O
         !json.value(QStringLiteral("confidence")).isDouble() ||
         !json.value(QStringLiteral("reviewed")).isBool()) return false;
     word->readingEngine = json.value("reading_engine").toString();
+    if (json.contains("latex_text") && (!json["latex_text"].isString() || json["latex_text"].toString().size()>65536)) return false;
+    word->latexText=json["latex_text"].toString();
     if (json.contains("specialist_reading")) {
         const auto obj = json.value("specialist_reading").toObject();
         auto &a = word->alternative;
@@ -470,6 +473,7 @@ QJsonObject OcrDocument::toJson(bool includeRestoredPixels) const
     }
     return {{"schema_version", 2}, {"source", sourcePath}, {"engine", engine},
             {"preserve_formatting", preserveFormatting}, {"math_ocr", mathOcr},
+            {"unicode_formulas", unicodeFormulas},
             {"use_raw_ocr_output", useRawOcrOutput},
             {"rendering", QJsonObject{{"dpi", rendering.dpi}, {"adaptive", rendering.adaptive}}},
             {"language", language}, {"total_pages", totalPages}, {"pages", pageItems},
@@ -502,6 +506,8 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
     if (json.contains("math_ocr") && !json.value("math_ocr").isBool())
         return fail(QStringLiteral("Invalid math OCR mode."));
     parsed.mathOcr = json.value("math_ocr").toBool();
+    if (json.contains("unicode_formulas") && !json["unicode_formulas"].isBool()) return fail(QStringLiteral("Invalid formula output mode."));
+    parsed.unicodeFormulas=json["unicode_formulas"].toBool();
     parsed.preserveFormatting = json.value("preserve_formatting").toBool();
     if (json.contains("rendering")) {
         const auto settings = json.value("rendering");

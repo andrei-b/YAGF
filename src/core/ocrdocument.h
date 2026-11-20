@@ -44,6 +44,7 @@ struct OcrWord {
     QString readingEngine; // Specialist credited for a verbatim, accepted reading.
     QString fontFamily; // Closest installed face; empty keeps the editor/export default.
     int sourceFontSizePx = 0;
+    QString latexText; // Canonical formula-bearing text retained for Unicode output.
     [[nodiscard]] QString fontFamilyCss() const;
 };
 
@@ -112,6 +113,7 @@ public:
     bool preserveFormatting = false;
     bool useRawOcrOutput = false;
     bool mathOcr = false;
+    bool unicodeFormulas = false;
     RenderSettings rendering;
     QVector<OcrPage> pages;
     QVector<SymbolRule> symbolRules;

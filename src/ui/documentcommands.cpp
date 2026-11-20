@@ -1,6 +1,13 @@
 #include "documentcommands.h"
+#include "formulatext.h"
 
 namespace yagf::ui {
+ChangeFormulaOutputCommand::ChangeFormulaOutputCommand(core::OcrDocument &document,bool unicode)
+    : QUndoCommand(QStringLiteral("Change formula output")),document(document),beforeMode(document.unicodeFormulas),afterMode(unicode),before(document.pages),after(document.pages)
+{ for (auto &page:after) core::setFormulaOutput(page,unicode); }
+void ChangeFormulaOutputCommand::redo() { document.pages=after; document.unicodeFormulas=afterMode; }
+void ChangeFormulaOutputCommand::undo() { document.pages=before; document.unicodeFormulas=beforeMode; }
+
 ChangeSymbolRulesCommand::ChangeSymbolRulesCommand(core::OcrDocument &document, QVector<core::SymbolRule> after)
     : QUndoCommand(QStringLiteral("Edit symbol recognition rules")), document(document),
       before(document.symbolRules), after(std::move(after)) {}

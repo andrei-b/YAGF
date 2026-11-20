@@ -1,5 +1,6 @@
 #include "pdfformulas.h"
 #include "exportcommand.h"
+#include "formulatext.h"
 
 #include <QFile>
 #include <algorithm>
@@ -29,7 +30,7 @@ std::optional<QString> delimited(QString text)
 
 // Project files and OCR readings are data. Only emit math tokens, never general
 // TeX primitives, file names, definitions, comments or arbitrary environments.
-std::expected<QString, QString> mathTokens(const QString &source)
+std::expected<QString, QString> mathTokens(const QString &source, bool allowUnicode = false)
 {
     static const QSet<QString> commands = [] {
         const QString names = QStringLiteral(
@@ -102,6 +103,7 @@ std::expected<QString, QString> mathTokens(const QString &source)
         else if (unicode.contains(c)) output += unicode.value(c);
         else if (((c.unicode() < 128 || (c.unicode() >= 0x0400 && c.unicode() <= 0x04ff)) && c.isLetterOrNumber()) || QStringLiteral("+-=<>/.,:;!?()[]^_*'|&").contains(c))
             output += c;
+        else if (allowUnicode && c.unicode()>=128 && (c.isPrint() || c.isHighSurrogate() || c.isLowSurrogate())) output+=c;
         else return std::unexpected(QStringLiteral("Unsupported math character %1.").arg(c));
     }
     if (!stack.isEmpty()) return std::unexpected(QStringLiteral("Unclosed math group."));
@@ -190,15 +192,16 @@ QVector<FormulaSpan> editableFormulaSpans(const core::OcrPage &page, const QVect
     for (int index : selection) {
         if (index < 0 || index >= page.words.size()) continue;
         const auto &word = page.words.at(index);
-        const QString text = word.text.trimmed();
+        const QString original=core::formulaSourceText(word);
+        const QString text = original.trimmed();
         if (const auto body = delimited(text)) {
             const auto offset = (text.size() - body->size()) / 2;
-            spans.append({index, word.text.indexOf(text) + offset, body->size(),
+            spans.append({index, original.indexOf(text) + offset, body->size(),
                           text.startsWith("\\[") || text.startsWith("$$")});
         } else if (equations.contains(word.id)) {
-            spans.append({index, 0, word.text.size(), true});
+            spans.append({index, 0, original.size(), true});
         } else {
-            auto matches = inlineMath.globalMatch(word.text);
+            auto matches = inlineMath.globalMatch(original);
             while (matches.hasNext()) {
                 const auto match = matches.next();
                 const bool display = match.capturedStart(2) >= 0;
@@ -209,6 +212,9 @@ QVector<FormulaSpan> editableFormulaSpans(const core::OcrPage &page, const QVect
     }
     return spans;
 }
+
+std::expected<QString, QString> safeLatexMath(const QString &source, bool allowUnicode)
+{ return mathTokens(source,allowUnicode); }
 
 std::expected<QImage, QString> renderFormulaPreview(const QString &source, bool display, const std::atomic_bool &cancelled)
 {
@@ -265,7 +271,7 @@ PdfFormulaPage collectPdfFormulas(const core::OcrPage &page, const QRegion &prot
             for (const auto &id : line.wordIds) {
                 const auto *word = words.value(id);
                 if (!word || word->text.trimmed().isEmpty()) continue;
-                parts.append(word->text.trimmed()); ids.append(id); bounds |= word->bounds;
+                parts.append(core::formulaSourceText(*word).trimmed()); ids.append(id); bounds |= word->bounds;
             }
             if (parts.isEmpty() || protectedGraphics.intersects(bounds)) continue;
             const QString source = parts.join(' ');
@@ -275,11 +281,12 @@ PdfFormulaPage collectPdfFormulas(const core::OcrPage &page, const QRegion &prot
     }
     for (const auto &word : page.words) {
         if (result.wordIds.contains(word.id) || protectedGraphics.intersects(word.bounds)) continue;
-        if (const auto source = delimited(word.text)) {
-            result.formulas.append({word.bounds, *source, word.text.trimmed().startsWith("\\[") || word.text.trimmed().startsWith("$$")});
+        const auto original=core::formulaSourceText(word);
+        if (const auto source = delimited(original)) {
+            result.formulas.append({word.bounds, *source, original.trimmed().startsWith("\\[") || original.trimmed().startsWith("$$")});
             result.wordIds.insert(word.id);
-        } else if (inlineMath.match(word.text).hasMatch()) {
-            result.formulas.append({word.bounds, word.text, false, true, word.fontSizePt});
+        } else if (inlineMath.match(original).hasMatch()) {
+            result.formulas.append({word.bounds, original, false, true, word.fontSizePt});
             result.wordIds.insert(word.id);
         }
     }

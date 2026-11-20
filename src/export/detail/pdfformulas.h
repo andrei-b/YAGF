@@ -34,6 +34,7 @@ struct FormulaSpan {
     bool display;
 };
 QVector<FormulaSpan> editableFormulaSpans(const core::OcrPage &page, const QVector<int> &selection);
+std::expected<QString, QString> safeLatexMath(const QString &source, bool allowUnicode = false);
 std::expected<QImage, QString> renderFormulaPreview(const QString &source, bool display,
                                                     const std::atomic_bool &cancelled);
 ExportResult typesetPdfFormulas(const QVector<PdfFormulaPage> &pages, const QTemporaryDir &directory,

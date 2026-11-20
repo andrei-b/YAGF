@@ -3,6 +3,7 @@
 #include "formulaeditor.h"
 #include "exportpage.h"
 #include "scientificbookexporter.h"
+#include "latexdocumentexporter.h"
 #include "verifiedsampleexporter.h"
 #include "mainwindow.h"
 #include "blockminiaturelist.h"
@@ -24,6 +25,7 @@
 #include "verificationcontroller.h"
 #include "pagesource.h"
 #include "symbolrulesdialog.h"
+#include "formulatext.h"
 
 #include <QCloseEvent>
 #include <QApplication>
@@ -805,6 +807,23 @@ MainWindow::MainWindow()
     mathMode->setObjectName(QStringLiteral("mathOcrMode"));
     mathMode->setToolTip(tr("Use the formula engine for every row. Leave unchecked for automatic text and math recognition with local Tesseract."));
     ocrButton->setMenu(recognitionMenu);
+    recognitionMenu->addSeparator();
+    unicodeFormulasAction=recognitionMenu->addAction(tr("Use Unicode formulas"));
+    unicodeFormulasAction->setObjectName("unicodeFormulaOutputAction");
+    unicodeFormulasAction->setCheckable(true);
+    unicodeFormulasAction->setChecked(settings.value("ocr/unicodeFormulas",false).toBool());
+    unicodeFormulasAction->setToolTip(tr("Write formulas as Unicode text, such as ψ and p₃. Original LaTeX is retained for editing and document export; unsupported expressions keep their LaTeX."));
+    connect(unicodeFormulasAction,&QAction::toggled,this,[this](bool enabled) {
+        if (!maybeApplyEditor()) { const QSignalBlocker blocker(unicodeFormulasAction); unicodeFormulasAction->setChecked(document.unicodeFormulas); return; }
+        QSettings("YAGF","YAGF Revival").setValue("ocr/unicodeFormulas",enabled);
+        if (document.unicodeFormulas==enabled) return;
+        if (originalPath.isEmpty()) document.unicodeFormulas=enabled;
+        else undoStack.push(new ChangeFormulaOutputCommand(document,enabled));
+        int unsupported=0;
+        if (enabled) for (const auto &page:document.pages) for (const auto &word:page.words)
+            unsupported+=core::unicodeFormulaText(core::formulaSourceText(word),core::isFormulaWord(page,word)).unsupported;
+        if (unsupported) statusBar()->showMessage(tr("%1 formula(s) kept in LaTeX: Unicode conversion is unsupported.").arg(unsupported),10000);
+    });
     connect(mathMode, &QAction::toggled, this, [this](bool enabled) {
         processor.setMathMode(enabled);
         if (document.mathOcr != enabled) {
@@ -921,6 +940,8 @@ MainWindow::MainWindow()
     textMenu->addAction(tr("Plain text…"), this, &MainWindow::exportText);
     textMenu->addAction(tr("Layout HTML…"), this, &MainWindow::exportHtml);
     textMenu->addAction(tr("Scientific book as HTML…"), this, &MainWindow::exportScientificBook);
+    auto *latexExport=textMenu->addAction(tr("Document as LaTeX…"),this,&MainWindow::exportLatex);
+    latexExport->setObjectName("exportLatexDocumentAction");
     auto *dataMenu = exportMenu->addMenu(tr("OCR data"));
     dataMenu->addAction(tr("Structured OCR as JSON…"), this, &MainWindow::exportJson);
     dataMenu->addAction(tr("Verified corrections…"), this, &MainWindow::exportVerifiedSamples);
@@ -1362,6 +1383,7 @@ MainWindow::MainWindow()
         document.language = newPage.language;
         document.totalPages = pageCount;
         if (region.isEmpty()) {
+            if (!document.useRawOcrOutput || newPage.engineId!="tesseract") core::setFormulaOutput(newPage,document.unicodeFormulas);
             undoStack.push(new ReplacePageCommand(document, currentPage, std::move(newPage), tr("Recognize page")));
         } else {
             OcrPage merged;
@@ -1413,6 +1435,7 @@ MainWindow::MainWindow()
             }
             for (const OcrWord &word : newPage.words) kept.insert(insertion++, word);
             merged.words = std::move(kept);
+            if (!document.useRawOcrOutput || merged.engineId!="tesseract") core::setFormulaOutput(merged,document.unicodeFormulas);
             undoStack.push(new ReplacePageCommand(document, currentPage, std::move(merged), tr("Recognize region")));
         }
         showDocument();
@@ -1445,6 +1468,7 @@ MainWindow::MainWindow()
         if (oldPage) page.preprocessing = oldPage->preprocessing;
         carryCorrections(page, oldPage, document.preserveFormatting,
             !document.useRawOcrOutput || page.engineId != "tesseract");
+        if (!document.useRawOcrOutput || page.engineId!="tesseract") core::setFormulaOutput(page,document.unicodeFormulas);
         const QString language = page.language;
         const QString engineId = page.engineId;
         undoStack.push(new ReplacePageCommand(document, number, std::move(page), tr("Recognize page")));
@@ -1476,6 +1500,7 @@ MainWindow::MainWindow()
         else showError(result.error);
     });
     connect(&undoStack, &QUndoStack::indexChanged, this, [this] {
+        { const QSignalBlocker blocker(unicodeFormulasAction); unicodeFormulasAction->setChecked(document.unicodeFormulas); }
         correctionMemory.reset();
         const OcrPage *page = document.page(currentPage);
         if (page && processing::isPagedSource(originalPath) && !rawImagePath.isEmpty() && page->renderDpi != processor.renderedDpi(currentPage))
@@ -1510,6 +1535,7 @@ void MainWindow::setBusy(bool busy)
     teachSymbolAction->setEnabled(!blocked && !imagePath.isEmpty() && !editorPending && !selectedWords.isEmpty());
     scanAction->setEnabled(!blocked);
     mathMode->setEnabled(!blocked);
+    unicodeFormulasAction->setEnabled(!blocked);
     splitBlocksButton->setEnabled(!blocked && !imagePath.isEmpty());
     renderingAction->setEnabled(!blocked && processing::isPagedSource(originalPath));
     undoAction->setEnabled(!blocked && undoStack.canUndo());
@@ -1687,6 +1713,7 @@ void MainWindow::loadSource(const QString &path)
     document.preserveFormatting = preserveFormattingAction->isChecked();
     document.useRawOcrOutput = rawOcrOutputAction->isChecked();
     document.mathOcr = mathMode->isChecked();
+    document.unicodeFormulas=unicodeFormulasAction->isChecked();
     correctionMemory.reset();
     document.sourcePath = originalPath;
     undoStack.clear();
@@ -1798,6 +1825,7 @@ void MainWindow::loadProject(const QString &path)
     correctionMemory.reset();
     externalDirty = false;
     mathMode->setChecked(document.mathOcr);
+    { const QSignalBlocker blocker(unicodeFormulasAction); unicodeFormulasAction->setChecked(document.unicodeFormulas); }
     if (const auto *first = document.page(1); first && !mathMode->isChecked() &&
         std::ranges::any_of(first->imageRegions, [](const auto &r) { return !r.content.isEmpty(); }) &&
         !first->language.isEmpty())
@@ -2920,6 +2948,15 @@ void MainWindow::showPageActions(int number, const QPoint &globalPosition)
     const auto *page = document.page(number);
     QMenu menu(this);
     menu.setObjectName(QStringLiteral("pageContextMenu"));
+    int selected=-1;
+    if (number==currentPage && page && selectedRegionIds.size()==1)
+        for (int i=0;i<page->imageRegions.size();++i) if (selectedRegionIds.contains(page->imageRegions[i].id)) { selected=i; break; }
+    if (selected>=0) {
+        auto *copy=menu.addAction(tr("Copy selected block as image"));
+        copy->setObjectName("copyBlockImageAction");
+        copy->setEnabled(!processor.isBusy() && !exportBusy && !projectLoading && !imagePath.isEmpty());
+        connect(copy,&QAction::triggered,this,[this,index=selected] { copyBlockImage(index); });
+    }
     auto *clear = menu.addAction(QIcon(":/actions/clear-blocks.png"), tr("Clear all blocks"));
     clear->setObjectName(QStringLiteral("clearPageBlocks"));
     clear->setEnabled(!processor.isBusy() && !exportBusy && page && !page->imageRegions.isEmpty());
@@ -3001,6 +3038,10 @@ void MainWindow::showBlockContextMenu(int index, const QPoint &globalPosition)
             undoStack.push(new ReplacePageCommand(document, currentPage, std::move(changed), tr("Set block content")));
         });
     }
+    auto *copy=menu.addAction(QIcon::fromTheme("edit-copy",style()->standardIcon(QStyle::SP_FileIcon)),tr("Copy block as image"));
+    copy->setObjectName("copyBlockImageAction");
+    copy->setIconVisibleInMenu(true);
+    connect(copy,&QAction::triggered,this,[this,index] { copyBlockImage(index); });
     auto *clear = menu.addAction(QIcon(":/actions/clear-blocks.png"), tr("Clear all blocks"));
     clear->setObjectName("clearAllBlocksAction");
     connect(clear, &QAction::triggered, this, [this] { clearPageBlocks(currentPage); });
@@ -3009,6 +3050,19 @@ void MainWindow::showBlockContextMenu(int index, const QPoint &globalPosition)
     remove->setIconVisibleInMenu(true);
     connect(remove, &QAction::triggered, this, [this, index] { deleteImageRegion(index); });
     menu.exec(globalPosition);
+}
+
+void MainWindow::copyBlockImage(int index)
+{
+    if (processor.isBusy() || exportBusy || projectLoading || imagePath.isEmpty()) return;
+    const auto *page=document.page(currentPage);
+    if (!page || index<0 || index>=page->imageRegions.size()) return;
+    QImage image;
+    for (auto *item:scene->items()) if (auto *pixmap=qgraphicsitem_cast<QGraphicsPixmapItem *>(item)) { image=pixmap->pixmap().toImage(); break; }
+    const auto bounds=page->imageRegions[index].bounds;
+    if (image.isNull() || bounds.isEmpty() || !image.rect().contains(bounds)) { showError(tr("Could not read the block's source image.")); return; }
+    QApplication::clipboard()->setImage(image.copy(bounds));
+    statusBar()->showMessage(tr("Copied block image (%1 × %2 pixels).").arg(bounds.width()).arg(bounds.height()),5000);
 }
 
 void MainWindow::refreshSpellLanguage()
@@ -3151,22 +3205,25 @@ void MainWindow::editSelectedFormula()
         QStringList choices;
         for (const auto &item : spans)
             choices.append(tr("%1. %2").arg(choices.size() + 1)
-                .arg(page->words[item.word].text.mid(item.start, item.length).simplified().left(100)));
+                .arg(core::formulaSourceText(page->words[item.word]).mid(item.start, item.length).simplified().left(100)));
         bool accepted = false;
         const QString chosen = QInputDialog::getItem(this, tr("Edit formula"), tr("Choose an equation"),
                                                       choices, 0, false, &accepted);
         if (!accepted) return;
         span = spans.at(choices.indexOf(chosen));
     }
-    const auto source = page->words[span.word].text.mid(span.start, span.length);
+    const auto source = core::formulaSourceText(page->words[span.word]).mid(span.start, span.length);
     const auto replacement = editFormulaSource(this, source, span.display);
     if (!replacement || *replacement == source) return;
     auto edited = *page;
     auto &word = edited.words[span.word];
+    word.text=core::formulaSourceText(word);
+    word.latexText.clear();
     word.text.replace(span.start, span.length, *replacement);
     word.reviewed = true;
     word.readingEngine.clear();
     word.alternative = {};
+    core::setFormulaOutput(edited,document.unicodeFormulas);
     undoStack.push(new ReplaceTextCommand(document, currentPage, std::move(edited)));
     updateSelection({span.word});
 }
@@ -3294,8 +3351,9 @@ bool MainWindow::applyCorrection()
         const int end = !plain.isEmpty() && i + 1 < starts.size() ? starts[i + 1] - 2 : plain.size();
         const QString text = plain.mid(start, end - start);
         QVector<core::EditedWord> tokens;
-        if (section.firstWord == section.lastWord && page->words[section.firstWord].layoutBlock) {
-            if (!text.trimmed().isEmpty()) tokens.append(editedWord(start, text, true));
+        if (section.firstWord == section.lastWord && (page->words[section.firstWord].layoutBlock ||
+            (document.unicodeFormulas && !page->words[section.firstWord].latexText.isEmpty()))) {
+            if (!text.trimmed().isEmpty()) tokens.append(editedWord(start, text, page->words[section.firstWord].layoutBlock));
         } else {
             auto matches = tokenPattern.globalMatch(text);
             while (matches.hasNext()) {
@@ -3325,6 +3383,7 @@ bool MainWindow::applyCorrection()
         for (qsizetype j = 0; j < tokens.size(); ++j) selectedIds.append(updated.words[section.firstWord + j].id);
     }
     editorPending = false;
+    core::setFormulaOutput(updated,document.unicodeFormulas);
     if (selectedWords.size() == 1 && replacementCount > 1)
         undoStack.push(new SplitWordCommand(document, currentPage, std::move(updated)));
     else if (selectedWords.size() > 1 && replacementCount == 1)
@@ -3371,6 +3430,14 @@ void MainWindow::exportJson()
     QFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) { showError(file.errorString()); return; }
     file.write(QJsonDocument(document.toJson(false)).toJson(QJsonDocument::Indented));
+}
+
+void MainWindow::exportLatex()
+{
+    if (processor.isBusy() || exportBusy || projectLoading || document.pages.isEmpty() || !maybeApplyEditor()) return;
+    if (document.pages.size()<pageCount && QMessageBox::question(this,tr("Unrecognized pages"),
+        tr("Export only the recognized pages?"),QMessageBox::Yes|QMessageBox::Cancel,QMessageBox::Cancel)!=QMessageBox::Yes) return;
+    chooseExportPath(tr("Export LaTeX document"),tr("LaTeX document (*.tex)"),"tex",ExportFormat::LatexDocument);
 }
 
 void MainWindow::convertDjVuToPdf()
@@ -3470,6 +3537,8 @@ void MainWindow::startExport(const QString &path, ExportFormat format, bool type
                                                   processing::PdfExporter::Mode::ImageOnly);
         if (format == ExportFormat::ScientificBook)
             return processing::ScientificBookExporter::write(snapshot, path, *cancel, progress);
+        if (format == ExportFormat::LatexDocument)
+            return processing::LatexDocumentExporter::write(snapshot,path,*cancel,progress);
         if (format == ExportFormat::Samples)
             return processing::VerifiedSampleExporter::write(snapshot, path, *cancel, progress);
         return processing::PdfExporter::write(snapshot, path, format == ExportFormat::ArchivalPdf, *cancel, progress,

@@ -11,6 +11,7 @@ qt_standard_project_setup()
 set(CMAKE_AUTORCC ON)
 
 add_library(yagf_core STATIC
+    src/core/formulatext.cpp src/core/formulatext.h
     src/core/symbolrules.cpp src/core/symbolrules.h
     src/core/ocrbenchmark.cpp src/core/ocrbenchmark.h
     src/core/spellchecker.cpp src/core/spellchecker.h
@@ -67,6 +68,7 @@ target_include_directories(yagf_processing PUBLIC src/processing)
 
 # Export consumes snapshots and OCR support, never the DocumentProcessor or UI.
 add_library(yagf_export STATIC
+    src/export/latexdocumentexporter.cpp src/export/latexdocumentexporter.h
     src/export/exporttypes.h
     src/export/exportpage.cpp src/export/exportpage.h
     src/export/pdfexporter.cpp src/export/pdfexporter.h
@@ -122,6 +124,13 @@ install(FILES COPYING
 include(CTest)
 if(BUILD_TESTING)
     find_package(Qt6 6.2 REQUIRED COMPONENTS Test)
+    qt_add_executable(formulatext_tests tests/formulatext_tests.cpp src/ui/documentcommands.cpp src/ui/documentcommands.h)
+    target_include_directories(formulatext_tests PRIVATE src/ui)
+    target_link_libraries(formulatext_tests PRIVATE yagf_core Qt6::Gui)
+    add_test(NAME formulatext_tests COMMAND formulatext_tests)
+    qt_add_executable(latexdocument_tests tests/latexdocument_tests.cpp)
+    target_link_libraries(latexdocument_tests PRIVATE yagf_export)
+    add_test(NAME latexdocument_tests COMMAND latexdocument_tests)
     qt_add_executable(symbolaugmentation_tests tests/symbolaugmentation_tests.cpp)
     target_link_libraries(symbolaugmentation_tests PRIVATE yagf_processing Qt6::Widgets)
     add_test(NAME symbolaugmentation_tests COMMAND symbolaugmentation_tests)
