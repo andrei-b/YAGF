@@ -1274,6 +1274,72 @@ int main(int argc, char **argv)
     waitUi([&] { return cancelRecognizeAll->isEnabled(); });
     assert(!cancelProgress->isVisible());
 
+    // Page menus clear the clicked page's blocks, preserve text, and support undo.
+    {
+        auto clearBook = resolutionBook;
+        for (auto &page : clearBook.pages)
+            page.imageRegions = {{"first", {10, 10, 100, 100}}, {"second", {130, 10, 100, 100}, "rus", false, "text"}};
+        const QString clearProject = directory.filePath("clear-blocks.yagf.json");
+        assert(yagf::core::ProjectFile::save(clearProject, clearBook, &error));
+        yagf::ui::MainWindow clearWindow;
+        clearWindow.show(); clearWindow.loadProject(clearProject);
+        auto *clearPages = clearWindow.findChild<QListWidget *>("pageMiniatures");
+        auto *clearRegions = clearWindow.findChild<QListWidget *>("imageRegions");
+        auto *clearNumber = clearWindow.findChild<QSpinBox *>("pageNumber");
+        waitUi([&] { return clearRegions->count() == 2 && clearPages->count() == 2; });
+        const auto pageMenu = [&](int number, bool enabled, bool preview = false) {
+            clearPages->scrollToItem(clearPages->item(number-1));
+            clearPages->doItemsLayout();
+            const QPoint position = clearPages->visualItemRect(clearPages->item(number-1)).center();
+            QTimer::singleShot(0, &clearWindow, [&, enabled] {
+                auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+                assert(menu && menu->objectName() == "pageContextMenu");
+                auto *action = menu->findChild<QAction *>("clearPageBlocks");
+                assert(action && action->text() == "Clear all blocks" && action->isEnabled() == enabled);
+                if (enabled) action->trigger();
+                menu->close();
+            });
+            if (preview) {
+                auto *view = clearWindow.findChild<yagf::ui::PageView *>();
+                const QPoint point = view->mapFromScene(QPointF(400, 400));
+                QContextMenuEvent event(QContextMenuEvent::Mouse, point, view->viewport()->mapToGlobal(point));
+                QApplication::sendEvent(view->viewport(), &event);
+            } else {
+                QContextMenuEvent event(QContextMenuEvent::Mouse, position, clearPages->viewport()->mapToGlobal(position));
+                QApplication::sendEvent(clearPages->viewport(), &event);
+            }
+        };
+        const auto saveClearProject = [&] {
+            for (auto *action : clearWindow.findChildren<QAction *>())
+                if (action->text() == "Save project") action->trigger();
+            yagf::core::OcrDocument saved;
+            assert(yagf::core::ProjectFile::load(clearProject, &saved, &error));
+            assert(saved.plainText() == clearBook.plainText());
+            return saved;
+        };
+        QAction *clearUndo = nullptr, *clearRedo = nullptr;
+        for (auto *action : clearWindow.findChildren<QAction *>()) {
+            if (action->shortcut() == QKeySequence::Undo) clearUndo = action;
+            if (action->shortcut() == QKeySequence::Redo) clearRedo = action;
+        }
+        assert(clearUndo && clearRedo);
+        pageMenu(2, true);
+        assert(clearNumber->value() == 1 && clearRegions->count() == 2);
+        auto saved = saveClearProject();
+        assert(saved.page(1)->imageRegions.size() == 2 && saved.page(2)->imageRegions.isEmpty());
+        pageMenu(2, false);
+        clearUndo->trigger();
+        saved = saveClearProject();
+        assert(saved.page(2)->imageRegions.size() == 2);
+        clearRedo->trigger();
+        assert(saveClearProject().page(2)->imageRegions.isEmpty());
+        pageMenu(1, true, true);
+        assert(clearRegions->count() == 0);
+        pageMenu(1, false, true);
+        clearUndo->trigger();
+        assert(clearRegions->count() == 2);
+    }
+
     // A failed OCR job closes progress before reporting the error.
     helperScript("tesseract", "#!/bin/sh\necho 'OCR failure fixture' >&2\nexit 1\n");
     yagf::ui::MainWindow failedRecognitionWindow;

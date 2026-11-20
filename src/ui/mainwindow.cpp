@@ -457,7 +457,10 @@ void PageView::contextMenuEvent(QContextMenuEvent *event)
     if (index >= 0) {
         emit regionContextMenuRequested(index, event->globalPos());
         event->accept();
-    } else QGraphicsView::contextMenuEvent(event);
+    } else {
+        emit pageContextMenuRequested(event->globalPos());
+        event->accept();
+    }
 }
 
 void PageView::keyPressEvent(QKeyEvent *event)
@@ -771,6 +774,8 @@ MainWindow::MainWindow()
     pageList->setGridSize(QSize(170, 190));
     pageList->setIconSize(QSize(126, 156));
     pageList->setMinimumHeight(80);
+    pageList->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(pageList, &QListWidget::customContextMenuRequested, this, &MainWindow::showPageContextMenu);
     navigationPane->setMinimumWidth(195);
     navigationPane->setMaximumWidth(245);
     pagesLayout->addWidget(pageList, 1);
@@ -975,6 +980,7 @@ MainWindow::MainWindow()
     connect(view, &PageView::regionChanged, this, &MainWindow::moveImageRegion);
     connect(view, &PageView::regionDeleteRequested, this, &MainWindow::deleteImageRegion);
     connect(view, &PageView::regionContextMenuRequested, this, &MainWindow::showBlockContextMenu);
+    connect(view, &PageView::pageContextMenuRequested, this, [this](const QPoint &position) { showPageActions(currentPage, position); });
     connect(blockMiniatures, &BlockMiniatureList::blockContextMenuRequested, this, &MainWindow::showBlockContextMenu);
     connect(regionList, &QListWidget::itemSelectionChanged, this, [this] {
         QSet<QString> ids;
@@ -2556,6 +2562,41 @@ void MainWindow::deleteImageRegion(int index)
     edited.imageRegions.removeAt(index);
     selectedImageRegion = -1;
     undoStack.push(new ReplacePageCommand(document, currentPage, std::move(edited), tr("Delete image region")));
+}
+
+void MainWindow::clearPageBlocks(int pageNumber)
+{
+    if (processor.isBusy() || exportBusy || !maybeApplyEditor()) return;
+    const auto *page = document.page(pageNumber);
+    if (!page || page->imageRegions.isEmpty()) return;
+    OcrPage edited = *page;
+    edited.imageRegions.clear();
+    if (pageNumber == currentPage) {
+        selectedRegionIds.clear();
+        selectedImageRegion = -1;
+    }
+    undoStack.push(new ReplacePageCommand(document, pageNumber, std::move(edited), tr("Clear all blocks")));
+    statusBar()->showMessage(tr("Cleared all blocks on page %1").arg(pageNumber), 5000);
+}
+
+void MainWindow::showPageContextMenu(const QPoint &position)
+{
+    const auto *item = pageList->itemAt(position);
+    if (!item) return;
+    const int number = pageList->row(item)+1;
+    showPageActions(number, pageList->viewport()->mapToGlobal(position));
+}
+
+void MainWindow::showPageActions(int number, const QPoint &globalPosition)
+{
+    const auto *page = document.page(number);
+    QMenu menu(this);
+    menu.setObjectName(QStringLiteral("pageContextMenu"));
+    auto *clear = menu.addAction(removeBlockIcon(), tr("Clear all blocks"));
+    clear->setObjectName(QStringLiteral("clearPageBlocks"));
+    clear->setEnabled(!processor.isBusy() && !exportBusy && page && !page->imageRegions.isEmpty());
+    connect(clear, &QAction::triggered, this, [this, number] { clearPageBlocks(number); });
+    menu.exec(globalPosition);
 }
 
 QString MainWindow::blockLanguage(const ImageRegion &region) const

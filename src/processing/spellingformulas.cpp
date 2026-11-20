@@ -1,9 +1,11 @@
 #include "spellingformulas.h"
 #include "mathocrengine.h"
+#include "tesseractengine.h"
 #include "spellchecker.h"
 #include "wordspelling.h"
 
 #include <QRegularExpression>
+#include <QPainter>
 #include <algorithm>
 
 namespace yagf::processing {
@@ -20,11 +22,37 @@ bool mathematicalReading(const QString &text)
     return math.contains(structure);
 }
 
-QString languageAt(const core::OcrPage &page, const core::OcrWord &word)
+QString languageAt(const core::OcrPage &page, const core::OcrWord &word, const QString &fallback = {})
 {
     for (const auto &region : page.imageRegions)
         if (!region.language.isEmpty() && region.bounds.contains(word.bounds.center())) return region.language;
-    return page.language;
+    return page.language.isEmpty() || page.language == "auto" ? fallback : page.language;
+}
+
+bool formulaWord(const core::OcrPage &page, const core::OcrWord &word)
+{
+    if (!word.layoutBlock) return false;
+    return word.readingEngine == "rapid-latex-ocr" || page.engineId == "rapid-latex-ocr" ||
+        std::ranges::any_of(page.regions, [&](const auto &region) {
+            return (region.type == "equation" || region.type == "formula") && region.bounds.contains(word.bounds.center());
+        });
+}
+
+bool dictionaryText(const core::OcrPage &reading, core::SpellChecker &checker)
+{
+    // Digits, operators and LaTeX are not evidence for changing math to prose.
+    static const QRegularExpression prose(QStringLiteral("^[\\p{L}\\p{M}\\s'’\"“”„«».,;:!?()\\[\\]‐‑–—\u00ad-]+$"));
+    const auto spelling = core::wordSpelling(reading);
+    bool lexicalWord = false;
+    for (int i = 0; i < reading.words.size(); ++i) {
+        const auto &word = reading.words[i];
+        if (!prose.match(word.text).hasMatch() || word.confidence < 70) return false;
+        for (const auto &token : spelling.tokens[i]) {
+            if (checker.isMisspelled(token)) return false;
+            lexicalWord |= token.size() >= 2;
+        }
+    }
+    return lexicalWord;
 }
 }
 
@@ -92,6 +120,54 @@ std::expected<QStringList, OcrError> collectSpellingFormulaReadings(
         for (int i : candidate.indices) tokens.append(page.words[i].text);
         if (reading.text.simplified() == tokens.join(' ').simplified()) continue;
         page.words[candidate.indices.first()].alternative = {math.id(), reading.text, tokens, true};
+    }
+    return warnings;
+}
+
+std::expected<QStringList, OcrError> collectFormulaTextReadings(
+    core::OcrPage &page, const QImage &image, const QString &language, std::stop_token stop)
+{
+    if (stop.stop_requested()) return std::unexpected(OcrError{{}, true});
+    core::SpellChecker checker;
+    TesseractEngine text;
+    QStringList warnings;
+    QSet<QString> failedLanguages;
+    int attempts = 0;
+    for (auto &word : page.words) {
+        if (stop.stop_requested()) return std::unexpected(OcrError{{}, true});
+        if (!formulaWord(page, word) || word.reviewed || !word.alternative.text.isEmpty() ||
+            word.bounds.isEmpty() || !image.rect().contains(word.bounds)) continue;
+        if (std::ranges::any_of(page.imageRegions, [&](const auto &region) {
+            return (region.notText || (!region.autoDetected && region.content == "math")) &&
+                region.bounds.contains(word.bounds.center());
+        })) continue;
+        const QString selected = languageAt(page, word, language);
+        if (selected.isEmpty() || selected == "auto" || failedLanguages.contains(selected)) continue;
+        checker.setLanguages({selected});
+        if (checker.activeDictionaries().isEmpty()) continue;
+        if (++attempts > 128) {
+            warnings.append(QStringLiteral("Text retries were limited to 128 formula crops; remaining formulas are available in the verification queue."));
+            break;
+        }
+        // White margins help Tesseract recognize a short isolated word.
+        const QRect bounds = word.bounds.adjusted(-2, -2, 2, 2).intersected(image.rect());
+        QImage crop(bounds.size()+QSize(16, 16), QImage::Format_RGB32);
+        crop.fill(Qt::white);
+        { QPainter painter(&crop); painter.drawImage(QPoint(8, 8), image, bounds); }
+        auto reading = text.recognize(crop, {.language = selected, .pageNumber = page.number, .singleTextLine = true}, stop);
+        if (!reading) {
+            if (reading.error().cancelled || stop.stop_requested()) return std::unexpected(reading.error());
+            warnings.append(reading.error().message + QStringLiteral(" Kept the formula reading."));
+            // A missing model or failed executable affects every crop in this language.
+            failedLanguages.insert(selected);
+            continue;
+        }
+        if (!dictionaryText(*reading, checker)) continue;
+        core::OcrDocument excerpt;
+        excerpt.pages.append(std::move(*reading));
+        const QString alternative = excerpt.plainText().trimmed();
+        if (alternative.isEmpty() || alternative.size() > 16384 || alternative == word.text) continue;
+        word.alternative = {text.id(), alternative, {word.text}, false};
     }
     return warnings;
 }

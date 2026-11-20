@@ -499,6 +499,11 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
                 if (!retries) result.outcome = std::unexpected(retries.error());
                 else result.warnings += *retries;
             }
+            if (result.outcome && !rawOutput && !splitOnly) {
+                auto retries = collectFormulaTextReadings(page, input, options.language, token);
+                if (!retries) result.outcome = std::unexpected(retries.error());
+                else result.warnings += *retries;
+            }
         }
         return result;
     }));

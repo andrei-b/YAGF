@@ -195,6 +195,10 @@ std::expected<OcrPage, QString> WordEditor::acceptSpecialist(const OcrPage &page
     const auto &alternative = page.words[anchor].alternative;
     const QString engine = text == alternative.text ? alternative.engine : QString{};
     edited.words[anchor].alternative = {};
+    if (text == alternative.sourceTokens.join(' ')) {
+        for (int i : span) { edited.words[i].reviewed = true; edited.words[i].alternative = {}; }
+        return edited;
+    }
     if (alternative.formula && text != alternative.sourceTokens.join(' ')) {
         auto &block = edited.words[anchor];
         block.originalText = alternative.sourceTokens.join(' ');
@@ -223,10 +227,41 @@ std::expected<OcrPage, QString> WordEditor::acceptSpecialist(const OcrPage &page
         }
         return edited;
     }
+    // A prose alternative to a formula must become ordinary editable text.
+    QSet<int> formerMathBlocks;
+    QRect formerMathBounds;
+    if (!alternative.formula) for (int i : span) {
+        auto &word = edited.words[i];
+        const bool formula = word.readingEngine == "rapid-latex-ocr" || page.engineId == "rapid-latex-ocr" ||
+            std::ranges::any_of(page.regions, [&](const auto &region) {
+                return (region.type == "equation" || region.type == "formula") && region.bounds.contains(word.bounds.center());
+            });
+        if (!word.layoutBlock || !formula) continue;
+        formerMathBlocks.insert(word.block);
+        formerMathBounds |= word.bounds;
+        word.layoutBlock = false;
+    }
     auto result = acceptPassage(edited, span, text);
     if (result && !engine.isEmpty()) {
         const qsizetype after = result->words.size() - (page.words.size() - span.last() - 1);
         for (qsizetype i = anchor; i < after; ++i) result->words[i].readingEngine = engine;
+    }
+    if (result && !formerMathBlocks.isEmpty()) {
+        for (auto &region : result->regions) {
+            if (region.type != "equation" && region.type != "formula") continue;
+            const bool recoveredText = std::ranges::any_of(result->words, [&](const auto &word) {
+                return formerMathBlocks.contains(word.block) && !word.layoutBlock && region.bounds.contains(word.bounds.center());
+            });
+            if (recoveredText) region.type = "text";
+        }
+        for (auto &region : result->imageRegions) {
+            if (!region.autoDetected || !region.bounds.intersects(formerMathBounds) ||
+                (region.content != "math" && region.content != "mixed")) continue;
+            const bool hasMath = std::ranges::any_of(result->words, [&](const auto &word) {
+                return word.layoutBlock && region.bounds.contains(word.bounds.center());
+            });
+            region.content = hasMath ? "mixed" : "text";
+        }
     }
     return result;
 }

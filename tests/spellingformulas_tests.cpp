@@ -18,19 +18,22 @@ using namespace yagf;
 
 class FixtureTextEngine : public processing::IOcrEngine {
 public:
-    explicit FixtureTextEngine(core::OcrPage output) : output(std::move(output)) {}
-    QString id() const override { return "tesseract"; }
-    processing::EngineCapabilities capabilities() const override { return {.supportsRegions = true, .supportsWordBoxes = true}; }
+    explicit FixtureTextEngine(core::OcrPage output, QString name = "tesseract", bool boxes = true)
+        : output(std::move(output)), name(std::move(name)), boxes(boxes) {}
+    QString id() const override { return name; }
+    processing::EngineCapabilities capabilities() const override { return {.supportsRegions = true, .supportsWordBoxes = boxes}; }
     std::expected<core::OcrPage, processing::OcrError> recognize(
         const QImage &, const processing::OcrOptions &, std::stop_token) override { return output; }
 private:
     core::OcrPage output;
+    QString name;
+    bool boxes;
 };
 
 class SpellingFormulasTests : public QObject {
     Q_OBJECT
     QTemporaryDir temporary;
-    QByteArray dataHome, enchantConfig;
+    QByteArray dataHome, enchantConfig, originalPath;
 
     void write(const QString &path, const QByteArray &data)
     {
@@ -80,12 +83,29 @@ class SpellingFormulasTests : public QObject {
         return QJsonDocument::fromJson(file.readAll()).array();
     }
 
+    void textResponse(const QString &text = "слово", int confidence = 96, const QStringList &failLanguages = {})
+    {
+        write(temporary.filePath("text-response.json"), QJsonDocument(QJsonObject{
+            {"text", text}, {"confidence", confidence}, {"fail_languages", QJsonArray::fromStringList(failLanguages)}}).toJson());
+    }
+
+    static core::OcrPage formula(const QString &language = "rus")
+    {
+        auto p = page({word("\\mathrm{cnobo}", 10)}, language);
+        p.words[0].layoutBlock = true;
+        p.words[0].readingEngine = "rapid-latex-ocr";
+        p.regions[0].type = "equation";
+        p.imageRegions = {{"math", p.words[0].bounds, {}, false, "math", true}};
+        return p;
+    }
+
 private slots:
     void initTestCase()
     {
         QVERIFY(temporary.isValid());
         dataHome = qgetenv("XDG_DATA_HOME");
         enchantConfig = qgetenv("ENCHANT_CONFIG_DIR");
+        originalPath = qgetenv("PATH");
         qputenv("XDG_DATA_HOME", QFile::encodeName(temporary.path()));
         qputenv("ENCHANT_CONFIG_DIR", QFile::encodeName(temporary.filePath("enchant")));
         write(temporary.filePath("enchant/enchant.ordering"), "*:hunspell\n");
@@ -110,15 +130,148 @@ private slots:
             " entry.update({'error':'bad crop'} if reply['fail_second'] and i==1 else {'text':reply['text']})\n"
             " result.append(entry)\nprint(json.dumps(result))\n");
         QVERIFY(QFile::setPermissions(python, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+        const QString tesseract = temporary.filePath("tesseract");
+        write(tesseract, "#!/usr/bin/python3\nimport json,os,sys\n"
+            "root=os.environ['XDG_DATA_HOME']\n"
+            "reply=json.load(open(root+'/text-response.json'))\n"
+            "with open(root+'/text-calls.jsonl','a') as calls: calls.write(json.dumps(sys.argv[1:])+'\\n')\n"
+            "if sys.argv[sys.argv.index('-l')+1] in reply['fail_languages']: sys.exit(1)\n"
+            "print('level\\tpage_num\\tblock_num\\tpar_num\\tline_num\\tword_num\\tleft\\ttop\\twidth\\theight\\tconf\\ttext')\n"
+            "for line_no,line in enumerate(reply['text'].splitlines(),1):\n"
+            " x=8\n"
+            " for n,word in enumerate(line.split(),1):\n"
+            "  width=min(30,max(2,len(word)*3))\n"
+            "  print(f'5\\t1\\t1\\t1\\t{line_no}\\t{n}\\t{x}\\t{8+(line_no-1)*12}\\t{width}\\t8\\t{reply[\"confidence\"]}\\t{word}')\n"
+            "  x+=width+3\n");
+        QVERIFY(QFile::setPermissions(tesseract, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+        qputenv("PATH", QFile::encodeName(temporary.path())+':'+originalPath);
     }
 
     void cleanupTestCase()
     {
         if (dataHome.isNull()) qunsetenv("XDG_DATA_HOME"); else qputenv("XDG_DATA_HOME", dataHome);
         if (enchantConfig.isNull()) qunsetenv("ENCHANT_CONFIG_DIR"); else qputenv("ENCHANT_CONFIG_DIR", enchantConfig);
+        qputenv("PATH", originalPath);
     }
 
-    void init() { response(); QFile::remove(temporary.filePath("crops.json")); }
+    void init()
+    {
+        response(); textResponse();
+        QFile::remove(temporary.filePath("crops.json"));
+        QFile::remove(temporary.filePath("text-calls.jsonl"));
+    }
+
+    void formulaIsRetriedAsTextAndAcceptanceRestoresTextMetadata()
+    {
+        auto p = formula();
+        const auto before = p;
+        const auto result = processing::collectFormulaTextReadings(p, image(p), "rus", {});
+        QVERIFY(result); QVERIFY(result->isEmpty());
+        QCOMPARE(p.words[0].text, before.words[0].text);
+        QCOMPARE(p.words[0].bounds, before.words[0].bounds);
+        QVERIFY(p.words[0].layoutBlock);
+        QCOMPARE(p.words[0].alternative.text, "слово");
+        QVERIFY(!p.words[0].alternative.formula);
+        QCOMPARE(p.specialistSpan(0), QVector<int>{0});
+        core::OcrDocument doc, restored;
+        doc.sourcePath = "scan.png"; doc.replacePage(p);
+        QString error;
+        QVERIFY2(core::OcrDocument::fromJson(doc.toJson(), &restored, &error), qPrintable(error));
+        const auto kept = core::WordEditor::acceptSpecialist(*restored.page(1), 0, before.words[0].text);
+        QVERIFY(kept); QVERIFY(kept->words[0].layoutBlock);
+        QCOMPARE(kept->regions[0].type, "equation");
+        const auto accepted = core::WordEditor::acceptSpecialist(*restored.page(1), 0, "слово");
+        QVERIFY(accepted); QVERIFY(!accepted->words[0].layoutBlock);
+        QCOMPARE(accepted->words[0].text, "слово");
+        QCOMPARE(accepted->words[0].bounds, before.words[0].bounds);
+        QCOMPARE(accepted->words[0].sourceWordIds, before.words[0].sourceWordIds);
+        QCOMPARE(accepted->words[0].readingEngine, "tesseract");
+        QCOMPARE(accepted->regions[0].type, "text");
+        QCOMPARE(accepted->imageRegions[0].content, "text");
+        doc.replacePage(*accepted);
+        QCOMPARE(doc.plainText(), "слово");
+        QVERIFY(core::buildVerificationQueue(doc).items.isEmpty());
+    }
+
+    void reverseRetriesRequireReliableDictionarySupportedProse()
+    {
+        for (const auto &text : {"qzxqzxqzx", "x=2", "x", "Hello qzxqzxqzx", "\\mathrm{Hello}", ""}) {
+            textResponse(text);
+            auto p = formula("eng");
+            QVERIFY(processing::collectFormulaTextReadings(p, image(p), "eng", {}));
+            QVERIFY2(p.words[0].alternative.text.isEmpty(), text);
+        }
+        textResponse("Hello", 30);
+        auto p = formula("eng");
+        QVERIFY(processing::collectFormulaTextReadings(p, image(p), "eng", {}));
+        QVERIFY(p.words[0].alternative.text.isEmpty());
+        textResponse("Hello world");
+        p = formula("eng");
+        QVERIFY(processing::collectFormulaTextReadings(p, image(p), "eng", {}));
+        QCOMPARE(p.words[0].alternative.text, "Hello world");
+        const auto accepted = core::WordEditor::acceptSpecialist(p, 0, "Hello world");
+        QVERIFY(accepted); QCOMPARE(accepted->words.size(), 2);
+        for (const auto &w : accepted->words) { QVERIFY(!w.layoutBlock); QVERIFY(w.reviewed); }
+        QCOMPARE(accepted->words[0].bounds.united(accepted->words[1].bounds), p.words[0].bounds);
+    }
+
+    void reverseUsesBlockLanguagesFallbackAndHyphenatedWords()
+    {
+        for (const auto &language : {"rus", "eng", "deu", "rus+eng"}) {
+            auto p = formula(language);
+            QVERIFY(processing::collectFormulaTextReadings(p, image(p), language, {}));
+            QCOMPARE(p.words[0].alternative.text, "слово");
+        }
+        auto p = formula("auto");
+        QVERIFY(processing::collectFormulaTextReadings(p, image(p), "rus", {}));
+        QCOMPARE(p.words[0].alternative.text, "слово");
+        p = formula("zz_ZZ");
+        p.imageRegions[0].language = "rus";
+        QVERIFY(processing::collectFormulaTextReadings(p, image(p), "eng", {}));
+        QCOMPARE(p.words[0].alternative.text, "слово");
+        textResponse("пере-\nнос");
+        p = formula(); p.words[0].bounds.setHeight(30);
+        QVERIFY(processing::collectFormulaTextReadings(p, image(p), "rus", {}));
+        QCOMPARE(p.words[0].alternative.text, "пере-\nнос");
+    }
+
+    void reverseRespectsReviewAndExplicitMathAndHandlesFailure()
+    {
+        auto p = formula(); p.words[0].reviewed = true;
+        QVERIFY(processing::collectFormulaTextReadings(p, image(p), "rus", {}));
+        QVERIFY(p.words[0].alternative.text.isEmpty());
+        p = formula(); p.imageRegions[0].autoDetected = false;
+        QVERIFY(processing::collectFormulaTextReadings(p, image(p), "rus", {}));
+        QVERIFY(p.words[0].alternative.text.isEmpty());
+        p = formula("zz_ZZ");
+        QVERIFY(processing::collectFormulaTextReadings(p, image(p), "zz_ZZ", {}));
+        QVERIFY(p.words[0].alternative.text.isEmpty());
+        QVERIFY(!QFile::exists(temporary.filePath("text-calls.jsonl")));
+        p = formula(); textResponse("Hello", 96, {"rus"});
+        const auto result = processing::collectFormulaTextReadings(p, image(p), "rus", {});
+        QVERIFY(result); QVERIFY(!result->isEmpty());
+        QVERIFY(p.words[0].alternative.text.isEmpty());
+        std::stop_source stop; stop.request_stop();
+        const auto cancelled = processing::collectFormulaTextReadings(p, image(p), "rus", stop.get_token());
+        QVERIFY(!cancelled); QVERIFY(cancelled.error().cancelled);
+    }
+
+    void reversePipelineAlsoRunsForMathOnlyEngines()
+    {
+        auto raw = formula("auto"); raw.imageRegions.clear();
+        const QString path = temporary.filePath("math-scan.png");
+        QVERIFY(image(raw).save(path));
+        processing::DocumentProcessor processor;
+        processor.setEngine(std::make_unique<FixtureTextEngine>(raw, "rapid-latex-ocr", false));
+        core::OcrPage recognized;
+        connect(&processor, &processing::DocumentProcessor::recognized, this,
+            [&](core::OcrPage result, const QPoint &, const QRect &) { recognized = std::move(result); });
+        QSignalSpy failed(&processor, &processing::DocumentProcessor::failed);
+        processor.recognize(path, "rus", 1);
+        QTRY_VERIFY_WITH_TIMEOUT(!processor.isBusy(), 5000);
+        QVERIFY(failed.isEmpty()); QCOMPARE(recognized.words.size(), 1);
+        QCOMPARE(recognized.words[0].alternative.text, "слово");
+    }
 
     void russianCandidatesKeepNativeTextAndAcceptSourceLinkedFormula()
     {

@@ -121,6 +121,10 @@ Automatic formula selection protects page ranges, footnote markers and prose, an
 
 With spelling dictionaries and the local math runtime installed, recognition also checks unknown words as possible misread formulas, including Cyrillic text. This uses the page or block's OCR language and accepts a word found in any selected dictionary. Adjacent suspicious words on the same line are retried together; readings with mathematical structure appear as **specialist alternatives** in **Tools → Verification queue** and **Review specialist reading…**. The original text and source boxes remain until you accept an alternative. Names and unfamiliar technical terms are not automatically replaced. Recognized line-end hyphenations are checked as joined words in the verification queue and their fragments are excluded from formula retries. Explicit **Text** blocks and raw OCR mode skip these retries. Missing dictionaries disable dictionary-based detection for that language; on Ubuntu, Russian spelling uses `hunspell-ru` with Enchant 2. Retries are limited to 128 suspicious spans per page.
 
+Recognition also retries unreviewed formulas as text with Tesseract. Confident readings supported by the page or block's spelling dictionaries appear as text alternatives, with hyphenated line endings checked as joined words. Accepting one restores ordinary text editing and export while retaining source geometry; keeping the formula leaves its math classification intact. Explicit **Math** blocks are respected. This check runs in mixed recognition and **Math only** mode, with up to 128 formula crops per page.
+
+Right-click a page miniature or an empty area of the page preview and choose **Clear all blocks** to remove that page's block outlines and settings. Recognized text and the scan are kept. **Undo** restores the blocks.
+
 Corrected layout is the default. Enable **Tools → Use raw OCR output** to use Tesseract's raw text and reading order without automatic block-layout correction or formula recognition. This applies to page, block and batch recognition and is saved in the project. Turn it off to return to corrected layout.
 
 ### Local math OCR

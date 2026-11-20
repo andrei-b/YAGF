@@ -67,6 +67,7 @@ signals:
     void regionChanged(int index, const QRectF &bounds);
     void regionDeleteRequested(int index);
     void regionContextMenuRequested(int index, const QPoint &globalPosition);
+    void pageContextMenuRequested(const QPoint &globalPosition);
 protected:
     void mousePressEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
@@ -149,6 +150,9 @@ private:
     void activateImageRegion(int index, bool toggle = false);
     void moveImageRegion(int index, const QRectF &bounds);
     void deleteImageRegion(int index);
+    void clearPageBlocks(int pageNumber);
+    void showPageContextMenu(const QPoint &position);
+    void showPageActions(int pageNumber, const QPoint &globalPosition);
     void showBlockContextMenu(int index, const QPoint &globalPosition);
     void setBlockLanguage(int index, const QString &language, bool notText);
     QString blockLanguage(const core::ImageRegion &region) const;
