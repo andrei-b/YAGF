@@ -721,10 +721,10 @@ MainWindow::MainWindow()
     addToolbarSeparator(toolbar);
     previousButton = new QPushButton(QIcon(QStringLiteral(":/legacy/back.png")), {}, this);
     previousButton->setObjectName(QStringLiteral("pageNavButton"));
-    previousButton->setToolTip(tr("Previous page"));
+    previousButton->setToolTip(tr("Previous page (PgUp)"));
     nextButton = new QPushButton(QIcon(QStringLiteral(":/legacy/forward.png")), {}, this);
     nextButton->setObjectName(QStringLiteral("pageNavButton"));
-    nextButton->setToolTip(tr("Next page"));
+    nextButton->setToolTip(tr("Next page (PgDown)"));
     previousButton->setIconSize(QSize(20, 20));
     nextButton->setIconSize(QSize(20, 20));
     pageSpin = new QSpinBox(this);
@@ -1591,6 +1591,24 @@ MainWindow::MainWindow()
     }
     updatePageLayoutService();
     updateComparisonEngines();
+    // Editors consume PageUp/PageDown as scrolling keys before ordinary shortcuts.
+    qApp->installEventFilter(this);
+}
+
+bool MainWindow::eventFilter(QObject *watched, QEvent *event)
+{
+    if (event->type() == QEvent::KeyPress) {
+        const auto *widget = qobject_cast<QWidget *>(watched);
+        const auto *key = static_cast<QKeyEvent *>(event);
+        if (widget && widget->window() == this && key->modifiers() == Qt::NoModifier &&
+            (key->key() == Qt::Key_PageUp || key->key() == Qt::Key_PageDown)) {
+            // Reuse navigation's busy/boundary checks and pending-edit handling.
+            (key->key() == Qt::Key_PageUp ? previousButton : nextButton)->click();
+            event->accept();
+            return true;
+        }
+    }
+    return QMainWindow::eventFilter(watched, event);
 }
 
 MainWindow::~MainWindow()

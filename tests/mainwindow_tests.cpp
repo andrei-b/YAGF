@@ -1442,6 +1442,30 @@ int main(int argc, char **argv)
         auto *clearRegions = clearWindow.findChild<QListWidget *>("imageRegions");
         auto *clearNumber = clearWindow.findChild<QSpinBox *>("pageNumber");
         waitUi([&] { return clearRegions->count() == 2 && clearPages->count() == 2; });
+        // Page keys navigate the document even in widgets that normally scroll.
+        auto *pageView = clearWindow.findChild<yagf::ui::PageView *>();
+        auto *pageWords = clearWindow.findChild<QListWidget *>("recognizedWords");
+        auto *pageEditor = clearWindow.findChild<QTextEdit *>("recognizedTextEditor");
+        for (auto *target : QVector<QWidget *>{pageView, pageWords, pageEditor, clearPages, clearNumber}) {
+            target->setFocus();
+            QTest::keyClick(target, Qt::Key_PageDown);
+            waitUi([&] { return clearNumber->value() == 2 && clearNumber->isEnabled(); });
+            QTest::keyClick(target, Qt::Key_PageDown);
+            assert(clearNumber->value() == 2);
+            QTest::keyClick(target, Qt::Key_PageUp);
+            waitUi([&] { return clearNumber->value() == 1 && clearNumber->isEnabled(); });
+            QTest::keyClick(target, Qt::Key_PageUp);
+            assert(clearNumber->value() == 1);
+        }
+        QTest::keyClick(pageEditor, Qt::Key_PageDown, Qt::ShiftModifier);
+        assert(clearNumber->value() == 1);
+        {
+            QDialog dialog(&clearWindow);
+            auto *input = new QLineEdit(&dialog);
+            dialog.show();
+            QTest::keyClick(input, Qt::Key_PageDown);
+            assert(clearNumber->value() == 1);
+        }
         const auto pageMenu = [&](int number, bool enabled, bool preview = false) {
             clearPages->scrollToItem(clearPages->item(number-1));
             clearPages->doItemsLayout();
