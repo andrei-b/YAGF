@@ -2,6 +2,7 @@
 
 #include <QDialog>
 #include <QProcess>
+#include <QTimer>
 
 class QComboBox;
 class QLabel;
@@ -18,12 +19,16 @@ public:
 
 private:
     void discover();
+    void finishDiscovery(const QByteArray &addresses = {});
     void useCachedDevices();
     void startScan();
     void finishScan(int exitCode, QProcess::ExitStatus status);
 
     QString destination;
     QProcess discovery;
+    QProcess addressDiscovery;
+    QTimer addressTimeout;
+    QByteArray pendingDevices;
     QProcess scan;
     QComboBox *devices;
     QComboBox *mode;

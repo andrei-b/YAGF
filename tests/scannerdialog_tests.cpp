@@ -18,9 +18,9 @@
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
-    const auto wait=[](const std::function<bool()> &ready) {
+    const auto wait=[](const std::function<bool()> &ready, int timeout = 4000) {
         QElapsedTimer timer;timer.start();
-        while (!ready() && timer.elapsed()<4000) {QApplication::processEvents();QThread::msleep(5);}
+        while (!ready() && timer.elapsed()<timeout) {QApplication::processEvents();QThread::msleep(5);}
         assert(ready());
     };
     if (argc>1 && QString::fromLocal8Bit(argv[1])=="--fresh-session-probe") {
@@ -51,6 +51,10 @@ int main(int argc, char **argv)
         "    cat \"$TEST_SCAN_DEVICES\"; exit 0;;\n"
         "esac\n"
         "printf '%s\\n' \"$@\" > \"$TEST_SCAN_ARGS\"\n"
+        // Enumeration deliberately returns an ID that a new scan process cannot open.
+        "case \"$1\" in\n"
+        "  --device-name=airscan:[ew][0-9a-f]*:*) echo 'open of device failed: Invalid argument' >&2; exit 1;;\n"
+        "esac\n"
         "for arg do\n"
         "  case \"$arg\" in\n"
         "    --output-file=*)\n"
@@ -151,4 +155,90 @@ int main(int argc, char **argv)
     QProcess fresh;fresh.start(QCoreApplication::applicationFilePath(),{"--fresh-session-probe"});
     assert(fresh.waitForFinished(5000) && fresh.exitCode()==0 && fresh.exitStatus()==QProcess::NormalExit);
     assert(probes()==7);
+
+    const auto addressPath = directory.filePath("addresses.txt"), addressLog = directory.filePath("address-probes.txt");
+    const auto addressList = [&](const QByteArray &text) {QFile file(addressPath);assert(file.open(QIODevice::WriteOnly));assert(file.write(text)==text.size());};
+    const auto addressProbes = [&] {QFile file(addressLog);return file.open(QIODevice::ReadOnly) ? file.readAll().count('\n') : 0;};
+    qputenv("TEST_SCAN_ADDRESSES", addressPath.toUtf8());
+    qputenv("TEST_SCAN_ADDRESS_LOG", addressLog.toUtf8());
+    QFile resolver(directory.filePath("airscan-discover"));
+    assert(resolver.open(QIODevice::WriteOnly));
+    const QByteArray resolverBody =
+        "#!/bin/sh\n"
+        "echo probe >> \"$TEST_SCAN_ADDRESS_LOG\"\n"
+        "if [ -n \"$TEST_SCAN_ADDRESS_FAIL\" ]; then echo 'resolver failure fixture' >&2; exit 1; fi\n"
+        "if [ -n \"$TEST_SCAN_ADDRESS_SLOW\" ]; then exec sleep 30; fi\n"
+        "cat \"$TEST_SCAN_ADDRESSES\"\n";
+    assert(resolver.write(resolverBody)==resolverBody.size());resolver.close();
+    assert(resolver.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+    addressList("[devices]\n"
+                "Other scanner = http://192.0.2.99/eSCL/, eSCL\n"
+                "Brother Scanner = http://192.0.2.13/WebServices/ScannerService, WSD\n"
+                "Brother Scanner = http://192.0.2.13/eSCL/, eSCL\n"
+                "Brother Scanner = http://[fe80::1%253]/eSCL/, eSCL\n");
+    deviceList("airscan:e1b:Brother Scanner\teSCL Brother Scanner\nairscan:w3:Brother Scanner\tWSD Brother Scanner\n");
+    qunsetenv("TEST_SCAN_BAD");
+    emptyRefresh->click();wait([&]{return emptyRefresh->isEnabled() && probes()==8;});
+    auto *networkDevices=empty.findChild<QComboBox *>("scannerDevices");
+    const QString escl = QStringLiteral("airscan:escl:Brother Scanner:http://192.0.2.13/eSCL/");
+    const QString wsd = QStringLiteral("airscan:wsd:Brother Scanner:http://192.0.2.13/WebServices/ScannerService");
+    assert(networkDevices->count()==2 && networkDevices->itemData(0).toString()==escl && networkDevices->itemData(1).toString()==wsd);
+    assert(addressProbes()==1);
+
+    const auto scanPage = [&](const QString &name, const QString &expected) {
+        const auto path=directory.filePath(name);
+        yagf::ui::ScannerDialog next(path);
+        auto *combo=next.findChild<QComboBox *>("scannerDevices");
+        assert(combo->currentData().toString()==expected);
+        QPushButton *button=nullptr;
+        for (auto *candidate:next.findChildren<QPushButton *>())
+            if (candidate->text()==QStringLiteral("Scan")) button=candidate;
+        assert(button && button->isEnabled());button->click();
+        wait([&]{return next.result()==QDialog::Accepted || button->isEnabled();});
+        assert(next.result()==QDialog::Accepted && QImage(path).size()==fixture.size());
+        QFile args(argsPath);assert(args.open(QIODevice::ReadOnly));
+        assert(args.readAll().contains(("--device-name="+expected+'\n').toUtf8()));
+    };
+    // Separate scanimage processes must work with the same remembered scanner.
+    scanPage("airscan-first.png",escl);scanPage("airscan-second.png",escl);
+    assert(probes()==8 && addressProbes()==1);
+
+    // Renumbering and reordering cannot change which scanner/protocol was selected.
+    networkDevices->setCurrentIndex(1);
+    deviceList("airscan:w0:Brother Scanner\tWSD Brother Scanner\nairscan:e2:Brother Scanner\teSCL Brother Scanner\n");
+    emptyRefresh->click();wait([&]{return emptyRefresh->isEnabled() && probes()==9;});
+    assert(networkDevices->currentIndex()==0 && networkDevices->currentData().toString()==wsd && addressProbes()==2);
+    scanPage("airscan-wsd.png",wsd);
+
+    // Resolution failure must preserve a usable cached address rather than its new temporary ID.
+    qputenv("TEST_SCAN_ADDRESS_FAIL","1");
+    emptyRefresh->click();wait([&]{return emptyRefresh->isEnabled() && probes()==10;});
+    assert(networkDevices->currentData().toString()==wsd && addressProbes()==3);
+    scanPage("airscan-after-resolver-failure.png",wsd);
+    qunsetenv("TEST_SCAN_ADDRESS_FAIL");
+
+    // Names with '=' or ':' and IPv6 endpoints must reach scanimage as one argument.
+    deviceList("airscan:e9:Lab: Scanner = Alpha\teSCL Lab scanner\n");
+    addressList("[devices]\n\"Lab: Scanner = Alpha\" = https://[2001:db8::1]:8443/custom/eSCL/?key=a=b, eSCL\n");
+    emptyRefresh->click();wait([&]{return emptyRefresh->isEnabled() && probes()==11;});
+    const QString ipv6=QStringLiteral("airscan:escl:YAGF scanner:https://[2001:db8::1]:8443/custom/eSCL/?key=a=b");
+    assert(networkDevices->currentData().toString()==ipv6);
+    scanPage("airscan-ipv6.png",ipv6);
+
+    // A stalled optional helper must release the window and preserve the last working device.
+    qputenv("TEST_SCAN_ADDRESS_SLOW","1");
+    emptyRefresh->click();wait([&]{return emptyRefresh->isEnabled() && probes()==12;},15000);
+    assert(networkDevices->currentData().toString()==ipv6);
+
+    // Closing during address discovery must kill the child promptly and leave the cache intact.
+    timer.restart();
+    {
+        yagf::ui::ScannerDialog closing(directory.filePath("closing.png"));
+        closing.findChild<QPushButton *>("refreshScanners")->click();
+        wait([&]{return addressProbes()==6;});
+    }
+    assert(timer.elapsed()<3000);
+    qunsetenv("TEST_SCAN_ADDRESS_SLOW");
+    yagf::ui::ScannerDialog afterCancel(directory.filePath("after-cancel.png"));
+    assert(afterCancel.findChild<QComboBox *>("scannerDevices")->currentData().toString()==ipv6);
 }
