@@ -78,6 +78,8 @@ int main(int argc, char **argv)
         }
     QTemporaryDir directory;
     assert(directory.isValid());
+    // Fixture OCR must not invoke a user-installed specialist runtime.
+    qputenv("XDG_DATA_HOME", QFile::encodeName(directory.path()));
     const QSize sizes[]{QSize(400, 240), QSize(300, 400)};
     for (int page = 1; page <= 2; ++page) {
         QImage image(sizes[page - 1], QImage::Format_RGB32);

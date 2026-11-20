@@ -16,7 +16,18 @@ QString dictionaryCode(QString code)
         {"fra", "fr"}, {"fre", "fr"}, {"spa", "es"}, {"ita", "it"}, {"por", "pt"},
         {"rus", "ru"}, {"ukr", "uk"}, {"jpn", "ja"}, {"kor", "ko"}, {"ara", "ar"},
         {"heb", "he"}, {"chi_sim", "zh_CN"}, {"chi_tra", "zh_TW"}, {"nld", "nl"}, {"pol", "pl"}};
-    return ocrCodes.value(code.toLower(), code);
+    const QString lower = code.toLower();
+    if (ocrCodes.contains(lower)) return ocrCodes.value(lower);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 3, 0)
+    // Tesseract uses ISO 639-2/3; Hunspell generally uses ISO 639-1.
+    // Cover installed languages beyond the common aliases above as well.
+    const auto language = QLocale::codeToLanguage(lower);
+    if (language != QLocale::AnyLanguage && language != QLocale::C) {
+        const QString shortCode = QLocale::languageToCode(language, QLocale::ISO639Part1);
+        if (!shortCode.isEmpty()) return shortCode;
+    }
+#endif
+    return code;
 }
 }
 

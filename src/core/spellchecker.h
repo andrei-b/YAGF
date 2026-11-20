@@ -3,7 +3,7 @@
 #include <QStringList>
 #include <memory>
 namespace yagf::core {
-// Optional Enchant backend, shared by editor and verification queue.
+// Optional Enchant backend, shared by editor, verification and OCR retries.
 class SpellChecker final {
 public:
     SpellChecker();

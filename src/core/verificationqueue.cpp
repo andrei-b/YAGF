@@ -1,5 +1,5 @@
 #include "verificationqueue.h"
-#include <QRegularExpression>
+#include "wordspelling.h"
 #include <QSet>
 #include <algorithm>
 
@@ -23,8 +23,6 @@ bool collides(const OcrWord &a, const OcrWord &b)
 VerificationQueue buildVerificationQueue(const OcrDocument &document, const SpellingCheck &unknown, double threshold)
 {
     VerificationQueue result;
-    static const QRegularExpression tokens(QStringLiteral("[\\p{L}\\p{M}\\p{N}_]+(?:['’][\\p{L}\\p{M}]+)*"));
-    static const QRegularExpression identifiers(QStringLiteral("[\\p{N}_]"));
     QHash<int, const OcrPage *> pages;
     for (const auto &page : document.pages) pages.insert(page.number, &page);
     for (int number = 1; number <= document.totalPages; ++number) {
@@ -34,6 +32,7 @@ VerificationQueue buildVerificationQueue(const OcrDocument &document, const Spel
             continue;
         }
         ++result.recognizedPages;
+        const auto spelling = wordSpelling(*page);
         const qsizetype before = result.items.size();
         QSet<int> geometry;
         QVector<int> order;
@@ -51,16 +50,14 @@ VerificationQueue buildVerificationQueue(const OcrDocument &document, const Spel
             ++result.totalWords;
             if (word.reviewed) { ++result.verifiedWords; continue; }
             unsigned reasons = 0;
-            if (word.layoutBlock && word.readingEngine == "rapid-latex-ocr") reasons |= MathReading;
+            if ((word.layoutBlock && word.readingEngine == "rapid-latex-ocr") ||
+                (word.alternative.formula && !word.alternative.text.isEmpty())) reasons |= MathReading;
             if (word.confidence >= 0 && word.confidence < threshold) reasons |= LowConfidence;
             if (!word.alternative.text.isEmpty() && word.alternative.text.simplified() != word.text.simplified()) reasons |= ConflictingReading;
             if (geometry.contains(i)) reasons |= GeometryAnomaly;
             if (unknown) {
-                auto matches = tokens.globalMatch(word.text);
-                while (matches.hasNext()) {
-                    const auto token = matches.next().captured();
-                    if (!token.contains(identifiers) && unknown(*page, word, token)) { reasons |= UnknownWord; break; }
-                }
+                for (const auto &token : spelling.tokens[i])
+                    if (unknown(*page, word, token)) { reasons |= UnknownWord; break; }
             }
             if (reasons) result.items.append({number, word.id, word.text, word.bounds, reasons, false});
         }

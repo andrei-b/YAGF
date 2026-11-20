@@ -13,6 +13,7 @@ set(CMAKE_AUTORCC ON)
 add_library(yagf_core STATIC
     src/core/ocrbenchmark.cpp src/core/ocrbenchmark.h
     src/core/spellchecker.cpp src/core/spellchecker.h
+    src/core/wordspelling.cpp src/core/wordspelling.h
     src/core/verificationqueue.cpp src/core/verificationqueue.h
     src/core/rendersettings.h src/core/correctionretention.cpp src/core/correctionretention.h
     src/core/ocrdocument.cpp src/core/ocrdocument.h src/core/preprocesssettings.h
@@ -40,6 +41,7 @@ add_library(yagf_ocr STATIC
     src/processing/pageorientation.cpp src/processing/pageorientation.h
     src/processing/fontestimator.cpp src/processing/fontestimator.h
     src/processing/specialistocr.cpp src/processing/specialistocr.h
+    src/processing/spellingformulas.cpp src/processing/spellingformulas.h
     src/processing/smartblocks.cpp src/processing/smartblocks.h
     src/processing/mathocrengine.cpp src/processing/mathocrengine.h
     src/processing/iocrengine.h
@@ -111,6 +113,10 @@ install(FILES COPYING
 include(CTest)
 if(BUILD_TESTING)
     find_package(Qt6 6.2 REQUIRED COMPONENTS Test)
+    qt_add_executable(spellingformulas_tests tests/spellingformulas_tests.cpp)
+    target_link_libraries(spellingformulas_tests PRIVATE yagf_processing Qt6::Test)
+    add_test(NAME spellingformulas_tests COMMAND spellingformulas_tests)
+    set_tests_properties(spellingformulas_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     qt_add_executable(smartblocks_tests tests/smartblocks_tests.cpp)
     target_link_libraries(smartblocks_tests PRIVATE yagf_ocr Qt6::Test)
     add_test(NAME smartblocks_tests COMMAND smartblocks_tests)

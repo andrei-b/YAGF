@@ -173,6 +173,8 @@ int main(int argc, char **argv)
     // the Tesseract subprocess can read it. Pages 2 and 4 produce new evidence.
     QTemporaryDir directory;
     assert(directory.isValid());
+    // The vocabulary fixture exercises OCR hints, independently of math models.
+    qputenv("XDG_DATA_HOME", QFile::encodeName(directory.path()));
     const QString imagePath = directory.filePath("scan.png");
     assert(scan.save(imagePath));
     qputenv("PATH", QFile::encodeName(directory.path()) + ':' + qgetenv("PATH"));

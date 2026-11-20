@@ -4,6 +4,7 @@
 #include "imageprocessor.h"
 #include "tesseractengine.h"
 #include "mathocrengine.h"
+#include "spellingformulas.h"
 #include "smartblocks.h"
 #include "symbolshape.h"
 #include "specialistocr.h"
@@ -492,6 +493,11 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
                 result.warnings = collectSpecialistReadings(page, input, localAreas,
                     formulaEngine.get(), proseEngine.get(), token);
                 if (token.stop_requested()) result.outcome = std::unexpected(OcrError{{}, true});
+            }
+            if (result.outcome && !rawOutput && !splitOnly && engine->capabilities().supportsWordBoxes) {
+                auto retries = collectSpellingFormulaReadings(page, input, token);
+                if (!retries) result.outcome = std::unexpected(retries.error());
+                else result.warnings += *retries;
             }
         }
         return result;
