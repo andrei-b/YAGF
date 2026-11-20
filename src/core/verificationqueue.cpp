@@ -51,6 +51,7 @@ VerificationQueue buildVerificationQueue(const OcrDocument &document, const Spel
             ++result.totalWords;
             if (word.reviewed) { ++result.verifiedWords; continue; }
             unsigned reasons = 0;
+            if (word.layoutBlock && word.readingEngine == "rapid-latex-ocr") reasons |= MathReading;
             if (word.confidence >= 0 && word.confidence < threshold) reasons |= LowConfidence;
             if (!word.alternative.text.isEmpty() && word.alternative.text.simplified() != word.text.simplified()) reasons |= ConflictingReading;
             if (geometry.contains(i)) reasons |= GeometryAnomaly;
@@ -79,6 +80,7 @@ QString verificationReasons(unsigned reasons)
     if (reasons & GeometryAnomaly) names << QStringLiteral("Geometry");
     if (reasons & PendingCorrection) names << QStringLiteral("Saved correction");
     if (reasons & UnrecognizedPage) names << QStringLiteral("Not recognized");
+    if (reasons & MathReading) names << QStringLiteral("Check formula symbols");
     return names.join(QStringLiteral(", "));
 }
 }

@@ -23,7 +23,8 @@ std::expected<core::OcrPage, OcrError> MathOcrEngine::recognize(
 }
 
 std::expected<core::OcrPage, OcrError> MathOcrEngine::recognizeBoxes(
-    const QImage &image, const OcrOptions &options, std::stop_token stop, const QList<QRect> &boxes)
+    const QImage &image, const OcrOptions &options, std::stop_token stop, const QList<QRect> &boxes,
+    QStringList *warnings)
 {
     if (stop.stop_requested()) return std::unexpected(OcrError{{}, true});
     const QString python = pythonPath();
@@ -73,14 +74,26 @@ std::expected<core::OcrPage, OcrError> MathOcrEngine::recognizeBoxes(
     page.height = page.sourceHeight = image.height();
     page.language = QStringLiteral("auto");
     page.engineId = id();
+    QStringList failures;
+    QList<QRect> seen;
     for (const auto &item : json.array()) {
         const auto entry = item.toObject();
         const auto box = entry.value("box").toArray();
         const QString text = entry.value("text").toString().trimmed();
+        if (box.size() != 4)
+            return std::unexpected(OcrError{QStringLiteral("Invalid local math OCR crop.")});
         const QRect bounds(box.at(0).toInt(-1), box.at(1).toInt(-1),
                            box.at(2).toInt(), box.at(3).toInt());
-        if (box.size() != 4 || bounds.isEmpty() || !image.rect().contains(bounds) || text.isEmpty())
+        if (bounds.isEmpty() || !image.rect().contains(bounds) || seen.contains(bounds) ||
+            (!boxes.isEmpty() && !boxes.contains(bounds)))
             return std::unexpected(OcrError{QStringLiteral("Invalid local math OCR reading.")});
+        seen.append(bounds);
+        if (!entry.value("error").toString().isEmpty()) {
+            failures.append(QStringLiteral("Equation at %1,%2: %3")
+                .arg(bounds.x()).arg(bounds.y()).arg(entry.value("error").toString()));
+            continue;
+        }
+        if (text.isEmpty()) return std::unexpected(OcrError{QStringLiteral("Empty local math OCR reading.")});
         core::OcrWord word;
         word.page = page.number;
         word.block = page.words.size() + 1;
@@ -88,7 +101,14 @@ std::expected<core::OcrPage, OcrError> MathOcrEngine::recognizeBoxes(
         word.layoutBlock = true;
         word.bounds = bounds;
         word.text = word.originalText = text;
+        word.readingEngine = id();
         page.words.append(std::move(word));
+    }
+    if (!boxes.isEmpty() && seen.size() != boxes.size())
+        return std::unexpected(OcrError{QStringLiteral("Local math OCR returned an incomplete set of crops.")});
+    if (!failures.isEmpty()) {
+        if (!warnings) return std::unexpected(OcrError{failures.join('\n')});
+        *warnings += failures;
     }
     page.rebuildHierarchy();
     for (auto &region : page.regions) region.type = QStringLiteral("equation");

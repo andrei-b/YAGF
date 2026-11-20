@@ -10,8 +10,11 @@ public:
     EngineCapabilities capabilities() const override
     { return {.supportsRegions = true, .supportsLayout = true}; }
     static QString pythonPath();
+    // With warnings, individual failed crops are omitted so the caller can
+    // retain native text there. Without warnings, any crop failure is an error.
     std::expected<core::OcrPage, OcrError> recognizeBoxes(
-        const QImage &image, const OcrOptions &options, std::stop_token stop, const QList<QRect> &boxes);
+        const QImage &image, const OcrOptions &options, std::stop_token stop, const QList<QRect> &boxes,
+        QStringList *warnings = nullptr);
     std::expected<core::OcrPage, OcrError> recognize(
         const QImage &image, const OcrOptions &options, std::stop_token stop) override;
 };

@@ -37,7 +37,7 @@ VerificationController::VerificationController(QMainWindow *window, const core::
     layout->addWidget(counts);
     reason->setObjectName(QStringLiteral("verificationFilter"));
     reason->addItem(tr("All reasons"), 0);
-    for (unsigned flag : {core::LowConfidence, core::ConflictingReading, core::UnknownWord, core::GeometryAnomaly, core::PendingCorrection, core::UnrecognizedPage})
+    for (unsigned flag : {core::LowConfidence, core::ConflictingReading, core::UnknownWord, core::GeometryAnomaly, core::PendingCorrection, core::UnrecognizedPage, core::MathReading})
         reason->addItem(core::verificationReasons(flag), flag);
     layout->addWidget(reason);
     layout->addWidget(pageOnly);

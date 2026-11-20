@@ -73,8 +73,10 @@ void restoreRecoveredText(core::OcrPage &page, const QVector<Row> &rows)
             } else insertion = row.box.center().y() < center ? nearest->first : nearest->end;
         }
         for (auto word : row.words) {
-            word.id = page.id + "/recovered-" + QUuid::createUuid().toString(QUuid::WithoutBraces);
-            word.sourceWordIds.clear();
+            if (!word.layoutBlock || word.id.isEmpty()) {
+                word.id = page.id + "/recovered-" + QUuid::createUuid().toString(QUuid::WithoutBraces);
+                word.sourceWordIds.clear();
+            }
             word.block = block; word.paragraph = paragraph; word.line = lineNumber;
             page.words.insert(insertion++, std::move(word));
         }
@@ -86,11 +88,19 @@ QVector<core::ImageRegion> textBlocksFromReading(const core::OcrPage &page,
 {
     QVector<core::ImageRegion> result = explicitRegions;
     QVector<QRect> paragraphs;
+    QHash<QString, bool> formulas;
+    for (const auto &word : page.words) formulas.insert(word.id, word.layoutBlock);
     for (const auto &region : page.regions) for (const auto &paragraph : region.paragraphs) {
         if (std::ranges::any_of(explicitRegions, [&](const auto &r) { return r.bounds.intersects(paragraph.bounds); }))
             continue;
         paragraphs.append(paragraph.bounds);
-        result.append({QUuid::createUuid().toString(QUuid::WithoutBraces), paragraph.bounds, {}, false, "text", true});
+        bool math = false, text = false;
+        for (const auto &line : paragraph.lines) for (const auto &id : line.wordIds) {
+            if (formulas.value(id)) math = true;
+            else text = true;
+        }
+        result.append({QUuid::createUuid().toString(QUuid::WithoutBraces), paragraph.bounds, {}, false,
+            math ? (text ? "mixed" : "math") : "text", true});
     }
     // Keep proposals beside manually drawn blocks where a raw paragraph crosses
     // an explicit boundary. Other prose outlines follow the raw paragraphs.
@@ -117,15 +127,29 @@ QRect inkBox(const QImage &gray, QRect area)
 
 bool hasMathOperator(const QString &text)
 {
+    // Index page ranges and footnote markers are ordinary text. In particular,
+    // a dash between two page numbers alone is not evidence of an equation.
     static const QRegularExpression operators(QStringLiteral(
-        "[=+*/^<>×÷±∓∑∏∫√≤≥≠≈≡∞∂∇→²³₀-₉−]|(?<=\\d)-(?=\\d)|_(?=[\\p{L}\\d{])"));
+        "[=+*/^<>×÷±∓∑∏∫√≤≥≠≈≡∞∂∇→²³₀-₉−]|_(?=[\\p{L}\\d{])"));
     return text.contains(operators);
+}
+
+bool referenceText(const QString &text)
+{
+    static const QRegularExpression reference(QStringLiteral(
+        "^\\s*(?:\\d+[.,;]?\\s*(?:[-–—]\\s*\\d+[.,;]?\\s*)?)+[*)]?\\s*$|"
+        "^\\s*\\(?\\d+\\s*[*†‡]+\\s*\\)?[.,;:]?\\s*$|^\\s*[*†‡]+\\s*$"));
+    return reference.match(text).hasMatch();
 }
 
 bool proseWord(const QString &text)
 {
     static const QRegularExpression letters(QStringLiteral("\\p{L}{2,}"));
+    static const QRegularExpression cyrillicWord(QStringLiteral("[А-Яа-яЁё]{2,}"));
     static const QRegularExpression functions(QStringLiteral("^(sin|cos|tan|log|ln|lim|exp|max|min)$"));
+    // OCR often joins a Russian word to a footnote star or an inline operator.
+    // That punctuation must not turn the whole word into a formula candidate.
+    if (text.contains(cyrillicWord)) return true;
     if (hasMathOperator(text)) return false;
     static const QStringList shortWords{"и", "в", "с", "к", "у", "а", "о", "я"};
     return (text.contains(letters) && !functions.match(text).hasMatch()) || shortWords.contains(text.toLower());
@@ -165,6 +189,24 @@ bool mathInk(const QImage &gray, const QRect &box)
     return false;
 }
 
+bool ruledDiagram(const QImage &gray, const QRect &box)
+{
+    // Axis fragments can look like equations to the model. A rule spanning
+    // almost the whole crop needs a numerator and denominator to be math.
+    const int length = std::max(box.height()*6, box.width()*4/5);
+    for (int y = box.top()+1; y < box.bottom(); ++y) {
+        const auto *pixels = gray.constScanLine(y);
+        int x = box.left();
+        while (x <= box.right()) {
+            while (x <= box.right() && pixels[x] >= 175) ++x;
+            const int start = x;
+            while (x <= box.right() && pixels[x] < 175) ++x;
+            if (x-start >= length && !fractionBar(gray, box, start, x, y)) return true;
+        }
+    }
+    return false;
+}
+
 QRect formulaFromHint(const QImage &gray, const QRect &hint, const QRect &area,
                       const QVector<OcrWord> &words, int glyphHeight)
 {
@@ -199,6 +241,12 @@ QRect formulaFromHint(const QImage &gray, const QRect &hint, const QRect &area,
 void classify(Row &row, const QImage &gray, const QString &mode)
 {
     if (mode == "text") { row.content = mode; return; }
+    QString nativeText;
+    for (const auto &word : row.words) nativeText += word.text + ' ';
+    if (mode != "math" && ((!row.words.isEmpty() && referenceText(nativeText)) || ruledDiagram(gray, row.box))) {
+        row.content = "text";
+        return;
+    }
     const auto makeFormula = [](QRect box) {
         OcrWord word;
         word.layoutBlock = true;
@@ -222,7 +270,7 @@ void classify(Row &row, const QImage &gray, const QString &mode)
         const QRect gap = inkBox(gray, QRect(QPoint(left, row.box.top()), QPoint(right, row.box.bottom())));
         QString tokens;
         for (int j = first; j < i; ++j) tokens += row.words[j].text;
-        if (!gap.isEmpty() && (hasMathOperator(tokens) ||
+        if (!gap.isEmpty() && !referenceText(tokens) && (hasMathOperator(tokens) ||
             (gap.width() >= gap.height() && mathInk(gray, gap) && (tokens.isEmpty() || i-first > 1)))) {
             result.append(makeFormula(gap));
             row.content = "mixed";
@@ -246,37 +294,48 @@ QVector<Row> rowsIn(const QImage &gray, QRect area, const QVector<OcrWord> &word
     // internal to a fraction or a superscript and belongs to the same row.
     const int maxGap = std::max(3, glyphHeight * 3 / 5);
     // Closely spaced prose lines may have a smaller gap than a fraction bar.
-    // Preserve baseline OCR line breaks when both lines contain prose.
+    // Preserve native boundaries between prose and equations as well. Otherwise
+    // a descender or scan speck can join a display equation to the next paragraph.
     using LineKey = std::tuple<int, int, int>;
     struct TextLine {
         QRect box;
         QVector<int> centers;
         QVector<int> heights;
+        QVector<int> proseCenters;
+        QVector<int> proseHeights;
     };
     std::map<LineKey, TextLine> textLines;
     for (const auto &word : words) {
-        if (area.contains(word.bounds.center()) && proseWord(word.text)) {
+        if (area.contains(word.bounds.center())) {
             auto &line = textLines[{word.block, word.paragraph, word.line}];
             line.box |= word.bounds;
             line.centers.append(word.bounds.center().y());
             line.heights.append(word.bounds.height());
+            if (proseWord(word.text)) {
+                line.proseCenters.append(word.bounds.center().y());
+                line.proseHeights.append(word.bounds.height());
+            }
         }
     }
     QSet<int> breaks;
     QRect previous;
     int previousCenter = 0, previousHeight = 0;
+    bool previousProse = false;
     for (const auto &[key, line] : textLines) {
-        const int center = median(line.centers), height = median(line.heights);
+        const bool prose = !line.proseCenters.isEmpty();
+        const int center = median(prose ? line.proseCenters : line.centers);
+        const int height = median(prose ? line.proseHeights : line.heights);
         // Tall OCR boxes and scan speckles can bridge adjacent prose lines.
         // Their typical word centers still identify separate baselines.
         const int distance = center - previousCenter;
         const int typicalHeight = std::max(previousHeight, height);
-        if (!previous.isEmpty() && distance > typicalHeight/2 && distance <= 2*typicalHeight &&
+        if (!previous.isEmpty() && (prose || previousProse) && distance > typicalHeight/2 && distance <= 2*typicalHeight &&
             previous.left() <= line.box.right() && line.box.left() <= previous.right())
             breaks.insert((previousCenter + center + 1) / 2);
         previous = line.box;
         previousCenter = center;
         previousHeight = height;
+        previousProse = prose;
     }
     int top = -1, bottom = -1;
     auto finish = [&] {
@@ -510,6 +569,141 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
     if (!limitBlocks(page.imageRegions))
         return std::unexpected(OcrError{QStringLiteral("More than 1000 blocks detected. Select a smaller area.")});
     if (splitOnly) return page;
+    if (baselines.size() == 1) {
+        // Detection may combine several baselines or interleave columns. It can
+        // propose replacements, but cannot reorder the native reading.
+        auto original = baselines.begin()->second;
+        original.words.removeIf([&](const auto &word) {
+            const auto contains = [&](const auto &r) { return r.bounds.contains(word.bounds.center()); };
+            return (!includeUnmarked && !std::ranges::any_of(regions, contains)) ||
+                std::ranges::any_of(regions, [&](const auto &r) { return r.notText && contains(r); });
+        });
+        QVector<Row> recovered;
+        for (auto row : rows) if (row.recovered) {
+            row.words.removeIf([](const auto &word) { return word.layoutBlock; });
+            recovered.append(std::move(row));
+        }
+        restoreRecoveredText(original, recovered);
+        QList<QRect> boxes;
+        QVector<bool> inlineMath;
+        QVector<QVector<int>> covered;
+        QSet<int> claimed;
+        for (const auto &row : rows) for (const auto &proposal : row.words) {
+            if (!proposal.layoutBlock || boxes.contains(proposal.bounds)) continue;
+            const bool forced = std::ranges::any_of(regions, [&](const auto &r) {
+                return !r.autoDetected && r.content == "math" && r.bounds.contains(proposal.bounds.center());
+            });
+            if (!forced && ruledDiagram(gray, proposal.bounds)) continue;
+            QVector<int> span;
+            QString tokens;
+            bool unsafe = false;
+            for (int i = 0; i < original.words.size(); ++i) {
+                const auto &word = original.words[i];
+                if (!proposal.bounds.contains(word.bounds.center())) continue;
+                span.append(i);
+                tokens += word.text;
+                if (claimed.contains(i) || (!forced && proseWord(word.text))) unsafe = true;
+            }
+            if (!forced) {
+                static const QRegularExpression operand(QStringLiteral("[\\p{L}\\p{N}]"));
+                const bool fraction = mathInk(gray, proposal.bounds);
+                if (span.isEmpty()) {
+                    // A few strokes cut from a skipped glyph are not a formula.
+                    // Unread display fractions still have a complete, wide crop.
+                    if (!fraction || proposal.bounds.width()*5 < proposal.bounds.height()*3) unsafe = true;
+                } else if (!tokens.contains(operand) && !fraction) unsafe = true;
+            }
+            // A crop crossing unrelated words or columns cannot replace a
+            // contiguous source span safely. Keep that native reading intact.
+            if (!span.isEmpty() && span.last()-span.first()+1 != span.size()) unsafe = true;
+            if (unsafe) continue;
+            boxes.append(proposal.bounds);
+            inlineMath.append(row.content == "mixed");
+            covered.append(span);
+            for (int i : span) claimed.insert(i);
+        }
+        QStringList failures;
+        core::OcrPage formulas;
+        if (!boxes.isEmpty()) {
+            MathOcrEngine math;
+            auto result = math.recognizeBoxes(image, options, stop, boxes, &failures);
+            if (!result) {
+                if (result.error().cancelled || stop.stop_requested()) return std::unexpected(result.error());
+                failures.append(result.error().message);
+            } else formulas = std::move(*result);
+        }
+        QHash<int, OcrWord> replacements;
+        QSet<int> removed;
+        QVector<Row> insertions;
+        for (auto formula : formulas.words) {
+            const int crop = boxes.indexOf(formula.bounds);
+            if (crop < 0) continue;
+            if (inlineMath[crop]) formula.text = "\\(" + formula.text + "\\)";
+            formula.originalText = formula.text;
+            formula.id = original.id + "/math-" + QUuid::createUuid().toString(QUuid::WithoutBraces);
+            formula.sourceWordIds.clear();
+            const auto &span = covered[crop];
+            if (span.isEmpty()) {
+                insertions.append({formula.bounds, "math", {formula}, true});
+                continue;
+            }
+            const auto &anchor = original.words[span.first()];
+            formula.block = anchor.block;
+            formula.paragraph = anchor.paragraph;
+            formula.line = anchor.line;
+            for (int i : span) {
+                formula.sourceWordIds += original.words[i].sourceWordIds;
+                removed.insert(i);
+            }
+            replacements.insert(span.first(), std::move(formula));
+        }
+        QVector<OcrWord> words;
+        for (int i = 0; i < original.words.size(); ++i) {
+            if (replacements.contains(i)) words.append(replacements.value(i));
+            else if (!removed.contains(i)) words.append(original.words[i]);
+        }
+        original.words = std::move(words);
+        restoreRecoveredText(original, insertions);
+        // Display equations need their own export/editing regions. Split only
+        // at those boundaries; retain native paragraphs and lines within prose.
+        int nextBlock = 0;
+        for (const auto &word : original.words) nextBlock = std::max(nextBlock, word.block);
+        int previousSourceBlock = -1, proseBlock = -1;
+        QSet<int> usedBlocks;
+        bool afterDisplay = false;
+        for (auto &word : original.words) {
+            const int sourceBlock = word.block;
+            if (word.layoutBlock && !word.text.startsWith("\\(")) {
+                word.block = ++nextBlock;
+                afterDisplay = true;
+            } else {
+                if (afterDisplay || sourceBlock != previousSourceBlock) {
+                    proseBlock = usedBlocks.contains(sourceBlock) ? ++nextBlock : sourceBlock;
+                    usedBlocks.insert(sourceBlock);
+                }
+                word.block = proseBlock;
+                afterDisplay = false;
+            }
+            previousSourceBlock = sourceBlock;
+        }
+        original.regions.clear();
+        original.rebuildHierarchy();
+        if (!formulas.words.isEmpty()) original.engineId = page.engineId;
+        QSet<QString> formulaIds;
+        for (const auto &word : original.words) if (word.layoutBlock) formulaIds.insert(word.id);
+        for (auto &region : original.regions) {
+            bool allMath = true;
+            for (const auto &paragraph : region.paragraphs) for (const auto &line : paragraph.lines)
+                for (const auto &id : line.wordIds) if (!formulaIds.contains(id)) allMath = false;
+            if (allMath) region.type = "equation";
+        }
+        original.imageRegions = textBlocksFromReading(original, regions, page.imageRegions);
+        if (!limitBlocks(original.imageRegions))
+            return std::unexpected(OcrError{QStringLiteral("More than 1000 blocks detected. Select a smaller area.")});
+        if (warnings && !failures.isEmpty())
+            warnings->append(failures.join('\n') + QStringLiteral(" Kept native OCR for failed equation crops."));
+        return original;
+    }
     std::ranges::stable_sort(rows, {}, [](const Row &row) { return std::pair(row.box.top(), row.box.left()); });
     QList<QRect> boxes;
     QList<int> indices;
@@ -542,6 +736,7 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
             word.text = formulas->words[i].text;
             if (types[word.block-1] == "mixed") word.text = "\\(" + word.text + "\\)";
             word.originalText = word.text;
+            word.readingEngine = formulas->words[i].readingEngine;
         }
     }
     page.rebuildHierarchy();

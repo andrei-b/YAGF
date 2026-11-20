@@ -1,6 +1,7 @@
 #include "smartblocks.h"
 
 #include <QFile>
+#include <QDir>
 #include <QPainter>
 #include <QTemporaryDir>
 #include <QtTest>
@@ -11,6 +12,24 @@ class SmartBlocksTests : public QObject {
     Q_OBJECT
     QTemporaryDir temporary;
     QByteArray originalPath;
+    QByteArray originalDataHome;
+
+    void mathBackend(bool failSecond = false)
+    {
+        const QString directory = temporary.filePath("yagf2/math-ocr/venv/bin");
+        QVERIFY(QDir().mkpath(directory));
+        QFile script(directory + "/python");
+        QVERIFY(script.open(QIODevice::WriteOnly));
+        script.write("#!/usr/bin/python3\nimport json,sys\n"
+            "boxes=json.load(open(sys.argv[3]))\nresult=[]\n"
+            "for i,(l,t,r,b) in enumerate(boxes):\n"
+            " entry={'box':[l,t,r-l,b-t]}\n");
+        script.write(failSecond ? " entry.update({'error':'bad crop'} if i==1 else {'text':'x=1'})\n"
+                                : " entry['text']='x=1'\n");
+        script.write(" result.append(entry)\nprint(json.dumps(result))\n");
+        script.close();
+        QVERIFY(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+    }
 
     static core::OcrPage reading(const QVector<core::OcrWord> &words, QSize size)
     {
@@ -66,9 +85,12 @@ private slots:
         QVERIFY(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
         originalPath = qgetenv("PATH");
         qputenv("PATH", QFile::encodeName(temporary.path()) + ':' + originalPath);
+        originalDataHome = qgetenv("XDG_DATA_HOME");
+        qputenv("XDG_DATA_HOME", QFile::encodeName(temporary.path()));
+        mathBackend();
     }
 
-    void cleanupTestCase() { qputenv("PATH", originalPath); }
+    void cleanupTestCase() { qputenv("PATH", originalPath); qputenv("XDG_DATA_HOME", originalDataHome); }
 
     void overlappingLinesUseRawParagraphs()
     {
@@ -192,6 +214,120 @@ private slots:
         QVERIFY2(textOnly, qPrintable(textOnly ? QString() : textOnly.error().message));
         QCOMPARE(textOnly->imageRegions.size(), 1);
         QCOMPARE(textOnly->imageRegions[0].content, "text");
+    }
+
+    void mixedPagePreservesColumnOrderAndSourceIds()
+    {
+        mathBackend();
+        const auto raw = reading({word(1, 1, {10, 10, 80, 12}, "LeftFirst"),
+            word(1, 2, {10, 40, 50, 12}, "x=0"),
+            word(1, 3, {10, 70, 80, 12}, "LeftLast"),
+            word(2, 1, {300, 10, 80, 12}, "RightFirst"),
+            word(2, 2, {300, 70, 80, 12}, "RightLast")}, {420, 100});
+        const auto result = processing::recognizeSmartBlocks(scan(raw), {.language = "rus"}, {}, false, {}, true, &raw);
+        QVERIFY2(result, qPrintable(result ? QString() : result.error().message));
+        QCOMPARE(text(*result), (QStringList{"LeftFirst", "x=1", "LeftLast", "RightFirst", "RightLast"}));
+        QVERIFY(result->words[1].layoutBlock);
+        QCOMPARE(result->words[1].sourceWordIds, raw.words[1].sourceWordIds);
+        QCOMPARE(result->words[1].readingEngine, "rapid-latex-ocr");
+        for (int i : {0, 2, 3, 4}) {
+            QCOMPARE(result->words[i].id, raw.words[i].id);
+            QCOMPARE(result->words[i].line, raw.words[i].line);
+        }
+        core::OcrDocument document, restored;
+        document.sourcePath = "mixed.png";
+        document.replacePage(*result);
+        QString error;
+        QVERIFY2(core::OcrDocument::fromJson(document.toJson(), &restored, &error), qPrintable(error));
+        QCOMPARE(restored.plainText(), document.plainText());
+    }
+
+    void failedCropKeepsNativeTextAndSuccessfulEquations()
+    {
+        mathBackend(true);
+        const auto raw = reading({word(1, 1, {10, 10, 80, 12}, "Before"),
+            word(1, 2, {10, 40, 50, 12}, "x=0"),
+            word(1, 3, {10, 70, 50, 12}, "y=2"),
+            word(1, 4, {10, 100, 80, 12}, "After")}, {200, 140});
+        QStringList warnings;
+        const auto result = processing::recognizeSmartBlocks(scan(raw), {.language = "rus"}, {}, false, {}, true, &raw, &warnings);
+        QVERIFY2(result, qPrintable(result ? QString() : result.error().message));
+        QCOMPARE(text(*result), (QStringList{"Before", "x=1", "y=2", "After"}));
+        QVERIFY(result->words[1].layoutBlock);
+        QVERIFY(!result->words[2].layoutBlock);
+        QCOMPARE(result->words[2].id, raw.words[2].id);
+        QVERIFY(warnings.join(' ').contains("bad crop"));
+        mathBackend();
+    }
+
+    void indexRangesAndFootnotesStayText()
+    {
+        const auto raw = reading({word(1, 1, {10, 10, 60, 12}, "Клейн"),
+            word(1, 1, {90, 10, 100, 12}, "304–307"),
+            word(1, 2, {10, 40, 100, 12}, "211-213"),
+            word(1, 3, {10, 70, 18, 12}, "2*"),
+            word(1, 4, {10, 100, 30, 12}, "1*).")}, {220, 140});
+        const auto result = processing::recognizeSmartBlocks(scan(raw), {.language = "rus"}, {}, false, {}, true, &raw);
+        QVERIFY2(result, qPrintable(result ? QString() : result.error().message));
+        QCOMPARE(text(*result), text(raw));
+        for (const auto &word : result->words) QVERIFY(!word.layoutBlock);
+    }
+
+    void axisFragmentIsNotAutomaticallyTranscribed()
+    {
+        const auto raw = reading({word(1, 1, {10, 10, 30, 12}, "x=0")}, {300, 60});
+        auto image = scan(raw);
+        { QPainter painter(&image); painter.fillRect(10, 25, 260, 2, Qt::black); }
+        const auto result = processing::recognizeSmartBlocks(image, {.language = "rus"}, {}, false, {}, true, &raw);
+        QVERIFY2(result, qPrintable(result ? QString() : result.error().message));
+        QCOMPARE(text(*result), text(raw));
+        QVERIFY(!result->words[0].layoutBlock);
+    }
+
+    void displayEquationDoesNotMergeWithAdjacentProse()
+    {
+        mathBackend();
+        const auto raw = reading({word(1, 1, {10, 10, 100, 12}, "Before"),
+            word(2, 1, {10, 28, 50, 14}, "x=0"),
+            word(3, 1, {10, 48, 100, 12}, "After")}, {150, 90});
+        const auto result = processing::recognizeSmartBlocks(scan(raw), {.language = "rus"}, {}, false, {}, true, &raw);
+        QVERIFY2(result, qPrintable(result ? QString() : result.error().message));
+        QCOMPARE(text(*result), (QStringList{"Before", "x=1", "After"}));
+        QCOMPARE(result->words[1].bounds, raw.words[1].bounds);
+        QCOMPARE(result->imageRegions.size(), 3);
+        QCOMPARE(result->imageRegions[1].content, "math");
+        QCOMPARE(result->regions[1].type, "equation");
+    }
+
+    void proseJoinedToMathPunctuationKeepsItsNativeReading()
+    {
+        mathBackend();
+        const auto raw = reading({word(1, 1, {10, 10, 60, 12}, "флюксиях»*),"),
+            word(1, 2, {10, 40, 60, 12}, "тоа+ь"),
+            word(1, 3, {10, 70, 50, 12}, "x=0")}, {150, 110});
+        const auto result = processing::recognizeSmartBlocks(scan(raw), {.language = "rus"}, {}, false, {}, true, &raw);
+        QVERIFY2(result, qPrintable(result ? QString() : result.error().message));
+        QCOMPARE(text(*result), (QStringList{"флюксиях»*),", "тоа+ь", "x=1"}));
+        QCOMPARE(result->words[0].id, raw.words[0].id);
+        QCOMPARE(result->words[1].id, raw.words[1].id);
+    }
+
+    void automaticMathOutlineCannotOverrideProseProtection()
+    {
+        mathBackend();
+        const auto raw = reading({word(1, 1, {10, 10, 60, 12}, "флюксиях»*),")}, {100, 50});
+        core::ImageRegion block{"auto-math", {0, 0, 100, 50}, "rus", false, "math", true};
+        const auto automatic = processing::recognizeSmartBlocks(scan(raw), {.language = "rus"},
+            {block}, false, {}, false, &raw);
+        QVERIFY2(automatic, qPrintable(automatic ? QString() : automatic.error().message));
+        QCOMPARE(text(*automatic), text(raw));
+        QVERIFY(!automatic->words[0].layoutBlock);
+        block.autoDetected = false;
+        const auto manual = processing::recognizeSmartBlocks(scan(raw), {.language = "rus"},
+            {block}, false, {}, false, &raw);
+        QVERIFY2(manual, qPrintable(manual ? QString() : manual.error().message));
+        QCOMPARE(text(*manual), QStringList{"x=1"});
+        QVERIFY(manual->words[0].layoutBlock);
     }
 };
 

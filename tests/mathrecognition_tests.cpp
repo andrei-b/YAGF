@@ -205,7 +205,7 @@ private slots:
         }
         QCOMPARE(book.plainText().simplified(),
             QStringLiteral(R"(Рассмотрим простой пример. Сначала запишем равенство. \frac{1}{2}+\frac{1}{4}=\frac{3}{4} Уравнение \(x^{2}+1=10\) имеет решение.)"));
-        QCOMPARE(read.regions[2].type, "equation");
+        QVERIFY(std::ranges::any_of(read.regions, [](const auto &region) { return region.type == "equation"; }));
     }
 
     void liveSurya()

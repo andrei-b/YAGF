@@ -1,6 +1,8 @@
 import importlib.util
 from pathlib import Path
 import unittest
+from unittest.mock import patch
+import tempfile
 
 from PIL import Image, ImageDraw
 
@@ -49,6 +51,26 @@ class MathInputTests(unittest.TestCase):
         image = Image.new("L", (100, 80), 255)
         image.putpixel((10, 10), 0)
         self.assertEqual(list(math_ocr.equation_boxes(image)), [])
+
+    def test_formula_syntax_is_checked(self):
+        for text in [r"\frac{1}{3}", r"\begin{array}{cc}a&b\\c&d\end{array}", r"\{x\}"]:
+            math_ocr.validate_latex(text)
+        for text in [r"\frac{1}{", r"\begin{array}x\end{matrix}", "}x{", "{}" * 21]:
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                math_ocr.validate_latex(text)
+
+    def test_one_bad_crop_does_not_discard_other_equations(self):
+        image = Image.new("L", (100, 60), 255)
+        ImageDraw.Draw(image).rectangle((10, 10, 19, 29), fill=0)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "scan.png"
+            image.save(path)
+            with patch.object(math_ocr, "LaTeXOCR") as constructor:
+                constructor.return_value.return_value = (r"x=1", 0)
+                result = math_ocr.recognize(path, [(0, 0, 30, 40), (50, 0, 80, 40), (0, 0, 30, 40)])
+        self.assertEqual([entry.get("text") for entry in result], ["x=1", None, "x=1"])
+        self.assertIn("No mathematical ink", result[1]["error"])
+        self.assertEqual(constructor.return_value.call_count, 2)
 
 
 if __name__ == "__main__":

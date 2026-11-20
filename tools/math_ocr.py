@@ -1,5 +1,6 @@
 """Transcribe separated rows of printed mathematics from a page or region."""
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -62,6 +63,26 @@ def prepare_crop(crop):
     return ImageOps.expand(crop.resize(size, Image.Resampling.LANCZOS), border=8, fill=255)
 
 
+def validate_latex(text):
+    if not text.strip() or text.count("{}") > 20:
+        raise ValueError("Empty or repetitive formula reading")
+    braces, environments = 0, []
+    for token in re.finditer(r"\\(begin|end)\s*\{([^{}]+)\}|\\.|[{}]", text):
+        if token.group(1) == "begin":
+            environments.append(token.group(2))
+        elif token.group(1) == "end":
+            if not environments or environments.pop() != token.group(2):
+                raise ValueError("Unbalanced formula environment")
+        elif token.group() == "{":
+            braces += 1
+        elif token.group() == "}":
+            braces -= 1
+            if braces < 0:
+                raise ValueError("Unbalanced formula braces")
+    if braces or environments:
+        raise ValueError("Unclosed formula group or environment")
+
+
 def recognize(path, boxes=None):
     with Image.open(path) as source:
         gray = source.convert("L")
@@ -78,11 +99,16 @@ def recognize(path, boxes=None):
     model = LaTeXOCR(**{key: str(models / name) for key, name in weights.items()})
     result = []
     for left, top, right, bottom in boxes:
-        crop = prepare_crop(gray.crop((left, top, right, bottom)))
-        text, _ = model(np.asarray(crop.convert("RGB")))
-        if not text.strip():
-            raise ValueError(f"No formula reading for image rows {top}–{bottom}")
-        result.append(dict(box=[left, top, right-left, bottom-top], text=text))
+        entry = dict(box=[left, top, right-left, bottom-top])
+        try:
+            crop = prepare_crop(gray.crop((left, top, right, bottom)))
+            text, _ = model(np.asarray(crop.convert("RGB")))
+            validate_latex(text)
+            entry["text"] = text
+        except Exception as error:
+            # Keep other successful crops; the caller retains native OCR here.
+            entry["error"] = str(error)
+        result.append(entry)
     return result
 
 

@@ -5,7 +5,7 @@
 namespace yagf::core {
 enum VerificationReason : unsigned {
     LowConfidence = 1, ConflictingReading = 2, UnknownWord = 4,
-    GeometryAnomaly = 8, PendingCorrection = 16, UnrecognizedPage = 32
+    GeometryAnomaly = 8, PendingCorrection = 16, UnrecognizedPage = 32, MathReading = 64
 };
 struct VerificationItem {
     int page = 1;

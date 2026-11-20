@@ -158,6 +158,17 @@ private slots:
         doc.pages[0].words[1].bounds = {-1, 50, 80, 20};
         QCOMPARE(buildVerificationQueue(doc).items[0].reasons, unsigned(GeometryAnomaly));
     }
+    void formulasNeedSymbolReview() {
+        OcrDocument doc; doc.sourcePath = "equation.png";
+        auto p = page(); p.words[0].layoutBlock = true; p.words[0].readingEngine = "rapid-latex-ocr";
+        doc.replacePage(p);
+        auto queue = buildVerificationQueue(doc);
+        QCOMPARE(queue.items.size(), 1);
+        QCOMPARE(queue.items[0].reasons, unsigned(MathReading));
+        QVERIFY(verificationReasons(queue.items[0].reasons).contains("formula"));
+        doc.pages[0].words[0].reviewed = true;
+        QVERIFY(buildVerificationQueue(doc).items.isEmpty());
+    }
     void adaptiveDpiAndCommands() {
         QImage image(600, 400, QImage::Format_RGB32); image.fill(Qt::white);
         QCOMPARE(ImageProcessor::recommendedRenderDpi(image), 150);
