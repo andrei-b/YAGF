@@ -167,4 +167,33 @@ int main(int argc, char **argv)
         assert(received);
         QObject::disconnect(connection);
     }
+    // The processor enforces block sizing even with formatting estimation off,
+    // and an image block can cover several provider block IDs.
+    book.preserveFormatting=false; fixtureEngine->enabled=false;
+    auto &incoming=fixtureEngine->page;
+    incoming.words.clear(); incoming.regions.clear();
+    for (int row=0;row<2;++row) {
+        core::OcrWord word;
+        word.block=row+1; word.line=word.paragraph=1; word.bounds={10,10+row*35,100,20+row*6};
+        word.originalText=word.text=row ? "строка" : "основная";
+        word.fontSizePt=word.sourceFontSizePt=11+row*2; word.sourceFontSizePx=24+row*6;
+        incoming.words.append(word);
+    }
+    incoming.rebuildHierarchy();
+    book.page(1)->imageRegions={{"text",sample.image.rect(),{},false,"text",true}};
+    for (bool crop:{false,true}) {
+        QEventLoop loop; bool received=false;
+        const auto connection=QObject::connect(&processor,&processing::DocumentProcessor::recognized,&loop,
+            [&](core::OcrPage page,const QPoint &,const QRect &) {
+                received=true; assert(page.words.size()==2);
+                assert(page.words[0].fontSizePt==page.words[1].fontSizePt);
+                assert(page.words[0].sourceFontSizePx==page.words[1].sourceFontSizePx);
+                loop.quit();
+            });
+        QTimer::singleShot(10000,&loop,&QEventLoop::quit);
+        if (crop) processor.recognizeRegion(source,"rus",1,sample.image.rect());
+        else processor.recognize(source,"rus",1);
+        loop.exec(); assert(received); QObject::disconnect(connection);
+    }
+
 }

@@ -28,6 +28,7 @@
 #include "pagesource.h"
 #include "symbolrulesdialog.h"
 #include "formulatext.h"
+#include "blockfont.h"
 
 #include <QCloseEvent>
 #include <QApplication>
@@ -1402,6 +1403,7 @@ MainWindow::MainWindow()
             previous.deletedWords.removeIf([&](const auto &word) { return !overlapsWord(word, region); });
             newPage.width = size.width(); newPage.height = size.height();
             core::retainCorrections(newPage, previous, document.preserveFormatting);
+            core::normalizeBlockFontSizes(newPage, {}, true);
         }
         document.sourcePath = originalPath;
         document.engine = newPage.engineId;
@@ -1409,6 +1411,7 @@ MainWindow::MainWindow()
         document.totalPages = pageCount;
         if (region.isEmpty()) {
             if (!document.useRawOcrOutput || newPage.engineId!="tesseract") core::setFormulaOutput(newPage,document.unicodeFormulas);
+            core::normalizeBlockFontSizes(newPage);
             undoStack.push(new ReplacePageCommand(document, currentPage, std::move(newPage), tr("Recognize page")));
         } else {
             OcrPage merged;
@@ -1496,6 +1499,7 @@ MainWindow::MainWindow()
         if (!document.useRawOcrOutput || page.engineId!="tesseract") core::setFormulaOutput(page,document.unicodeFormulas);
         const QString language = page.language;
         const QString engineId = page.engineId;
+        core::normalizeBlockFontSizes(page);
         undoStack.push(new ReplacePageCommand(document, number, std::move(page), tr("Recognize page")));
         document.engine = engineId;
         document.language = language;

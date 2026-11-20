@@ -212,7 +212,13 @@ void recoverBlockLayout(core::OcrPage &page, const QImage &image, const std::ato
             if (block.reviewed && !block.fontFamily.isEmpty()) word.fontFamily = block.fontFamily;
             word.bold = word.bold || block.bold;
             word.italic = word.italic || block.italic;
-            if (block.sourceFontSizePt > 0 && block.fontSizePt != block.sourceFontSizePt)
+            if (block.sourceFontSizePx > 0) {
+                // Recovering line positions must not reintroduce per-line size
+                // estimates into a passage with a consistent recognized font.
+                word.sourceFontSizePx = block.sourceFontSizePx;
+                word.sourceFontSizePt = block.sourceFontSizePt;
+                word.fontSizePt = block.fontSizePt;
+            } else if (block.sourceFontSizePt > 0 && block.fontSizePt != block.sourceFontSizePt)
                 word.fontSizePt = std::clamp(qRound(double(word.fontSizePt) * block.fontSizePt / block.sourceFontSizePt), 6, 72);
             words.append(word);
         }

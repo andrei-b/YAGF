@@ -1,3 +1,4 @@
+#include "blockfont.h"
 #include "documentprocessor.h"
 #include "fontestimator.h"
 
@@ -521,6 +522,11 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
             if (result.outcome && !rawOutput && !splitOnly && unicodeFormulas)
                 if (const int unsupported=core::setFormulaOutput(page,true);unsupported)
                     result.warnings.append(QStringLiteral("%1 formula(s) retained LaTeX because their Unicode conversion is unsupported.").arg(unsupported));
+            if (result.outcome && !splitOnly) {
+                auto fontBlocks = blocks;
+                for (auto &block : fontBlocks) block.bounds.translate(-result.offset);
+                core::normalizeBlockFontSizes(page, fontBlocks, !region.isEmpty(), token);
+            }
             if (token.stop_requested()) result.outcome = std::unexpected(OcrError{{}, true});
         }
         return result;

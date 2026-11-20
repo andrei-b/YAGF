@@ -103,7 +103,10 @@ void drawFormattedWord(QPainter &painter, const core::OcrWord &word, int dpi)
     if (word.text.isEmpty() || word.bounds.isEmpty()) return;
     QFont font = formattedFont(word, dpi);
     painter.save();
-    painter.setClipRect(word.bounds, Qt::IntersectClip);
+    const bool sizedLine = word.sourceFontSizePx > 0 && !word.layoutBlock &&
+                           !word.text.contains('\n') && !word.text.contains('\t');
+    const int margin = sizedLine ? QFontMetricsF(font).height() : 0;
+    painter.setClipRect(word.bounds.adjusted(0, -margin, 0, margin), Qt::IntersectClip);
     const bool acrossLines = std::ranges::any_of(word.sourceBoxes, [&](const QRect &box) {
         return !word.sourceBoxes.isEmpty() && std::abs(box.center().y() - word.sourceBoxes.first().center().y()) >
             std::min(box.height(), word.sourceBoxes.first().height()) / 2;
@@ -178,10 +181,12 @@ void drawFormattedWord(QPainter &painter, const core::OcrWord &word, int dpi)
     } else {
         const QFontMetricsF metrics(font);
         const QRectF ink = metrics.tightBoundingRect(word.text);
+        // Glyph-box height is not an em size. Once recognition supplied a
+        // consistent block font, fit only horizontally to retain that size.
         const qreal scale = std::min({1.0, word.bounds.width() / std::max(1.0, ink.width()),
-                                     word.bounds.height() / std::max(1.0, ink.height())});
+                                     sizedLine ? 1.0 : word.bounds.height() / std::max(1.0, ink.height())});
         painter.translate(word.bounds.topLeft());
-        painter.scale(scale, scale);
+        painter.scale(scale, sizedLine ? 1.0 : scale);
         painter.setFont(font);
         painter.drawText(-ink.topLeft(), word.text);
     }

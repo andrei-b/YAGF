@@ -11,6 +11,7 @@ qt_standard_project_setup()
 set(CMAKE_AUTORCC ON)
 
 add_library(yagf_core STATIC
+    src/core/blockfont.cpp src/core/blockfont.h
     src/core/formulatext.cpp src/core/formulatext.h
     src/core/symbolrules.cpp src/core/symbolrules.h
     src/core/ocrbenchmark.cpp src/core/ocrbenchmark.h
@@ -133,6 +134,9 @@ if(BUILD_TESTING)
     target_link_libraries(aipagelayout_tests PRIVATE yagf_processing yagf_export Qt6::Widgets Qt6::Concurrent Qt6::Network Qt6::Test)
     add_test(NAME aipagelayout_tests COMMAND aipagelayout_tests)
     set_tests_properties(aipagelayout_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    qt_add_executable(blockfont_tests tests/blockfont_tests.cpp)
+    target_link_libraries(blockfont_tests PRIVATE yagf_core)
+    add_test(NAME blockfont_tests COMMAND blockfont_tests)
     qt_add_executable(formulatext_tests tests/formulatext_tests.cpp src/ui/documentcommands.cpp src/ui/documentcommands.h)
     target_include_directories(formulatext_tests PRIVATE src/ui)
     target_link_libraries(formulatext_tests PRIVATE yagf_core Qt6::Gui)

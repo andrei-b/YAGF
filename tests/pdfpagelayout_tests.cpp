@@ -84,6 +84,32 @@ int main(int argc, char **argv)
         [](const QImage &, const QString &, int) { return std::nullopt; });
     assert(failed.page.words.size() == 1 && failed.page.words.first().bounds == block.bounds);
 
+    auto uniformPassage=page;
+    uniformPassage.words[0].sourceFontSizePx=32;
+    uniformPassage.words[0].fontSizePt=uniformPassage.words[0].sourceFontSizePt=15;
+    const auto recovered=preparePdfPage(uniformPassage,scan,cancel,recognize);
+    assert(recovered.page.words.size()==3);
+    for (const auto &line:recovered.page.words)
+        assert(line.sourceFontSizePx==32 && line.fontSizePt==15 && line.sourceFontSizePt==15);
+
+    // Identical text keeps the same visible font size even when OCR gives
+    // its words different glyph-box heights.
+    PdfPageLayout consistent; consistent.page.width=400; consistent.page.height=220;
+    for (int row=0;row<2;++row) {
+        core::OcrWord word;
+        word.bounds={20,20+100*row,200,row ? 38 : 12}; word.text=word.originalText="Uniform";
+        word.fontFamily="DejaVu Sans"; word.fontSizePt=word.sourceFontSizePt=15; word.sourceFontSizePx=32;
+        consistent.page.words.append(word);
+    }
+    QImage uniform(400,220,QImage::Format_RGB32); uniform.fill(Qt::white);
+    QPainter sameSize(&uniform); assert(drawFormattedPage(sameSize,consistent,uniform,cancel)); sameSize.end();
+    const auto inkHeight=[&](int top) {
+        int first=100,last=-1;
+        for (int y=0;y<80;++y) for (int x=0;x<230;++x) if (qGray(uniform.pixel(x,top+y))<150) {first=std::min(first,y); last=std::max(last,y);}
+        return last-first+1;
+    };
+    assert(inkHeight(0)>12 && inkHeight(0)==inkHeight(100));
+
     cancel = true;
     const int beforeCancel = calls;
     const auto cancelled = preparePdfPage(page, scan, cancel, recognize);
