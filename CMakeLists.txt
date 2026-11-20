@@ -42,6 +42,7 @@ add_library(yagf_ocr STATIC
     src/processing/fontestimator.cpp src/processing/fontestimator.h
     src/processing/specialistocr.cpp src/processing/specialistocr.h
     src/processing/spellingformulas.cpp src/processing/spellingformulas.h
+    src/processing/compactassignment.h
     src/processing/smartblocks.cpp src/processing/smartblocks.h
     src/processing/mathocrengine.cpp src/processing/mathocrengine.h
     src/processing/iocrengine.h

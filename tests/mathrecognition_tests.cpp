@@ -140,6 +140,25 @@ private slots:
         for (const auto &region : page->regions) QCOMPARE(region.type, "equation");
     }
 
+    void cyrillicAssignmentUsesTheSourcePixels()
+    {
+        if (processing::MathOcrEngine::pythonPath().isEmpty()) QSKIP("Requires the local math OCR runtime");
+        const QImage image(QStringLiteral(MATH_FIXTURE_DIR "/cyrillic-assignment.png"));
+        QVERIFY(!image.isNull());
+        core::OcrPage raw;
+        raw.id = "page-1"; raw.language = "rus"; raw.engineId = "tesseract";
+        raw.width = raw.sourceWidth = image.width();
+        raw.height = raw.sourceHeight = image.height();
+        raw.words.append({1, 1, 1, 1, {2, 2, 66, 21}, "рз=2,", "рз=2,", 1});
+        raw.rebuildHierarchy();
+        const auto result = processing::recognizeSmartBlocks(image, {.language = "rus"}, {}, false, {}, true, &raw);
+        QVERIFY2(result, qPrintable(result ? QString() : result.error().message));
+        QCOMPARE(result->words.size(), 1);
+        QVERIFY(result->words[0].layoutBlock);
+        QCOMPARE(result->words[0].text, "p_{3}=2,");
+        QCOMPARE(result->words[0].sourceWordIds, raw.words[0].sourceWordIds);
+    }
+
     void mathInputPreparation()
     {
         const auto python = processing::MathOcrEngine::pythonPath();

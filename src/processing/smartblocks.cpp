@@ -1,4 +1,5 @@
 #include "smartblocks.h"
+#include "compactassignment.h"
 #include "mathocrengine.h"
 #include "tesseractengine.h"
 
@@ -144,6 +145,7 @@ bool referenceText(const QString &text)
 
 bool proseWord(const QString &text)
 {
+    if (compactAssignment(text)) return false;
     static const QRegularExpression letters(QStringLiteral("\\p{L}{2,}"));
     static const QRegularExpression cyrillicWord(QStringLiteral("[А-Яа-яЁё]{2,}"));
     static const QRegularExpression functions(QStringLiteral("^(sin|cos|tan|log|ln|lim|exp|max|min)$"));
@@ -253,7 +255,10 @@ void classify(Row &row, const QImage &gray, const QString &mode)
         word.bounds = box;
         return word;
     };
-    const bool hasProse = std::ranges::any_of(row.words, [](const auto &word) { return proseWord(word.text); });
+    const auto assignments = compactAssignmentWords(row.words);
+    const auto prose = [&](int i) { return !assignments.contains(i) && proseWord(row.words[i].text); };
+    bool hasProse = false;
+    for (int i = 0; i < row.words.size(); ++i) hasProse |= prose(i);
     if (mode == "math" || (!hasProse && (mathInk(gray, row.box) ||
         std::ranges::any_of(row.words, [&](const auto &word) { return hasMathOperator(word.text); })))) {
         row.content = "math";
@@ -265,7 +270,7 @@ void classify(Row &row, const QImage &gray, const QString &mode)
     QVector<OcrWord> result;
     int left = row.box.left(), first = 0;
     for (int i = 0; i <= row.words.size(); ++i) {
-        if (i < row.words.size() && !proseWord(row.words[i].text)) continue;
+        if (i < row.words.size() && !prose(i)) continue;
         const int right = i == row.words.size() ? row.box.right() : row.words[i].bounds.left() - 1;
         const QRect gap = inkBox(gray, QRect(QPoint(left, row.box.top()), QPoint(right, row.box.bottom())));
         QString tokens;
@@ -588,6 +593,7 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
         QVector<bool> inlineMath;
         QVector<QVector<int>> covered;
         QSet<int> claimed;
+        const auto assignments = compactAssignmentWords(original.words);
         for (const auto &row : rows) for (const auto &proposal : row.words) {
             if (!proposal.layoutBlock || boxes.contains(proposal.bounds)) continue;
             const bool forced = std::ranges::any_of(regions, [&](const auto &r) {
@@ -602,7 +608,7 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
                 if (!proposal.bounds.contains(word.bounds.center())) continue;
                 span.append(i);
                 tokens += word.text;
-                if (claimed.contains(i) || (!forced && proseWord(word.text))) unsafe = true;
+                if (claimed.contains(i) || (!forced && !assignments.contains(i) && proseWord(word.text))) unsafe = true;
             }
             if (!forced) {
                 static const QRegularExpression operand(QStringLiteral("[\\p{L}\\p{N}]"));

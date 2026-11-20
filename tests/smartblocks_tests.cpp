@@ -312,6 +312,30 @@ private slots:
         QCOMPARE(result->words[1].id, raw.words[1].id);
     }
 
+    void compactCyrillicAssignmentsAreMathInsideProse()
+    {
+        for (const auto &tokens : {QStringList{"рз=2,"}, QStringList{"р3=2,"},
+                                   QStringList{"рз", "=", "2,"}}) {
+            QVector<core::OcrWord> words{word(1, 1, {10, 10, 55, 16}, "справа:")};
+            int x = 75;
+            for (const auto &token : tokens) {
+                words.append(word(1, 1, {x, 10, 30, 16}, token));
+                x += 35;
+            }
+            words.append(word(1, 1, {x+10, 10, 50, 16}, "слово"));
+            const auto raw = reading(words, {320, 60});
+            const auto result = processing::recognizeSmartBlocks(scan(raw), {.language = "rus"}, {}, false, {}, true, &raw);
+            QVERIFY2(result, qPrintable(result ? QString() : result.error().message));
+            QCOMPARE(text(*result), (QStringList{"справа:", "\\(x=1\\)", "слово"}));
+            QVERIFY(result->words[1].layoutBlock);
+            QCOMPARE(result->words[0].id, raw.words[0].id);
+            QCOMPARE(result->words[2].id, raw.words.last().id);
+            QStringList sources;
+            for (int i = 1; i+1 < raw.words.size(); ++i) sources += raw.words[i].sourceWordIds;
+            QCOMPARE(result->words[1].sourceWordIds, sources);
+        }
+    }
+
     void automaticMathOutlineCannotOverrideProseProtection()
     {
         mathBackend();

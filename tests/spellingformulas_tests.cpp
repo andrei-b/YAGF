@@ -327,6 +327,28 @@ private slots:
         QVERIFY(p.words[0].alternative.text.isEmpty());
     }
 
+    void shortAssignmentsBypassDictionaryIdentifierExclusions()
+    {
+        response("p_{3}=2,");
+        for (const auto &tokens : {QStringList{"рз=2,"}, QStringList{"р3=2,"}, QStringList{"p3=2,"},
+                                  QStringList{"рз", "=", "2,"}}) {
+            QVector<core::OcrWord> words{word("русский", 10)};
+            int x = 80;
+            for (const auto &token : tokens) { words.append(word(token, x)); x += 45; }
+            words.append(word("слово", x+20));
+            auto p = page(words);
+            QVERIFY(processing::collectSpellingFormulaReadings(p, image(p), {}));
+            QCOMPARE(crops().size(), 1);
+            QCOMPARE(p.words[1].alternative.text, "p_{3}=2,");
+            QCOMPARE(p.specialistSpan(1).size(), tokens.size());
+            QVERIFY(p.words[0].alternative.text.isEmpty());
+            QVERIFY(p.words.last().alternative.text.isEmpty());
+        }
+        auto p = page({word("р3=2", 10)}, "zz_ZZ");
+        QVERIFY(processing::collectSpellingFormulaReadings(p, image(p), {}));
+        QVERIFY(p.words[0].alternative.formula);
+    }
+
     void lineBreaksAreJoinedForSpellingAndNeverRetriedAsFragments()
     {
         for (const auto &parts : {QStringList{"пере-", "нос", "rus"},

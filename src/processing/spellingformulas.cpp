@@ -1,4 +1,5 @@
 #include "spellingformulas.h"
+#include "compactassignment.h"
 #include "mathocrengine.h"
 #include "tesseractengine.h"
 #include "spellchecker.h"
@@ -63,6 +64,7 @@ std::expected<QStringList, OcrError> collectSpellingFormulaReadings(
     if (MathOcrEngine::pythonPath().isEmpty()) return QStringList{};
     core::SpellChecker checker;
     const auto spelling = core::wordSpelling(page);
+    const auto assignments = compactAssignmentWords(page.words);
     QSet<int> existingReadings;
     for (int i = 0; i < page.words.size(); ++i)
         for (int covered : page.specialistSpan(i)) existingReadings.insert(covered);
@@ -78,9 +80,10 @@ std::expected<QStringList, OcrError> collectSpellingFormulaReadings(
         })) continue;
         const QString language = languageAt(page, word);
         // "auto" has no known source language. Do not guess from the UI locale.
-        if (language.isEmpty() || language == "auto") continue;
+        const bool assignment = assignments.contains(i);
+        if (!assignment && (language.isEmpty() || language == "auto")) continue;
         checker.setLanguages({language});
-        if (!std::ranges::any_of(spelling.tokens[i], [&](const auto &token) { return checker.isMisspelled(token); })) continue;
+        if (!assignment && !std::ranges::any_of(spelling.tokens[i], [&](const auto &token) { return checker.isMisspelled(token); })) continue;
         if (!candidates.isEmpty()) {
             auto &last = candidates.last();
             const auto &previous = page.words[last.indices.last()];
