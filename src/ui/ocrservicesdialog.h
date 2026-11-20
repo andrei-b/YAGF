@@ -39,14 +39,14 @@ private:
     QString selectedPrimary;
     QString selectedFormula;
     QComboBox *formulaEngine,*textEngine;
-    QLineEdit *layoutEndpoint;
+    QLineEdit *layoutEndpoint,*textLanguage;
     QDoubleSpinBox *layoutThreshold;
     QCheckBox *automaticLayout;
     QString layoutAuth;
     QTableWidget *table;
     QLineEdit *hosts,*token;
-    QLabel *status,*summary;
-    QPushButton *scan,*stopButton,*usePrimary,*useLayout,*remove,*saveButton,*add;
+    QLabel *status,*summary,*textDetails,*formulaDetails;
+    QPushButton *scan,*stopButton,*usePrimary,*useFormula,*useLayout,*remove,*saveButton,*add;
     QFutureWatcher<std::expected<processing::OcrDiscovery,processing::OcrError>> watcher;
     std::stop_source stop;
     bool opened=false,busy=false,filling=false;

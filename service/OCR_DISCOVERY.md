@@ -1,5 +1,16 @@
 # OCR discovery and parallel recognition
 
+The **Recognition** tab opens first, with separate model selectors for **Text
+recognition** and **Formula recognition**. Each shows model names and locations;
+the details below report readiness. The text language can be edited for Tesseract
+and PaddleOCR. **Refresh models** updates both lists without changing their
+selections. Unavailable saved models remain visible and can be checked again.
+Only **Save** applies model/language changes; **Cancel** retains the current setup.
+
+**Page layout** contains the layout URL, minimum score and automatic detection.
+**Models & services** contains discovery hosts, the editable service library,
+session tokens, add/remove controls and optional companion text checkboxes.
+
 **Tools → Recognition settings…** checks `GET BASE/v1/health`
 on named hosts and saved service URLs. A hostname probes ports 8765–8769,
 8771 (page layout), 8772 and 8082; a URL or `host:port` probes that exact endpoint. Up to 32 endpoints
@@ -72,6 +83,45 @@ limit and two-thread CPU settings remain. GPU/VL services retain their own limit
 behind SSH, or put HTTPS in front of a directly reachable authenticated worker.
 Configure upstreams requiring separate bearer tokens directly through their own
 service URL in the desktop.
+
+## PP-FormulaNet_plus-L worker
+
+The formula-only adapter uses the installed original Paddle model and reports
+`engine_id: "paddleocr"`, `model: "PP-FormulaNet_plus-L"`, `tasks: ["formula"]`.
+It appears in the Formula selector, and is excluded from Text and companions.
+No synthetic recognition confidence is assigned. Crops retain their full bounds.
+The catalog forwards model names and task metadata unchanged.
+
+The current Jetson installation uses `/mnt/toshiba/pp-formulanet-plus-l/venv`
+(PaddlePaddle 3.2.2, PaddleOCR 3.7.0, tokenizers, ftfy and regex) and
+`/mnt/toshiba/pp-formulanet-plus-l/models/PP-FormulaNet_plus-L`. It runs on CPU
+with two inference threads. The standalone `recognize.py` remains usable.
+
+To run an already installed model:
+
+```sh
+/mnt/toshiba/pp-formulanet-plus-l/venv/bin/python service/server.py \
+  --engine pp-formulanet --device cpu --host 127.0.0.1 --port 8769 \
+  --model /mnt/toshiba/pp-formulanet-plus-l/models/PP-FormulaNet_plus-L
+```
+
+For a persistent worker, deploy `server.py` as
+`~/.local/lib/yagf/formulanet_server.py` and install `yagf-formulanet.service`.
+Its environment file `~/.config/yagf/formulanet-worker.env` defines
+`YAGF_FORMULANET_PYTHON`, `YAGF_FORMULANET_MODEL`, `TMPDIR`,
+`PADDLE_PDX_CACHE_HOME`, `XDG_CACHE_HOME` and `HF_HOME`. Keep caches and temporary
+files on the Toshiba disk. The worker requires the existing model directory;
+it does not download a model. Its HTTP handler serializes inference requests.
+
+The desktop's `yagf-models-tunnel.service` forwards loopback **8769** (formulas)
+and **8772** (model catalog), using `~/.ssh/yagf_jetson_models` and
+`~/.config/yagf/models-host.env` (`YAGF_JETSON_HOST=user@host`). Authorize the
+public key with
+`restrict,port-forwarding,permitopen="127.0.0.1:8769",permitopen="127.0.0.1:8772",command="/bin/false"`.
+Use an SSH configuration or service override for the Amazon jump host/reverse
+port. The current installation uses that route. Existing layout and PaddleOCR-VL
+tunnels remain independent. Enable units with `systemctl --user enable --now UNIT`.
+Installing/discovering the worker leaves YAGF's current engine choices unchanged.
 
 ## Simultaneous recognition and review
 

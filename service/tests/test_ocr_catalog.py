@@ -35,6 +35,23 @@ class Upstream(BaseHTTPRequestHandler):
 
 
 class CatalogTests(unittest.TestCase):
+    def test_formula_only_model_and_tasks_reach_gateway_discovery(self):
+        catalog=LocalOcrCatalog([8769],None)
+        health=dict(protocol='yagf-ocr/1',engine_id='paddleocr',status='ready',
+                    model='PP-FormulaNet_plus-L',tasks=['formula'])
+        with patch('ocr_catalog.get_json',return_value=health):
+            entries=catalog.discover()
+        self.assertEqual(entries[0]['model'],'PP-FormulaNet_plus-L')
+        self.assertEqual(entries[0]['tasks'],['formula'])
+        with tempfile.TemporaryDirectory() as root:
+            host=worker.TrainingHost(root,[])
+            with patch.object(host.catalog,'discover',return_value=entries):
+                published=host.health()['services']
+        self.assertEqual(len(published),1)
+        self.assertEqual(published[0]['model'],'PP-FormulaNet_plus-L')
+        self.assertEqual(published[0]['tasks'],['formula'])
+        self.assertEqual(published[0]['path'],'/services/8769')
+
     def test_only_compatible_services_and_paddle_vl_models_are_discovered(self):
         catalog=LocalOcrCatalog([8765,8766],8082)
         def response(url):

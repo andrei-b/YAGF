@@ -166,7 +166,7 @@ std::expected<OcrDiscovery,OcrError> discoverOcrServices(const QVector<QUrl> &ta
                 if (s.label.isEmpty()) s.label=ocrProviderLabel(kind); add(std::move(s));
             }
         } else {
-            OcrService s; s.provider=provider; s.url=p->base; s.label=root["model"].toString(ocrProviderLabel(provider)).left(128); s.language=root["language"].toString("auto").left(64); s.ready=root["status"]=="ready"; s.error=root["reason"].toString().left(2048); s.token=tokenFor(s.url,known); s.tasks=tasksFromJson(root["tasks"]); add(std::move(s));
+            OcrService s; s.provider=provider; s.url=p->base; s.model=root["model"].toString().left(256); s.label=s.model.isEmpty() ? ocrProviderLabel(provider) : s.model.left(128); s.language=root["language"].toString("auto").left(64); s.ready=root["status"]=="ready"; s.error=root["reason"].toString().left(2048); s.token=tokenFor(s.url,known); s.tasks=tasksFromJson(root["tasks"]); add(std::move(s));
         }
     }
     for (auto it=failures.cbegin();it!=failures.cend();++it) if (!compatible.contains(it.key())) result.diagnostics.append(it.key()+": "+it.value());

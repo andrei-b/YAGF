@@ -3,6 +3,7 @@ import http.client
 import io
 import json
 import struct
+import tempfile
 import sys
 import threading
 import unittest
@@ -13,7 +14,7 @@ from types import ModuleType
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from server import (TranscriptionTruncated, PROTOCOL, DocTrBackend, RapidOcrBackend, SuryaBackend, KrakenBackend, PaddleVlBackend,
+from server import (TranscriptionTruncated, PROTOCOL, DocTrBackend, RapidOcrBackend, SuryaBackend, KrakenBackend, PaddleVlBackend, FormulaNetBackend,
                     handler_for, normalize_paddle_result,
                     normalize_doctr_result, normalize_rapid_result,
                     normalize_surya_result, normalize_kraken_records)
@@ -59,6 +60,63 @@ class PaddleVlTests(unittest.TestCase):
         for endpoint in ("file:///tmp/model", "http://user:pass@localhost/v1/chat/completions", "http://"):
             with self.assertRaises(ValueError):
                 PaddleVlBackend(endpoint, "model")
+
+
+class FormulaNetTests(unittest.TestCase):
+    def test_installed_model_produces_latex_without_inventing_confidence(self):
+        paddleocr = ModuleType("paddleocr")
+        predictor = SimpleNamespace(predict=lambda **kwargs: [{"rec_formula": r"\frac{333}{106}"}])
+        calls = []
+        def create(**kwargs):
+            calls.append(kwargs)
+            return predictor
+        paddleocr.FormulaRecognition = create
+        with tempfile.TemporaryDirectory() as directory, patch.dict(sys.modules, {"paddleocr": paddleocr}):
+            for name in ("inference.json", "inference.pdiparams", "inference.yml"):
+                (Path(directory) / name).touch()
+            backend = FormulaNetBackend(directory)
+            self.assertEqual(calls[0]["model_dir"], directory)
+            self.assertEqual(calls[0]["device"], "cpu")
+            self.assertEqual(calls[0]["model_name"], "PP-FormulaNet_plus-L")
+            self.assertEqual(backend.recognize(b"image", 20, 10, "rus"),
+                             [{"text": r"\frac{333}{106}", "confidence": None,
+                               "box": [0, 0, 20, 10], "layout_block": True}])
+            predictor.predict = lambda **kwargs: [{"rec_formula": None}]
+            with self.assertRaises(ValueError): backend.recognize(b"image", 20, 10, "auto")
+        with self.assertRaises(ValueError): FormulaNetBackend("/missing/model")
+
+    def test_formula_only_health_and_request_routing(self):
+        class Backend:
+            engine_id = "paddleocr"
+            language = "auto"
+            result_key = "lines"
+            tasks = ("formula",)
+            model = "PP-FormulaNet_plus-L"
+            calls = 0
+            def recognize(self, *args):
+                self.calls += 1
+                return [{"text": r"\frac{355}{113}", "confidence": None,
+                         "box": [0, 0, 20, 10], "layout_block": True}]
+        backend = Backend()
+        server = ThreadingHTTPServer(("127.0.0.1", 0), handler_for(backend))
+        thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
+        try:
+            connection = http.client.HTTPConnection("127.0.0.1", server.server_port)
+            connection.request("GET", "/v1/health")
+            health = json.loads(connection.getresponse().read())
+            self.assertEqual(health["tasks"], ["formula"])
+            self.assertEqual(health["model"], "PP-FormulaNet_plus-L")
+            self.assertEqual(backend.calls, 0)
+            png = b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR" + struct.pack(">II", 20, 10)
+            payload = dict(protocol=PROTOCOL, image_png=base64.b64encode(png).decode(), page_number=1)
+            for task, expected in (("ocr", 400), ("formula", 200)):
+                payload["task"] = task
+                connection.request("POST", "/v1/recognize", json.dumps(payload), {"Content-Type": "application/json"})
+                response = connection.getresponse(); self.assertEqual(response.status, expected); response.read()
+            self.assertEqual(backend.calls, 1)
+            connection.close()
+        finally:
+            server.shutdown(); server.server_close(); thread.join()
 
 
 class FakeBackend:

@@ -1,0 +1,21 @@
+[Unit]
+Description=YAGF PP-FormulaNet_plus-L formula recognition
+RequiresMountsFor=/mnt/toshiba
+
+[Service]
+EnvironmentFile=%h/.config/yagf/formulanet-worker.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
+Environment=OMP_NUM_THREADS=1
+Environment=OPENBLAS_NUM_THREADS=1
+ExecStart=/usr/bin/env ${YAGF_FORMULANET_PYTHON} %h/.local/lib/yagf/formulanet_server.py --engine pp-formulanet --model ${YAGF_FORMULANET_MODEL} --device cpu --host 127.0.0.1 --port 8769
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+MemoryMax=3G
+CPUQuota=200%
+TasksMax=128
+
+[Install]
+WantedBy=default.target

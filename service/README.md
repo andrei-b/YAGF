@@ -199,7 +199,11 @@ stock inference services.
 
 ## Service discovery and parallel recognition
 
-**Tools → OCR services and parallel recognition…** discovers compatible workers
-and selects a primary plus up to three companions. The Jetson gateway advertises
+**Tools → Recognition settings…** provides separate text and formula model
+selectors, page-layout settings, and discovery/service management in three tabs.
+The service tab also selects up to three companion text engines. The Jetson gateway advertises
 native profiles and its running PaddleOCR-VL server through port 8772. Results
 stay separate for explicit review. See [OCR_DISCOVERY.md](OCR_DISCOVERY.md).
+The optional PP-FormulaNet_plus-L worker uses an installed Paddle model directory
+and advertises formula-only capability on port 8769; discovering it does not
+change the current engine selections.

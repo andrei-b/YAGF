@@ -450,6 +450,40 @@ class KrakenBackend:
                 return normalize_kraken_records(records, width, height)
 
 
+class FormulaNetBackend:
+    """Paddle's formula-only model, using an explicitly installed model directory."""
+    engine_id = "paddleocr"
+    result_key = "lines"
+    language = "auto"
+    tasks = ("formula",)
+    model = "PP-FormulaNet_plus-L"
+
+    def __init__(self, model_path, device="cpu", threads=2):
+        required = ("inference.json", "inference.pdiparams", "inference.yml")
+        if not model_path or not all(os.path.isfile(os.path.join(model_path, name)) for name in required):
+            raise ValueError("PP-FormulaNet requires an installed model directory (--model PATH)")
+        os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
+        from paddleocr import FormulaRecognition
+        self.recognizer = FormulaRecognition(model_name=self.model, model_dir=model_path,
+                                             device=device, cpu_threads=threads, enable_mkldnn=False)
+
+    def recognize(self, png, width, height, language):
+        if width * height > 80_000_000:
+            raise ValueError("Formula image is too large")
+        with tempfile.TemporaryDirectory(prefix="yagf-formula-") as directory:
+            path = os.path.join(directory, "formula.png")
+            with open(path, "wb") as image:
+                image.write(png)
+            results = list(self.recognizer.predict(input=path, batch_size=1))
+        if len(results) != 1 or not isinstance(results[0].get("rec_formula"), str):
+            raise ValueError("Formula recognition returned an invalid result")
+        text = results[0]["rec_formula"].strip()
+        if len(text) > 65536:
+            raise ValueError("Formula recognition output is too large")
+        return [{"text": text, "confidence": None, "box": [0, 0, width, height],
+                 "layout_block": True}] if text else []
+
+
 def benchmark_details(backend):
     """Describe measured resources without treating a remote VL bridge as the GPU host."""
     remote = isinstance(backend, PaddleVlBackend)
@@ -478,6 +512,7 @@ def benchmark_details(backend):
 
 def handler_for(backend, token=""):
     provenance = benchmark_details(backend)
+    tasks = list(getattr(backend, "tasks", ("ocr", "formula") if isinstance(backend, PaddleVlBackend) or backend.engine_id == "surya" else ("ocr",)))
     inference_lock = threading.Lock()
     class Handler(BaseHTTPRequestHandler):
         def send_json(self, code, payload):
@@ -493,7 +528,7 @@ def handler_for(backend, token=""):
                 self.send_json(200, {"protocol": PROTOCOL, "engine_id": backend.engine_id,
                                      "status": "ready", "language": backend.language, "requires_token": bool(token),
                                      "model": provenance.get("model",backend.engine_id),
-                                     "tasks": ["ocr", "formula"] if isinstance(backend, PaddleVlBackend) or backend.engine_id == "surya" else ["ocr"]})
+                                     "tasks": tasks})
             else:
                 self.send_json(404, {"error": "Unknown endpoint"})
 
@@ -530,7 +565,7 @@ def handler_for(backend, token=""):
                 if not isinstance(language, str) or len(language) > 64:
                     raise ValueError("Invalid language")
                 task = request.get("task", "ocr")
-                if task not in ("ocr", "formula") or (task == "formula" and not isinstance(backend, PaddleVlBackend) and backend.engine_id != "surya"):
+                if task not in tasks:
                     raise ValueError("This service does not support the requested recognition task")
                 queued = time.perf_counter()
                 with inference_lock:
@@ -557,13 +592,13 @@ def handler_for(backend, token=""):
 
 def main():
     parser = argparse.ArgumentParser(description="YAGF OCR inference service")
-    parser.add_argument("--engine", choices=("paddleocr", "paddleocr-vl", "doctr", "rapidocr", "surya", "kraken"),
+    parser.add_argument("--engine", choices=("paddleocr", "paddleocr-vl", "pp-formulanet", "doctr", "rapidocr", "surya", "kraken"),
                         default="paddleocr")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--device", help="Inference device: gpu or cpu; defaults vary by engine")
     parser.add_argument("--language", help="PaddleOCR language code; other engines use auto")
-    parser.add_argument("--model", help="Kraken recognition model path")
+    parser.add_argument("--model", help="Kraken model file or installed PP-FormulaNet_plus-L model directory")
     parser.add_argument("--vl-endpoint", default="http://127.0.0.1:8082/v1/chat/completions",
                         help="PaddleOCR-VL OpenAI-compatible chat endpoint")
     parser.add_argument("--vl-model", default="PaddleOCR-VL-1.6", help="PaddleOCR-VL server model name")
@@ -573,11 +608,11 @@ def main():
         parser.error("YAGF_OCR_TOKEN is required when binding to a network address")
     if args.engine != "paddleocr" and args.language not in (None, "auto"):
         parser.error(f"{args.engine} uses its model vocabulary; set --language auto")
-    if args.engine == "kraken" and not args.model:
-        parser.error("Kraken requires --model PATH")
-    if args.engine != "kraken" and args.model:
-        parser.error("--model is only used with Kraken")
-    device = args.device or ("cpu" if args.engine == "rapidocr" else
+    if args.engine in ("kraken", "pp-formulanet") and not args.model:
+        parser.error(f"{args.engine} requires --model PATH")
+    if args.engine not in ("kraken", "pp-formulanet") and args.model:
+        parser.error("--model is only used with Kraken or PP-FormulaNet")
+    device = args.device or ("cpu" if args.engine in ("rapidocr", "pp-formulanet") else
                              "auto" if args.engine == "kraken" else "gpu")
     if args.engine == "rapidocr" and device != "cpu":
         parser.error("RapidOCR's default ONNX backend runs on CPU; use --device cpu")
@@ -585,6 +620,8 @@ def main():
         backend = PaddleOcrBackend(device, args.language or "en")
     elif args.engine == "paddleocr-vl":
         backend = PaddleVlBackend(args.vl_endpoint, args.vl_model)
+    elif args.engine == "pp-formulanet":
+        backend = FormulaNetBackend(args.model, device)
     elif args.engine == "doctr":
         backend = DocTrBackend(device)
     elif args.engine == "rapidocr":

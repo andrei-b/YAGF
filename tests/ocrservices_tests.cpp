@@ -16,12 +16,14 @@
 #include <QPainter>
 #include <QJsonDocument>
 #include <QLineEdit>
+#include <QLabel>
 #include <QListWidget>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSettings>
 #include <QSignalSpy>
 #include <QTableWidget>
+#include <QTabWidget>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTemporaryDir>
@@ -95,7 +97,7 @@ public:
 
 class Server:public QTcpServer {
 public:
-    bool stall=false,layout=false; int posts=0; QByteArray lastPath;
+    bool stall=false,layout=false,formulaOnly=false; int posts=0; QByteArray lastPath;
     Server() {if (!listen(QHostAddress::LocalHost)) qFatal("listen failed");
         connect(this,&QTcpServer::newConnection,this,[this]{auto *s=nextPendingConnection(); connect(s,&QTcpSocket::disconnected,s,&QObject::deleteLater);
             connect(s,&QTcpSocket::readyRead,s,[this,s,data=QByteArray{}]()mutable {
@@ -114,6 +116,7 @@ public:
                         {"words",QJsonArray{QJsonObject{{"text","Other"},{"confidence",.95},{"box",QJsonArray{5,5,40,12}},{"block",1},{"line",1}}}}};
                 }
                 if (layout && data.startsWith("GET ")) result={{"protocol","yagf-layout/1"},{"status","ready"},{"model","PP-DocLayoutV3"}};
+                if (formulaOnly && data.startsWith("GET ")) result={{"protocol","yagf-ocr/1"},{"engine_id","paddleocr"},{"status","ready"},{"model","PP-FormulaNet_plus-L"},{"tasks",QJsonArray{"formula"}}};
                 if (layout && data.startsWith("POST ")) {
                     QImage image;image.loadFromData(QByteArray::fromBase64(body["image_png"].toString().toLatin1()),"PNG");
                     result={{"protocol","yagf-layout/1"},{"model","PP-DocLayoutV3"},{"width",image.width()},{"height",image.height()},
@@ -167,9 +170,11 @@ private slots:
     void liveFormulaAndLayoutServices() {
         const auto url=qEnvironmentVariable("YAGF_LIVE_FORMULA_URL");
         const auto layout=qEnvironmentVariable("YAGF_LIVE_LAYOUT_URL");
+        const auto catalog=qEnvironmentVariable("YAGF_LIVE_CATALOG_URL");
         const auto source=qEnvironmentVariable("YAGF_LIVE_FORMULA_IMAGE");
         if (url.isEmpty() || source.isEmpty()) QSKIP("Set YAGF_LIVE_FORMULA_URL and YAGF_LIVE_FORMULA_IMAGE for the live formula/layout smoke test");
         QVector<QUrl> targets{QUrl(url)};if (!layout.isEmpty()) targets.append(QUrl(layout));
+        if (!catalog.isEmpty()) targets.append(QUrl(catalog));
         auto discovered=processing::discoverOcrServices(targets,{},{});QVERIFY(discovered);
         auto formula=std::ranges::find_if(discovered->services,[](const auto &s){return s.ready && s.supportsFormulas();});
         QVERIFY(formula!=discovered->services.end());
@@ -186,10 +191,16 @@ private slots:
         }
         processing::OcrService local;local.provider="tesseract";local.label="Tesseract (this computer)";local.language="rus";
         ui::OcrServicesDialog dialog(discovered->services,local,nullptr,*formula);
-        dialog.findChild<QLineEdit *>("ocrDiscoveryHosts")->setText(url+' '+layout);
+        dialog.findChild<QLineEdit *>("ocrDiscoveryHosts")->setText(url+' '+layout+' '+catalog);
         dialog.show();QApplication::processEvents();
         QTRY_VERIFY_WITH_TIMEOUT(dialog.findChild<QPushButton *>("discoverOcrServices")->isEnabled(),5000);
         QCOMPARE(dialog.formulaService().key(),formula->key());
+        auto *textSelector=dialog.findChild<QComboBox *>("textOcrEngine"),*formulaSelector=dialog.findChild<QComboBox *>("formulaOcrEngine");
+        for (const auto &service:discovered->services) {
+            QCOMPARE(textSelector->findData(service.key())>=0,service.supportsText());
+            QCOMPARE(formulaSelector->findData(service.key())>=0,service.supportsFormulas());
+            qInfo().noquote()<<service.label<<"text="<<service.supportsText()<<"formulas="<<service.supportsFormulas();
+        }
         const auto screenshot=qEnvironmentVariable("YAGF_CAPTURE_RECOGNITION_SETTINGS");
         if (!screenshot.isEmpty()) QVERIFY(dialog.grab().save(screenshot));
         dialog.findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Cancel)->click();
@@ -256,6 +267,48 @@ private slots:
         QVERIFY(!QJsonDocument(processing::ocrServicesJson({remote})).toJson().contains("session-only"));
         processing::DocumentProcessor processor;QVERIFY(processor.setFormulaOcrService(remote));QCOMPARE(processor.engineId(),"tesseract");
         QCOMPARE(processor.formulaOcrService().key(),remote.key());QVERIFY(!processor.setFormulaOcrService(primary));
+    }
+    void settingsShowAllModelsWithSeparateTextAndFormulaChoices() {
+        VisionServer server;auto vision=server.service();vision.model="PaddleOCR-VL-1.6";
+        auto text1=service("Russian print","print"),text2=service("Russian handwriting","handwriting");
+        text1.model="Print model";text2.model="Handwriting model";
+        auto formula=service("Jetson formulas","formulas");formula.provider="paddleocr";formula.model="PP-FormulaNet_plus-L";formula.tasks={"formula"};formula.ready=true;
+        auto layout=service("Page layout","layout");layout.provider="layout";
+        text1.enabled=text2.enabled=formula.enabled=layout.enabled=false;
+        processing::OcrService primary;primary.provider="tesseract";primary.label="Local text";primary.language="rus";
+        ui::OcrServicesDialog dialog({text1,text2,formula,vision,layout},primary,nullptr,vision);
+        auto *text=dialog.findChild<QComboBox *>("textOcrEngine"),*math=dialog.findChild<QComboBox *>("formulaOcrEngine");
+        auto *tabs=dialog.findChild<QTabWidget *>("recognitionSettingsTabs");QVERIFY(tabs);QCOMPARE(tabs->currentIndex(),0);
+        QCOMPARE(text->count(),4);QCOMPARE(math->count(),3);
+        QVERIFY(text->findData(formula.key())<0);QVERIFY(text->findData(layout.key())<0);QVERIFY(math->findData(text1.key())<0);
+        QVERIFY(math->itemText(math->findData(formula.key())).contains(formula.model));
+        QVERIFY(text->itemText(text->findData(text1.key())).contains(text1.model));
+        math->setCurrentIndex(math->findData(formula.key()));
+        QCOMPARE(text->currentData().toString(),primary.key());QCOMPARE(dialog.formulaService().key(),formula.key());
+        text->setCurrentIndex(text->findData(text2.key()));
+        QCOMPARE(dialog.primaryService()->key(),text2.key());QCOMPARE(math->currentData().toString(),formula.key());
+        QVERIFY(dialog.findChild<QLabel *>("formulaOcrModelDetails")->text().contains("Ready"));
+        QVERIFY(std::ranges::none_of(dialog.services(),[](const auto &s){return s.enabled;}));
+        dialog.findChild<QPushButton *>("manageOcrModels")->click();QCOMPARE(tabs->currentIndex(),2);
+        text->setCurrentIndex(text->findData(primary.key()));
+        auto *language=dialog.findChild<QLineEdit *>("textOcrLanguage");QCOMPARE(language->text(),"rus");
+        language->setFocus();language->selectAll();QTest::keyClicks(language,"rus+eng");
+        QCOMPARE(dialog.primaryService()->language,"rus+eng");QCOMPARE(dialog.formulaService().key(),formula.key());
+    }
+    void formulaOnlyDiscoveryRetainsModelAndOfflineSelection() {
+        Server server;server.formulaOnly=true;
+        auto discovered=processing::discoverOcrServices({server.url()},{},{});QVERIFY(discovered);QCOMPARE(discovered->services.size(),1);
+        const auto formula=discovered->services.first();QCOMPARE(formula.model,"PP-FormulaNet_plus-L");QVERIFY(formula.supportsFormulas());QVERIFY(!formula.supportsText());
+        auto restored=processing::readOcrServices(processing::ocrServicesJson({formula}));QCOMPARE(restored.size(),1);QCOMPARE(restored[0].model,formula.model);
+        processing::OcrService primary;primary.provider="tesseract";primary.label="Local text";
+        ui::OcrServicesDialog dialog(restored,primary,nullptr,restored[0]);
+        dialog.findChild<QLineEdit *>("ocrDiscoveryHosts")->setText(server.url().toString());dialog.show();QApplication::processEvents();
+        auto *refresh=dialog.findChild<QPushButton *>("discoverOcrServices");QTRY_VERIFY_WITH_TIMEOUT(refresh->isEnabled(),4000);
+        QCOMPARE(dialog.formulaService().key(),formula.key());QVERIFY(dialog.formulaService().ready);QCOMPARE(server.posts,0);
+        server.stall=true;refresh->click();QTRY_VERIFY_WITH_TIMEOUT(refresh->isEnabled(),4000);
+        QCOMPARE(dialog.formulaService().key(),formula.key());QVERIFY(!dialog.formulaService().ready);
+        QVERIFY(dialog.findChild<QLabel *>("formulaOcrModelDetails")->text().contains("Unavailable"));
+        QCOMPARE(dialog.findChild<QComboBox *>("textOcrEngine")->currentData().toString(),primary.key());QCOMPARE(server.posts,0);
     }
     void mixedPageRoutesOnlyFormulasToTheSelectedEngine() {
         VisionServer server;core::OcrDocument book;book.sourcePath=scan;

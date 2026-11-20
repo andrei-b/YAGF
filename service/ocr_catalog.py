@@ -44,7 +44,7 @@ class LocalOcrCatalog:
                     if health.get('protocol')!='yagf-ocr/1' or health.get('status')!='ready' or provider not in PROVIDERS: return None
                     tasks=health.get('tasks',['ocr','formula'] if provider=='surya' else ['ocr'])
                     tasks=[task for task in tasks if task in ('ocr','formula')] if isinstance(tasks,list) else ['ocr']
-                    return dict(port=port,provider=provider,label=str(health.get('model') or provider)[:128],language=str(health.get('language') or 'auto')[:64],kind='ocr',tasks=tasks)
+                    return dict(port=port,provider=provider,label=str(health.get('model') or provider)[:128],model=str(health.get('model') or '')[:256],language=str(health.get('language') or 'auto')[:64],kind='ocr',tasks=tasks)
                 except (OSError,ValueError,TypeError): return None
             ports=self.ports+((self.vl_port,) if self.vl_port else ())
             with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
