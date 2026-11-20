@@ -2,6 +2,7 @@
 #include "projectfile.h"
 #include "verificationcontroller.h"
 #include "correctionretention.h"
+#include "imageprocessor.h"
 #include <QListView>
 #include <QPdfWriter>
 #include <QPainter>
@@ -21,6 +22,7 @@
 #include <QImageReader>
 #include <QFileInfo>
 #include <QGraphicsRectItem>
+#include <QGraphicsPixmapItem>
 #include <QGraphicsScene>
 #include <QImage>
 #include <QLineEdit>
@@ -43,6 +45,7 @@
 #include <QTimer>
 #include <QToolBar>
 #include <QToolButton>
+#include <QWheelEvent>
 #include <QUrl>
 #include <QTest>
 #include <QSplitter>
@@ -92,6 +95,12 @@ int main(int argc, char **argv)
     yagf::ui::MainWindow window;
     auto *rawOcr = window.findChild<QAction *>("rawOcrOutputAction");
     assert(rawOcr && rawOcr->isCheckable() && !rawOcr->isChecked());
+    auto *cancelRecognition = window.findChild<QAction *>("cancelRecognitionAction");
+    assert(cancelRecognition && !cancelRecognition->isVisible());
+    auto *initialSkew = window.findChild<QAction *>("correctSkewAction");
+    assert(initialSkew && !initialSkew->isEnabled() && !initialSkew->icon().isNull());
+    auto *initialUndoSkew = window.findChild<QAction *>("undoSkewCorrectionAction");
+    assert(initialUndoSkew && !initialUndoSkew->isVisible() && !initialUndoSkew->isEnabled());
     auto matchOption = [](const yagf::ui::MainWindow &window) -> QAction * {
         for (auto *action : window.findChildren<QAction *>())
             if (action->text() == QStringLiteral("Match similar symbol images")) return action;
@@ -134,7 +143,7 @@ int main(int argc, char **argv)
         action->trigger();
         QElapsedTimer wait;
         wait.start();
-        auto *ocrButton = window.findChild<QPushButton *>("primaryButton");
+        auto *ocrButton = window.findChild<QToolButton *>("primaryButton");
         assert(ocrButton);
         while ((!QFileInfo::exists(destination) || !ocrButton->isEnabled()) && wait.elapsed() < 5000) {
             QApplication::processEvents();
@@ -181,13 +190,24 @@ int main(int argc, char **argv)
             break;
         }
     }
-    QPushButton *recognize = nullptr, *apply = nullptr;
+    auto *recognize = window.findChild<QToolButton *>("primaryButton");
+    QPushButton *apply = nullptr;
     for (QPushButton *button : window.findChildren<QPushButton *>()) {
-        if (button->text() == QStringLiteral("Recognize")) recognize = button;
         if (button->text() == QStringLiteral("Apply correction")) apply = button;
     }
     assert(recognize && apply && recognize->isEnabled());
     assert(!recognize->icon().isNull());
+    assert(recognize->popupMode() == QToolButton::MenuButtonPopup);
+    auto *recognitionMenu = recognize->menu();
+    auto *mathOnly = window.findChild<QAction *>("mathOcrMode");
+    auto *recognizeAllAction = window.findChild<QAction *>("recognizeAllAction");
+    assert(recognitionMenu && mathOnly && mathOnly->isCheckable());
+    assert(recognitionMenu->actions().contains(recognize->defaultAction()) && recognitionMenu->actions().contains(recognizeAllAction));
+    assert(recognitionMenu->actions().contains(mathOnly));
+    assert(recognize->icon().pixmap(24,24).toImage() != recognizeAllAction->icon().pixmap(24,24).toImage());
+    mathOnly->setChecked(true);
+    assert(recognize->text() == "Recognize math");
+    mathOnly->setChecked(false);
     auto *spellCheck = window.findChild<QAction *>("spellCheckAction");
     auto *spellingLanguage = window.findChild<QComboBox *>("spellLanguage");
     auto *editorSplit = window.findChild<QSplitter *>("textEditorSplitter");
@@ -200,26 +220,31 @@ int main(int argc, char **argv)
     assert(language && picker);
     bool choseLanguages = false;
     QTimer::singleShot(0, &window, [&] {
-        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
-        assert(dialog);
-        auto *list = dialog->findChild<QListWidget *>(QStringLiteral("availableOcrLanguages"));
+        auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+        assert(menu && menu->objectName() == "ocrLanguageMenu");
+        auto *list = menu->findChild<QListWidget *>(QStringLiteral("availableOcrLanguages"));
         assert(list && list->count() == 2);
         for (int i = 0; i < list->count(); ++i)
             if (list->item(i)->text() == QStringLiteral("deu")) list->item(i)->setCheckState(Qt::Checked);
         choseLanguages = true;
-        dialog->accept();
+        menu->close();
     });
     picker->trigger();
     assert(choseLanguages && language->text() == QStringLiteral("eng+deu"));
+    auto *languageDropdown = window.findChild<QToolButton *>("languagePickerButton");
+    assert(languageDropdown->popupMode() == QToolButton::InstantPopup);
+    assert(languageDropdown->text().contains("eng+deu") && !language->isVisible());
     QAction *undo = nullptr, *redo = nullptr;
     for (QAction *action : window.findChildren<QAction *>()) {
         if (action->text() == QStringLiteral("Undo")) undo = action;
         if (action->text() == QStringLiteral("Redo")) redo = action;
     }
     assert(undo && redo);
-    auto *recognizeWholeDocument = window.findChild<QToolButton *>("recognizeAllButton");
+    auto *recognizeWholeDocument = window.findChild<QAction *>("recognizeAllAction");
     assert(recognizeWholeDocument && recognizeWholeDocument->isEnabled());
-    recognizeWholeDocument->click();
+    recognizeWholeDocument->trigger();
+    assert(cancelRecognition->isVisible() && window.findChild<QPushButton *>("secondaryButton")->isEnabled());
+    assert(!window.findChild<QAction *>("cancelExportAction")->isVisible());
     auto *singleProgress = window.findChild<QProgressDialog *>("recognitionProgressDialog");
     assert(singleProgress && singleProgress->isVisible());
     assert(singleProgress->value() == 0 && singleProgress->maximum() == 1);
@@ -233,6 +258,7 @@ int main(int argc, char **argv)
     }
     assert(words->count() == 2);
     assert(!singleProgress->isVisible());
+    assert(!cancelRecognition->isVisible());
     QFile args(argsPath);
     assert(args.open(QIODevice::ReadOnly));
     assert(args.readAll().split('\n').contains("eng+deu"));
@@ -240,12 +266,12 @@ int main(int argc, char **argv)
         yagf::ui::MainWindow rawSwitchWindow;
         rawSwitchWindow.loadSource(sourcePath);
         auto *rawMode = rawSwitchWindow.findChild<QAction *>("rawOcrOutputAction");
-        auto *recognizeAll = rawSwitchWindow.findChild<QToolButton *>("recognizeAllButton");
+        auto *recognizeAll = rawSwitchWindow.findChild<QAction *>("recognizeAllAction");
         auto *rawBlocks = rawSwitchWindow.findChild<QListWidget *>("imageRegions");
         auto *rawWords = rawSwitchWindow.findChild<QListWidget *>("recognizedWords");
         for (bool raw : {false, true, false}) {
             rawMode->setChecked(raw);
-            recognizeAll->click();
+            recognizeAll->trigger();
             timer.restart();
             while (!recognizeAll->isEnabled() && timer.elapsed() < 3000) {
                 QApplication::processEvents();
@@ -401,6 +427,64 @@ int main(int argc, char **argv)
     auto *regions = regionWindow.findChild<QListWidget *>(QStringLiteral("imageRegions"));
     auto *regionWords = regionWindow.findChild<QListWidget *>(QStringLiteral("recognizedWords"));
     assert(pageView && regions && regionWords);
+    auto *imageTools = pageView->findChild<QToolBar *>("imageToolbar");
+    auto *pinTools = pageView->findChild<QAction *>("pinImageToolbarAction");
+    auto *rotateRight = pageView->findChild<QAction *>("rotateImageRightAction");
+    auto *rotateLeft = pageView->findChild<QAction *>("rotateImageLeftAction");
+    auto *correctSkew = pageView->findChild<QAction *>("correctSkewAction");
+    auto *blockRecognize = pageView->findChild<QAction *>("imageRecognizeBlockAction");
+    assert(imageTools && pinTools && rotateRight && rotateLeft && blockRecognize);
+    assert(correctSkew && correctSkew->isVisible() && correctSkew->isEnabled());
+    assert(imageTools->actions().first() == pinTools);
+    assert(imageTools->parentWidget() == pageView->viewport());
+    for (auto *action : toolbar->actions()) assert(action->text() != "Zoom in" && action->text() != "Zoom out" && action->text() != "Fit page");
+    pinTools->setChecked(true);
+    assert(imageTools->isVisible());
+    pinTools->setChecked(false);
+    QTest::mouseMove(pageView->viewport(), QPoint(pageView->viewport()->width()/2, pageView->viewport()->height()-10));
+    QTest::qWait(250);
+    assert(!imageTools->isVisible());
+    QTest::mouseMove(pageView->viewport(), QPoint(5, 5));
+    assert(imageTools->isVisible());
+    pinTools->setChecked(true);
+    QTest::mouseMove(pageView->viewport(), QPoint(5, pageView->viewport()->height()-10));
+    assert(imageTools->isVisible());
+    const qreal originalZoom = pageView->transform().m11();
+    pageView->findChild<QAction *>("zoomInAction")->trigger();
+    assert(pageView->transform().m11() > originalZoom);
+    pageView->findChild<QAction *>("fitPageAction")->trigger();
+    // The overlay stays at the top of the viewport while the image moves.
+    const QRectF originalSceneRect = pageView->scene()->sceneRect();
+    pageView->zoomBy(1);
+    pageView->scene()->setSceneRect(0, 0, 1000, 1600);
+    QApplication::processEvents();
+    assert(pageView->verticalScrollBar()->maximum() > 500 && pageView->horizontalScrollBar()->maximum() > 250);
+    pinTools->setChecked(false);
+    QTest::mouseMove(pageView->viewport(), QPoint(5, pageView->viewport()->height()-10));
+    pageView->verticalScrollBar()->setValue(500);
+    pageView->horizontalScrollBar()->setValue(250);
+    QApplication::processEvents();
+    assert(!imageTools->isVisible() && imageTools->y() == 10);
+    QTest::mouseMove(pageView->viewport(), QPoint(5, 5));
+    assert(imageTools->isVisible() && imageTools->y() == 10);
+    pageView->verticalScrollBar()->setValue(700);
+    pageView->horizontalScrollBar()->setValue(350);
+    assert(imageTools->isVisible() && imageTools->y() == 10);
+    assert(imageTools->x() == std::max(0, (pageView->viewport()->width()-imageTools->width())/2));
+    QWheelEvent wheel(QPointF(5,5), QPointF(pageView->viewport()->mapToGlobal(QPoint(5,5))),
+                      QPoint(), QPoint(0,-120), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+    QApplication::sendEvent(pageView->viewport(), &wheel);
+    assert(imageTools->isVisible() && imageTools->y() == 10);
+    pinTools->setChecked(true);
+    QTest::mouseMove(pageView->viewport(), QPoint(5, pageView->viewport()->height()-10));
+    pageView->verticalScrollBar()->setValue(900);
+    assert(imageTools->isVisible() && imageTools->y() == 10);
+    pageView->scene()->setSceneRect(originalSceneRect);
+    pageView->fitPage();
+    rotateRight->trigger();
+    assert(pageView->scene()->sceneRect().size() == QSizeF(100, 200));
+    for (auto *action : regionWindow.findChildren<QAction *>()) if (action->shortcut() == QKeySequence::Undo) action->trigger();
+    assert(pageView->scene()->sceneRect().size() == QSizeF(200, 100));
     const auto drag = [&](QPointF start, QPointF end) {
         const QPoint from = pageView->mapFromScene(start);
         const QPoint to = pageView->mapFromScene(end);
@@ -430,6 +514,7 @@ int main(int argc, char **argv)
          {moved.right() - 10.0, qreal(moved.center().y())});
     assert(regionBox(0).width() < moved.width());
     regions->setCurrentRow(0);
+    assert(!correctSkew->isVisible());
     pageView->setFocus();
     QTest::keyClick(pageView, Qt::Key_Delete);
     assert(regions->count() == 1);
@@ -487,6 +572,9 @@ int main(int argc, char **argv)
             QAction *selected = nullptr;
             if (choice == "Remove block") selected = menu->actions().last();
             else if (choice == "Recognize block") selected = menu->actions().first();
+            else if (choice == "Clear all blocks") {
+                for (auto *action : menu->actions()) if (action->text() == choice) selected = action;
+            }
             else for (auto *action : menu->actions().at(1)->menu()->actions())
                 if (action->text() == choice) selected = action;
             assert(selected);
@@ -515,9 +603,7 @@ int main(int argc, char **argv)
     auto *regionSpelling = regionWindow.findChild<QComboBox *>("spellLanguage");
     assert(regionSpelling);
     if (regionSpelling->findData("de_DE") >= 0) assert(regionSpelling->toolTip().contains("de_DE"));
-    QPushButton *recognizeRegions = nullptr;
-    for (QPushButton *button : regionWindow.findChildren<QPushButton *>())
-        if (button->text() == QStringLiteral("Recognize")) recognizeRegions = button;
+    auto *recognizeRegions = regionWindow.findChild<QToolButton *>("primaryButton");
     assert(recognizeRegions);
     const auto invocations = [&] {
         QFile log(argsPath + ".runs");
@@ -601,6 +687,12 @@ int main(int argc, char **argv)
     assert(regions->count() == 1);
     regionUndo->trigger();
     assert(regions->count() == 2 && regions->item(0)->text().contains("Not a text"));
+    regions->setCurrentRow(0, QItemSelectionModel::ClearAndSelect);
+    assert(!rotateLeft->isVisible() && !rotateRight->isVisible() && blockRecognize->isVisible());
+    blockMenu(0, "Clear all blocks", true);
+    assert(regions->count() == 0 && rotateLeft->isVisible() && !blockRecognize->isVisible());
+    regionUndo->trigger();
+    assert(regions->count() == 2);
 
     // Creation uses the same allowed scene rectangle for the preview and saved block,
     // even when drawing backwards or at a noninteger zoom.
@@ -1122,6 +1214,9 @@ int main(int argc, char **argv)
     assert(yagf::core::ProjectFile::save(resolutionProject, resolutionBook, &error));
     yagf::ui::MainWindow resolutionWindow;
     resolutionWindow.show(); resolutionWindow.loadProject(resolutionProject);
+    auto *projectProgress = resolutionWindow.findChild<QProgressDialog *>("projectLoadingProgress");
+    assert(projectProgress && projectProgress->isVisible() && projectProgress->minimum() == 0 && projectProgress->maximum() == 0);
+    assert(!resolutionWindow.findChild<QAction *>("cancelRecognitionAction")->isVisible());
     auto *inheritedLanguage = resolutionWindow.findChild<QLineEdit *>("languageField");
     assert(inheritedLanguage && inheritedLanguage->text() == "eng");
     auto *resolutionView = resolutionWindow.findChild<yagf::ui::PageView *>();
@@ -1132,6 +1227,7 @@ int main(int argc, char **argv)
         assert(condition());
     };
     waitUi([&] { return resolutionView->scene()->sceneRect().width() == 600; });
+    assert(!projectProgress->isVisible());
     resolutionWindow.findChild<QAction *>("showVerificationQueue")->trigger();
     auto *issues = resolutionWindow.findChild<QListView *>("verificationItems");
     assert(issues && issues->model()->rowCount() == 1);
@@ -1226,9 +1322,9 @@ int main(int argc, char **argv)
         auto *dpi = dialog->findChild<QComboBox *>("renderDpi"); dpi->setCurrentIndex(dpi->findData(200)); dialog->accept();
     });
     batchResolutionWindow.findChild<QAction *>("renderingResolution")->trigger();
-    auto *recognizeAll = batchResolutionWindow.findChild<QToolButton *>("recognizeAllButton");
-    assert(recognizeAll && recognizeAll->isEnabled() && recognizeAll->text() == "Recognize all");
-    recognizeAll->click();
+    auto *recognizeAll = batchResolutionWindow.findChild<QAction *>("recognizeAllAction");
+    assert(recognizeAll && recognizeAll->isEnabled() && recognizeAll->iconText() == "Recognize all");
+    recognizeAll->trigger();
     assert(!recognizeAll->isEnabled());
     auto *batchProgress = batchResolutionWindow.findChild<QProgressDialog *>("recognitionProgressDialog");
     assert(batchProgress && batchProgress->isVisible());
@@ -1259,9 +1355,9 @@ int main(int argc, char **argv)
     // The dialog cancels the same queue as the toolbar and can be reused.
     yagf::ui::MainWindow cancelBatchWindow;
     cancelBatchWindow.show(); cancelBatchWindow.loadSource(resolutionPdf);
-    auto *cancelRecognizeAll = cancelBatchWindow.findChild<QToolButton *>("recognizeAllButton");
+    auto *cancelRecognizeAll = cancelBatchWindow.findChild<QAction *>("recognizeAllAction");
     waitUi([&] { return cancelRecognizeAll->isEnabled(); });
-    cancelRecognizeAll->click();
+    cancelRecognizeAll->trigger();
     auto *cancelProgress = cancelBatchWindow.findChild<QProgressDialog *>("recognitionProgressDialog");
     assert(cancelProgress && cancelProgress->isVisible());
     auto *cancelProgressButton = cancelProgress->findChild<QPushButton *>();
@@ -1269,7 +1365,7 @@ int main(int argc, char **argv)
     cancelProgressButton->click();
     waitUi([&] { return cancelRecognizeAll->isEnabled(); });
     assert(!cancelProgress->isVisible());
-    cancelRecognizeAll->click();
+    cancelRecognizeAll->trigger();
     assert(cancelProgress->isVisible() && cancelProgress->value() == 0 && !cancelProgress->wasCanceled());
     waitUi([&] { return cancelRecognizeAll->isEnabled(); });
     assert(!cancelProgress->isVisible());
@@ -1340,6 +1436,105 @@ int main(int argc, char **argv)
         assert(clearRegions->count() == 2);
     }
 
+    // Correct skew adds the residual tilt to existing preprocessing. Cancelling
+    // preserves OCR geometry; accepting clears it and undo restores both.
+    {
+        using yagf::processing::ImageProcessor;
+        QImage clean(900, 650, QImage::Format_ARGB32);
+        clean.fill(Qt::white);
+        {
+            QPainter painter(&clean);
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(Qt::black);
+            for (int line = 0; line < 7; ++line)
+                for (int word = 0; word < 6; ++word)
+                    painter.drawRect(90+word*115, 80+line*75, 55+(word%3)*11, 10);
+        }
+        const QImage tilted = clean.transformed(QTransform().rotate(4), Qt::SmoothTransformation);
+        const QString skewSource = directory.filePath("skew.png");
+        assert(tilted.save(skewSource));
+        yagf::core::OcrDocument skewBook;
+        skewBook.sourcePath = skewSource;
+        skewBook.engine = "tesseract"; skewBook.language = "eng"; skewBook.totalPages = 1;
+        yagf::core::OcrPage skewPage;
+        skewPage.number = 1; skewPage.engineId = "tesseract"; skewPage.language = "eng";
+        skewPage.sourceWidth = tilted.width(); skewPage.sourceHeight = tilted.height();
+        skewPage.preprocessing = {.deskewDegrees = 2, .autoContrast = true};
+        const auto partiallyCorrected = ImageProcessor::apply(tilted, skewPage.preprocessing);
+        assert(partiallyCorrected);
+        skewPage.width = partiallyCorrected->width(); skewPage.height = partiallyCorrected->height();
+        skewPage.words.append({1,1,1,1,QRect(100,100,50,12),"text","text",95,true});
+        skewPage.imageRegions = {{"skew-block", {100,100,100,80}, "eng", false, "text"}};
+        skewBook.replacePage(skewPage);
+        const QString skewProject = directory.filePath("skew.yagf.json");
+        assert(yagf::core::ProjectFile::save(skewProject, skewBook, &error));
+        yagf::ui::MainWindow skewWindow;
+        skewWindow.show(); skewWindow.loadProject(skewProject);
+        auto *skewAction = skewWindow.findChild<QAction *>("correctSkewAction");
+        auto *undoSkew = skewWindow.findChild<QAction *>("undoSkewCorrectionAction");
+        auto *skewView = skewWindow.findChild<yagf::ui::PageView *>();
+        auto *skewWords = skewWindow.findChild<QListWidget *>("recognizedWords");
+        auto *skewBlocks = skewWindow.findChild<QListWidget *>("imageRegions");
+        assert(skewAction && undoSkew && skewView && skewWords && skewBlocks);
+        waitUi([&] { return skewAction->isEnabled() && skewWords->count() == 1; });
+        assert(!undoSkew->isVisible() && !undoSkew->isEnabled());
+        const auto displayedImage = [&] {
+            for (auto *item : skewView->scene()->items())
+                if (auto *pixmap = qgraphicsitem_cast<QGraphicsPixmapItem *>(item))
+                    return pixmap->pixmap().toImage();
+            return QImage{};
+        };
+        const QImage before = displayedImage();
+        const auto beforeAssessment = ImageProcessor::assess(before);
+        assert(beforeAssessment && std::abs(beforeAssessment->skewDegrees-2) < .6);
+        const auto correctWithAnswer = [&](QMessageBox::StandardButton answer) {
+            bool confirmed = false;
+            QTimer::singleShot(0, &skewWindow, [&] {
+                auto *dialog = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+                assert(dialog && dialog->windowTitle() == "Rebuild page geometry");
+                confirmed = true;
+                dialog->button(answer)->click();
+            });
+            skewAction->trigger();
+            assert(confirmed);
+        };
+        correctWithAnswer(QMessageBox::Cancel);
+        assert(skewWords->count() == 1 && displayedImage() == before);
+        assert(!undoSkew->isVisible() && !undoSkew->isEnabled());
+        correctWithAnswer(QMessageBox::Yes);
+        assert(skewWords->count() == 0 && skewBlocks->count() == 0);
+        assert(undoSkew->isVisible() && undoSkew->isEnabled() && !undoSkew->icon().isNull());
+        const auto afterAssessment = ImageProcessor::assess(displayedImage());
+        assert(afterAssessment && std::abs(afterAssessment->skewDegrees) < 1);
+        for (auto *action : skewWindow.findChildren<QAction *>())
+            if (action->text() == "Save project") action->trigger();
+        yagf::core::OcrDocument saved;
+        assert(yagf::core::ProjectFile::load(skewProject, &saved, &error));
+        assert(std::abs(saved.page(1)->preprocessing.deskewDegrees-4) < .6);
+        assert(saved.page(1)->preprocessing.autoContrast);
+        QAction *skewUndo = nullptr, *skewRedo = nullptr;
+        for (auto *action : skewWindow.findChildren<QAction *>()) {
+            if (action->shortcut() == QKeySequence::Undo) skewUndo = action;
+            if (action->shortcut() == QKeySequence::Redo) skewRedo = action;
+        }
+        assert(skewUndo && skewRedo);
+        // A later rotation has its own undo and must not be undone by this button.
+        skewWindow.findChild<QAction *>("rotateImageRightAction")->trigger();
+        const QImage rotated = displayedImage();
+        assert(!undoSkew->isVisible() && !undoSkew->isEnabled());
+        undoSkew->trigger();
+        assert(displayedImage() == rotated);
+        skewUndo->trigger();
+        assert(undoSkew->isVisible() && undoSkew->isEnabled());
+        undoSkew->trigger();
+        assert(skewWords->count() == 1 && skewBlocks->count() == 1 && displayedImage() == before);
+        assert(!undoSkew->isVisible() && !undoSkew->isEnabled());
+        skewRedo->trigger();
+        assert(skewWords->count() == 0 && undoSkew->isVisible() && undoSkew->isEnabled());
+        skewUndo->trigger();
+        assert(skewWords->count() == 1 && !undoSkew->isVisible());
+    }
+
     // A failed OCR job closes progress before reporting the error.
     helperScript("tesseract", "#!/bin/sh\necho 'OCR failure fixture' >&2\nexit 1\n");
     yagf::ui::MainWindow failedRecognitionWindow;
@@ -1355,6 +1550,6 @@ int main(int argc, char **argv)
         errorDialog->accept();
     });
     errorDialogTimer.start(10);
-    failedRecognitionWindow.findChild<QToolButton *>("recognizeAllButton")->click();
+    failedRecognitionWindow.findChild<QAction *>("recognizeAllAction")->trigger();
     waitUi([&] { return sawRecognitionError; });
 }

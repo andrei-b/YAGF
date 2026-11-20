@@ -32,6 +32,7 @@ public:
     explicit DocumentProcessor(QObject *parent = nullptr, const core::OcrDocument *book = nullptr);
     ~DocumentProcessor() override;
     bool isBusy() const;
+    bool isRecognizing() const;
     QString engineId() const;
     EngineCapabilities engineCapabilities() const;
     void setEngine(std::unique_ptr<IOcrEngine> replacement);

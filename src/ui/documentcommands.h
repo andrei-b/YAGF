@@ -22,6 +22,7 @@ class PageStateCommand : public QUndoCommand {
 public:
     void redo() override;
     void undo() override;
+    int affectedPage() const { return pageNumber; }
 protected:
     PageStateCommand(core::OcrDocument &document, int pageNumber,
                      std::optional<core::OcrPage> after, const QString &label);
@@ -36,6 +37,12 @@ private:
 class ReplacePageCommand final : public PageStateCommand {
 public:
     ReplacePageCommand(core::OcrDocument &document, int pageNumber,
+                       core::OcrPage after, const QString &label);
+};
+
+class CorrectSkewCommand final : public PageStateCommand {
+public:
+    CorrectSkewCommand(core::OcrDocument &document, int pageNumber,
                        core::OcrPage after, const QString &label);
 };
 

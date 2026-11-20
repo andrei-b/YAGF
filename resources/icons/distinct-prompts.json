@@ -1,0 +1,17 @@
+{
+  "tool": "built-in image editor",
+  "assets": [
+    {
+      "file": "smart-split.png",
+      "prompt": "Use case: precise-object-edit. Edit target: supplied YAGF Smart split toolbar icon. Make it much more distinctive and legible at 24 pixels: simplify the existing three blue content blocks into THREE SEPARATE bold horizontal region rectangles stacked vertically, with generous transparent gaps and slightly staggered left edges to express separation. Each rectangle has a thick primary blue #216ec1 outline, a pale blue #c9dff8 fill, and at most two short dark slate #334962 text strokes. Preserve the original rounded, clean, restrained-gradient icon style and app palette. Remove the two enclosing document silhouettes and the tiny connecting arrow so the three separated blocks themselves are the unmistakable silhouette. No folded-page outline, no X, no red, no scissors, no extra objects, no labels. Center one compact square icon with the artwork filling about 90 percent of the canvas. Genuine transparent alpha background, crisp antialiased edges, no backdrop or cast shadow."
+    },
+    {
+      "file": "clear-blocks.png",
+      "prompt": "Use case: precise-object-edit. Edit target: supplied YAGF Clear blocks toolbar icon. Make it much more distinctive and legible at 24 pixels. Keep ONE large white folded-corner document with a dark slate #334962 outline, pale blue #c9dff8 faint layout grid inside, and a DOMINANT thick red X crossing the layout grid. Use the app's warning accent red #d24119 for the X with a narrow white separating edge. The X must be the dominant visible detail, unmistakably different from a blue stacked-region Smart split icon. Remove the smaller blank companion document to enlarge the main document and X. Preserve the clean rounded reference style, white paper, blue/slate interior palette, and restrained gradients. No arrows, no extra documents, no text labels, no trash can. Center one compact square icon filling about 90 percent of the canvas. Genuine transparent alpha background, crisp antialiased edges, no backdrop or cast shadow."
+    },
+    {
+      "file": "correct-skew.png",
+      "prompt": "Use case: illustration-story. Asset type: a transparent PNG desktop toolbar icon for YAGF's Correct skew command, legible at 24 pixels. The supplied document/rotation icon is a STYLE REFERENCE ONLY. Create a matching new icon that means straighten small text-line tilt, not rotate 90 degrees: one large white folded-corner document with dark slate #334962 outline, three bold primary-blue #216ec1 text strokes tilted slightly (about 10 degrees), a clear perfectly horizontal blue alignment guide beneath them, and one small curved adjustment arrow indicating alignment with that guide. Give the guide a tiny right-angle corner marker to reinforce leveling. Keep the composition simple and unmistakable at toolbar size, with the document and leveling symbol filling roughly 90 percent of the square canvas. Match the reference's rounded thick outlines and restrained gradients. Pale blue #c9dff8 details, white paper, primary-blue correction symbol. Do NOT reuse the large sweeping rotation arrow from the reference. No 90-degree arrow, no extra documents, no letters or words, no labels, no red X, no stacked separate blocks, no ruler numbers, no backdrop or cast shadow. Genuine transparent alpha background and crisp antialiased edges."
+    }
+  ]
+}

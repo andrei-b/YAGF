@@ -47,6 +47,8 @@ class QUrl;
 class QContextMenuEvent;
 class QComboBox;
 class QProgressDialog;
+class QToolBar;
+class QTimer;
 
 namespace yagf::ui {
 
@@ -60,6 +62,7 @@ public:
     void setActiveRegionIndex(int index);
     void fitPage();
     void zoomBy(qreal factor);
+    QToolBar *imageTools() const { return imageToolbar; }
 signals:
     void wordClicked(int index);
     void regionSelected(const QRectF &bounds);
@@ -73,15 +76,20 @@ protected:
     void mouseMoveEvent(QMouseEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
+    void scrollContentsBy(int dx, int dy) override;
     void wheelEvent(QWheelEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
     void contextMenuEvent(QContextMenuEvent *event) override;
+    bool viewportEvent(QEvent *event) override;
+    bool eventFilter(QObject *watched, QEvent *event) override;
     void dragEnterEvent(QDragEnterEvent *event) override;
     void dropEvent(QDropEvent *event) override;
 signals:
     void inputDropped(const QMimeData *mime);
 private:
     void updateRegionDrag(const QPoint &position);
+    void positionImageToolbar();
+    void updateImageToolbar(const QPoint &position);
     QVector<QRectF> regionObstacles() const;
     QRubberBand *rubberBand;
     QPointF regionAnchor;
@@ -94,6 +102,9 @@ private:
     QRectF editStartRect;
     QPointF editStartScene;
     QGraphicsRectItem *editingRegionItem = nullptr;
+    QToolBar *imageToolbar = nullptr;
+    QAction *pinImageToolbar = nullptr;
+    QTimer *hideImageToolbar = nullptr;
 };
 
 class MainWindow : public QMainWindow {
@@ -142,6 +153,9 @@ private:
     void configureDocumentContext();
     void reviewNextSpecialist();
     void chooseOcrLanguages();
+    void refreshOcrLanguageList();
+    void finishProjectLoading();
+    void refreshImageToolbar();
     bool canReviewSelection() const;
     void reviewSelectedWord();
     void showDocument();
@@ -170,8 +184,11 @@ private:
     void editLayout();
     void createRegionFromSelection();
     void improveCurrentPage();
+    void correctCurrentPageSkew();
+    bool canUndoSkewCorrection() const;
     void restoreCurrentPage();
-    void applyPagePreprocessing(const core::PreprocessSettings &proposed, bool geometryChanged);
+    void applyPagePreprocessing(const core::PreprocessSettings &proposed, bool geometryChanged,
+                                bool recordSkewCorrection = false);
     void exportText();
     void exportHtml();
     void exportJson();
@@ -206,10 +223,15 @@ private:
     QPushButton *deleteRegionButton = nullptr;
     QLineEdit *languageEdit;
     QToolButton *languagePickerButton;
+    QListWidget *ocrLanguageList = nullptr;
+    QLabel *ocrLanguageStatus = nullptr;
     QLabel *status;
-    QPushButton *ocrButton;
-    QCheckBox *mathMode;
+    QToolButton *ocrButton;
+    QAction *recognizeAction = nullptr;
+    QAction *mathMode;
     QPushButton *cancelButton;
+    QAction *cancelRecognitionAction = nullptr;
+    QAction *cancelExportAction = nullptr;
     QProgressDialog *recognitionProgress = nullptr;
     QPushButton *previousButton;
     QPushButton *nextButton;
@@ -267,6 +289,17 @@ private:
     QAction *documentContextAction = nullptr;
     QAction *preserveFormattingAction = nullptr;
     QAction *rawOcrOutputAction = nullptr;
+    QAction *rotateLeftAction = nullptr;
+    QAction *rotateRightAction = nullptr;
+    QAction *correctSkewAction = nullptr;
+    QAction *undoSkewAction = nullptr;
+    QAction *imageSplitAction = nullptr;
+    QAction *imageClearBlocksAction = nullptr;
+    QAction *imageRecognizeBlockAction = nullptr;
+    QAction *imageBlockOptionsAction = nullptr;
+    QAction *imageRemoveBlockAction = nullptr;
+    QProgressDialog *projectLoadingProgress = nullptr;
+    bool projectLoading = false;
     std::optional<core::CorrectionMemory> correctionMemory;
     std::shared_ptr<std::atomic_bool> exportCancel;
     QFutureWatcher<processing::ExportResult> exportWatcher;

@@ -54,6 +54,10 @@ ReplacePageCommand::ReplacePageCommand(core::OcrDocument &document, int pageNumb
                                        core::OcrPage after, const QString &label)
     : PageStateCommand(document, pageNumber, std::move(after), label) {}
 
+CorrectSkewCommand::CorrectSkewCommand(core::OcrDocument &document, int pageNumber,
+                                       core::OcrPage after, const QString &label)
+    : PageStateCommand(document, pageNumber, std::move(after), label) {}
+
 ReplaceTextCommand::ReplaceTextCommand(core::OcrDocument &document, int pageNumber, core::OcrPage after)
     : PageStateCommand(document, pageNumber, std::move(after), QStringLiteral("Replace text")) {}
 

@@ -170,6 +170,10 @@ DocumentProcessor::~DocumentProcessor()
 }
 
 bool DocumentProcessor::isBusy() const { return job != Job::None; }
+bool DocumentProcessor::isRecognizing() const
+{
+    return job == Job::Ocr || job == Job::BatchOcr || !batchPages.isEmpty();
+}
 QString DocumentProcessor::engineId() const { return engine->id(); }
 EngineCapabilities DocumentProcessor::engineCapabilities() const { return engine->capabilities(); }
 

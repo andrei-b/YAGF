@@ -86,6 +86,10 @@
 #include <QStyle>
 #include <QToolBar>
 #include <QToolButton>
+#include <QWidgetAction>
+#include <QTimer>
+#include <QCursor>
+#include <QEventLoop>
 #include <QVBoxLayout>
 #include <QtConcurrentRun>
 #include <QUuid>
@@ -108,6 +112,14 @@ using processing::ImageProcessor;
 using processing::BatchPageOptions;
 
 namespace {
+class ProjectLoadingDialog final : public QProgressDialog {
+public:
+    using QProgressDialog::QProgressDialog;
+    void reject() override {}
+protected:
+    void closeEvent(QCloseEvent *event) override { event->ignore(); }
+};
+
 class ExportSaveDialog : public QFileDialog {
 public:
     using QFileDialog::QFileDialog;
@@ -137,16 +149,47 @@ void addToolbarSeparator(QToolBar *toolbar)
     toolbar->widgetForAction(action)->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Minimum);
 }
 
-QIcon recognizeActionIcon()
+QIcon recognizeActionIcon(bool allPages = false)
 {
-    return QIcon::fromTheme(QStringLiteral("document-scan"),
-                           QApplication::style()->standardIcon(QStyle::SP_FileDialogContentsView));
+    QPixmap pixmap(32, 32);
+    pixmap.fill(Qt::transparent);
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(QPen(QColor("#216ec1"), 1.8));
+    painter.setBrush(QColor("#edf5ff"));
+    if (allPages) {
+        painter.drawRoundedRect(QRectF(11, 3, 17, 22), 2, 2);
+        painter.drawRoundedRect(QRectF(7, 6, 17, 22), 2, 2);
+    }
+    painter.setBrush(Qt::white);
+    painter.drawRoundedRect(QRectF(allPages ? 3 : 7, allPages ? 9 : 4, 17, 23), 2, 2);
+    const int x = allPages ? 7 : 11, y = allPages ? 15 : 10;
+    for (int row = 0; row < 3; ++row) painter.drawLine(x, y+4*row, x+9, y+4*row);
+    return QIcon(pixmap);
 }
 
 QIcon removeBlockIcon()
 {
     return QIcon::fromTheme(QStringLiteral("edit-delete"),
                            QApplication::style()->standardIcon(QStyle::SP_TrashIcon));
+}
+
+QIcon toolbarPinIcon()
+{
+    QPixmap pixmap(24, 24);
+    pixmap.fill(Qt::transparent);
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.translate(12, 11);
+    painter.rotate(35);
+    painter.setPen(QPen(QColor("#216ec1"), 1.8, Qt::SolidLine, Qt::RoundCap));
+    painter.setBrush(QColor("#c9dff8"));
+    painter.drawRoundedRect(QRectF(-5, -8, 10, 5), 1, 1);
+    painter.drawLine(-3, -3, -3, 2);
+    painter.drawLine(3, -3, 3, 2);
+    painter.drawLine(-6, 2, 6, 2);
+    painter.drawLine(0, 2, 0, 10);
+    return QIcon(pixmap);
 }
 
 QIcon textStyleActionIcon(bool bold)
@@ -255,6 +298,82 @@ PageView::PageView(QWidget *parent) : QGraphicsView(parent), rubberBand(new QRub
     setMouseTracking(true);
     viewport()->setMouseTracking(true);
     viewport()->setCursor(Qt::CrossCursor);
+    imageToolbar = new QToolBar(viewport());
+    imageToolbar->setObjectName(QStringLiteral("imageToolbar"));
+    imageToolbar->setMovable(false);
+    imageToolbar->setFloatable(false);
+    imageToolbar->setIconSize(QSize(20, 20));
+    imageToolbar->setCursor(Qt::ArrowCursor);
+    auto *out = imageToolbar->addAction(QIcon(":/legacy/smaller.png"), tr("Zoom out"), this, [this] { zoomBy(1.0/1.25); });
+    out->setObjectName("zoomOutAction");
+    auto *fit = imageToolbar->addAction(style()->standardIcon(QStyle::SP_TitleBarMaxButton), tr("Fit page"), this, &PageView::fitPage);
+    fit->setObjectName("fitPageAction");
+    qobject_cast<QToolButton *>(imageToolbar->widgetForAction(fit))->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    auto *in = imageToolbar->addAction(QIcon(":/legacy/larger.png"), tr("Zoom in"), this, [this] { zoomBy(1.25); });
+    in->setObjectName("zoomInAction");
+    pinImageToolbar = imageToolbar->addAction(toolbarPinIcon(), tr("Pinned"));
+    pinImageToolbar->setObjectName("pinImageToolbarAction");
+    pinImageToolbar->setCheckable(true);
+    pinImageToolbar->setChecked(QSettings("YAGF", "YAGF Revival").value("view/imageToolbarPinned", true).toBool());
+    pinImageToolbar->setToolTip(tr("Pin the image toolbar. When unpinned, move the pointer to the top of the image to show it."));
+    qobject_cast<QToolButton *>(imageToolbar->widgetForAction(pinImageToolbar))->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    imageToolbar->insertAction(out, pinImageToolbar);
+    imageToolbar->insertSeparator(out);
+    hideImageToolbar = new QTimer(this);
+    hideImageToolbar->setSingleShot(true);
+    hideImageToolbar->setInterval(200);
+    connect(hideImageToolbar, &QTimer::timeout, this, [this] { updateImageToolbar(viewport()->mapFromGlobal(QCursor::pos())); });
+    connect(pinImageToolbar, &QAction::toggled, this, [this](bool pinned) {
+        QSettings("YAGF", "YAGF Revival").setValue("view/imageToolbarPinned", pinned);
+        pinImageToolbar->setText(pinned ? tr("Pinned") : tr("Pin"));
+        positionImageToolbar();
+        updateImageToolbar(viewport()->mapFromGlobal(QCursor::pos()));
+    });
+    pinImageToolbar->setText(pinImageToolbar->isChecked() ? tr("Pinned") : tr("Pin"));
+    imageToolbar->installEventFilter(this);
+    for (auto *child : imageToolbar->findChildren<QWidget *>()) child->installEventFilter(this);
+    positionImageToolbar();
+    imageToolbar->setVisible(pinImageToolbar->isChecked());
+}
+
+void PageView::positionImageToolbar()
+{
+    if (!imageToolbar) return;
+    imageToolbar->adjustSize();
+    imageToolbar->resize(std::min(imageToolbar->sizeHint().width(), std::max(1, viewport()->width()-16)), imageToolbar->sizeHint().height());
+    imageToolbar->move(std::max(0, (viewport()->width()-imageToolbar->width())/2), 10);
+    imageToolbar->raise();
+}
+
+void PageView::updateImageToolbar(const QPoint &position)
+{
+    if (!imageToolbar) return;
+    const bool nearTop = viewport()->rect().contains(position) && position.y() <= std::max(56, imageToolbar->height()+24);
+    imageToolbar->setVisible(pinImageToolbar->isChecked() || nearTop);
+    if (imageToolbar->isVisible()) imageToolbar->raise();
+}
+
+bool PageView::viewportEvent(QEvent *event)
+{
+    if (imageToolbar) {
+        if (event->type() == QEvent::MouseMove)
+            updateImageToolbar(static_cast<QMouseEvent *>(event)->position().toPoint());
+        else if (event->type() == QEvent::Leave) hideImageToolbar->start();
+        else if (event->type() == QEvent::Enter) updateImageToolbar(viewport()->mapFromGlobal(QCursor::pos()));
+        else if (event->type() == QEvent::Resize) positionImageToolbar();
+    }
+    return QGraphicsView::viewportEvent(event);
+}
+
+bool PageView::eventFilter(QObject *watched, QEvent *event)
+{
+    if (event->type() == QEvent::Enter) hideImageToolbar->stop();
+    else if (event->type() == QEvent::Leave) hideImageToolbar->start();
+    else if (watched == imageToolbar && event->type() == QEvent::LayoutRequest) {
+        positionImageToolbar();
+        for (auto *child : imageToolbar->findChildren<QWidget *>()) child->installEventFilter(this);
+    }
+    return QGraphicsView::eventFilter(watched, event);
 }
 
 void PageView::setActiveRegionIndex(int index)
@@ -485,6 +604,15 @@ void PageView::resizeEvent(QResizeEvent *event)
     if (fitMode) fitPage();
 }
 
+void PageView::scrollContentsBy(int dx, int dy)
+{
+    QGraphicsView::scrollContentsBy(dx, dy);
+    // Scrolling the viewport also moves its child widgets. Keep the controls
+    // anchored to the visible window, independently of the scanned page.
+    positionImageToolbar();
+    updateImageToolbar(viewport()->mapFromGlobal(QCursor::pos()));
+}
+
 void PageView::wheelEvent(QWheelEvent *event)
 {
     if (event->modifiers().testFlag(Qt::ControlModifier)) {
@@ -593,16 +721,6 @@ MainWindow::MainWindow()
     connect(pageSpin, &QSpinBox::valueChanged, this, &MainWindow::showPage);
     updatePageControls();
     addToolbarSeparator(toolbar);
-    auto *zoomOut = toolbar->addAction(QIcon(QStringLiteral(":/legacy/smaller.png")),
-                                      tr("Zoom out"), this, [this] { view->zoomBy(1.0 / 1.25); });
-    zoomOut->setToolTip(tr("Zoom out"));
-    qobject_cast<QToolButton *>(toolbar->widgetForAction(zoomOut))->setToolButtonStyle(Qt::ToolButtonIconOnly);
-    toolbar->addAction(tr("Fit page"), this, [this] { view->fitPage(); });
-    auto *zoomIn = toolbar->addAction(QIcon(QStringLiteral(":/legacy/larger.png")),
-                                     tr("Zoom in"), this, [this] { view->zoomBy(1.25); });
-    zoomIn->setToolTip(tr("Zoom in"));
-    qobject_cast<QToolButton *>(toolbar->widgetForAction(zoomIn))->setToolButtonStyle(Qt::ToolButtonIconOnly);
-    addToolbarSeparator(toolbar);
     improveAction = toolbar->addAction(tr("Improve page…"), this, &MainWindow::improveCurrentPage);
     improveAction->setObjectName(QStringLiteral("improvePageAction"));
     toolsMenu->addAction(improveAction);
@@ -616,7 +734,7 @@ MainWindow::MainWindow()
     remainingAction = toolsMenu->addAction(tr("Recognize remaining pages"), this, [this] { runBatchOcr(true); });
     batchAction = toolsMenu->addAction(tr("Recognize all pages"), this, [this] { runBatchOcr(false); });
     batchAction->setObjectName(QStringLiteral("recognizeAllAction"));
-    batchAction->setIcon(recognizeActionIcon());
+    batchAction->setIcon(recognizeActionIcon(true));
     batchAction->setIconText(tr("Recognize all"));
     batchAction->setToolTip(tr("Recognize every page in the open document, including pages already recognized."));
     rawOcrOutputAction = toolsMenu->addAction(tr("Use raw OCR output"));
@@ -658,22 +776,28 @@ MainWindow::MainWindow()
     layoutAction->setEnabled(false);
     createRegionAction->setEnabled(false);
     batchAction->setEnabled(false);
-    ocrButton = new QPushButton(tr("Recognize"), this);
-    ocrButton->setIcon(recognizeActionIcon());
+    recognizeAction = new QAction(recognizeActionIcon(), tr("Recognize"), this);
+    recognizeAction->setObjectName("recognizePageAction");
+    recognizeAction->setEnabled(false);
+    connect(recognizeAction, &QAction::triggered, this, &MainWindow::runOcr);
+    ocrButton = new QToolButton(this);
+    ocrButton->setDefaultAction(recognizeAction);
+    ocrButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    ocrButton->setPopupMode(QToolButton::MenuButtonPopup);
     ocrButton->setIconSize(QSize(20, 20));
     ocrButton->setObjectName(QStringLiteral("primaryButton"));
     toolbar->addWidget(ocrButton);
-    connect(ocrButton, &QPushButton::clicked, this, &MainWindow::runOcr);
-    auto *recognizeAll = new QToolButton(this);
-    recognizeAll->setObjectName(QStringLiteral("recognizeAllButton"));
-    recognizeAll->setDefaultAction(batchAction);
-    recognizeAll->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    toolbar->addWidget(recognizeAll);
-    mathMode = new QCheckBox(tr("Math only"), this);
+    auto *recognitionMenu = new QMenu(ocrButton);
+    recognitionMenu->setObjectName("recognitionMenu");
+    recognitionMenu->addAction(recognizeAction);
+    recognitionMenu->addAction(batchAction);
+    recognitionMenu->addSeparator();
+    mathMode = recognitionMenu->addAction(tr("Math only"));
+    mathMode->setCheckable(true);
     mathMode->setObjectName(QStringLiteral("mathOcrMode"));
     mathMode->setToolTip(tr("Use the formula engine for every row. Leave unchecked for automatic text and math recognition with local Tesseract."));
-    toolbar->addWidget(mathMode);
-    connect(mathMode, &QCheckBox::toggled, this, [this](bool enabled) {
+    ocrButton->setMenu(recognitionMenu);
+    connect(mathMode, &QAction::toggled, this, [this](bool enabled) {
         processor.setMathMode(enabled);
         if (document.mathOcr != enabled) {
             document.mathOcr = enabled;
@@ -682,36 +806,85 @@ MainWindow::MainWindow()
         languageEdit->setEnabled(!enabled);
         const bool tesseract = processor.engineId() == "tesseract";
         languagePickerAction->setEnabled(tesseract);
-        languagePickerButton->setEnabled(tesseract);
+        languagePickerButton->setEnabled(!enabled);
+        recognizeAction->setText(enabled ? tr("Recognize math") : tr("Recognize"));
     });
     cancelButton = new QPushButton(tr("Cancel"), this);
     cancelButton->setObjectName(QStringLiteral("secondaryButton"));
     cancelButton->setEnabled(false);
-    toolbar->addWidget(cancelButton);
+    cancelRecognitionAction = toolbar->addWidget(cancelButton);
+    cancelRecognitionAction->setObjectName("cancelRecognitionAction");
+    cancelRecognitionAction->setVisible(false);
     connect(cancelButton, &QPushButton::clicked, &processor, &DocumentProcessor::cancel);
-    connect(cancelButton, &QPushButton::clicked, this, [this] {
+    cancelExportAction = toolbar->addAction(tr("Cancel export"));
+    cancelExportAction->setObjectName("cancelExportAction");
+    cancelExportAction->setVisible(false);
+    connect(cancelExportAction, &QAction::triggered, this, [this] {
         if (exportBusy && exportCancel) {
             exportCancel->store(true);
-            cancelButton->setEnabled(false);
+            cancelExportAction->setEnabled(false);
             status->setText(tr("Cancelling export…"));
         }
     });
     addToolbarSeparator(toolbar);
-    auto *languageLabel = new QLabel(tr("OCR"), this);
-    languageLabel->setObjectName(QStringLiteral("toolbarCaption"));
-    toolbar->addWidget(languageLabel);
-    languageEdit = new QLineEdit(QStringLiteral("eng"), this);
-    languageEdit->setToolTip(tr("Tesseract languages, for example eng+deu. The first language is primary."));
-    languageEdit->setObjectName(QStringLiteral("languageField"));
-    languageEdit->setMinimumWidth(115);
-    languageEdit->setMaximumWidth(135);
-    toolbar->addWidget(languageEdit);
     languagePickerButton = new QToolButton(this);
     languagePickerButton->setObjectName(QStringLiteral("languagePickerButton"));
-    languagePickerButton->setText(QStringLiteral("…"));
-    languagePickerButton->setToolTip(tr("Choose installed Tesseract languages"));
+    languagePickerButton->setPopupMode(QToolButton::InstantPopup);
     toolbar->addWidget(languagePickerButton);
-    connect(languagePickerButton, &QToolButton::clicked, this, &MainWindow::chooseOcrLanguages);
+    auto *languageMenu = new QMenu(languagePickerButton);
+    languageMenu->setObjectName("ocrLanguageMenu");
+    auto *languagePanel = new QWidget(languageMenu);
+    auto *languageLayout = new QVBoxLayout(languagePanel);
+    languageLayout->setContentsMargins(12, 10, 12, 10);
+    languageLayout->addWidget(new QLabel(tr("OCR languages"), languagePanel));
+    languageEdit = new QLineEdit(QStringLiteral("eng"), languagePanel);
+    languageEdit->setToolTip(tr("Tesseract languages, for example eng+deu. The first language is primary."));
+    languageEdit->setObjectName(QStringLiteral("languageField"));
+    languageEdit->setMinimumWidth(260);
+    languageLayout->addWidget(languageEdit);
+    ocrLanguageStatus = new QLabel(tr("Check languages to recognize together. The first code is primary."), languagePanel);
+    ocrLanguageStatus->setWordWrap(true);
+    ocrLanguageStatus->setMaximumWidth(280);
+    languageLayout->addWidget(ocrLanguageStatus);
+    ocrLanguageList = new QListWidget(languagePanel);
+    ocrLanguageList->setObjectName("availableOcrLanguages");
+    ocrLanguageList->setMinimumHeight(180);
+    languageLayout->addWidget(ocrLanguageList);
+    auto *doneLanguages = new QPushButton(tr("Done"), languagePanel);
+    languageLayout->addWidget(doneLanguages);
+    auto *languageWidget = new QWidgetAction(languageMenu);
+    languageWidget->setDefaultWidget(languagePanel);
+    languageMenu->addAction(languageWidget);
+    languagePickerButton->setMenu(languageMenu);
+    connect(languageMenu, &QMenu::aboutToShow, this, [this, languageMenu] {
+        languageMenu->setProperty("previousLanguages", languageEdit->text());
+        refreshOcrLanguageList();
+    });
+    connect(languageMenu, &QMenu::aboutToHide, this, [this, languageMenu] {
+        const QString code = languageEdit->text().trimmed();
+        languageEdit->setText(QRegularExpression("^[A-Za-z0-9_+/-]{1,64}$").match(code).hasMatch()
+            ? code : languageMenu->property("previousLanguages").toString());
+    });
+    connect(doneLanguages, &QPushButton::clicked, languageMenu, &QMenu::close);
+    connect(languageEdit, &QLineEdit::returnPressed, languageMenu, &QMenu::close);
+    connect(ocrLanguageList, &QListWidget::itemChanged, this, [this](QListWidgetItem *item) {
+        QStringList selected = languageEdit->text().split('+', Qt::SkipEmptyParts);
+        const QString code = item->data(Qt::UserRole).toString();
+        if (item->checkState() == Qt::Checked) { if (!selected.contains(code)) selected.append(code); }
+        else selected.removeAll(code);
+        languageEdit->setText(selected.join('+'));
+    });
+    const auto updateLanguageButton = [this] {
+        const QString codes = languageEdit->text();
+        languagePickerButton->setText(tr("Languages: %1").arg(codes));
+        languagePickerButton->setToolTip(tr("OCR languages: %1. Select languages or enter a combination.").arg(codes));
+        const QSignalBlocker blocker(ocrLanguageList);
+        const auto selected = codes.split('+', Qt::SkipEmptyParts);
+        for (int i = 0; i < ocrLanguageList->count(); ++i)
+            ocrLanguageList->item(i)->setCheckState(selected.contains(ocrLanguageList->item(i)->data(Qt::UserRole).toString()) ? Qt::Checked : Qt::Unchecked);
+    };
+    connect(languageEdit, &QLineEdit::textChanged, this, updateLanguageButton);
+    updateLanguageButton();
     fileMenu->addSeparator();
     auto *exportMenu = fileMenu->addMenu(tr("Export"));
     auto *scanMenu = exportMenu->addMenu(tr("Scans"));
@@ -795,6 +968,8 @@ MainWindow::MainWindow()
     regionList->setMinimumHeight(80);
     blocksLayout->addWidget(regionList, 1);
     splitBlocksButton = new QPushButton(tr("Smart split"), blocksPanel);
+    splitBlocksButton->setIcon(QIcon(":/actions/smart-split.png"));
+    splitBlocksButton->setIconSize(QSize(32, 20));
     splitBlocksButton->setObjectName("smartSplit");
     splitBlocksButton->setToolTip(tr("Detect text, math and mixed blocks using the OCR language."));
     splitBlocksButton->setEnabled(false);
@@ -824,6 +999,53 @@ MainWindow::MainWindow()
     view->setToolTip(tr("Drag to draw a region. Shift-click regions to toggle selection. Click empty space to clear it. Middle-drag to pan."));
     view->setRenderHint(QPainter::Antialiasing);
     view->setBackgroundBrush(QColor(QStringLiteral("#e9eef5")));
+    auto *imageTools = view->imageTools();
+    imageTools->addSeparator();
+    rotateLeftAction = imageTools->addAction(QIcon(":/actions/rotate-left.png"), tr("Rotate image left"));
+    rotateLeftAction->setObjectName("rotateImageLeftAction");
+    rotateRightAction = imageTools->addAction(QIcon(":/actions/rotate-right.png"), tr("Rotate image right"));
+    rotateRightAction->setObjectName("rotateImageRightAction");
+    const auto rotateImage = [this](int turns) {
+        if (processor.isBusy() || exportBusy || projectLoading || imagePath.isEmpty() || !maybeApplyEditor()) return;
+        auto settings = displayedPreprocessing;
+        settings.quarterTurns = (settings.quarterTurns+turns+4)%4;
+        applyPagePreprocessing(settings, true);
+    };
+    connect(rotateLeftAction, &QAction::triggered, this, [rotateImage] { rotateImage(-1); });
+    connect(rotateRightAction, &QAction::triggered, this, [rotateImage] { rotateImage(1); });
+    correctSkewAction = imageTools->addAction(QIcon(":/actions/correct-skew.png"), tr("Correct skew"));
+    correctSkewAction->setObjectName("correctSkewAction");
+    correctSkewAction->setToolTip(tr("Detect and straighten tilted text lines on the current page. This can be undone."));
+    connect(correctSkewAction, &QAction::triggered, this, &MainWindow::correctCurrentPageSkew);
+    undoSkewAction = imageTools->addAction(QIcon::fromTheme(QStringLiteral("edit-undo"),
+        style()->standardIcon(QStyle::SP_ArrowBack)), tr("Undo skew correction"));
+    undoSkewAction->setObjectName("undoSkewCorrectionAction");
+    undoSkewAction->setToolTip(tr("Undo skew correction and restore the previous image, text, and blocks."));
+    connect(undoSkewAction, &QAction::triggered, this, [this] {
+        if (processor.isBusy() || exportBusy || projectLoading || imagePath.isEmpty() || !maybeApplyEditor()) return;
+        if (canUndoSkewCorrection()) undoStack.undo();
+    });
+    imageSplitAction = imageTools->addAction(QIcon(":/actions/smart-split.png"), tr("Smart split"));
+    imageSplitAction->setObjectName("imageSmartSplitAction");
+    connect(imageSplitAction, &QAction::triggered, splitBlocksButton, &QPushButton::click);
+    imageClearBlocksAction = imageTools->addAction(QIcon(":/actions/clear-blocks.png"), tr("Clear all blocks"));
+    imageClearBlocksAction->setObjectName("imageClearBlocksAction");
+    connect(imageClearBlocksAction, &QAction::triggered, this, [this] { clearPageBlocks(currentPage); });
+    for (auto *action : {rotateLeftAction, rotateRightAction, correctSkewAction, imageSplitAction, imageClearBlocksAction})
+        qobject_cast<QToolButton *>(imageTools->widgetForAction(action))->setIconSize(QSize(32, 24));
+    imageRecognizeBlockAction = imageTools->addAction(recognizeActionIcon(), tr("Recognize selected blocks"));
+    imageRecognizeBlockAction->setObjectName("imageRecognizeBlockAction");
+    connect(imageRecognizeBlockAction, &QAction::triggered, this, &MainWindow::runOcr);
+    imageBlockOptionsAction = imageTools->addAction(style()->standardIcon(QStyle::SP_FileDialogContentsView), tr("Block options"));
+    imageBlockOptionsAction->setObjectName("imageBlockOptionsAction");
+    connect(imageBlockOptionsAction, &QAction::triggered, this, [this] {
+        auto *button = view->imageTools()->widgetForAction(imageBlockOptionsAction);
+        showBlockContextMenu(selectedImageRegion, button->mapToGlobal(button->rect().bottomLeft()));
+    });
+    imageRemoveBlockAction = imageTools->addAction(removeBlockIcon(), tr("Remove selected block"));
+    imageRemoveBlockAction->setObjectName("imageRemoveBlockAction");
+    connect(imageRemoveBlockAction, &QAction::triggered, this, [this] { deleteImageRegion(selectedImageRegion); });
+    refreshImageToolbar();
     auto *textPanel = new QWidget(splitter);
     textPanel->setObjectName(QStringLiteral("textPanel"));
     textPanel->setMinimumWidth(450);
@@ -1263,7 +1485,7 @@ void MainWindow::setBusy(bool busy)
         recognitionProgress->hide();
         recognitionProgress->reset();
     }
-    const bool blocked = busy || exportBusy;
+    const bool blocked = busy || exportBusy || projectLoading;
     verification->setBusy(blocked);
     scanAction->setEnabled(!blocked);
     mathMode->setEnabled(!blocked);
@@ -1271,9 +1493,15 @@ void MainWindow::setBusy(bool busy)
     renderingAction->setEnabled(!blocked && processing::isPagedSource(originalPath));
     undoAction->setEnabled(!blocked && undoStack.canUndo());
     redoAction->setEnabled(!blocked && undoStack.canRedo());
-    ocrButton->setEnabled(!blocked && !imagePath.isEmpty());
+    recognizeAction->setEnabled(!blocked && !imagePath.isEmpty());
+    languagePickerButton->setEnabled(!blocked && !mathMode->isChecked());
+    languageEdit->setEnabled(!blocked && !mathMode->isChecked());
+    languagePickerAction->setEnabled(!blocked && processor.engineId() == "tesseract");
     view->setEnabled(!blocked);
-    cancelButton->setEnabled(blocked);
+    cancelRecognitionAction->setVisible(processor.isRecognizing());
+    cancelButton->setEnabled(processor.isRecognizing());
+    cancelExportAction->setVisible(exportBusy);
+    cancelExportAction->setEnabled(exportBusy);
     selectionEditor->setEnabled(!blocked);
     const auto *formulaPage = document.page(currentPage);
     editFormulaAction->setEnabled(!blocked && !imagePath.isEmpty() && formulaPage &&
@@ -1293,6 +1521,7 @@ void MainWindow::setBusy(bool busy)
         document.page(currentPage) && selectedWords.size() < document.page(currentPage)->words.size());
     pdfAction->setEnabled(!blocked && document.wordCount() > 0);
     pdfaAction->setEnabled(!blocked && document.wordCount() > 0);
+    refreshImageToolbar();
     updatePageControls();
 }
 
@@ -1301,7 +1530,7 @@ void MainWindow::updatePageControls()
     const QSignalBlocker blocker(pageSpin);
     pageSpin->setMaximum(pageCount);
     pageSpin->setValue(currentPage);
-    const bool available = !processor.isBusy() && !exportBusy;
+    const bool available = !processor.isBusy() && !exportBusy && !projectLoading;
     if (renderingAction) renderingAction->setEnabled(available && processing::isPagedSource(originalPath));
     if (preserveFormattingAction) preserveFormattingAction->setEnabled(available);
     if (rawOcrOutputAction) rawOcrOutputAction->setEnabled(available);
@@ -1336,6 +1565,7 @@ void MainWindow::updatePageControls()
 
 void MainWindow::showError(const QString &message)
 {
+    finishProjectLoading();
     status->setText(message);
     QMessageBox::warning(this, tr("YAGF 2"), message);
 }
@@ -1420,7 +1650,7 @@ QString MainWindow::saveImportedImage(const QImage &image)
 void MainWindow::loadSource(const QString &path)
 {
     if (path.isEmpty()) return;
-    if (processor.isBusy() || exportBusy) return;
+    if (processor.isBusy() || exportBusy || projectLoading) return;
     const QFileInfo source(path);
     if (!source.isFile() || (!processing::isPagedSource(path) &&
                               !QImageReader(path).canRead())) {
@@ -1458,7 +1688,7 @@ void MainWindow::loadSource(const QString &path)
     imagePath.clear();
     rawImagePath.clear();
     rawImage = {};
-    ocrButton->setEnabled(false);
+    recognizeAction->setEnabled(false);
     improveAction->setEnabled(false);
     restoreAction->setEnabled(false);
     layoutAction->setEnabled(false);
@@ -1494,14 +1724,37 @@ void MainWindow::openPortableProject()
 
 void MainWindow::loadProject(const QString &path)
 {
-    if (processor.isBusy() || exportBusy || path.isEmpty()) return;
+    if (processor.isBusy() || exportBusy || projectLoading || path.isEmpty()) return;
     if (!maybeSave()) return;
-    OcrDocument loaded;
-    QString error;
+    projectLoading = true;
+    if (!projectLoadingProgress) {
+        projectLoadingProgress = new ProjectLoadingDialog(this);
+        projectLoadingProgress->setObjectName("projectLoadingProgress");
+        projectLoadingProgress->setWindowTitle(tr("Opening project"));
+        projectLoadingProgress->setCancelButton(nullptr);
+        projectLoadingProgress->setWindowFlag(Qt::WindowCloseButtonHint, false);
+        projectLoadingProgress->setWindowModality(Qt::WindowModal);
+        projectLoadingProgress->setMinimumDuration(0);
+        projectLoadingProgress->setRange(0, 0);
+    }
+    projectLoadingProgress->setLabelText(tr("Reading project and restoring pages…"));
+    projectLoadingProgress->show();
+    setBusy(false);
     const bool portable = QFileInfo(path).isDir() || path.endsWith(QStringLiteral(".yagfproj"), Qt::CaseInsensitive);
-    const bool opened = portable ? ProjectFile::loadPortable(path, &loaded, &error)
-                                 : ProjectFile::load(path, &loaded, &error);
-    if (!opened) { showError(error); return; }
+    struct LoadedProject { OcrDocument document; QString error; bool opened; };
+    QFutureWatcher<LoadedProject> loading;
+    QEventLoop loadingEvents;
+    connect(&loading, &QFutureWatcher<LoadedProject>::finished, &loadingEvents, &QEventLoop::quit);
+    loading.setFuture(QtConcurrent::run([path, portable] {
+        LoadedProject result;
+        result.opened = portable ? ProjectFile::loadPortable(path, &result.document, &result.error)
+                                 : ProjectFile::load(path, &result.document, &result.error);
+        return result;
+    }));
+    loadingEvents.exec();
+    auto result = loading.result();
+    if (!result.opened) { showError(result.error); return; }
+    OcrDocument loaded = std::move(result.document);
     if (!QFileInfo::exists(loaded.sourcePath)) {
         showError(tr("Source document is missing: %1").arg(loaded.sourcePath));
         return;
@@ -1560,11 +1813,20 @@ void MainWindow::loadProject(const QString &path)
     pageCount = 1;
     updatePageControls();
     if (processing::isPagedSource(originalPath)) {
+        projectLoadingProgress->setLabelText(tr("Rendering the first page…"));
         status->setText(tr("Reading project source document…"));
         processor.openDocument(originalPath);
     } else {
         loadImage(originalPath);
     }
+}
+
+void MainWindow::finishProjectLoading()
+{
+    if (!projectLoading) return;
+    projectLoading = false;
+    projectLoadingProgress->hide();
+    setBusy(processor.isBusy());
 }
 
 void MainWindow::rememberProject()
@@ -1774,6 +2036,7 @@ void MainWindow::loadImage(const QString &path)
     status->setText(tr("Page ready: %1 × %2 · %3 DPI%4").arg(image.width()).arg(image.height()).arg(dpi)
                     .arg(settings.isIdentity() ? QString() : tr(" · improved")));
     finishVerification();
+    finishProjectLoading();
 }
 
 void MainWindow::showPage(int number)
@@ -1802,7 +2065,7 @@ void MainWindow::showPage(int number)
     imagePath.clear();
     rawImagePath.clear();
     rawImage = {};
-    ocrButton->setEnabled(false);
+    recognizeAction->setEnabled(false);
     improveAction->setEnabled(false);
     restoreAction->setEnabled(false);
     layoutAction->setEnabled(false);
@@ -1833,6 +2096,33 @@ void MainWindow::improveCurrentPage()
     applyPagePreprocessing(proposed, geometryChanged);
 }
 
+void MainWindow::correctCurrentPageSkew()
+{
+    if (imagePath.isEmpty() || processor.isBusy() || exportBusy || projectLoading || !maybeApplyEditor()) return;
+    const auto assessment = ImageProcessor::assess(QImage(imagePath));
+    if (!assessment) { showError(assessment.error()); return; }
+    if (std::abs(assessment->skewDegrees) < .1) {
+        statusBar()->showMessage(tr("No additional skew detected on this page."), 5000);
+        return;
+    }
+    // Assess the displayed, already preprocessed image. Add its remaining tilt
+    // to the saved angle, preserving rotation, restoration and other filters.
+    auto settings = displayedPreprocessing;
+    settings.deskewDegrees = std::round((settings.deskewDegrees+assessment->skewDegrees)*10)/10;
+    if (std::abs(settings.deskewDegrees) > 15) {
+        showError(tr("The detected correction exceeds 15°. Adjust the page rotation in Improve page first."));
+        return;
+    }
+    applyPagePreprocessing(settings, true, true);
+}
+
+bool MainWindow::canUndoSkewCorrection() const
+{
+    if (!undoStack.canUndo()) return false;
+    const auto *command = dynamic_cast<const CorrectSkewCommand *>(undoStack.command(undoStack.index()-1));
+    return command && command->affectedPage() == currentPage;
+}
+
 void MainWindow::restoreCurrentPage()
 {
     if (rawImage.isNull() || processor.isBusy() || exportBusy || !maybeApplyEditor()) return;
@@ -1852,7 +2142,8 @@ void MainWindow::restoreCurrentPage()
     applyPagePreprocessing(settings, dialog.geometryChanged());
 }
 
-void MainWindow::applyPagePreprocessing(const core::PreprocessSettings &proposed, bool geometryChanged)
+void MainWindow::applyPagePreprocessing(const core::PreprocessSettings &proposed, bool geometryChanged,
+                                       bool recordSkewCorrection)
 {
     const auto *existing = document.page(currentPage);
     if (geometryChanged && existing &&
@@ -1886,7 +2177,10 @@ void MainWindow::applyPagePreprocessing(const core::PreprocessSettings &proposed
         page.imageRegions.clear();
         selectedImageRegion = -1;
     }
-    undoStack.push(new ReplacePageCommand(document, currentPage, std::move(page), tr("Improve page")));
+    if (recordSkewCorrection)
+        undoStack.push(new CorrectSkewCommand(document, currentPage, std::move(page), tr("Correct skew")));
+    else
+        undoStack.push(new ReplacePageCommand(document, currentPage, std::move(page), tr("Improve page")));
     status->setText(tr("Improvement applied to page %1. Recognize it to update OCR.").arg(currentPage));
 }
 
@@ -1952,7 +2246,7 @@ bool MainWindow::usePaddleVlService(const QUrl &url)
     languageEdit->setReadOnly(false);
     languageEdit->setToolTip(tr("PaddleOCR-VL uses its multilingual model vocabulary."));
     languagePickerAction->setEnabled(false);
-    languagePickerButton->setEnabled(false);
+    languagePickerButton->setEnabled(true);
     QSettings(QStringLiteral("YAGF"), QStringLiteral("YAGF Revival"))
         .setValue(QStringLiteral("ocr/paddleUrl"), url.toString());
     status->setText(tr("OCR engine: PaddleOCR-VL · %1").arg(url.toString()));
@@ -2037,7 +2331,7 @@ void MainWindow::configureOcrEngine()
     }
     const bool tesseract = provider->currentIndex() == 0;
     languagePickerAction->setEnabled(tesseract);
-    languagePickerButton->setEnabled(tesseract);
+    languagePickerButton->setEnabled(!mathMode->isChecked());
     languageEdit->setReadOnly(provider->currentIndex() > 1);
     languageEdit->setToolTip(tesseract
         ? tr("Tesseract languages, for example eng+deu. The first language is primary.")
@@ -2169,12 +2463,24 @@ void MainWindow::reviewNextSpecialist()
 
 void MainWindow::chooseOcrLanguages()
 {
-    if (processor.engineId() != QStringLiteral("tesseract") || processor.isBusy()) return;
+    if (!processor.isBusy() && !exportBusy && languagePickerButton->isEnabled())
+        languagePickerButton->showMenu();
+}
+
+void MainWindow::refreshOcrLanguageList()
+{
+    const QSignalBlocker blocker(ocrLanguageList);
+    ocrLanguageList->clear();
+    const bool local = processor.engineId() == "tesseract";
+    ocrLanguageList->setVisible(local);
+    ocrLanguageStatus->setText(local ? tr("Check languages to recognize together. The first code is primary.")
+        : languageEdit->toolTip());
+    if (!local) return;
     QProcess process;
     process.start(QStringLiteral("tesseract"), {QStringLiteral("--list-langs")});
-    if (!process.waitForFinished(5000) || process.exitStatus() != QProcess::NormalExit ||
-        process.exitCode() != 0) {
-        showError(tr("Could not list installed Tesseract languages."));
+    if (!process.waitForFinished(5000) || process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
+        process.kill(); process.waitForFinished();
+        ocrLanguageStatus->setText(tr("Could not list installed languages. Enter a language code or combination above."));
         return;
     }
     QStringList languages;
@@ -2182,46 +2488,17 @@ void MainWindow::chooseOcrLanguages()
     const QRegularExpression code(QStringLiteral("^[A-Za-z][A-Za-z0-9_/-]*$"));
     for (const QString &row : output.split(QLatin1Char('\n'))) {
         const QString name = row.trimmed();
-        if (code.match(name).hasMatch() && name != QStringLiteral("osd")) languages.append(name);
+        if (code.match(name).hasMatch() && name != "osd") languages.append(name);
     }
-    languages.removeDuplicates();
-    languages.sort(Qt::CaseInsensitive);
-    if (languages.isEmpty()) { showError(tr("No Tesseract recognition languages are installed.")); return; }
-    QDialog dialog(this);
-    dialog.setWindowTitle(tr("Choose OCR languages"));
-    auto *layout = new QVBoxLayout(&dialog);
-    layout->addWidget(new QLabel(tr("Select languages to recognize together. The first code in the field is primary."),
-                                 &dialog));
-    auto *list = new QListWidget(&dialog);
-    list->setObjectName(QStringLiteral("availableOcrLanguages"));
-    list->setMinimumSize(320, 260);
-    const QStringList original = languageEdit->text().split(QLatin1Char('+'), Qt::SkipEmptyParts);
-    for (const QString &language : languages) {
-        auto *item = new QListWidgetItem(language, list);
+    languages.removeDuplicates(); languages.sort(Qt::CaseInsensitive);
+    const auto selected = languageEdit->text().split('+', Qt::SkipEmptyParts);
+    for (const auto &language : languages) {
+        auto *item = new QListWidgetItem(language, ocrLanguageList);
+        item->setData(Qt::UserRole, language);
         item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
-        item->setCheckState(original.contains(language) ? Qt::Checked : Qt::Unchecked);
+        item->setCheckState(selected.contains(language) ? Qt::Checked : Qt::Unchecked);
     }
-    layout->addWidget(list);
-    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-    layout->addWidget(buttons);
-    const auto updateOk = [list, buttons] {
-        bool checked = false;
-        for (int i = 0; i < list->count(); ++i) checked |= list->item(i)->checkState() == Qt::Checked;
-        buttons->button(QDialogButtonBox::Ok)->setEnabled(checked);
-    };
-    connect(list, &QListWidget::itemChanged, &dialog, updateOk);
-    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    updateOk();
-    if (dialog.exec() != QDialog::Accepted) return;
-    QStringList selected;
-    for (const QString &language : original)
-        if (languages.contains(language) && list->findItems(language, Qt::MatchExactly).first()->checkState() == Qt::Checked)
-            selected.append(language);
-    for (int i = 0; i < list->count(); ++i)
-        if (list->item(i)->checkState() == Qt::Checked && !selected.contains(list->item(i)->text()))
-            selected.append(list->item(i)->text());
-    languageEdit->setText(selected.join(QLatin1Char('+')));
+    if (languages.isEmpty()) ocrLanguageStatus->setText(tr("No installed languages found. Enter a language code above."));
 }
 
 void MainWindow::runBatchOcr(bool remainingOnly)
@@ -2365,6 +2642,7 @@ void MainWindow::showDocument()
         layoutAction->setEnabled(false);
         pdfAction->setEnabled(false);
         pdfaAction->setEnabled(false);
+        refreshImageToolbar();
         return;
     }
     for (OcrWord &word : page->words) {
@@ -2422,7 +2700,7 @@ void MainWindow::showDocument()
             .arg(i + 1).arg(language));
         if (region.notText) item->setForeground(QColor(110, 110, 110));
     }
-    ocrButton->setText(tr("Recognize"));
+    recognizeAction->setText(mathMode->isChecked() ? tr("Recognize math") : tr("Recognize"));
     refreshImageRegionSelection(true);
     pdfAction->setEnabled(!processor.isBusy() && !exportBusy && document.wordCount() > 0);
     pdfaAction->setEnabled(!processor.isBusy() && !exportBusy && document.wordCount() > 0);
@@ -2519,6 +2797,35 @@ void MainWindow::refreshImageRegionSelection(bool updateWords)
     if (!rows.isEmpty()) status->setText(tr("%1 regions selected · %2 words").arg(rows.size()).arg(matches.size()));
     else status->setText(tr("Recognize will process the whole page."));
     if (updateWords) updateSelection(matches);
+    refreshImageToolbar();
+}
+
+void MainWindow::refreshImageToolbar()
+{
+    if (!rotateLeftAction) return;
+    const bool selected = !selectedRegionIds.isEmpty();
+    const bool ready = !processor.isBusy() && !exportBusy && !projectLoading && !imagePath.isEmpty();
+    rotateLeftAction->setVisible(!selected);
+    rotateRightAction->setVisible(!selected);
+    correctSkewAction->setVisible(!selected);
+    rotateLeftAction->setEnabled(ready);
+    rotateRightAction->setEnabled(ready);
+    correctSkewAction->setEnabled(ready);
+    const bool undoSkew = canUndoSkewCorrection();
+    undoSkewAction->setVisible(!selected && undoSkew);
+    undoSkewAction->setEnabled(ready && undoSkew);
+    imageSplitAction->setEnabled(ready);
+    const auto *page = document.page(currentPage);
+    imageClearBlocksAction->setEnabled(ready && page && !page->imageRegions.isEmpty());
+    for (auto *action : {imageRecognizeBlockAction, imageBlockOptionsAction, imageRemoveBlockAction}) {
+        action->setVisible(selected);
+        action->setEnabled(ready && selected);
+    }
+    imageBlockOptionsAction->setEnabled(ready && selectedRegionIds.size() == 1);
+    bool text = false;
+    if (page) for (const auto &region : page->imageRegions)
+        text |= selectedRegionIds.contains(region.id) && !region.notText;
+    imageRecognizeBlockAction->setEnabled(ready && text);
 }
 
 void MainWindow::activateImageRegion(int index, bool toggle)
@@ -2592,7 +2899,7 @@ void MainWindow::showPageActions(int number, const QPoint &globalPosition)
     const auto *page = document.page(number);
     QMenu menu(this);
     menu.setObjectName(QStringLiteral("pageContextMenu"));
-    auto *clear = menu.addAction(removeBlockIcon(), tr("Clear all blocks"));
+    auto *clear = menu.addAction(QIcon(":/actions/clear-blocks.png"), tr("Clear all blocks"));
     clear->setObjectName(QStringLiteral("clearPageBlocks"));
     clear->setEnabled(!processor.isBusy() && !exportBusy && page && !page->imageRegions.isEmpty());
     connect(clear, &QAction::triggered, this, [this, number] { clearPageBlocks(number); });
@@ -2673,6 +2980,10 @@ void MainWindow::showBlockContextMenu(int index, const QPoint &globalPosition)
             undoStack.push(new ReplacePageCommand(document, currentPage, std::move(changed), tr("Set block content")));
         });
     }
+    auto *clear = menu.addAction(QIcon(":/actions/clear-blocks.png"), tr("Clear all blocks"));
+    clear->setObjectName("clearAllBlocksAction");
+    connect(clear, &QAction::triggered, this, [this] { clearPageBlocks(currentPage); });
+    menu.addSeparator();
     auto *remove = menu.addAction(removeBlockIcon(), tr("Remove block"));
     remove->setIconVisibleInMenu(true);
     connect(remove, &QAction::triggered, this, [this, index] { deleteImageRegion(index); });

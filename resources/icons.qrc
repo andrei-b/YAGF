@@ -10,4 +10,11 @@
   <qresource prefix="/theme">
     <file>app.qss</file>
   </qresource>
+  <qresource prefix="/actions">
+    <file alias="rotate-left.png">icons/rotate-left.png</file>
+    <file alias="rotate-right.png">icons/rotate-right.png</file>
+    <file alias="correct-skew.png">icons/correct-skew.png</file>
+    <file alias="smart-split.png">icons/smart-split.png</file>
+    <file alias="clear-blocks.png">icons/clear-blocks.png</file>
+  </qresource>
 </RCC>
