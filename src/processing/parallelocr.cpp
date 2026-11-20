@@ -7,9 +7,10 @@
 
 namespace yagf::processing {
 ParallelOcrRun::ParallelOcrRun(std::vector<ComparisonEngine> &engines,const QImage &image,const OcrOptions &options,
-    const QVector<QRect> &areas,std::stop_token parent):parentStop(parent,[this]{stop.request_stop();}) {
+    const QVector<QRect> &areas,std::stop_token parent,const QString &serviceKey,bool includeService):parentStop(parent,[this]{stop.request_stop();}) {
     QSet<QString> seen;
     for (auto &entry:engines) {
+        if (!serviceKey.isEmpty() && (entry.service.key()==serviceKey)!=includeService) continue;
         if (futures.size()>=3 || !entry.engine || seen.contains(entry.service.key())) continue;
         seen.insert(entry.service.key()); const auto token=stop.get_token();
         futures.emplace_back(std::async(std::launch::async,[engine=entry.engine.get(),service=entry.service,image,options,areas,token] {

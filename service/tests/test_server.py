@@ -45,6 +45,16 @@ class PaddleVlTests(unittest.TestCase):
             with patch("server.urllib.request.urlopen", return_value=response), self.assertRaises(ValueError):
                 backend.recognize(b"image", 20, 10, "auto")
 
+    def test_formula_task_uses_the_formula_prompt(self):
+        backend = PaddleVlBackend("http://localhost:8082/v1/chat/completions", "PaddleOCR-VL-1.6")
+        with patch("server.urllib.request.urlopen", return_value=self.response(r"\[x=1\]")) as send:
+            result = backend.recognize(b"image", 200, 100, "auto", "formula")
+        payload = json.loads(send.call_args.args[0].data)
+        self.assertEqual(payload["messages"][0]["content"][1]["text"], "Formula Recognition:")
+        self.assertEqual(result[0]["text"], r"\[x=1\]")
+        with self.assertRaises(ValueError):
+            backend.recognize(b"image", 200, 100, "auto", "unsupported")
+
     def test_invalid_endpoint(self):
         for endpoint in ("file:///tmp/model", "http://user:pass@localhost/v1/chat/completions", "http://"):
             with self.assertRaises(ValueError):

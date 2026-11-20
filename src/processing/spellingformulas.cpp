@@ -59,10 +59,10 @@ bool dictionaryText(const core::OcrPage &reading, core::SpellChecker &checker)
 }
 
 std::expected<QStringList, OcrError> collectSpellingFormulaReadings(
-    core::OcrPage &page, const QImage &image, std::stop_token stop, OcrProgress progress)
+    core::OcrPage &page, const QImage &image, std::stop_token stop, OcrProgress progress, IOcrEngine *formulaProvider)
 {
     if (stop.stop_requested()) return std::unexpected(OcrError{{}, true});
-    if (MathOcrEngine::pythonPath().isEmpty()) return QStringList{};
+    if (!formulaProvider && MathOcrEngine::pythonPath().isEmpty()) return QStringList{};
     core::SpellChecker checker;
     const auto spelling = core::wordSpelling(page);
     const auto assignments = compactAssignmentWords(page.words);
@@ -108,9 +108,8 @@ std::expected<QStringList, OcrError> collectSpellingFormulaReadings(
     }
     QList<QRect> boxes;
     for (const auto &candidate : candidates) boxes.append(candidate.bounds.adjusted(-2, -2, 2, 2).intersected(image.rect()));
-    MathOcrEngine math;
     if (progress) progress(QStringLiteral("Checking suspicious text for formulas"),0,boxes.size());
-    auto result = math.recognizeBoxes(image, {.language = "auto", .pageNumber = page.number,.progress=progress}, stop, boxes, &warnings,30000);
+    auto result = recognizeFormulaBoxes(formulaProvider, image, {.language = "auto", .pageNumber = page.number,.progress=progress}, stop, boxes, &warnings,30000);
     if (!result) {
         if (result.error().cancelled || stop.stop_requested()) return std::unexpected(result.error());
         warnings.append(result.error().message + QStringLiteral(" Kept native OCR for suspicious words."));
@@ -124,7 +123,7 @@ std::expected<QStringList, OcrError> collectSpellingFormulaReadings(
         QStringList tokens;
         for (int i : candidate.indices) tokens.append(page.words[i].text);
         if (reading.text.simplified() == tokens.join(' ').simplified()) continue;
-        page.words[candidate.indices.first()].alternative = {math.id(), reading.text, tokens, true};
+        page.words[candidate.indices.first()].alternative = {reading.readingEngine, reading.text, tokens, true};
     }
     return warnings;
 }

@@ -153,8 +153,10 @@ private:
     void configureOcrEngine();
     void configureOcrServices();
     void updateComparisonEngines();
+    void updatePageLayoutService();
     void reviewOcrReadings();
     QVector<processing::OcrService> ocrServices;
+    QString layoutSessionToken;
     QAction *ocrServicesAction=nullptr,*ocrReadingsAction=nullptr;
     void configureRendering();
     void openExperiments();

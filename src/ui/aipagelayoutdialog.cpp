@@ -81,7 +81,7 @@ QToolButton *thumbnail(const QImage &image,QRect bounds,QWidget *parent)
     return button;
 }
 }
-AiPageLayoutDialog::AiPageLayoutDialog(QImage source,QVector<core::ImageRegion> blocks,QWidget *parent,int pageNumber)
+AiPageLayoutDialog::AiPageLayoutDialog(QImage source,QVector<core::ImageRegion> blocks,QWidget *parent,int pageNumber,QString bearerToken)
     :QDialog(parent),image(std::move(source)),existing(std::move(blocks))
 {
     setWindowTitle(tr("AI page areas")); setWindowIcon(aiPageAreasIcon()); setObjectName("aiPageLayoutDialog"); resize(1160,820);
@@ -120,10 +120,11 @@ AiPageLayoutDialog::AiPageLayoutDialog(QImage source,QVector<core::ImageRegion> 
     header->addLayout(titles,1);
     optionsButton=new QToolButton(this); optionsButton->setText(tr("Options")); optionsButton->setCheckable(true); optionsButton->setArrowType(Qt::DownArrow); optionsButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon); optionsButton->setObjectName("layoutOptionsButton"); header->addWidget(optionsButton); layout->addLayout(header);
     auto *optionsPanel=new QFrame(this); optionsPanel->setObjectName("layoutOptions"); auto *form=new QFormLayout(optionsPanel); form->setContentsMargins(12,10,12,10);
-    QSettings settings;
-    endpoint=new QLineEdit(settings.value("layout/url","http://127.0.0.1:8771").toString(),this); endpoint->setObjectName("layoutEndpoint");
-    token=new QLineEdit(this); token->setEchoMode(QLineEdit::Password); token->setPlaceholderText(tr("Optional; kept only for this window"));
-    threshold=new QDoubleSpinBox(this); threshold->setObjectName("layoutThreshold"); threshold->setRange(.1,.95); threshold->setSingleStep(.05); threshold->setValue(settings.value("layout/threshold",.5).toDouble());
+    QSettings settings("YAGF","YAGF Revival");
+    endpoint=new QLineEdit(settings.value("layout/url",QSettings().value("layout/url","http://127.0.0.1:8771")).toString(),this); endpoint->setObjectName("layoutEndpoint");
+    token=new QLineEdit(std::move(bearerToken),this); token->setEchoMode(QLineEdit::Password); token->setPlaceholderText(tr("Optional; kept only for this session"));
+    connect(endpoint,&QLineEdit::textEdited,token,&QLineEdit::clear);
+    threshold=new QDoubleSpinBox(this); threshold->setObjectName("layoutThreshold"); threshold->setRange(.1,.95); threshold->setSingleStep(.05); threshold->setValue(settings.value("layout/threshold",QSettings().value("layout/threshold",.5)).toDouble());
     replaceAutomatic=new QCheckBox(tr("Replace automatically detected blocks; keep manual blocks"),this); replaceAutomatic->setChecked(true);
     form->addRow(tr("Layout service:"),endpoint); form->addRow(tr("Bearer token:"),token); form->addRow(tr("Minimum model score:"),threshold); form->addRow(replaceAutomatic);
     optionsPanel->hide(); layout->addWidget(optionsPanel);
@@ -174,6 +175,7 @@ AiPageLayoutDialog::AiPageLayoutDialog(QImage source,QVector<core::ImageRegion> 
     });
     populate();
 }
+QString AiPageLayoutDialog::sessionToken() const {return token->text();}
 AiPageLayoutDialog::~AiPageLayoutDialog() {stop.request_stop(); watcher.waitForFinished();}
 void AiPageLayoutDialog::reject() {stop.request_stop(); QDialog::reject();}
 void AiPageLayoutDialog::showEvent(QShowEvent *event)
@@ -199,7 +201,7 @@ void AiPageLayoutDialog::analyze()
 {
     if (busy) return;
     processing::PageLayoutOptions options{QUrl(endpoint->text().trimmed()),token->text(),threshold->value()};
-    QSettings settings; settings.setValue("layout/url",options.url.toString()); settings.setValue("layout/threshold",options.threshold);
+    QSettings settings("YAGF","YAGF Revival"); settings.setValue("layout/url",options.url.toString()); settings.setValue("layout/threshold",options.threshold);
     stop=std::stop_source{}; busy=true; areas.clear(); hasAnalysis=false; populate();
     analyzeButton->setEnabled(false); endpoint->setEnabled(false); token->setEnabled(false); threshold->setEnabled(false); replaceAutomatic->setEnabled(false);
     progress->show(); message->setText(tr("Finding text, pictures and formulas on the current page…"));

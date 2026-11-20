@@ -14,8 +14,10 @@
 #include "bookvocabulary.h"
 #include "iocrengine.h"
 #include "parallelocr.h"
+#include "aipagelayout.h"
 
 #include <memory>
+#include <optional>
 #include <stop_token>
 
 namespace yagf::processing {
@@ -38,6 +40,9 @@ public:
     EngineCapabilities engineCapabilities() const;
     OcrService primaryOcrService() const;
     void setComparisonEngines(std::vector<ComparisonEngine> engines);
+    std::expected<void, QString> setFormulaOcrService(OcrService service);
+    OcrService formulaOcrService() const;
+    std::expected<void, QString> setPageLayoutService(PageLayoutOptions options,bool enabled);
     void setEngine(std::unique_ptr<IOcrEngine> replacement);
     void setNativeEngine(std::unique_ptr<IOcrEngine> replacement);
     void setMathMode(bool enabled);
@@ -105,6 +110,9 @@ private:
     std::unique_ptr<IOcrEngine> nativePreviousEngine;
     std::unique_ptr<IOcrEngine> textEngine; // Restored when leaving local math mode.
     std::unique_ptr<IOcrEngine> formulaEngine, proseEngine;
+    std::unique_ptr<IOcrEngine> formulaRecognizer;
+    OcrService selectedFormulaService;
+    std::optional<PageLayoutOptions> pageLayoutService;
     std::vector<ComparisonEngine> comparisonEngines;
     QTemporaryDir temporaryDir;
     Job job = Job::None;

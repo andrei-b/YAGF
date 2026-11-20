@@ -71,6 +71,13 @@ private slots:
         QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,directory.path());
         QSettings::setPath(QSettings::NativeFormat,QSettings::UserScope,directory.path());
     }
+    void legacyLayoutSettingsRemainReadable() {
+        QSettings current("YAGF","YAGF Revival");current.remove("layout/url");
+        QSettings().setValue("layout/url","http://127.0.0.1:9871");
+        ui::AiPageLayoutDialog dialog(sample(),{});
+        QCOMPARE(dialog.findChild<QLineEdit *>("layoutEndpoint")->text(),"http://127.0.0.1:9871");
+        QSettings().remove("layout/url");
+    }
     void clientGeometryAndValidation() {
         Server server; processing::PageLayoutOptions options{server.url(),"test-token",.5};
         server.areas.append(area("inline","mixed",QRect(90,20,15,15),.8,"inline_formula"));
@@ -123,7 +130,7 @@ private slots:
         text["alternatives"]=QJsonArray{QJsonObject{{"label","image"},{"type","picture"},{"score",.8}}};
         server.areas={area("manual-overlap","picture",QRect(0,0,70,70),.99,"image"),text,
                       area("overlap","picture",QRect(90,20,50,50),.7,"image"),area("chart","picture",QRect(0,130,100,40),.8,"chart")};
-        QSettings().setValue("layout/url",server.url().toString());
+        QSettings("YAGF","YAGF Revival").setValue("layout/url",server.url().toString());
         core::ImageRegion manual{"manual",QRect(0,0,20,20),"rus",false,"text",false};
         core::ImageRegion automatic{"old",QRect(0,120,100,40),{},false,"text",true};
         ui::AiPageLayoutDialog dialog(sample(),{manual,automatic},nullptr,38); dialog.show();
@@ -153,7 +160,7 @@ private slots:
         apply->click(); QCOMPARE(dialog.result(),int(QDialog::Accepted));
     }
     void failedAnalysisCannotApply() {
-        Server server; server.change=[](QJsonObject &root){root["width"]=500;}; QSettings().setValue("layout/url",server.url().toString());
+        Server server; server.change=[](QJsonObject &root){root["width"]=500;}; QSettings("YAGF","YAGF Revival").setValue("layout/url",server.url().toString());
         ui::AiPageLayoutDialog dialog(sample(),{}); dialog.show(); auto *analyze=dialog.findChild<QPushButton *>("analyzePageAreas"); analyze->click();
         QTRY_VERIFY_WITH_TIMEOUT(analyze->isEnabled(),3000); QVERIFY(!dialog.findChild<QPushButton *>("applyPageAreas")->isEnabled()); QVERIFY(dialog.regions().isEmpty());
         QVERIFY(dialog.findChild<QLabel *>("layoutMessage")->text().contains("incompatible"));
@@ -185,7 +192,7 @@ private slots:
         QCOMPARE(result->model,"PP-DocLayoutV3");
         QVERIFY(std::ranges::any_of(result->areas,[](const auto &area){return area.type=="picture";}));
         QVERIFY(std::ranges::any_of(result->areas,[](const auto &area){return area.type=="text";}));
-        QSettings().setValue("layout/url",url);
+        QSettings("YAGF","YAGF Revival").setValue("layout/url",url);
         ui::AiPageLayoutDialog dialog(image,{}); dialog.show();
         auto *apply=dialog.findChild<QPushButton *>("applyPageAreas");
         QTRY_VERIFY_WITH_TIMEOUT(apply->isEnabled(),120000);

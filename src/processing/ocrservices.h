@@ -8,8 +8,15 @@ struct OcrService {
     QString provider, label, language, token, error;
     QUrl url;
     bool enabled=false, ready=false;
+    QString model;
+    QStringList tasks;
     QString key() const;
+    bool supportsFormulas() const;
+    bool supportsText() const;
+    bool supportsPageLayout() const {return provider=="layout";}
 };
+OcrService localFormulaService();
+bool localOcrProvider(const QString &provider);
 QStringList ocrProviders();
 QString ocrProviderLabel(const QString &provider);
 bool validOcrServiceUrl(const QUrl &url);

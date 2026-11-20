@@ -7,8 +7,81 @@
 #include <QProcess>
 #include <QStandardPaths>
 #include <QTemporaryDir>
+#include <QRegularExpression>
 
 namespace yagf::processing {
+
+std::expected<core::OcrPage, OcrError> recognizeFormulaBoxes(
+    IOcrEngine *provider, const QImage &image, const OcrOptions &options, std::stop_token stop,
+    const QList<QRect> &boxes, QStringList *warnings, int timeBudgetMs)
+{
+    if (!provider) {
+        MathOcrEngine local;
+        return local.recognizeBoxes(image, options, stop, boxes, warnings, timeBudgetMs);
+    }
+    core::OcrPage page;
+    page.number = options.pageNumber;
+    page.id = QStringLiteral("page-%1").arg(page.number);
+    page.width = page.sourceWidth = image.width();
+    page.height = page.sourceHeight = image.height();
+    page.engineId = provider->id(); page.language = "auto";
+    QElapsedTimer timer; timer.start();
+    for (int i = 0; i < boxes.size(); ++i) {
+        if (stop.stop_requested()) return std::unexpected(OcrError{{}, true});
+        const auto &box = boxes[i];
+        if (box.isEmpty() || !image.rect().contains(box))
+            return std::unexpected(OcrError{QStringLiteral("Invalid formula crop.")});
+        const int remaining = timeBudgetMs - int(timer.elapsed());
+        if (remaining <= 0) {
+            const QString message = QStringLiteral("Formula time budget exhausted; kept native OCR for remaining crops.");
+            if (!warnings) return std::unexpected(OcrError{message});
+            warnings->append(message); break;
+        }
+        auto settings = options; settings.language = "auto"; settings.formula = true;
+        settings.timeoutMs = std::min(remaining, 30000);
+        if (options.progress) options.progress(QStringLiteral("Recognizing formulas"), i, boxes.size());
+        auto reading = provider->recognize(image.copy(box), settings, stop);
+        QString error, text;
+        if (!reading) {
+            if (reading.error().cancelled || stop.stop_requested()) return std::unexpected(reading.error());
+            error = reading.error().message;
+        } else {
+            QStringList parts;
+            for (const auto &word : reading->words) parts.append(word.text);
+            text = parts.join('\n').trimmed();
+            if (text.startsWith("```")) {
+                const auto newline = text.indexOf('\n');
+                if (newline >= 0 && text.endsWith("```")) text = text.mid(newline+1, text.size()-newline-4).trimmed();
+            }
+            if ((text.startsWith("\\[") && text.endsWith("\\]")) ||
+                (text.startsWith("\\(") && text.endsWith("\\)")) ||
+                (text.startsWith("$$") && text.endsWith("$$"))) text = text.mid(2, text.size()-4).trimmed();
+            else if (text.startsWith('$') && text.endsWith('$')) text = text.mid(1, text.size()-2).trimmed();
+            int braces = 0;
+            for (int k = 0; k < text.size(); ++k) {
+                if (text[k] == '\\') { ++k; continue; }
+                if (text[k] == '{') ++braces;
+                if (text[k] == '}' && --braces < 0) break;
+            }
+            if (text.isEmpty() || text.size() > 65536 || braces != 0)
+                error = QStringLiteral("Empty or unbalanced formula reading.");
+        }
+        if (!error.isEmpty()) {
+            if (!warnings) return std::unexpected(OcrError{error});
+            warnings->append(QStringLiteral("Equation at %1,%2: %3").arg(box.x()).arg(box.y()).arg(error));
+            continue;
+        }
+        core::OcrWord word;
+        word.page = page.number; word.block = page.words.size()+1; word.line = word.paragraph = 1;
+        word.bounds = box; word.layoutBlock = true; word.text = word.originalText = text;
+        word.readingEngine = provider->id(); word.confidence = -1;
+        page.words.append(std::move(word));
+    }
+    page.rebuildHierarchy();
+    for (auto &region : page.regions) region.type = "equation";
+    if (options.progress) options.progress(QStringLiteral("Recognizing formulas"), boxes.size(), boxes.size());
+    return page;
+}
 
 QString MathOcrEngine::pythonPath()
 {

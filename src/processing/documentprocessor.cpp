@@ -27,6 +27,7 @@
 #include "formulatext.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace yagf::processing {
 
@@ -188,8 +189,35 @@ OcrService DocumentProcessor::primaryOcrService() const
     OcrService service; service.provider=engine->id();
     if (service.provider.endsWith("-remote")) service.provider.chop(7);
     service.label=ocrProviderLabel(service.provider);
-    if (const auto *remote=dynamic_cast<const RemoteOcrEngine *>(engine.get())) {service.url=remote->serviceUrl(); service.token=remote->sessionToken();}
+    if (const auto *remote=dynamic_cast<const RemoteOcrEngine *>(engine.get())) {service.url=remote->serviceUrl(); service.token=remote->sessionToken(); service.model=remote->modelName();}
+    if (engine->capabilities().supportsFormulas) service.tasks={"ocr","formula"};
     return service;
+}
+OcrService DocumentProcessor::formulaOcrService() const
+{
+    return selectedFormulaService.provider.isEmpty() ? localFormulaService() : selectedFormulaService;
+}
+std::expected<void, QString> DocumentProcessor::setPageLayoutService(PageLayoutOptions options,bool enabled)
+{
+    if (isBusy()) return std::unexpected(QStringLiteral("Wait for recognition to finish before changing page layout settings."));
+    if (!enabled) {pageLayoutService.reset();return {};}
+    if (!validOcrServiceUrl(options.url) || !std::isfinite(options.threshold) || options.threshold<.1 || options.threshold>.95)
+        return std::unexpected(QStringLiteral("Enter a valid page layout service URL and minimum score."));
+    pageLayoutService=std::move(options);
+    return {};
+}
+std::expected<void, QString> DocumentProcessor::setFormulaOcrService(OcrService service)
+{
+    if (isBusy()) return std::unexpected(QStringLiteral("Wait for recognition to finish before changing the formula engine."));
+    if (!service.supportsFormulas()) return std::unexpected(QStringLiteral("This OCR service does not advertise formula recognition."));
+    if (service.provider=="rapid-latex-ocr") formulaRecognizer.reset();
+    else {
+        auto recognizer=makeOcrServiceEngine(service);
+        if (!recognizer) return std::unexpected(recognizer.error());
+        formulaRecognizer=std::move(*recognizer);
+    }
+    selectedFormulaService=std::move(service);
+    return {};
 }
 void DocumentProcessor::setComparisonEngines(std::vector<ComparisonEngine> engines)
 {
@@ -399,6 +427,9 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
     const bool wasBusy = isBusy();
     const bool localText = engine->id() == "tesseract";
     const bool rawOutput = localText && book && book->useRawOcrOutput;
+    const auto layoutService=pageLayoutService;
+    const bool automaticLayout=layoutService && localText && !rawOutput && !splitOnly && selected.isEmpty() && region.isEmpty();
+    const QString deferredCompanion=formulaRecognizer ? selectedFormulaService.key() : QString();
     QVector<core::ImageRegion> blocks = selected;
     if (blocks.isEmpty() && savedPage) {
         const bool newLanguage = localText && region.isEmpty() && !savedPage->language.isEmpty() &&
@@ -412,15 +443,19 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
     const bool manuallyTyped = std::ranges::any_of(blocks, [](const auto &block) {
         return !block.notText && !block.autoDetected && !block.content.isEmpty();
     });
-    const bool automatic = localText && !splitOnly && selected.isEmpty() && !manuallyTyped && !formulaEngine && !proseEngine;
-    const bool smart = splitOnly || (!rawOutput && (automatic ||
-        (manuallyTyped && engine->id() != "rapid-latex-ocr") || (localText && !selected.isEmpty())));
+    const bool automatic = localText && !splitOnly && selected.isEmpty() && !manuallyTyped && ((!formulaEngine && !proseEngine) || formulaRecognizer);
+    const bool typedFormulas = formulaRecognizer && std::ranges::any_of(blocks, [](const auto &block) {
+        return !block.notText && (block.content=="math" || block.content=="mixed");
+    });
+    const bool smart = splitOnly || (!rawOutput && (automatic || automaticLayout ||
+        (manuallyTyped && engine->id() != "rapid-latex-ocr") || (localText && !selected.isEmpty()) ||
+        (engine->id()!="rapid-latex-ocr" && typedFormulas)));
     job = splitOnly ? Job::SplitBlocks : (batch ? Job::BatchOcr : Job::Ocr);
     cancellationRequested = false;
     ocrStop = std::stop_source{};
     const std::stop_token token = ocrStop.get_token();
     if (!wasBusy) emit busyChanged(true);
-    ocrWatcher.setFuture(QtConcurrent::run([this, path, image, options, region, token, formulaRegions, pagedSource, jobDpi, savedImageSize, savedDpi, batch, blocks, smart, automatic, splitOnly, selected, rawOutput, symbolRules, unicodeFormulas] {
+    ocrWatcher.setFuture(QtConcurrent::run([this, path, image, options, region, token, formulaRegions, pagedSource, jobDpi, savedImageSize, savedDpi, batch, blocks, smart, automatic, localText, splitOnly, selected, rawOutput, symbolRules, unicodeFormulas, layoutService, automaticLayout, deferredCompanion] {
         OcrJobResult result;
         result.selected = selected;
         QImage input = image;
@@ -463,11 +498,21 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
             if (!area.isEmpty()) comparisonAreas.append(area);
         }
         std::vector<ComparisonEngine> none;
-        ParallelOcrRun companions(splitOnly ? none : comparisonEngines,comparisonImage,options,comparisonAreas,token);
+        // Formula requests take priority over a full-page comparison using the
+        // same server; a single inference slot must not starve the primary OCR.
+        ParallelOcrRun companions(splitOnly ? none : comparisonEngines,comparisonImage,options,comparisonAreas,token,deferredCompanion,false);
         if (smart) {
             if (options.progress) options.progress(QStringLiteral("Detecting text and formula areas"),0,0);
             auto local = blocks;
             for (auto &block : local) block.bounds.translate(-result.offset);
+            if (automaticLayout) {
+                if (options.progress) options.progress(QStringLiteral("Analyzing AI page layout"),0,0);
+                auto layout=detectPageAreas(input,*layoutService,token);
+                if (!layout) {
+                    if (layout.error().cancelled || token.stop_requested()) {result.outcome=std::unexpected(layout.error());return result;}
+                    result.warnings.append(QStringLiteral("AI page layout failed: %1 Used the existing blocks and local detection.").arg(layout.error().message));
+                } else local=mergePageAreas(local,layout->areas,true);
+            }
             std::optional<core::OcrPage> baseline;
             if (automatic) {
                 auto reading = engine->recognize(input, options, token);
@@ -479,7 +524,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
             }
             result.outcome = recognizeSmartBlocks(input, options, local, splitOnly, token,
                 selected.isEmpty(), baseline ? &*baseline : nullptr, &result.warnings,
-                engine->id() == "native-remote" ? engine.get() : nullptr);
+                !localText && engine->id()!="rapid-latex-ocr" ? engine.get() : nullptr, formulaRecognizer.get());
         } else if (rawOutput && !selected.isEmpty()) {
             core::OcrPage merged;
             merged.id = QStringLiteral("page-%1").arg(options.pageNumber);
@@ -512,6 +557,10 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
                 lastBlock = maximumBlock;
             }
             result.outcome = std::move(merged);
+        } else if (!rawOutput && engine->id()=="rapid-latex-ocr" && formulaRecognizer) {
+            result.outcome = recognizeSmartBlocks(input, options,
+                {{"math-only", input.rect(), {}, false, "math", false}}, false, token, false,
+                nullptr, &result.warnings, nullptr, formulaRecognizer.get());
         } else {
             result.outcome = engine->recognize(input, options, token);
         }
@@ -559,7 +608,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
                 if (token.stop_requested()) result.outcome = std::unexpected(OcrError{{}, true});
             }
             if (result.outcome && !rawOutput && !splitOnly && engine->capabilities().supportsWordBoxes) {
-                auto retries = collectSpellingFormulaReadings(page, input, token,options.progress);
+                auto retries = collectSpellingFormulaReadings(page, input, token,options.progress,formulaRecognizer.get());
                 if (!retries) result.outcome = std::unexpected(retries.error());
                 else result.warnings += *retries;
             }
@@ -583,6 +632,10 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
             if (result.outcome && !splitOnly && !comparisonEngines.empty()) {
                 if (options.progress) options.progress(QStringLiteral("Waiting for companion OCR results"),0,comparisonEngines.size());
                 page.ocrReadings=companions.finish();
+                if (!deferredCompanion.isEmpty() && !token.stop_requested()) {
+                    ParallelOcrRun deferred(comparisonEngines,comparisonImage,options,comparisonAreas,token,deferredCompanion);
+                    page.ocrReadings+=deferred.finish();
+                }
                 for (const auto &reading:page.ocrReadings) if (!reading.error.isEmpty())
                     result.warnings.append(reading.label+": "+reading.error+QStringLiteral(" Kept the primary reading."));
             }

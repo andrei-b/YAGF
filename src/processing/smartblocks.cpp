@@ -396,7 +396,7 @@ QVector<Row> rowsIn(const QImage &gray, QRect area, const QVector<OcrWord> &word
 
 std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image, const OcrOptions &options,
     const QVector<core::ImageRegion> &regions, bool splitOnly, std::stop_token stop, bool includeUnmarked,
-    const core::OcrPage *initialReading, QStringList *warnings, IOcrEngine *textProvider)
+    const core::OcrPage *initialReading, QStringList *warnings, IOcrEngine *textProvider, IOcrEngine *formulaProvider)
 {
     QImage gray(image.size(), QImage::Format_Grayscale8);
     gray.fill(Qt::white);
@@ -415,7 +415,7 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
     page.width = page.sourceWidth = gray.width();
     page.height = page.sourceHeight = gray.height();
     page.engineId = QStringLiteral("local-mixed");
-    page.language = TesseractEngine::modelLanguage(options.language);
+    page.language = textProvider ? options.language : TesseractEngine::modelLanguage(options.language);
     page.imageRegions = regions;
     QVector<Row> rows;
     std::map<QString, core::OcrPage> baselines;
@@ -430,7 +430,7 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
         QVector<OcrWord> local;
         QVector<int> heights;
         if (mode != "math") {
-            language = TesseractEngine::modelLanguage(language.isEmpty() ? page.language : language);
+            language = textProvider ? (language.isEmpty() ? page.language : language) : TesseractEngine::modelLanguage(language.isEmpty() ? page.language : language);
             if (!baselines.contains(language)) {
                 if (initialReading && inkBox(pixels, area).isEmpty()) return QVector<Row>{};
                 auto settings = options;
@@ -598,7 +598,11 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
         for (const auto &row : rows) for (const auto &proposal : row.words) {
             if (!proposal.layoutBlock || boxes.contains(proposal.bounds)) continue;
             const bool forced = std::ranges::any_of(regions, [&](const auto &r) {
-                return !r.autoDetected && r.content == "math" && r.bounds.contains(proposal.bounds.center());
+                // Applied model classifications keep autoDetected so layout can
+                // be refreshed. Honor their Math type even when text OCR reads
+                // formula symbols as Cyrillic prose.
+                return (!r.autoDetected || !r.detectedLabel.isEmpty()) && r.content == "math" &&
+                    r.bounds.contains(proposal.bounds.center());
             });
             if (!forced && ruledDiagram(gray, proposal.bounds)) continue;
             QVector<int> span;
@@ -620,9 +624,11 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
                     if (!fraction || proposal.bounds.width()*5 < proposal.bounds.height()*3) unsafe = true;
                 } else if (!tokens.contains(operand) && !fraction) unsafe = true;
             }
-            // A crop crossing unrelated words or columns cannot replace a
-            // contiguous source span safely. Keep that native reading intact.
-            if (!span.isEmpty() && span.last()-span.first()+1 != span.size()) unsafe = true;
+            // Heuristic crops cannot cross unrelated native reading spans.
+            // An explicit/model Formula block has stronger geometry: replace
+            // only its covered words even when Tesseract interleaves another
+            // row's tokens. Words outside the accepted block stay in place.
+            if (!forced && !span.isEmpty() && span.last()-span.first()+1 != span.size()) unsafe = true;
             if (unsafe) continue;
             boxes.append(proposal.bounds);
             inlineMath.append(row.content == "mixed");
@@ -632,9 +638,8 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
         QStringList failures;
         core::OcrPage formulas;
         if (!boxes.isEmpty()) {
-            MathOcrEngine math;
             const bool forced=std::ranges::any_of(regions,[](const auto &r){return !r.autoDetected && r.content=="math";});
-            auto result = math.recognizeBoxes(image, options, stop, boxes, &failures,forced ? 300000 : 30000);
+            auto result = recognizeFormulaBoxes(formulaProvider, image, options, stop, boxes, &failures,forced ? 300000 : 30000);
             if (!result) {
                 if (result.error().cancelled || stop.stop_requested()) return std::unexpected(result.error());
                 failures.append(result.error().message);
@@ -730,8 +735,7 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
         }
     }
     if (!boxes.isEmpty()) {
-        MathOcrEngine math;
-        auto formulas = math.recognizeBoxes(image, options, stop, boxes,nullptr,30000);
+        auto formulas = recognizeFormulaBoxes(formulaProvider, image, options, stop, boxes,nullptr,30000);
         if (formulas && formulas->words.size() != boxes.size())
             formulas = std::unexpected(OcrError{QStringLiteral("Local math OCR returned an incomplete set of crops.")});
         if (!formulas) {

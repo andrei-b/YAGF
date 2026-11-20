@@ -1,5 +1,6 @@
 #include "verificationqueue.h"
 #include "wordspelling.h"
+#include "formulatext.h"
 #include <QSet>
 #include <algorithm>
 
@@ -50,7 +51,8 @@ VerificationQueue buildVerificationQueue(const OcrDocument &document, const Spel
             ++result.totalWords;
             if (word.reviewed) { ++result.verifiedWords; continue; }
             unsigned reasons = 0;
-            if ((word.layoutBlock && word.readingEngine == "rapid-latex-ocr") ||
+            if ((word.layoutBlock && (word.readingEngine == "rapid-latex-ocr" || isFormulaWord(*page, word) ||
+                                     !mathTextSpans(formulaSourceText(word)).isEmpty())) ||
                 (word.alternative.formula && !word.alternative.text.isEmpty())) reasons |= MathReading;
             if (word.confidence >= 0 && word.confidence < threshold) reasons |= LowConfidence;
             if (!word.alternative.text.isEmpty() && word.alternative.text.simplified() != word.text.simplified()) reasons |= ConflictingReading;

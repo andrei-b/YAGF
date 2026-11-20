@@ -17,6 +17,7 @@ struct EngineCapabilities {
     bool supportsConfidence = false;
     bool supportsLayout = false;
     bool supportsTables = false;
+    bool supportsFormulas = false;
 };
 
 struct OcrOptions {
@@ -27,6 +28,8 @@ struct OcrOptions {
     bool collectBenchmarkMetrics = false;
     bool singleTextLine = false;
     OcrProgress progress;
+    bool formula = false;
+    int timeoutMs = 180000;
 };
 
 struct OcrError {

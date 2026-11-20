@@ -61,6 +61,7 @@ QString providerName(RemoteOcrEngine::Provider provider)
     case RemoteOcrEngine::Provider::Surya: return QStringLiteral("surya");
     case RemoteOcrEngine::Provider::Kraken: return QStringLiteral("kraken");
     case RemoteOcrEngine::Provider::Native: return QStringLiteral("native");
+    case RemoteOcrEngine::Provider::PaddleVl: return QStringLiteral("paddleocr-vl");
     }
     return {};
 }
@@ -165,8 +166,8 @@ std::expected<core::OcrPage, OcrError> parseResponse(
 }
 }
 
-RemoteOcrEngine::RemoteOcrEngine(QUrl server, QString bearerToken, Provider provider)
-    : server(std::move(server)), bearerToken(std::move(bearerToken)), provider(provider) {}
+RemoteOcrEngine::RemoteOcrEngine(QUrl server, QString bearerToken, Provider provider, QString model, bool formulas)
+    : server(std::move(server)), bearerToken(std::move(bearerToken)), provider(provider), model(std::move(model)), formulas(formulas) {}
 
 QString RemoteOcrEngine::id() const
 {
@@ -182,10 +183,12 @@ EngineCapabilities RemoteOcrEngine::capabilities() const
         return {.supportsRegions = true, .supportsWordBoxes = true,
                 .supportsConfidence = true, .supportsLayout = true};
     case Provider::Surya:
-        return {.supportsRegions = true, .supportsConfidence = true, .supportsLayout = true};
+        return {.supportsRegions = true, .supportsConfidence = true, .supportsLayout = true, .supportsFormulas = true};
+    case Provider::PaddleVl:
+        return {.supportsRegions = true, .supportsLayout = true, .supportsFormulas = true};
     case Provider::PaddleOcr:
     case Provider::RapidOcr:
-        return {.supportsRegions = true, .supportsConfidence = true};
+        return {.supportsRegions = true, .supportsConfidence = true, .supportsFormulas = formulas};
     }
     return {};
 }
@@ -216,13 +219,25 @@ std::expected<core::OcrPage, OcrError> RemoteOcrEngine::recognizeSection(
                         {"image_png", QString::fromLatin1(png.toBase64())},
                         {"language", options.language},
                         {"page_number", options.pageNumber}};
+    if (options.formula) payload.insert("task", "formula");
     QUrl url = server;
     QString basePath=server.path(); while (basePath.endsWith('/')) basePath.chop(1);
     url.setPath(basePath+QStringLiteral("/v1/recognize"));
+    if (provider == Provider::PaddleVl) {
+        if (model.isEmpty() || model.size() > 256)
+            return std::unexpected(OcrError{QStringLiteral("Choose a PaddleOCR-VL model using OCR discovery.")});
+        url.setPath(basePath + (basePath.endsWith("/v1") ? "/chat/completions" : "/v1/chat/completions"));
+        payload = {{"model", model}, {"temperature", 0}, {"stream", false}, {"max_tokens", 4096},
+            {"messages", QJsonArray{QJsonObject{{"role", "user"}, {"content", QJsonArray{
+                QJsonObject{{"type", "image_url"}, {"image_url", QJsonObject{{"url", "data:image/png;base64,"+QString::fromLatin1(png.toBase64())}}}},
+                QJsonObject{{"type", "text"}, {"text", options.formula ? "Formula Recognition:" : "OCR:"}}
+            }}}}}};
+    }
     url.setQuery(QString());
     url.setFragment(QString());
     QNetworkRequest request(url);
     request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
     if (!bearerToken.isEmpty())
         request.setRawHeader("Authorization", "Bearer " + bearerToken.toUtf8());
     QNetworkAccessManager manager;
@@ -246,7 +261,7 @@ std::expected<core::OcrPage, OcrError> RemoteOcrEngine::recognizeSection(
         if (reply->bytesAvailable() > maxResponseBytes) reply->abort();
     });
     poll.start();
-    deadline.start(180'000);
+    deadline.start(std::clamp(options.timeoutMs, 1, 180000));
     if (!reply->isFinished()) loop.exec();
     poll.stop();
     deadline.stop();
@@ -258,7 +273,7 @@ std::expected<core::OcrPage, OcrError> RemoteOcrEngine::recognizeSection(
         const QJsonObject error = QJsonDocument::fromJson(response).object();
         const QString message = error.value(QStringLiteral("error")).toString();
         if (status == 400 && error.value("code") == "transcription_truncated" &&
-            provider == Provider::PaddleOcr && depth < 2 && std::min(image.width(), image.height()) >= 96) {
+            provider == Provider::PaddleOcr && !options.formula && depth < 2 && std::min(image.width(), image.height()) >= 96) {
             const bool vertical = image.width() > image.height() * 1.2;
             const int cut = splitBoundary(image, vertical);
             const QVector<QRect> sections = vertical
@@ -293,6 +308,24 @@ std::expected<core::OcrPage, OcrError> RemoteOcrEngine::recognizeSection(
         }
         return std::unexpected(OcrError{message.isEmpty()
             ? QStringLiteral("Remote OCR failed: %1").arg(reply->errorString()) : message});
+    }
+    if (provider == Provider::PaddleVl) {
+        const auto choices = QJsonDocument::fromJson(response).object().value("choices").toArray();
+        const auto choice = choices.isEmpty() ? QJsonObject{} : choices.first().toObject();
+        const QString text = choice.value("message").toObject().value("content").toString().trimmed();
+        if (response.size() > maxResponseBytes || choice.value("finish_reason") != "stop" || text.isEmpty() || text.size() > 65536)
+            return std::unexpected(OcrError{QStringLiteral("The formula/OCR server returned an empty, truncated or invalid transcription.")});
+        core::OcrPage page;
+        page.id = QStringLiteral("page-%1").arg(options.pageNumber); page.number = options.pageNumber;
+        page.width = page.sourceWidth = image.width(); page.height = page.sourceHeight = image.height();
+        page.engineId = id(); page.language = "auto";
+        core::OcrWord word;
+        word.page = page.number; word.block = word.paragraph = word.line = 1;
+        word.bounds = image.rect(); word.text = word.originalText = text;
+        word.layoutBlock = true; word.confidence = -1; word.readingEngine = id();
+        page.words.append(std::move(word)); page.rebuildHierarchy();
+        if (options.formula) page.regions.first().type = "equation";
+        return page;
     }
     auto parsed=parseResponse(response, image.size(), options, provider);
     if(parsed && options.collectBenchmarkMetrics) {

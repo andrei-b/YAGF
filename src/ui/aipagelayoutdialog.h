@@ -21,9 +21,11 @@ namespace yagf::ui {
 class AiPageLayoutDialog : public QDialog {
     Q_OBJECT
 public:
-    AiPageLayoutDialog(QImage image, QVector<core::ImageRegion> existing, QWidget *parent=nullptr, int pageNumber=0);
+    AiPageLayoutDialog(QImage image, QVector<core::ImageRegion> existing, QWidget *parent=nullptr, int pageNumber=0,
+                       QString bearerToken={});
     ~AiPageLayoutDialog() override;
     QVector<core::ImageRegion> regions() const;
+    QString sessionToken() const;
 protected:
     void reject() override;
     void showEvent(QShowEvent *event) override;

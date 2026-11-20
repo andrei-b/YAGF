@@ -62,6 +62,7 @@
 #undef NDEBUG
 #endif
 #include <cassert>
+namespace processing = yagf::processing;
 
 int main(int argc, char **argv)
 {
@@ -72,6 +73,34 @@ int main(int argc, char **argv)
     QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, directory.path());
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, directory.path());
+    {
+        processing::OcrService text; text.provider="tesseract";text.label="Local Russian text";text.language="rus";
+        processing::OcrService formulas;formulas.provider="paddleocr-vl";formulas.label="Jetson formulas";
+        formulas.url=QUrl("http://127.0.0.1:9");formulas.model="PaddleOCR-VL-1.6";formulas.language="auto";
+        QSettings preferences("YAGF","YAGF Revival");
+        preferences.setValue("ocr/primaryService",QJsonDocument(processing::ocrServicesJson({text}).first().toObject()).toJson(QJsonDocument::Compact));
+        preferences.setValue("ocr/formulaService",QJsonDocument(processing::ocrServicesJson({formulas}).first().toObject()).toJson(QJsonDocument::Compact));
+        preferences.setValue("ocr/serviceLibrary",QJsonDocument(processing::ocrServicesJson({formulas})).toJson(QJsonDocument::Compact));
+        for (int reopen=0;reopen<2;++reopen) {
+            yagf::ui::MainWindow settingsWindow;
+            assert(settingsWindow.findChild<QLineEdit *>("languageField")->text()=="rus");
+            auto *settings=settingsWindow.findChild<QAction *>("ocrServicesAction");assert(settings);
+            QTimer::singleShot(0,&settingsWindow,[&,reopen] {
+                auto *dialog=qobject_cast<QDialog *>(QApplication::activeModalWidget());assert(dialog);
+                assert(dialog->windowTitle()=="Recognition settings");
+                auto *formula=dialog->findChild<QComboBox *>("formulaOcrEngine");assert(formula);
+                assert(formula->currentData().toString()==formulas.key());
+                assert(dialog->findChild<QComboBox *>("textOcrEngine")->currentData().toString()==text.key());
+                auto *layout=dialog->findChild<QLineEdit *>("pageLayoutServiceUrl");assert(layout);
+                if (reopen) {assert(layout->text()=="http://127.0.0.1:9871");assert(dialog->findChild<QCheckBox *>("automaticPageLayout")->isChecked());dialog->reject();}
+                else {layout->setText("http://127.0.0.1:9871");dialog->findChild<QCheckBox *>("automaticPageLayout")->setChecked(true);dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Save)->click();}
+            });
+            settings->trigger();
+            preferences.sync();assert(preferences.status()==QSettings::NoError);
+        }
+        for (const auto *key:{"ocr/primaryService","ocr/formulaService","ocr/serviceLibrary","ocr/discoveryHosts","layout/url","layout/threshold","layout/automatic"}) preferences.remove(key);
+        QSettings().remove("layout/url");QSettings().remove("layout/threshold");
+    }
     const QString sourcePath = directory.filePath(QStringLiteral("source.png"));
     QImage image(200, 100, QImage::Format_RGB32);
     image.fill(Qt::white);
@@ -1683,7 +1712,7 @@ int main(int argc, char **argv)
                 socket->write("HTTP/1.1 200 OK\r\nContent-Length: "+QByteArray::number(data.size())+"\r\nConnection: close\r\n\r\n"+data); socket->disconnectFromHost();
             });
         });
-        QSettings().setValue("layout/url",QString("http://127.0.0.1:%1").arg(server.serverPort()));
+        QSettings("YAGF","YAGF Revival").setValue("layout/url",QString("http://127.0.0.1:%1").arg(server.serverPort()));
         yagf::core::OcrDocument book; book.sourcePath=sourcePath; book.engine="tesseract"; book.language="eng";
         yagf::core::OcrPage page; page.width=page.sourceWidth=200; page.height=page.sourceHeight=100; page.language="eng";
         page.words.append({1,1,1,1,{10,20,60,15},"keep","keep",90,true});

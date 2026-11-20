@@ -351,6 +351,40 @@ private slots:
         }
     }
 
+    void appliedLayoutMathOverridesMisreadCyrillicText()
+    {
+        mathBackend();
+        const auto raw = reading({word(1, 1, {10, 10, 30, 12}, "ро"),
+            word(1, 1, {50, 10, 20, 12}, "за"), word(1, 1, {80, 10, 30, 12}, "3,14285")}, {120, 50});
+        const core::ImageRegion block{"ai-formula", {0, 0, 120, 50}, "rus", false,
+            "math", true, "display_formula", .95};
+        const auto result = processing::recognizeSmartBlocks(scan(raw), {.language = "rus"},
+            {block}, false, {}, false, &raw);
+        QVERIFY2(result, qPrintable(result ? QString() : result.error().message));
+        QCOMPARE(text(*result), QStringList{"x=1"});
+        QVERIFY(result->words[0].layoutBlock);
+        QStringList sources;
+        for (const auto &word : raw.words) sources += word.sourceWordIds;
+        QCOMPARE(result->words[0].sourceWordIds, sources);
+        QCOMPARE(result->imageRegions[0].id, block.id);
+        QVERIFY(result->imageRegions[0].autoDetected);
+        QCOMPARE(result->imageRegions[0].detectedLabel, block.detectedLabel);
+    }
+
+    void acceptedFormulaReplacesInterleavedTokensWithoutDroppingProse()
+    {
+        mathBackend();
+        const auto raw=reading({word(1,1,{10,10,55,12},"Before"),
+            word(2,1,{110,50,30,14},"ро"),word(3,1,{10,100,60,14},"Outside"),
+            word(2,1,{170,50,30,14},"ра"),word(4,1,{10,130,55,12},"After")},{240,160});
+        const core::ImageRegion block{"ai-row",{100,40,120,40},"rus",false,"math",true,"display_formula",.95};
+        const auto result=processing::recognizeSmartBlocks(scan(raw),{.language="rus"},{block},false,{},true,&raw);
+        QVERIFY2(result,qPrintable(result ? QString() : result.error().message));
+        QCOMPARE(text(*result),(QStringList{"Before","x=1","Outside","After"}));
+        QCOMPARE(result->words[1].sourceWordIds,raw.words[1].sourceWordIds+raw.words[3].sourceWordIds);
+        QCOMPARE(result->words[2].id,raw.words[2].id);
+    }
+
     void automaticMathOutlineCannotOverrideProseProtection()
     {
         mathBackend();

@@ -794,7 +794,7 @@ MainWindow::MainWindow()
     nativeTrainingAction = toolsMenu->addAction(aiPageAreasIcon(), tr("OCR training and adaptation…"), this, &MainWindow::trainNativeOcr);
     nativeTrainingAction->setObjectName("nativeTrainingAction");
     toolsMenu->addAction(tr("OCR engine…"), this, &MainWindow::configureOcrEngine);
-    ocrServicesAction=toolsMenu->addAction(tr("OCR services and parallel recognition…"),this,&MainWindow::configureOcrServices);
+    ocrServicesAction=toolsMenu->addAction(tr("Recognition settings…"),this,&MainWindow::configureOcrServices);
     ocrServicesAction->setObjectName("ocrServicesAction");
     ocrReadingsAction=toolsMenu->addAction(tr("Review OCR readings…"),this,&MainWindow::reviewOcrReadings);
     ocrReadingsAction->setObjectName("ocrReadingsAction");
@@ -1570,6 +1570,26 @@ MainWindow::MainWindow()
         redoAction->setEnabled(!processor.isBusy() && !exportBusy && undoStack.canRedo());
     });
     ocrServices=processing::readOcrServices(QJsonDocument::fromJson(QSettings("YAGF","YAGF Revival").value("ocr/serviceLibrary").toByteArray()).array());
+    const auto savedPrimary=QJsonDocument::fromJson(QSettings("YAGF","YAGF Revival").value("ocr/primaryService").toByteArray()).object();
+    const auto primaries=processing::readOcrServices(QJsonArray{savedPrimary});
+    if (!primaries.isEmpty() && primaries.first().supportsText()) {
+        const auto &service=primaries.first();
+        auto restored=processing::makeOcrServiceEngine(service);
+        if (restored) {
+            processor.setEngine(std::move(*restored));
+            const bool local=service.provider=="tesseract";
+            languageEdit->setText(service.language.isEmpty() ? (local ? QStringLiteral("eng") : QStringLiteral("auto")) : service.language);
+            languageEdit->setReadOnly(!local && service.provider!="paddleocr");
+            languagePickerAction->setEnabled(local);
+        }
+    }
+    const auto savedFormula=QJsonDocument::fromJson(QSettings("YAGF","YAGF Revival").value("ocr/formulaService").toByteArray()).object();
+    const auto formulas=processing::readOcrServices(QJsonArray{savedFormula});
+    if (!formulas.isEmpty()) {
+        const auto configured=processor.setFormulaOcrService(formulas.first());
+        if (!configured) qWarning("Could not restore formula OCR engine: %s",qPrintable(configured.error()));
+    }
+    updatePageLayoutService();
     updateComparisonEngines();
 }
 
@@ -2477,12 +2497,20 @@ void MainWindow::configureOcrEngine()
     updateComparisonEngines();
 }
 
+void MainWindow::updatePageLayoutService()
+{
+    QSettings settings("YAGF","YAGF Revival");
+    const processing::PageLayoutOptions options{QUrl(settings.value("layout/url","http://127.0.0.1:8771").toString()),layoutSessionToken,settings.value("layout/threshold",.5).toDouble()};
+    const auto result=processor.setPageLayoutService(options,settings.value("layout/automatic",false).toBool());
+    if (!result) qWarning("Could not configure AI page layout: %s",qPrintable(result.error()));
+}
+
 void MainWindow::updateComparisonEngines()
 {
     if (processor.isBusy()) return;
     const auto primary=processor.primaryOcrService().key();
     std::vector<processing::ComparisonEngine> engines;
-    for (const auto &service:ocrServices) if (service.enabled && service.key()!=primary && engines.size()<3) {
+    for (const auto &service:ocrServices) if (service.enabled && service.supportsText() && service.key()!=primary && engines.size()<3) {
         auto engine=processing::makeOcrServiceEngine(service);
         if (engine) engines.push_back({service,std::move(*engine)});
     }
@@ -2493,8 +2521,11 @@ void MainWindow::configureOcrServices()
 {
     if (processor.isBusy() || exportBusy || projectLoading) return;
     auto current=processor.primaryOcrService(); current.language=languageEdit->text();
-    OcrServicesDialog dialog(ocrServices,current,this);
+    OcrServicesDialog dialog(ocrServices,current,this,processor.formulaOcrService(),layoutSessionToken);
     if (dialog.exec()!=QDialog::Accepted) return;
+    const auto formulas=dialog.formulaService();
+    const auto configured=processor.setFormulaOcrService(formulas);
+    if (!configured) {showError(configured.error()); return;}
     if (const auto selected=dialog.primaryService()) {
         auto engine=processing::makeOcrServiceEngine(*selected);
         if (!engine) {showError(engine.error()); return;}
@@ -2514,9 +2545,18 @@ void MainWindow::configureOcrServices()
         languageEdit->setToolTip(local ? tr("Tesseract languages, for example rus+eng.") : tr("Language reported by the selected OCR service."));
         languagePickerAction->setEnabled(local);
     }
+    auto primary=dialog.primaryService().value_or(current);
+    if (primary.provider!="native" || !primary.url.path().startsWith("/models/"))
+        QSettings("YAGF","YAGF Revival").setValue("ocr/primaryService",QJsonDocument(processing::ocrServicesJson({primary}).first().toObject()).toJson(QJsonDocument::Compact));
+    QSettings("YAGF","YAGF Revival").setValue("layout/url",dialog.pageLayoutUrl());
+    QSettings("YAGF","YAGF Revival").setValue("layout/threshold",dialog.pageLayoutThreshold());
+    layoutSessionToken=dialog.pageLayoutToken();
+    QSettings("YAGF","YAGF Revival").setValue("layout/automatic",dialog.automaticPageLayout());
+    updatePageLayoutService();
     ocrServices=dialog.services();
     QSettings("YAGF","YAGF Revival").setValue("ocr/serviceLibrary",QJsonDocument(processing::ocrServicesJson(ocrServices)).toJson(QJsonDocument::Compact));
-    updateComparisonEngines(); updatePageControls(); status->setText(tr("OCR services updated. Recognize a page, then open Review OCR readings to compare the results."));
+    QSettings("YAGF","YAGF Revival").setValue("ocr/formulaService",QJsonDocument(processing::ocrServicesJson({formulas}).first().toObject()).toJson(QJsonDocument::Compact));
+    updateComparisonEngines(); updatePageControls(); status->setText(tr("Text and formula engines updated. Formula engine: %1.").arg(formulas.label));
 }
 
 void MainWindow::reviewOcrReadings()
@@ -3155,8 +3195,9 @@ void MainWindow::classifyPageAreas()
     }
     if (image.isNull()) { showError(tr("Could not read the page image for layout analysis.")); return; }
     const auto *old = document.page(currentPage);
-    AiPageLayoutDialog dialog(image, old ? old->imageRegions : QVector<ImageRegion>{}, this, currentPage);
-    if (dialog.exec() != QDialog::Accepted) return;
+    AiPageLayoutDialog dialog(image, old ? old->imageRegions : QVector<ImageRegion>{}, this, currentPage, layoutSessionToken);
+    const int outcome=dialog.exec(); layoutSessionToken=dialog.sessionToken();updatePageLayoutService();
+    if (outcome != QDialog::Accepted) return;
     OcrPage page = old ? *old : OcrPage{};
     if (!old) {
         page.number = currentPage;

@@ -39,10 +39,12 @@ class LocalOcrCatalog:
                         models=[m.get('id','') for m in health.get('data',[]) if isinstance(m,dict)]
                         model=next((m for m in models if isinstance(m,str) and 'paddleocr-vl' in m.lower()),'')
                         if not model or len(model)>256: return None
-                        return dict(port=port,provider='paddleocr',label=model,language='auto',kind='vl',model=model)
+                        return dict(port=port,provider='paddleocr',label=model,language='auto',kind='vl',model=model,tasks=['ocr','formula'])
                     provider=health.get('engine_id')
                     if health.get('protocol')!='yagf-ocr/1' or health.get('status')!='ready' or provider not in PROVIDERS: return None
-                    return dict(port=port,provider=provider,label=str(health.get('model') or provider)[:128],language=str(health.get('language') or 'auto')[:64],kind='ocr')
+                    tasks=health.get('tasks',['ocr','formula'] if provider=='surya' else ['ocr'])
+                    tasks=[task for task in tasks if task in ('ocr','formula')] if isinstance(tasks,list) else ['ocr']
+                    return dict(port=port,provider=provider,label=str(health.get('model') or provider)[:128],language=str(health.get('language') or 'auto')[:64],kind='ocr',tasks=tasks)
                 except (OSError,ValueError,TypeError): return None
             ports=self.ports+((self.vl_port,) if self.vl_port else ())
             with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
@@ -59,7 +61,7 @@ class LocalOcrCatalog:
             png=base64.b64decode(request.get('image_png',''),validate=True)
             if len(png)>32*1024*1024: raise ValueError('PNG image is too large')
             width,height=png_size(png)
-            try: lines=PaddleVlBackend(root+'/v1/chat/completions',entry['model']).recognize(png,width,height,'auto')
+            try: lines=PaddleVlBackend(root+'/v1/chat/completions',entry['model']).recognize(png,width,height,'auto',request.get('task','ocr'))
             except TranscriptionTruncated as error: raise CatalogError(400,dict(error=str(error),code='transcription_truncated')) from error
             return dict(protocol='yagf-ocr/1',engine_id='paddleocr',width=width,height=height,language='auto',lines=lines)
         payload=json.dumps(request,ensure_ascii=False).encode()

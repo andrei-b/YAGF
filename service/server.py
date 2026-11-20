@@ -286,8 +286,10 @@ class PaddleVlBackend:
         self.token = os.environ.get("YAGF_VL_TOKEN", "")
         self.lock = threading.Lock()
 
-    def recognize(self, png, width, height, language):
-        prompt = "OCR:" if language in ("auto", "") else f"OCR:\nDocument language: {language}."
+    def recognize(self, png, width, height, language, task="ocr"):
+        if task not in ("ocr", "formula"):
+            raise ValueError("Unsupported recognition task")
+        prompt = "Formula Recognition:" if task == "formula" else "OCR:" if language in ("auto", "") else f"OCR:\nDocument language: {language}."
         payload = {"model": self.model, "temperature": 0, "stream": False,
                    "max_tokens": 4096, "messages": [{"role": "user", "content": [
                        {"type": "image_url", "image_url": {"url":
@@ -490,7 +492,8 @@ def handler_for(backend, token=""):
             if self.path == "/v1/health":
                 self.send_json(200, {"protocol": PROTOCOL, "engine_id": backend.engine_id,
                                      "status": "ready", "language": backend.language, "requires_token": bool(token),
-                                     "model": provenance.get("model",backend.engine_id)})
+                                     "model": provenance.get("model",backend.engine_id),
+                                     "tasks": ["ocr", "formula"] if isinstance(backend, PaddleVlBackend) or backend.engine_id == "surya" else ["ocr"]})
             else:
                 self.send_json(404, {"error": "Unknown endpoint"})
 
@@ -526,10 +529,13 @@ def handler_for(backend, token=""):
                 language = request.get("language") or backend.language
                 if not isinstance(language, str) or len(language) > 64:
                     raise ValueError("Invalid language")
+                task = request.get("task", "ocr")
+                if task not in ("ocr", "formula") or (task == "formula" and not isinstance(backend, PaddleVlBackend) and backend.engine_id != "surya"):
+                    raise ValueError("This service does not support the requested recognition task")
                 queued = time.perf_counter()
                 with inference_lock:
                     started = time.perf_counter()
-                    items = backend.recognize(png, width, height, language)
+                    items = backend.recognize(png, width, height, language, task) if isinstance(backend, PaddleVlBackend) else backend.recognize(png, width, height, language)
                     details = dict(provenance, inference_ms=(time.perf_counter()-started)*1000,
                                    queue_ms=(started-queued)*1000)
                     if resource is not None:

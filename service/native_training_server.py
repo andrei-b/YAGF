@@ -104,7 +104,7 @@ class TrainingHost:
                 services.append(dict(path=state['model_url'],provider='native',label=state['label']+' · '+state['id'][:8],language='auto',ready=True))
                 if len(services)>=64: break
         for entry in self.catalog.discover():
-            services.append(dict(path='/services/'+str(entry['port']),provider=entry['provider'],label=entry['label'],language=entry['language'],ready=True))
+            services.append(dict(path='/services/'+str(entry['port']),provider=entry['provider'],label=entry['label'],language=entry['language'],ready=True,tasks=entry.get('tasks',['ocr'])))
         return dict(protocol='yagf-ocr/1',engine_id='native',status='ready',language='auto',services=services)
 
     def recognize_profile(self,profile_id,request):
@@ -277,7 +277,7 @@ def handler_for(host,token=''):
                     else:
                         entry=next((e for e in host.catalog.discover() if str(e['port'])==identity),None)
                         if not entry: raise ValueError('OCR listener is no longer available')
-                        self.send(200,dict(protocol='yagf-ocr/1',engine_id=entry['provider'],status='ready',language=entry['language'],model=entry['label']))
+                        self.send(200,dict(protocol='yagf-ocr/1',engine_id=entry['provider'],status='ready',language=entry['language'],model=entry['label'],tasks=entry.get('tasks',['ocr'])))
                 elif self.path.startswith('/v1/jobs/'): self.send(200,host.state(self.path.rsplit('/',1)[-1]))
                 elif self.path=='/v1/models':
                     models=[]

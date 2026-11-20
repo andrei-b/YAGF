@@ -48,7 +48,17 @@ class CatalogTests(unittest.TestCase):
             entries=catalog.discover()
             self.assertEqual({e['provider'] for e in entries},{'doctr','paddleocr'})
             self.assertEqual(next(e for e in entries if e['kind']=='vl')['port'],8082)
+            self.assertEqual(next(e for e in entries if e['kind']=='vl')['tasks'],['ocr','formula'])
         with self.assertRaises(ValueError): catalog.recognize('9999',{})
+
+    def test_formula_task_is_preserved_through_the_vl_gateway(self):
+        catalog=LocalOcrCatalog([],8082)
+        with patch('ocr_catalog.get_json',return_value=dict(data=[dict(id='PaddleOCR-VL-1.6')])):
+            catalog.discover()
+        with patch('server.PaddleVlBackend.recognize',return_value=[dict(text=r'\[x=1\]',confidence=None,box=[0,0,20,12],layout_block=True)]) as read:
+            result=catalog.recognize('8082',dict(image_png=base64.b64encode(png()).decode(),task='formula'))
+        self.assertEqual(read.call_args.args[-1],'formula')
+        self.assertEqual(result['lines'][0]['text'],r'\[x=1\]')
 
     def test_catalog_and_proxy_work_through_one_authenticated_forward(self):
         upstream=ThreadingHTTPServer(('127.0.0.1',0),Upstream)

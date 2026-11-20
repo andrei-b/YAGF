@@ -1,8 +1,8 @@
 # OCR discovery and parallel recognition
 
-**Tools → OCR services and parallel recognition…** checks `GET BASE/v1/health`
-on named hosts and saved service URLs. A hostname probes ports 8765–8769 and
-8772; a URL or `host:port` probes that exact endpoint. Up to 32 concurrent probes
+**Tools → Recognition settings…** checks `GET BASE/v1/health`
+on named hosts and saved service URLs. A hostname probes ports 8765–8769,
+8771 (page layout), 8772 and 8082; a URL or `host:port` probes that exact endpoint. Up to 32 endpoints
 have an approximately three-second deadline and cancellable, bounded JSON reads.
 There is no subnet scan, redirect following or document upload during discovery.
 
@@ -11,6 +11,33 @@ Health uses `yagf-ocr/1`, `engine_id`, `status: ready`, and optional `language`,
 docTR, RapidOCR, Surya, Kraken and native models. The updated `server.py` publishes
 this metadata. Older workers with only protocol/engine/status remain compatible.
 Tokens can be entered for a selected service and remain in memory.
+
+Discovery also checks `BASE/v1/models` for PaddleOCR-VL vision servers. It retains
+the returned model name and supports base URLs ending in `/v1` or a path prefix.
+Unrelated chat models are ignored. The service library stores the model name and
+advertised `tasks` (`ocr`, `formula`), while tokens remain session-only. Legacy
+workers without task metadata remain usable for text; Surya retains formula support.
+
+The same settings window also selects the **Text engine** and the **AI page layout service**. Layout workers publish `yagf-layout/1` health, appear as **Page layout**, and cannot be selected as primary or companion OCR engines. Select one and click **Use selected for layout**, or enter a URL directly. Layout URL and minimum score are shared with **AI page areas…**. Text and formula engine selections persist across restarts; bearer tokens remain in memory.
+
+The **Use AI page layout before Tesseract page and batch OCR** checkbox controls automatic layout analysis during recognition. It refreshes automatic blocks, preserves manual blocks, and falls back to existing/local detection with a warning on layout-service failure. Selected-block OCR uses its existing selection.
+
+The **Formula engine** selector is independent of the primary text engine and
+companion checkboxes. The default is local Rapid LaTeX OCR. Only formula-capable
+services appear as alternatives. Its selection is saved in `ocr/formulaService`.
+Direct PaddleOCR-VL uses `Formula Recognition:` on `/v1/chat/completions`; a
+compatible YAGF worker/gateway receives `task: "formula"` on `/v1/recognize`.
+Formula recognition uses complete crops with their original page offsets, retains
+prose and source IDs, and reports failures without replacing them with partial output.
+
+For a persistent direct vision-server connection, `yagf-formula-tunnel.service`
+forwards desktop loopback **8082** to the Jetson's loopback **8082**, independently
+of the layout and training tunnels. Its environment file is
+`~/.config/yagf/formula-host.env` (`YAGF_JETSON_HOST=user@host`), and its dedicated
+key is `~/.ssh/yagf_jetson_formulas`. Restrict that key on the Jetson to
+`restrict,port-forwarding,permitopen="127.0.0.1:8082",command="/bin/false"`.
+Use an SSH configuration or service override for an Amazon jump host/reverse SSH
+port. The unit forwards an already-running model; it does not load or replace one.
 
 ## Jetson catalog and gateway
 
@@ -101,3 +128,5 @@ YAGF_LIVE_OCR_IMAGE=/path/to/line.png \
 The current setup passed with English Tesseract, Kraken and PaddleOCR-VL
 companions. This verifies the integration and separate outputs; it does not imply
 each model transcribes every example correctly.
+
+Companion jobs sharing the selected formula service are deferred until primary formula recognition finishes. Other companions remain concurrent. The full-page companion checkbox is optional and independent of choosing the service for formulas.
