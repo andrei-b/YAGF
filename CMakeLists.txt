@@ -47,6 +47,7 @@ target_include_directories(yagf_symbols PUBLIC src/processing)
 
 # Providers and recognition analysis can be used without the async document controller.
 add_library(yagf_ocr STATIC
+    src/processing/nativetraining.cpp src/processing/nativetraining.h
     src/processing/aipagelayout.cpp src/processing/aipagelayout.h
     src/processing/pageorientation.cpp src/processing/pageorientation.h
     src/processing/fontestimator.cpp src/processing/fontestimator.h
@@ -70,6 +71,7 @@ target_include_directories(yagf_processing PUBLIC src/processing)
 
 # Export consumes snapshots and OCR support, never the DocumentProcessor or UI.
 add_library(yagf_export STATIC
+    src/export/ocrtrainingdataset.cpp src/export/ocrtrainingdataset.h
     src/export/latexdocumentexporter.cpp src/export/latexdocumentexporter.h
     src/export/exporttypes.h
     src/export/exportpage.cpp src/export/exportpage.h
@@ -103,6 +105,7 @@ qt_add_executable(yagf2
     src/ui/layoutdialog.cpp src/ui/layoutdialog.h resources/icons.qrc)
 target_sources(yagf2 PRIVATE src/ui/scannerdialog.cpp src/ui/scannerdialog.h)
 target_sources(yagf2 PRIVATE src/ui/documentcommands.cpp src/ui/documentcommands.h)
+target_sources(yagf2 PRIVATE src/ui/nativetrainingdialog.cpp src/ui/nativetrainingdialog.h)
 target_sources(yagf2 PRIVATE src/ui/aipagelayoutdialog.cpp src/ui/aipagelayoutdialog.h)
 target_sources(yagf2 PRIVATE src/ui/aireviewdialog.cpp src/ui/aireviewdialog.h)
 target_sources(yagf2 PRIVATE src/ui/spellhighlighter.cpp src/ui/spellhighlighter.h)
@@ -127,6 +130,11 @@ install(FILES COPYING
 include(CTest)
 if(BUILD_TESTING)
     find_package(Qt6 6.2 REQUIRED COMPONENTS Test)
+    qt_add_executable(nativetraining_tests tests/nativetraining_tests.cpp src/ui/nativetrainingdialog.cpp src/ui/nativetrainingdialog.h src/ui/documentcommands.cpp src/ui/documentcommands.h)
+    target_include_directories(nativetraining_tests PRIVATE src/ui)
+    target_link_libraries(nativetraining_tests PRIVATE yagf_processing yagf_export Qt6::Widgets Qt6::Concurrent Qt6::Network Qt6::Test)
+    add_test(NAME nativetraining_tests COMMAND nativetraining_tests)
+    set_tests_properties(nativetraining_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     qt_add_executable(aipagelayout_tests tests/aipagelayout_tests.cpp
         src/ui/aipagelayoutdialog.cpp src/ui/aipagelayoutdialog.h
         src/ui/documentcommands.cpp src/ui/documentcommands.h)
@@ -240,6 +248,7 @@ if(BUILD_TESTING)
         src/ui/layoutdialog.cpp src/ui/layoutdialog.h
         src/ui/scannerdialog.cpp src/ui/scannerdialog.h
         src/ui/documentcommands.cpp src/ui/documentcommands.h resources/icons.qrc)
+    target_sources(mainwindow_tests PRIVATE src/ui/nativetrainingdialog.cpp src/ui/nativetrainingdialog.h)
     target_sources(mainwindow_tests PRIVATE src/ui/aipagelayoutdialog.cpp src/ui/aipagelayoutdialog.h)
     target_sources(mainwindow_tests PRIVATE src/ui/aireviewdialog.cpp src/ui/aireviewdialog.h)
     target_sources(mainwindow_tests PRIVATE src/ui/spellhighlighter.cpp src/ui/spellhighlighter.h)

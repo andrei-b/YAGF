@@ -36,6 +36,7 @@ public:
     QString engineId() const;
     EngineCapabilities engineCapabilities() const;
     void setEngine(std::unique_ptr<IOcrEngine> replacement);
+    void setNativeEngine(std::unique_ptr<IOcrEngine> replacement);
     void setMathMode(bool enabled);
     void setSpecialists(std::unique_ptr<IOcrEngine> formulas, std::unique_ptr<IOcrEngine> prose);
     void resetSource();
@@ -97,6 +98,7 @@ private:
     QFutureWatcher<OcrJobResult> ocrWatcher;
     std::stop_source ocrStop;
     std::unique_ptr<IOcrEngine> engine;
+    std::unique_ptr<IOcrEngine> nativePreviousEngine;
     std::unique_ptr<IOcrEngine> textEngine; // Restored when leaving local math mode.
     std::unique_ptr<IOcrEngine> formulaEngine, proseEngine;
     QTemporaryDir temporaryDir;

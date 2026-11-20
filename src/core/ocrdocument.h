@@ -119,6 +119,7 @@ public:
     RenderSettings rendering;
     QVector<OcrPage> pages;
     QVector<SymbolRule> symbolRules;
+    QString nativeOcrUrl; // Validated model endpoint; authentication remains session-only.
 
     static bool fromJson(const QJsonObject &json, OcrDocument *result, QString *error);
     OcrPage *page(int number);

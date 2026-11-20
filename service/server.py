@@ -429,8 +429,10 @@ class KrakenBackend:
         self.lock = threading.Lock()
         self.segmenter = SegmentationTaskModel.load_model()
         self.recognizer = RecognitionTaskModel.load_model(model_path)
-        self.segment_config = SegmentationInferenceConfig(device=device)
-        self.recognize_config = RecognitionInferenceConfig(device=device, num_line_workers=0)
+        runtime = {'accelerator': 'cpu' if device == 'cpu' else 'cuda',
+                   'device': 1 if device == 'cpu' else [int(device.split(':')[-1])], 'num_threads': 2}
+        self.segment_config = SegmentationInferenceConfig(**runtime)
+        self.recognize_config = RecognitionInferenceConfig(**runtime, num_line_workers=0)
 
     def recognize(self, png, width, height, language):
         if language != "auto":

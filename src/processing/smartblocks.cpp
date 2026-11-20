@@ -396,7 +396,7 @@ QVector<Row> rowsIn(const QImage &gray, QRect area, const QVector<OcrWord> &word
 
 std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image, const OcrOptions &options,
     const QVector<core::ImageRegion> &regions, bool splitOnly, std::stop_token stop, bool includeUnmarked,
-    const core::OcrPage *initialReading, QStringList *warnings)
+    const core::OcrPage *initialReading, QStringList *warnings, IOcrEngine *textProvider)
 {
     QImage gray(image.size(), QImage::Format_Grayscale8);
     gray.fill(Qt::white);
@@ -421,6 +421,7 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
     std::map<QString, core::OcrPage> baselines;
     if (initialReading) baselines.emplace(page.language, *initialReading);
     TesseractEngine tesseract;
+    IOcrEngine &prose = textProvider ? *textProvider : tesseract;
     const auto analyze = [&](const QImage &pixels, QRect area, const QString &mode, QString language,
                              const QVector<core::ImageRegion> &excluded)
             -> std::expected<QVector<Row>, OcrError> {
@@ -434,7 +435,7 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
                 if (initialReading && inkBox(pixels, area).isEmpty()) return QVector<Row>{};
                 auto settings = options;
                 settings.language = language;
-                auto result = tesseract.recognize(image, settings, stop);
+                auto result = prose.recognize(image, settings, stop);
                 if (!result) return std::unexpected(result.error());
                 baselines.emplace(language, std::move(*result));
             }
@@ -486,7 +487,7 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
             auto settings = options;
             settings.language = language;
             settings.singleTextLine = true;
-            auto retry = tesseract.recognize(line, settings, stop);
+            auto retry = prose.recognize(line, settings, stop);
             if (!retry) return std::unexpected(retry.error());
             for (auto word : retry->words) {
                 word.bounds.translate(row.box.topLeft()-QPoint(pad, pad));

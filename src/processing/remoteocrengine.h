@@ -9,7 +9,7 @@ namespace yagf::processing {
 // A synchronous OCR provider. DocumentProcessor runs it on a worker thread.
 class RemoteOcrEngine final : public IOcrEngine {
 public:
-    enum class Provider : quint8 { PaddleOcr, DocTr, RapidOcr, Surya, Kraken };
+    enum class Provider : quint8 { PaddleOcr, DocTr, RapidOcr, Surya, Kraken, Native };
     RemoteOcrEngine(QUrl server, QString bearerToken = {}, Provider provider = Provider::PaddleOcr);
     [[nodiscard]] QString id() const override;
     [[nodiscard]] EngineCapabilities capabilities() const override;

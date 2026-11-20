@@ -15,6 +15,7 @@
 #include "layoutdialog.h"
 #include "aipagelayoutdialog.h"
 #include "aipageicons.h"
+#include "nativetrainingdialog.h"
 #include "scannerdialog.h"
 #include "documentcommands.h"
 #include "wordeditor.h"
@@ -338,7 +339,7 @@ PageView::PageView(QWidget *parent) : QGraphicsView(parent), rubberBand(new QRub
     });
     pinImageToolbar->setText(pinImageToolbar->isChecked() ? tr("Pinned") : tr("Pin"));
     imageToolbar->installEventFilter(this);
-    for (auto *child : imageToolbar->findChildren<QWidget *>()) child->installEventFilter(this);
+    for (auto *child : imageToolbar->findChildren<QWidget *>()) { child->setCursor(Qt::ArrowCursor); child->installEventFilter(this); }
     positionImageToolbar();
     imageToolbar->setVisible(pinImageToolbar->isChecked());
 }
@@ -374,11 +375,15 @@ bool PageView::viewportEvent(QEvent *event)
 
 bool PageView::eventFilter(QObject *watched, QEvent *event)
 {
-    if (event->type() == QEvent::Enter) hideImageToolbar->stop();
+    if (event->type() == QEvent::Enter || event->type() == QEvent::HoverEnter) {
+        hideImageToolbar->stop();
+        if (auto *widget = qobject_cast<QWidget *>(watched)) widget->setCursor(Qt::ArrowCursor);
+        viewport()->setCursor(Qt::ArrowCursor);
+    }
     else if (event->type() == QEvent::Leave) hideImageToolbar->start();
     else if (watched == imageToolbar && event->type() == QEvent::LayoutRequest) {
         positionImageToolbar();
-        for (auto *child : imageToolbar->findChildren<QWidget *>()) child->installEventFilter(this);
+        for (auto *child : imageToolbar->findChildren<QWidget *>()) { child->setCursor(Qt::ArrowCursor); child->installEventFilter(this); }
     }
     return QGraphicsView::eventFilter(watched, event);
 }
@@ -783,6 +788,8 @@ MainWindow::MainWindow()
         correctionMemory.reset();
         refreshReviewLabel();
     });
+    nativeTrainingAction = toolsMenu->addAction(aiPageAreasIcon(), tr("OCR training and adaptation…"), this, &MainWindow::trainNativeOcr);
+    nativeTrainingAction->setObjectName("nativeTrainingAction");
     toolsMenu->addAction(tr("OCR engine…"), this, &MainWindow::configureOcrEngine);
     toolsMenu->addAction(tr("Specialist OCR…"), this, &MainWindow::configureSpecialists);
     documentContextAction = toolsMenu->addAction(tr("Document context…"), this, &MainWindow::configureDocumentContext);
@@ -840,6 +847,7 @@ MainWindow::MainWindow()
         }
         languageEdit->setEnabled(!enabled);
         const bool tesseract = processor.engineId() == "tesseract";
+        languageEdit->setReadOnly(!tesseract && processor.engineId() != "paddleocr-remote");
         languagePickerAction->setEnabled(tesseract);
         languagePickerButton->setEnabled(!enabled);
         recognizeAction->setText(enabled ? tr("Recognize math") : tr("Recognize"));
@@ -1529,6 +1537,7 @@ MainWindow::MainWindow()
         else showError(result.error);
     });
     connect(&undoStack, &QUndoStack::indexChanged, this, [this] {
+        syncNativeOcrModel();
         { const QSignalBlocker blocker(unicodeFormulasAction); unicodeFormulasAction->setChecked(document.unicodeFormulas); }
         correctionMemory.reset();
         const OcrPage *page = document.page(currentPage);
@@ -1607,6 +1616,7 @@ void MainWindow::updatePageControls()
     pageSpin->setMaximum(pageCount);
     pageSpin->setValue(currentPage);
     const bool available = !processor.isBusy() && !exportBusy && !projectLoading;
+    if (nativeTrainingAction) nativeTrainingAction->setEnabled(available && !originalPath.isEmpty());
     if (renderingAction) renderingAction->setEnabled(available && processing::isPagedSource(originalPath));
     if (preserveFormattingAction) preserveFormattingAction->setEnabled(available);
     if (rawOcrOutputAction) rawOcrOutputAction->setEnabled(available);
@@ -1739,6 +1749,7 @@ void MainWindow::loadSource(const QString &path)
     originalPath = QFileInfo(path).absoluteFilePath();
     projectPath.clear();
     document = {};
+    syncNativeOcrModel();
     document.preserveFormatting = preserveFormattingAction->isChecked();
     document.useRawOcrOutput = rawOcrOutputAction->isChecked();
     document.mathOcr = mathMode->isChecked();
@@ -1843,6 +1854,7 @@ void MainWindow::loadProject(const QString &path)
     rememberProject();
     verificationTarget.reset();
     document = std::move(loaded);
+    syncNativeOcrModel();
     {
         const QSignalBlocker blocker(preserveFormattingAction);
         preserveFormattingAction->setChecked(document.preserveFormatting);
@@ -2319,6 +2331,7 @@ bool MainWindow::usePaddleVlService(const QUrl &url)
         url.host().isEmpty() || !url.userInfo().isEmpty() || url.hasQuery() || url.hasFragment() ||
         (!url.path().isEmpty() && url.path() != "/")) return false;
     mathMode->setChecked(false);
+    if (!document.nativeOcrUrl.isEmpty()) undoStack.push(new ChangeNativeOcrModelCommand(document, {}));
     processor.setEngine(std::make_unique<processing::RemoteOcrEngine>(url));
     languageEdit->setText(QStringLiteral("auto"));
     languageEdit->setReadOnly(false);
@@ -2345,9 +2358,10 @@ void MainWindow::configureOcrEngine()
     provider->addItem(tr("RapidOCR (remote service)"));
     provider->addItem(tr("Surya (remote service)"));
     provider->addItem(tr("Kraken (remote service)"));
+    provider->addItem(tr("Adapted native OCR model"));
     const QStringList engineIds{QStringLiteral("tesseract"), QStringLiteral("paddleocr-remote"),
                                 QStringLiteral("doctr-remote"), QStringLiteral("rapidocr-remote"),
-                                QStringLiteral("surya-remote"), QStringLiteral("kraken-remote")};
+                                QStringLiteral("surya-remote"), QStringLiteral("kraken-remote"), QStringLiteral("native-remote")};
     const auto currentEngine = static_cast<int>(engineIds.indexOf(processor.engineId()));
     provider->setCurrentIndex(qMax(0, currentEngine));
     const QString paddleUrl = settings.value(QStringLiteral("ocr/paddleUrl"),
@@ -2358,9 +2372,10 @@ void MainWindow::configureOcrEngine()
     const QStringList urls{QString(), paddleUrl, doctrUrl,
         settings.value(QStringLiteral("ocr/rapidocrUrl"), QStringLiteral("http://127.0.0.1:8767")).toString(),
         settings.value(QStringLiteral("ocr/suryaUrl"), QStringLiteral("http://127.0.0.1:8768")).toString(),
-        settings.value(QStringLiteral("ocr/krakenUrl"), QStringLiteral("http://127.0.0.1:8769")).toString()};
+        settings.value(QStringLiteral("ocr/krakenUrl"), QStringLiteral("http://127.0.0.1:8769")).toString(),
+        document.nativeOcrUrl.isEmpty() ? settings.value("ocr/nativeUrl").toString() : document.nativeOcrUrl};
     const QStringList settingKeys{QString(), QStringLiteral("ocr/paddleUrl"), QStringLiteral("ocr/doctrUrl"),
-        QStringLiteral("ocr/rapidocrUrl"), QStringLiteral("ocr/suryaUrl"), QStringLiteral("ocr/krakenUrl")};
+        QStringLiteral("ocr/rapidocrUrl"), QStringLiteral("ocr/suryaUrl"), QStringLiteral("ocr/krakenUrl"), QStringLiteral("ocr/nativeUrl")};
     auto *address = new QLineEdit(urls.at(provider->currentIndex()), &dialog);
     address->setPlaceholderText(tr("http://127.0.0.1:8765"));
     auto *token = new QLineEdit(&dialog);
@@ -2382,6 +2397,7 @@ void MainWindow::configureOcrEngine()
     token->setEnabled(provider->currentIndex() != 0);
     if (dialog.exec() != QDialog::Accepted) return;
     if (provider->currentIndex() == 0) {
+        if (!document.nativeOcrUrl.isEmpty()) undoStack.push(new ChangeNativeOcrModelCommand(document, {}));
         mathMode->setChecked(false);
         processor.setEngine(std::make_unique<processing::TesseractEngine>());
         languageEdit->setText(processing::TesseractEngine::modelLanguage(languageEdit->text()));
@@ -2389,7 +2405,8 @@ void MainWindow::configureOcrEngine()
         const QUrl url = QUrl::fromUserInput(address->text().trimmed());
         if ((url.scheme() != QStringLiteral("http") && url.scheme() != QStringLiteral("https")) ||
             url.host().isEmpty() || !url.userInfo().isEmpty() || url.hasQuery() || url.hasFragment() ||
-            (!url.path().isEmpty() && url.path() != QStringLiteral("/"))) {
+            (provider->currentIndex() == 6 ? !QRegularExpression("^/models/[a-f0-9-]{36}$").match(url.path()).hasMatch() :
+                (!url.path().isEmpty() && url.path() != QStringLiteral("/")))) {
             showError(tr("Enter the service base URL, for example http://127.0.0.1:8765"));
             return;
         }
@@ -2398,10 +2415,17 @@ void MainWindow::configureOcrEngine()
         const Provider backend = selected == 2 ? Provider::DocTr :
                                  selected == 3 ? Provider::RapidOcr :
                                  selected == 4 ? Provider::Surya :
-                                 selected == 5 ? Provider::Kraken : Provider::PaddleOcr;
+                                 selected == 5 ? Provider::Kraken : selected == 6 ? Provider::Native : Provider::PaddleOcr;
+        if (selected != 6 && !document.nativeOcrUrl.isEmpty())
+            undoStack.push(new ChangeNativeOcrModelCommand(document, {}));
         mathMode->setChecked(false);
-        processor.setEngine(std::make_unique<processing::RemoteOcrEngine>(url, token->text(),
-            backend));
+        if (selected == 6) {
+            nativeOcrTokens.insert(url.adjusted(QUrl::RemovePath).toString(), token->text());
+            undoStack.push(new ChangeNativeOcrModelCommand(document, url.toString()));
+            // Re-entering a session token for an already selected model also
+            // refreshes the provider, even though the persisted URL is unchanged.
+            processor.setNativeEngine(std::make_unique<processing::RemoteOcrEngine>(url, token->text(), backend));
+        } else processor.setEngine(std::make_unique<processing::RemoteOcrEngine>(url, token->text(), backend));
         settings.setValue(settingKeys.at(selected), url.toString());
         if (selected != 1) languageEdit->setText(QStringLiteral("auto"));
         else if (languageEdit->text() == QStringLiteral("eng") ||
@@ -3002,6 +3026,34 @@ void MainWindow::showPageActions(int number, const QPoint &globalPosition)
 QString MainWindow::blockLanguage(const ImageRegion &region) const
 {
     return region.language.isEmpty() ? languageEdit->text().trimmed() : region.language;
+}
+
+void MainWindow::trainNativeOcr()
+{
+    if (processor.isBusy() || exportBusy || projectLoading || originalPath.isEmpty() || !maybeApplyEditor()) return;
+    NativeTrainingDialog dialog(document, currentPage, this);
+    if (dialog.exec() != QDialog::Accepted || dialog.selectedModelUrl().isEmpty()) return;
+    mathMode->setChecked(false);
+    nativeOcrTokens.insert(dialog.selectedModelUrl().adjusted(QUrl::RemovePath).toString(), dialog.sessionToken());
+    undoStack.push(new ChangeNativeOcrModelCommand(document, dialog.selectedModelUrl().toString()));
+    status->setText(tr("Validated native OCR model selected. Recognize a page to use it. Undo restores the previous model."));
+}
+
+void MainWindow::syncNativeOcrModel()
+{
+    if (appliedNativeOcrUrl == document.nativeOcrUrl || processor.isBusy()) return;
+    appliedNativeOcrUrl = document.nativeOcrUrl;
+    if (appliedNativeOcrUrl.isEmpty()) {
+        processor.setNativeEngine({});
+        const auto engine = processor.engineId();
+        languageEdit->setText(engine == "tesseract" ? processing::TesseractEngine::modelLanguage(document.language)
+            : engine == "paddleocr-remote" ? QStringLiteral("en") : QStringLiteral("auto"));
+        languageEdit->setReadOnly(engine != "tesseract" && engine != "paddleocr-remote");
+    } else {
+        processor.setNativeEngine(std::make_unique<processing::RemoteOcrEngine>(QUrl(appliedNativeOcrUrl), nativeOcrTokens.value(QUrl(appliedNativeOcrUrl).adjusted(QUrl::RemovePath).toString()),
+            processing::RemoteOcrEngine::Provider::Native));
+        languageEdit->setText("auto"); languageEdit->setReadOnly(true);
+    }
 }
 
 void MainWindow::classifyPageAreas()

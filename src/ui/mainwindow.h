@@ -144,6 +144,11 @@ private:
     void updatePageControls();
     void runOcr();
     void classifyPageAreas();
+    void trainNativeOcr();
+    void syncNativeOcrModel();
+    QString appliedNativeOcrUrl;
+    QHash<QString,QString> nativeOcrTokens;
+    QAction *nativeTrainingAction = nullptr;
     QAction *aiPageAreasAction = nullptr;
     void configureOcrEngine();
     void configureRendering();

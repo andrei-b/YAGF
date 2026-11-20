@@ -1,0 +1,40 @@
+{
+  "storage": "/mnt/toshiba/yagf-native/jobs",
+  "profiles": [
+    {
+      "id": "tesseract-rus",
+      "engine": "tesseract",
+      "label": "Tesseract Russian",
+      "base_model": "/mnt/toshiba/yagf-native/models/tessdata_best/rus.traineddata",
+      "langdata": "/mnt/toshiba/yagf-native/langdata",
+      "language": "rus"
+    },
+    {
+      "id": "tesseract-eng",
+      "engine": "tesseract",
+      "label": "Tesseract English",
+      "base_model": "/mnt/toshiba/yagf-native/models/tessdata_best/eng.traineddata",
+      "langdata": "/mnt/toshiba/yagf-native/langdata",
+      "language": "eng"
+    },
+    {
+      "id": "kraken-print",
+      "engine": "kraken",
+      "label": "Kraken historical print",
+      "base_model": "/mnt/toshiba/kraken/7.0.2/McCATMuS_nfd_nofix_V1.mlmodel",
+      "python": "/mnt/toshiba/yagf-native/venv/bin/python",
+      "ketos": "/mnt/toshiba/yagf-native/venv/bin/ketos"
+    },
+    {
+      "id": "paddle-custom",
+      "engine": "paddleocr",
+      "label": "PaddleOCR (configure native training first)",
+      "base_model": "",
+      "base_inference_model": "",
+      "python": "",
+      "repository": "",
+      "config": "",
+      "dictionary": ""
+    }
+  ]
+}

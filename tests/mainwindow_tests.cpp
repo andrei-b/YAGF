@@ -355,7 +355,7 @@ int main(int argc, char **argv)
         auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
         assert(dialog);
         auto *choice = dialog->findChild<QComboBox *>();
-        assert(choice && choice->count() == 6);
+        assert(choice && choice->count() == 7);
         choice->setCurrentIndex(2);
         auto *address = dialog->findChild<QLineEdit *>();
         assert(address);
@@ -444,6 +444,16 @@ int main(int argc, char **argv)
     assert(imageTools && pinTools && rotateRight && rotateLeft && blockRecognize);
     assert(correctSkew && correctSkew->isVisible() && correctSkew->isEnabled());
     assert(imageTools->actions().first() == pinTools);
+    // Moving from block resize/drawing mode to overlay controls uses the standard arrow.
+    pinTools->setChecked(true);
+    pageView->viewport()->setCursor(Qt::SizeHorCursor);
+    auto *splitControl=qobject_cast<QToolButton *>(imageTools->widgetForAction(pageView->findChild<QAction *>("imageSmartSplitAction")));
+    assert(splitControl);
+    QTest::mouseMove(splitControl,splitControl->rect().center());
+    QApplication::processEvents();
+    assert(splitControl->cursor().shape()==Qt::ArrowCursor);
+    assert(pageView->viewport()->cursor().shape()==Qt::ArrowCursor);
+
     if (qEnvironmentVariableIsSet("YAGF_CAPTURE_IMAGE_TOOLBAR")) {
         pinTools->setChecked(true);
         QTest::mouseMove(pageView->viewport(), QPoint(5, pageView->viewport()->height()-10));

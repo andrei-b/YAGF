@@ -8,6 +8,16 @@
 
 namespace yagf::ui {
 
+class ChangeNativeOcrModelCommand final : public QUndoCommand {
+public:
+    ChangeNativeOcrModelCommand(core::OcrDocument &document, QString url);
+    void redo() override;
+    void undo() override;
+private:
+    core::OcrDocument &document;
+    QString before, after;
+};
+
 class ChangeFormulaOutputCommand final : public QUndoCommand {
 public:
     ChangeFormulaOutputCommand(core::OcrDocument &document, bool unicode);

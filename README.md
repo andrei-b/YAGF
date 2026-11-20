@@ -206,6 +206,16 @@ Saved, enabled models augment future OCR automatically. The augmentation is a sm
 
 The optional [Jetson worker and SSH tunnel](service/SYMBOL_TRAINING.md) use Python's standard library. Remote training sends reviewed 16 × 16 masks and labels; the resulting portable model returns to YAGF for local use. Full page images and authentication passwords are not needed by this training service.
 
+### Native OCR adaptation
+**Tools → OCR training and adaptation…** provides one workflow for reviewed line
+images, corrected transcriptions, training/validation partitions and engine-native
+model versions. Choose book-specific or reusable models, compare held-out CER,
+and explicitly enable a validated candidate; selection is undoable. Tesseract and
+Kraken native training run on the Jetson using Toshiba storage. PaddleOCR has an
+adapter/export workflow but requires a compatible native training environment and
+checkpoint before its profile becomes ready. Existing symbol rules continue to
+work alongside native models. See [setup, limits and usage](service/NATIVE_TRAINING.md).
+
 ## Audit and direction
 
 The build on the `legacy` branch requires Qt 4 and Aspell. The old UI is oriented around image regions and free text rather than persistent word geometry. Its sources are GPL-3.0-or-later (see `COPYING`). Reusing selected image tools may be useful later, but directly porting the full UI would delay the proposal's defining source-linked correction workflow. The new code therefore starts as an independent Qt 6 frontend in `src/`.

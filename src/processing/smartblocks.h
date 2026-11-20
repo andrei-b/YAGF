@@ -9,6 +9,6 @@ namespace yagf::processing {
 std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(
     const QImage &image, const OcrOptions &options, const QVector<core::ImageRegion> &regions,
     bool splitOnly, std::stop_token stop, bool includeUnmarked = true,
-    const core::OcrPage *initialReading = nullptr, QStringList *warnings = nullptr);
+    const core::OcrPage *initialReading = nullptr, QStringList *warnings = nullptr, IOcrEngine *textProvider = nullptr);
 
 }

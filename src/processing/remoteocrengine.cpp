@@ -60,6 +60,7 @@ QString providerName(RemoteOcrEngine::Provider provider)
     case RemoteOcrEngine::Provider::RapidOcr: return QStringLiteral("rapidocr");
     case RemoteOcrEngine::Provider::Surya: return QStringLiteral("surya");
     case RemoteOcrEngine::Provider::Kraken: return QStringLiteral("kraken");
+    case RemoteOcrEngine::Provider::Native: return QStringLiteral("native");
     }
     return {};
 }
@@ -76,7 +77,7 @@ std::expected<core::OcrPage, OcrError> parseResponse(
         return std::unexpected(OcrError{QStringLiteral("The OCR server returned invalid JSON.")});
     const QJsonObject root = json.object();
     const bool orderedWords = provider == RemoteOcrEngine::Provider::DocTr ||
-                              provider == RemoteOcrEngine::Provider::Kraken;
+                              provider == RemoteOcrEngine::Provider::Kraken || provider == RemoteOcrEngine::Provider::Native;
     const bool structured = orderedWords || provider == RemoteOcrEngine::Provider::Surya;
     const QString itemKey = orderedWords ? QStringLiteral("words") : QStringLiteral("lines");
     if (root.value(QStringLiteral("protocol")).toString() != QLatin1String(protocol) ||
@@ -136,7 +137,8 @@ std::expected<core::OcrPage, OcrError> parseResponse(
             return std::unexpected(OcrError{QStringLiteral("The OCR server returned invalid reading order.")});
         previousBlock = word.block;
         previousLine = word.line;
-        word.layoutBlock = provider == RemoteOcrEngine::Provider::Surya || paddleBlock;
+        word.layoutBlock = provider == RemoteOcrEngine::Provider::Surya || paddleBlock ||
+                           (provider == RemoteOcrEngine::Provider::Native && line.value("layout_block").toBool());
         word.bounds = bounds;
         word.originalText = word.text = text;
         word.confidence = unknownScore ? -1 : score.toDouble() * 100.0;
@@ -176,6 +178,7 @@ EngineCapabilities RemoteOcrEngine::capabilities() const
     switch (provider) {
     case Provider::DocTr:
     case Provider::Kraken:
+    case Provider::Native:
         return {.supportsRegions = true, .supportsWordBoxes = true,
                 .supportsConfidence = true, .supportsLayout = true};
     case Provider::Surya:
@@ -214,7 +217,7 @@ std::expected<core::OcrPage, OcrError> RemoteOcrEngine::recognizeSection(
                         {"language", options.language},
                         {"page_number", options.pageNumber}};
     QUrl url = server;
-    url.setPath(QStringLiteral("/v1/recognize"));
+    url.setPath(provider == Provider::Native ? server.path()+QStringLiteral("/v1/recognize") : QStringLiteral("/v1/recognize"));
     url.setQuery(QString());
     url.setFragment(QString());
     QNetworkRequest request(url);

@@ -2,6 +2,11 @@
 #include "formulatext.h"
 
 namespace yagf::ui {
+
+ChangeNativeOcrModelCommand::ChangeNativeOcrModelCommand(core::OcrDocument &document, QString url)
+    : QUndoCommand(QStringLiteral("Use native OCR model")),document(document),before(document.nativeOcrUrl),after(std::move(url)) {}
+void ChangeNativeOcrModelCommand::redo() {document.nativeOcrUrl=after;}
+void ChangeNativeOcrModelCommand::undo() {document.nativeOcrUrl=before;}
 ChangeFormulaOutputCommand::ChangeFormulaOutputCommand(core::OcrDocument &document,bool unicode)
     : QUndoCommand(QStringLiteral("Change formula output")),document(document),beforeMode(document.unicodeFormulas),afterMode(unicode),before(document.pages),after(document.pages)
 { for (auto &page:after) core::setFormulaOutput(page,unicode); }

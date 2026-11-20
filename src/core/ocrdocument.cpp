@@ -3,6 +3,8 @@
 #include <QJsonArray>
 #include <QHash>
 #include <QSet>
+#include <QUrl>
+#include <QRegularExpression>
 #include <QStringList>
 
 #include <algorithm>
@@ -482,6 +484,7 @@ QJsonObject OcrDocument::toJson(bool includeRestoredPixels) const
             {"rendering", QJsonObject{{"dpi", rendering.dpi}, {"adaptive", rendering.adaptive}}},
             {"language", language}, {"total_pages", totalPages}, {"pages", pageItems},
             {"symbol_rules", symbolRulesJson(symbolRules)},
+            {"native_ocr_url", nativeOcrUrl},
             {"context", QJsonObject{{"description", context.description},
                                     {"infer_from_recognized_text", context.inferFromRecognizedText}}}};
 }
@@ -497,6 +500,15 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
         !json.value(QStringLiteral("language")).isString())
         return fail(QStringLiteral("Invalid OCR document fields."));
     OcrDocument parsed;
+    if (json.contains("native_ocr_url")) {
+        if (!json["native_ocr_url"].isString()) return fail(QStringLiteral("Invalid native OCR model URL."));
+        parsed.nativeOcrUrl=json["native_ocr_url"].toString();
+        const QUrl url(parsed.nativeOcrUrl);
+        if (!parsed.nativeOcrUrl.isEmpty() && (parsed.nativeOcrUrl.size()>2048 || !url.isValid() ||
+            (url.scheme()!="http" && url.scheme()!="https") || url.host().isEmpty() || !url.userInfo().isEmpty() || url.hasQuery() || url.hasFragment() ||
+            !QRegularExpression("^/models/[a-f0-9-]{36}$").match(url.path()).hasMatch()))
+            return fail(QStringLiteral("Invalid native OCR model URL."));
+    }
     if (json.contains("symbol_rules")) {
         auto rules = readSymbolRules(json["symbol_rules"]);
         if (!rules) return fail(rules.error());

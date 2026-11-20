@@ -1,0 +1,7 @@
+# Tested on the Jetson, Python 3.12, isolated CPU training environment.
+kraken==7.0.2
+torch==2.10.0
+torchvision==0.25.0
+numpy==2.2.6
+Pillow==13.0.0
+lightning==2.6.1

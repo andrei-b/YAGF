@@ -189,3 +189,10 @@ distinct alternative types).
 Requests are limited to 32 MiB PNGs and 80 million pixels. The client validates
 geometry, limits responses, supports cancellation, and never applies a partial
 or failed analysis. Model scores are not guarantees; review is required.
+
+## Native model training and adaptation
+
+See [NATIVE_TRAINING.md](NATIVE_TRAINING.md) for the shared Tesseract/Kraken/PaddleOCR
+review, training, held-out validation and explicit model activation workflow. The
+dedicated worker runs on port 8772 and stores model versions separately from these
+stock inference services.

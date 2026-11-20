@@ -1,0 +1,18 @@
+[Unit]
+Description=YAGF engine-native OCR training and inference
+
+[Service]
+EnvironmentFile=%h/.config/yagf/native-training.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=OMP_NUM_THREADS=2
+Environment=OPENBLAS_NUM_THREADS=2
+ExecStart=/usr/bin/env ${YAGF_NATIVE_PYTHON} %h/.local/lib/yagf/native_training_server.py --config ${YAGF_NATIVE_CONFIG} --host 127.0.0.1 --port 8772
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+MemoryMax=6G
+TasksMax=128
+
+[Install]
+WantedBy=default.target

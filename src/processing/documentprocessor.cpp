@@ -191,7 +191,18 @@ void DocumentProcessor::setEngine(std::unique_ptr<IOcrEngine> replacement)
 {
     if (isBusy() || !replacement) return;
     textEngine.reset();
+    nativePreviousEngine.reset();
     engine = std::move(replacement);
+}
+
+void DocumentProcessor::setNativeEngine(std::unique_ptr<IOcrEngine> replacement)
+{
+    if (isBusy()) return;
+    auto &target = textEngine ? textEngine : engine;
+    if (replacement) {
+        if (!nativePreviousEngine) nativePreviousEngine = std::move(target);
+        target = std::move(replacement);
+    } else if (nativePreviousEngine) target = std::move(nativePreviousEngine);
 }
 
 void DocumentProcessor::setMathMode(bool enabled)
@@ -431,7 +442,8 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
                 baseline = std::move(*reading);
             }
             result.outcome = recognizeSmartBlocks(input, options, local, splitOnly, token,
-                selected.isEmpty(), baseline ? &*baseline : nullptr, &result.warnings);
+                selected.isEmpty(), baseline ? &*baseline : nullptr, &result.warnings,
+                engine->id() == "native-remote" ? engine.get() : nullptr);
         } else if (rawOutput && !selected.isEmpty()) {
             core::OcrPage merged;
             merged.id = QStringLiteral("page-%1").arg(options.pageNumber);
