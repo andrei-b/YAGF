@@ -10,7 +10,11 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QSettings>
-#include <QTableWidget>
+#include <QListWidget>
+#include <QCheckBox>
+#include <QGraphicsView>
+#include <QGraphicsPixmapItem>
+#include <QToolButton>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTemporaryDir>
@@ -29,6 +33,7 @@ public:
     std::function<void(QJsonObject &)> change;
     QByteArray headers;
     bool hold=false;
+    int requests=0;
     Server() {
         if (!listen(QHostAddress::LocalHost)) qFatal("Could not listen");
         connect(this,&QTcpServer::newConnection,this,[this]{
@@ -40,7 +45,7 @@ public:
                 int size=0;
                 for (const auto &line:bytes.left(split).split('\n')) if (line.toLower().startsWith("content-length:")) size=line.mid(15).trimmed().toInt();
                 if (bytes.size()<split+4+size) return;
-                socket->setProperty("sent",true); headers=bytes.left(split);
+                socket->setProperty("sent",true); headers=bytes.left(split); ++requests;
                 auto request=QJsonDocument::fromJson(bytes.mid(split+4,size)).object();
                 QImage image; image.loadFromData(QByteArray::fromBase64(request["image_png"].toString().toLatin1()),"PNG");
                 if (hold) return;
@@ -84,6 +89,12 @@ private slots:
             };
             QVERIFY(!processing::detectPageAreas(sample(),options));
         }
+        for (const auto &bad:QJsonArray{QJsonObject{{"label","image"},{"type","picture"},{"score",.95}},
+                                       QJsonObject{{"label","text"},{"type","text"},{"score",.8}},
+                                       QJsonObject{{"label","image"},{"type","picture"},{"score","0.8"}}}) {
+            server.change=[bad](QJsonObject &root) { auto areas=root["areas"].toArray(); auto a=areas[0].toObject(); a["alternatives"]=QJsonArray{bad}; areas[0]=a; root["areas"]=areas; };
+            QVERIFY(!processing::detectPageAreas(sample(),options));
+        }
         server.change={}; server.hold=true; std::stop_source stop;
         QTimer::singleShot(50,this,[&]{stop.request_stop();});
         auto cancelled=processing::detectPageAreas(sample(),options,stop.get_token()); QVERIFY(!cancelled && cancelled.error().cancelled);
@@ -108,21 +119,37 @@ private slots:
     }
     void reviewBeforeApply() {
         Server server;
-        server.areas={area("manual-overlap","picture",QRect(0,0,70,70),.99,"image"),area("text","text",QRect(80,0,100,100)),
+        auto text=area("text","text",QRect(80,0,100,100));
+        text["alternatives"]=QJsonArray{QJsonObject{{"label","image"},{"type","picture"},{"score",.8}}};
+        server.areas={area("manual-overlap","picture",QRect(0,0,70,70),.99,"image"),text,
                       area("overlap","picture",QRect(90,20,50,50),.7,"image"),area("chart","picture",QRect(0,130,100,40),.8,"chart")};
         QSettings().setValue("layout/url",server.url().toString());
         core::ImageRegion manual{"manual",QRect(0,0,20,20),"rus",false,"text",false};
         core::ImageRegion automatic{"old",QRect(0,120,100,40),{},false,"text",true};
-        ui::AiPageLayoutDialog dialog(sample(),{manual,automatic}); dialog.show();
-        auto *analyze=dialog.findChild<QPushButton *>("analyzePageAreas"); auto *apply=dialog.findChild<QPushButton *>("applyPageAreas");
-        auto *table=dialog.findChild<QTableWidget *>("layoutAreas"); QVERIFY(analyze && apply && table); QVERIFY(!apply->isEnabled());
-        analyze->click(); QTRY_VERIFY_WITH_TIMEOUT(apply->isEnabled(),3000); QCOMPARE(table->rowCount(),4);
-        QVERIFY(!(table->item(0,0)->flags() & Qt::ItemIsEnabled)); QCOMPARE(table->item(1,0)->checkState(),Qt::Checked); QCOMPARE(table->item(2,0)->checkState(),Qt::Unchecked);
-        table->item(2,0)->setCheckState(Qt::Checked); QCOMPARE(table->item(1,0)->checkState(),Qt::Unchecked);
-        table->item(1,0)->setCheckState(Qt::Checked);
-        auto *type=qobject_cast<QComboBox *>(table->cellWidget(1,1)); QVERIFY(type); type->setCurrentIndex(type->findData("picture"));
+        ui::AiPageLayoutDialog dialog(sample(),{manual,automatic},nullptr,38); dialog.show();
+        auto *apply=dialog.findChild<QPushButton *>("applyPageAreas"); auto *list=dialog.findChild<QListWidget *>("layoutAreas");
+        auto *preview=dialog.findChild<QGraphicsView *>("layoutPreview");
+        QVERIFY(apply && list && preview); QVERIFY(!apply->isEnabled()); QCOMPARE(list->count(),2);
+        QCOMPARE(preview->sceneRect(),QRectF(sample().rect()));
+        bool hasPage=false; for (auto *item:preview->scene()->items()) if (auto *pixmap=qgraphicsitem_cast<QGraphicsPixmapItem *>(item)) hasPage=!pixmap->pixmap().isNull(); QVERIFY(hasPage);
+        // No Analyze click: opening the window starts exactly one request.
+        QTRY_VERIFY_WITH_TIMEOUT(apply->isEnabled(),3000); QCOMPARE(server.requests,1); QCOMPARE(list->count(),5);
+        auto *use0=dialog.findChild<QCheckBox *>("layoutUseArea0");
+        auto *use1=dialog.findChild<QCheckBox *>("layoutUseArea1");
+        auto *use2=dialog.findChild<QCheckBox *>("layoutUseArea2");
+        QVERIFY(use0 && use1 && use2); QVERIFY(!use0->isEnabled()); QVERIFY(use1->isChecked()); QVERIFY(!use2->isChecked());
+        use2->click(); QVERIFY(!use1->isChecked()); use1->click(); QVERIFY(!use2->isChecked());
+        auto *type=dialog.findChild<QComboBox *>("layoutType1"); QVERIFY(type);
+        auto *alternative=type->parentWidget()->findChild<QToolButton *>("layoutAlternative"); QVERIFY(alternative && !alternative->isHidden());
+        QVERIFY(alternative->text().contains("Picture") && alternative->text().contains("80%"));
+        alternative->click(); QCOMPARE(type->currentData().toString(),"picture");
         auto regions=dialog.regions(); QCOMPARE(regions.size(),3); QCOMPARE(regions[0].id,"manual"); QCOMPARE(regions[1].content,"picture");
-        QVERIFY(regions[1].notText); QCOMPARE(automatic.id,"old"); QCOMPARE(manual.language,"rus");
+        QVERIFY(regions[1].notText); QCOMPARE(regions[1].detectedLabel,"image"); QCOMPARE(regions[1].detectionScore,.8);
+        alternative->click(); QCOMPARE(type->currentData().toString(),"text");
+        alternative->click(); QCOMPARE(type->currentData().toString(),"picture");
+        auto *thumb=type->parentWidget()->findChild<QToolButton *>("layoutThumbnail"); QVERIFY(thumb && !thumb->icon().isNull());
+        dialog.findChild<QToolButton *>("layoutFitPage")->click(); const auto wholePage=preview->transform().m11(); thumb->click(); QVERIFY(preview->transform().m11()>wholePage);
+        QCOMPARE(automatic.id,"old"); QCOMPARE(manual.language,"rus");
         apply->click(); QCOMPARE(dialog.result(),int(QDialog::Accepted));
     }
     void failedAnalysisCannotApply() {
@@ -160,7 +187,6 @@ private slots:
         QVERIFY(std::ranges::any_of(result->areas,[](const auto &area){return area.type=="text";}));
         QSettings().setValue("layout/url",url);
         ui::AiPageLayoutDialog dialog(image,{}); dialog.show();
-        dialog.findChild<QPushButton *>("analyzePageAreas")->click();
         auto *apply=dialog.findChild<QPushButton *>("applyPageAreas");
         QTRY_VERIFY_WITH_TIMEOUT(apply->isEnabled(),120000);
         QVERIFY(std::ranges::any_of(dialog.regions(),[](const auto &r){return r.content=="picture" && r.notText;}));

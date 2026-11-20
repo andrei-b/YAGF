@@ -92,7 +92,25 @@ std::expected<PageLayout, OcrError> detectPageAreas(const QImage &image, const P
             return failure(QStringLiteral("The layout service returned an invalid area."));
         QRect bounds(box[0].toInt(),box[1].toInt(),box[2].toInt(),box[3].toInt());
         if (!image.rect().contains(bounds)) return failure(QStringLiteral("A detected area lies outside the page."));
-        ids.insert(id); result.areas.append({label,type,bounds,score});
+        PageArea area{label,type,bounds,score,{},type};
+        if (item.contains("alternatives")) {
+            if (!item.value("alternatives").isArray() || item.value("alternatives").toArray().size()>3)
+                return failure(QStringLiteral("Invalid alternative area classifications."));
+            QSet<QString> types{type};
+            for (const auto &value:item.value("alternatives").toArray()) {
+                const auto alternative=value.toObject();
+                const QString alternativeType=alternative.value("type").toString(), alternativeLabel=alternative.value("label").toString();
+                const double alternativeScore=alternative.value("score").toDouble(-1);
+                if (!value.isObject() || alternativeLabel.isEmpty() || alternativeLabel.size()>64 ||
+                    !(alternativeType=="text" || alternativeType=="picture" || alternativeType=="math" || alternativeType=="mixed") ||
+                    types.contains(alternativeType) || !std::isfinite(alternativeScore) || alternativeScore<.4 ||
+                    alternativeScore>score+1e-6 || score-alternativeScore>.2+1e-6)
+                    return failure(QStringLiteral("Invalid alternative area classification."));
+                types.insert(alternativeType); area.alternatives.append({alternativeLabel,alternativeType,alternativeScore});
+            }
+            std::stable_sort(area.alternatives.begin(),area.alternatives.end(),[](const auto &a,const auto &b){return a.score>b.score;});
+        }
+        ids.insert(id); result.areas.append(std::move(area));
     }
     consolidateInlineAreas(result.areas);
     return result;
@@ -107,7 +125,11 @@ void consolidateInlineAreas(QVector<PageArea> &areas)
             const qint64 area=qint64(areas[j].bounds.width())*areas[j].bounds.height();
             if (area<size) { size=area; best=j; }
         }
-        if (best>=0) { areas[best].type="mixed"; remove.insert(i); }
+        if (best>=0) {
+            areas[best].type=areas[best].detectedType="mixed";
+            areas[best].alternatives.removeIf([](const auto &a){return a.type=="mixed";});
+            remove.insert(i);
+        }
     }
     for (int i=areas.size()-1;i>=0;--i) if (remove.contains(i)) areas.removeAt(i);
 }
@@ -121,6 +143,9 @@ QVector<core::ImageRegion> mergePageAreas(const QVector<core::ImageRegion> &exis
         region.id=QUuid::createUuid().toString(QUuid::WithoutBraces);
         region.bounds=area.bounds; region.content=area.type; region.notText=area.type=="picture";
         region.autoDetected=true; region.detectedLabel=area.label; region.detectionScore=area.score;
+        for (const auto &alternative:area.alternatives) if (alternative.type==area.type) {
+            region.detectedLabel=alternative.label; region.detectionScore=alternative.score; break;
+        }
         result.append(std::move(region));
     }
     return result;

@@ -6,9 +6,13 @@
 class QLineEdit;
 class QDoubleSpinBox;
 class QCheckBox;
+class QComboBox;
 class QLabel;
 class QPushButton;
-class QTableWidget;
+class QToolButton;
+class QListWidget;
+class QListWidgetItem;
+class QFrame;
 class QGraphicsScene;
 class QGraphicsView;
 class QGraphicsRectItem;
@@ -17,32 +21,49 @@ namespace yagf::ui {
 class AiPageLayoutDialog : public QDialog {
     Q_OBJECT
 public:
-    AiPageLayoutDialog(QImage image, QVector<core::ImageRegion> existing, QWidget *parent=nullptr);
+    AiPageLayoutDialog(QImage image, QVector<core::ImageRegion> existing, QWidget *parent=nullptr, int pageNumber=0);
     ~AiPageLayoutDialog() override;
     QVector<core::ImageRegion> regions() const;
 protected:
     void reject() override;
-    void resizeEvent(QResizeEvent *event) override;
+    void showEvent(QShowEvent *event) override;
+    bool eventFilter(QObject *object, QEvent *event) override;
 private:
+    struct BlockCard {
+        QFrame *frame;
+        QCheckBox *use;
+        QComboBox *type;
+        QLabel *score;
+        QToolButton *alternative;
+    };
     void analyze();
-    void populate();
+    void populate(bool resetSelection=true);
     void updateSelection(int changed=-1);
+    void updateCard(int index);
+    void focusBlock(QListWidgetItem *item);
+    void fitPreview();
     QImage image;
     QVector<core::ImageRegion> existing;
     QVector<processing::PageArea> areas;
     QVector<QGraphicsRectItem *> boxes;
     QVector<QGraphicsRectItem *> preservedBoxes;
+    QVector<QListWidgetItem *> areaItems;
+    QVector<BlockCard> cards;
     QLineEdit *endpoint, *token;
     QDoubleSpinBox *threshold;
     QCheckBox *replaceAutomatic;
-    QLabel *message;
+    QLabel *message, *blockCount, *emptyHint;
     QPushButton *analyzeButton, *applyButton;
+    QToolButton *optionsButton;
     QProgressBar *progress;
-    QTableWidget *table;
+    QListWidget *miniatures;
     QGraphicsScene *scene;
     QGraphicsView *preview;
+    QRectF previewTarget;
     bool updating=false;
     bool busy=false;
+    bool opened=false;
+    bool hasAnalysis=false;
     std::stop_source stop;
     QFutureWatcher<std::expected<processing::PageLayout,processing::OcrError>> watcher;
 };

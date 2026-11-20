@@ -3,11 +3,18 @@
 #include <QUrl>
 
 namespace yagf::processing {
+struct PageAreaAlternative {
+    QString label;
+    QString type;
+    double score = 0;
+};
 struct PageArea {
     QString label;
     QString type;
     QRect bounds;
     double score = 0;
+    QVector<PageAreaAlternative> alternatives;
+    QString detectedType; // Retains the model's first choice when the user changes type.
 };
 struct PageLayout {
     QString model;

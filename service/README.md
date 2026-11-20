@@ -109,12 +109,29 @@ The service is not bundled into the desktop application or AppImage. The three n
 
 ## AI page-area detection on the Jetson
 
-Choose **Tools → AI page areas…**, or the arrow beside **Smart split**. Analyze,
-review the colored boxes, change labels or selection, and apply. The four block
+Choose the magic-wand **Tools → AI page areas…** command, or the arrow beside
+**Smart split**. The current page and existing blocks appear immediately, and
+analysis starts automatically. Review the cropped block miniatures on the right;
+click a miniature or an outline to focus that block on the page. Change its type
+or inclusion checkbox, then **Apply areas**. **Fit page** restores the full-page
+view. Service settings and the replacement policy are under **Options**;
+**Analyze again** reruns detection. The four block
 kinds are text, picture, formula and text with formulas. Pictures are skipped by
 OCR and included in the scientific HTML and LaTeX exports. The detector's original
 label (including tables, captions and headings) and score are saved in the project.
 Tables currently use text OCR; this feature does not infer table cell structure.
+
+When the same model query has a second strong class of a different block type,
+its card offers **Also likely**, with the model score. Click it to switch types;
+click again to return to the first choice. Alternatives require a score of at
+least 40% and a gap of at most 20 percentage points from the first choice.
+They come from the exported model's top-k class scores for exactly the same box
+and reading-order value, following the
+[official postprocessor](https://github.com/PaddlePaddle/PaddleDetection/blob/release/2.9/ppdet/modeling/post_process.py).
+Nearby or overlapping detections from separate queries are not presented as
+alternative classes. The selected candidate's label and score are saved with the
+applied block. The type selector also permits manual choices when the model
+offers no strong alternative. Older workers without alternatives still work.
 
 Manual blocks are always preserved. By default the new selection replaces only
 automatic blocks; uncheck that option to keep all existing blocks. Proposals that
@@ -167,6 +184,8 @@ memory for the dialog only. For non-loopback worker binding, set
 `POST /v1/layout` accepts protocol `yagf-layout/1`, `image_png` (base64 PNG) and
 `threshold` (0.1–0.95). The response contains original page dimensions and ordered
 areas with `id`, `label`, `type`, `score`, and native-pixel `box: [x,y,w,h]`.
+Each area can also include `alternatives: [{label, type, score}, …]` (up to three
+distinct alternative types).
 Requests are limited to 32 MiB PNGs and 80 million pixels. The client validates
 geometry, limits responses, supports cancellation, and never applies a partial
 or failed analysis. Model scores are not guarantees; review is required.

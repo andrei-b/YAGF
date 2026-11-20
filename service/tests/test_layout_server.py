@@ -15,6 +15,20 @@ spec.loader.exec_module(worker)
 
 
 class LayoutTests(unittest.TestCase):
+    def test_actual_alternatives_share_query_and_have_strong_scores(self):
+        box = [10, 20, 100, 80, 7]
+        rows = [[22, .81, *box], [14, .68, *box], [5, .59, *box],
+                [17, .79, *box],  # another text label is not a different type
+                [14, .77, 10, 20, 100, 80, 8],  # separate query, not an alternative
+                [14, .9, 110, 20, 200, 80, 9], [22, .39, 110, 20, 200, 80, 9]]
+        result = worker.normalize_boxes(rows, 300, 200, .8)
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]['type'], 'text')
+        self.assertEqual(result[0]['alternatives'], [{'label': 'image', 'type': 'picture', 'score': .68}])
+        self.assertEqual(result[1]['alternatives'], [])
+        # The alternative can be below the user's primary detection threshold.
+        self.assertLess(result[0]['alternatives'][0]['score'], .8)
+
     def test_labels_native_coordinates_and_order(self):
         boxes = [[14, .95, -1.2, 20.5, 101, 80.1, 2],
                  [22, .9, 5, 1, 80, 15, 1], [5, .2, 5, 2, 10, 10, 0]]

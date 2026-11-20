@@ -14,6 +14,7 @@
 #include "imageprocessor.h"
 #include "layoutdialog.h"
 #include "aipagelayoutdialog.h"
+#include "aipageicons.h"
 #include "scannerdialog.h"
 #include "documentcommands.h"
 #include "wordeditor.h"
@@ -651,8 +652,9 @@ MainWindow::MainWindow()
     auto *fileMenu = menuBar()->addMenu(tr("&File"));
     auto *editMenu = menuBar()->addMenu(tr("&Edit"));
     auto *toolsMenu = menuBar()->addMenu(tr("&Tools"));
-    aiPageAreasAction = toolsMenu->addAction(QIcon(":/actions/smart-split.png"), tr("AI page areas…"), this, &MainWindow::classifyPageAreas);
+    aiPageAreasAction = toolsMenu->addAction(aiPageAreasIcon(), tr("AI page areas…"), this, &MainWindow::classifyPageAreas);
     aiPageAreasAction->setObjectName("aiPageAreasAction");
+    aiPageAreasAction->setIconVisibleInMenu(true);
     aiPageAreasAction->setEnabled(false);
     verification = new VerificationController(this, document);
     auto *queueAction = toolsMenu->addAction(tr("Verification queue"), verification, &VerificationController::show);
@@ -1074,6 +1076,7 @@ MainWindow::MainWindow()
     imageSplitAction->setObjectName("imageSmartSplitAction");
     connect(imageSplitAction, &QAction::triggered, splitBlocksButton, &QPushButton::click);
     if (auto *button = qobject_cast<QToolButton *>(imageTools->widgetForAction(imageSplitAction))) {
+        button->setObjectName("imageSmartSplitButton");
         auto *menu = new QMenu(button);
         menu->addAction(aiPageAreasAction);
         button->setMenu(menu);
@@ -3000,11 +3003,14 @@ QString MainWindow::blockLanguage(const ImageRegion &region) const
 void MainWindow::classifyPageAreas()
 {
     if (processor.isBusy() || exportBusy || projectLoading || imagePath.isEmpty() || !maybeApplyEditor()) return;
-    QImageReader reader(imagePath);
-    const QImage image = reader.read();
+    QImage image;
+    for (auto *item : scene->items()) if (auto *pixmap = qgraphicsitem_cast<QGraphicsPixmapItem *>(item)) {
+        image = pixmap->pixmap().toImage();
+        break;
+    }
     if (image.isNull()) { showError(tr("Could not read the page image for layout analysis.")); return; }
     const auto *old = document.page(currentPage);
-    AiPageLayoutDialog dialog(image, old ? old->imageRegions : QVector<ImageRegion>{}, this);
+    AiPageLayoutDialog dialog(image, old ? old->imageRegions : QVector<ImageRegion>{}, this, currentPage);
     if (dialog.exec() != QDialog::Accepted) return;
     OcrPage page = old ? *old : OcrPage{};
     if (!old) {

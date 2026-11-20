@@ -444,6 +444,18 @@ int main(int argc, char **argv)
     assert(imageTools && pinTools && rotateRight && rotateLeft && blockRecognize);
     assert(correctSkew && correctSkew->isVisible() && correctSkew->isEnabled());
     assert(imageTools->actions().first() == pinTools);
+    if (qEnvironmentVariableIsSet("YAGF_CAPTURE_IMAGE_TOOLBAR")) {
+        pinTools->setChecked(true);
+        QTest::mouseMove(pageView->viewport(), QPoint(5, pageView->viewport()->height()-10));
+        QApplication::processEvents();
+        assert(imageTools->grab().save("/tmp/yagf-image-toolbar-idle.png"));
+        auto *split=pageView->findChild<QAction *>("imageSmartSplitAction");
+        auto *button=qobject_cast<QToolButton *>(imageTools->widgetForAction(split)); assert(button);
+        QTest::mouseMove(button,QPoint(button->width()-7,button->height()/2));
+        QApplication::processEvents();
+        assert(imageTools->grab().save("/tmp/yagf-image-toolbar-hover.png"));
+    }
+
     assert(imageTools->parentWidget() == pageView->viewport());
     for (auto *action : toolbar->actions()) assert(action->text() != "Zoom in" && action->text() != "Zoom out" && action->text() != "Fit page");
     pinTools->setChecked(true);

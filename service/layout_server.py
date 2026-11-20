@@ -31,24 +31,42 @@ def kind(label):
 
 
 def normalize_boxes(rows, width, height, threshold):
-    result = []
+    # The exported DETR top-k output can contain several classes for the same
+    # query. A query has exactly the same box and reading-order value for each
+    # class. Keep those actual scores; neighboring/overlapping queries are not
+    # evidence of an alternative classification of this block.
+    queries = {}
     for index, row in enumerate(rows):
         if len(row) != 7 or any(not math.isfinite(float(x)) for x in row):
             raise ValueError("Invalid model output")
         category, score, left, top, right, bottom, order = map(float, row)
         if not category.is_integer() or not 0 <= category < len(LABELS) or not 0 <= score <= 1:
             raise ValueError("Invalid model label or score")
-        if score < threshold:
-            continue
         x1, y1 = max(0, math.floor(left)), max(0, math.floor(top))
         x2, y2 = min(width, math.ceil(right)), min(height, math.ceil(bottom))
         if x2 <= x1 or y2 <= y1:
             continue
         label = LABELS[int(category)]
-        result.append({"id": "area-" + str(index), "label": label, "type": kind(label),
-                       "score": score, "box": [x1, y1, x2-x1, y2-y1], "order": order})
-        if len(result) > 1000:
+        queries.setdefault((left, top, right, bottom, order), []).append(
+            {"id": "area-" + str(index), "label": label, "type": kind(label),
+             "score": score, "box": [x1, y1, x2-x1, y2-y1], "order": order})
+        if len(queries) > 1000:
             raise ValueError("Too many page areas")
+    result = []
+    for predictions in queries.values():
+        predictions.sort(key=lambda item: item["score"], reverse=True)
+        primary = predictions[0]
+        if primary["score"] < threshold:
+            continue
+        seen = {primary["type"]}
+        alternatives = []
+        for candidate in predictions[1:]:
+            if candidate["type"] in seen or candidate["score"] < .4 or primary["score"]-candidate["score"] > .2+1e-6:
+                continue
+            alternatives.append({key: candidate[key] for key in ("label", "type", "score")})
+            seen.add(candidate["type"])
+        primary["alternatives"] = alternatives
+        result.append(primary)
     return sorted(result, key=lambda item: item["order"])
 
 
