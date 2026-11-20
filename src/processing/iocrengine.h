@@ -5,9 +5,11 @@
 #include <QImage>
 
 #include <expected>
+#include <functional>
 #include <stop_token>
 
 namespace yagf::processing {
+using OcrProgress = std::function<void(const QString &, int, int)>;
 
 struct EngineCapabilities {
     bool supportsRegions = false;
@@ -24,6 +26,7 @@ struct OcrOptions {
     bool preserveFormatting = false;
     bool collectBenchmarkMetrics = false;
     bool singleTextLine = false;
+    OcrProgress progress;
 };
 
 struct OcrError {

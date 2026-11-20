@@ -83,6 +83,20 @@ struct ImageRegion {
     double detectionScore = -1;
 };
 
+struct OcrReadingItem {
+    QRect bounds;
+    QString text;
+    int block = 0, paragraph = 0, line = 0;
+    bool layoutBlock = false;
+};
+
+// Independent engine output. It never replaces the primary text automatically.
+struct OcrReading {
+    QString source, engine, label, language, error;
+    QRect area;
+    QVector<OcrReadingItem> items;
+};
+
 struct OcrPage {
     QString id;
     int number = 1;
@@ -99,6 +113,7 @@ struct OcrPage {
     int renderDpi = 150;
     QVector<OcrWord> deletedWords; // Source-linked deletions survive a recognition rerun.
     QVector<OcrWord> pendingCorrections; // Ambiguous retention is reviewed explicitly.
+    QVector<OcrReading> ocrReadings;
     [[nodiscard]] QVector<int> specialistSpan(int start) const;
     void rebuildHierarchy();
     bool moveRegion(int index, int direction);

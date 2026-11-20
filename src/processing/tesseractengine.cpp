@@ -53,6 +53,7 @@ std::expected<core::OcrPage, OcrError> TesseractEngine::recognize(
         return std::unexpected(OcrError{QStringLiteral("Could not prepare the OCR image.")});
     if (interrupted()) return std::unexpected(OcrError{{}, true});
     OcrOptions resolved = options;
+    if (options.progress) options.progress(QStringLiteral("Reading text with Tesseract"),0,0);
     resolved.language = modelLanguage(options.language);
     QStringList arguments{imagePath, QStringLiteral("stdout"), QStringLiteral("-l"), resolved.language};
     if (options.singleTextLine) arguments << QStringLiteral("--psm") << QStringLiteral("7");

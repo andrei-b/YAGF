@@ -633,7 +633,8 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
         core::OcrPage formulas;
         if (!boxes.isEmpty()) {
             MathOcrEngine math;
-            auto result = math.recognizeBoxes(image, options, stop, boxes, &failures);
+            const bool forced=std::ranges::any_of(regions,[](const auto &r){return !r.autoDetected && r.content=="math";});
+            auto result = math.recognizeBoxes(image, options, stop, boxes, &failures,forced ? 300000 : 30000);
             if (!result) {
                 if (result.error().cancelled || stop.stop_requested()) return std::unexpected(result.error());
                 failures.append(result.error().message);
@@ -730,7 +731,7 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
     }
     if (!boxes.isEmpty()) {
         MathOcrEngine math;
-        auto formulas = math.recognizeBoxes(image, options, stop, boxes);
+        auto formulas = math.recognizeBoxes(image, options, stop, boxes,nullptr,30000);
         if (formulas && formulas->words.size() != boxes.size())
             formulas = std::unexpected(OcrError{QStringLiteral("Local math OCR returned an incomplete set of crops.")});
         if (!formulas) {

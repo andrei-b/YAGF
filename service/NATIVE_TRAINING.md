@@ -139,7 +139,7 @@ Copy [native-profiles.example.json](native-profiles.example.json) to a writable
 location, adjust its absolute paths and choose a storage directory on a mounted
 disk. Each profile's paths/commands come from this administrator-owned file, never
 from an HTTP request. Copy `native_training_server.py`, `native_engines.py`,
-`native_engine_runner.py` and `server.py` together to `~/.local/lib/yagf/`.
+`native_engine_runner.py`, `ocr_catalog.py` and `server.py` together to `~/.local/lib/yagf/`.
 
 For a manual launch:
 
@@ -209,3 +209,7 @@ YAGF_NATIVE_TEST_IMAGE=/path/to/line.png \
 YAGF_NATIVE_TEST_EXPECTED='Exact printed line' \
   build/nativetraining_tests liveNativeWorker
 ```
+
+The worker also advertises configured base profiles, reusable models and local
+OCR listeners through its existing tunnel. See [OCR_DISCOVERY.md](OCR_DISCOVERY.md)
+for discovery and parallel recognition.

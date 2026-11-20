@@ -11,6 +11,7 @@ qt_standard_project_setup()
 set(CMAKE_AUTORCC ON)
 
 add_library(yagf_core STATIC
+    src/core/ocrreadings.cpp src/core/ocrreadings.h
     src/core/blockfont.cpp src/core/blockfont.h
     src/core/formulatext.cpp src/core/formulatext.h
     src/core/symbolrules.cpp src/core/symbolrules.h
@@ -47,6 +48,8 @@ target_include_directories(yagf_symbols PUBLIC src/processing)
 
 # Providers and recognition analysis can be used without the async document controller.
 add_library(yagf_ocr STATIC
+    src/processing/ocrservices.cpp src/processing/ocrservices.h
+    src/processing/parallelocr.cpp src/processing/parallelocr.h
     src/processing/nativetraining.cpp src/processing/nativetraining.h
     src/processing/aipagelayout.cpp src/processing/aipagelayout.h
     src/processing/pageorientation.cpp src/processing/pageorientation.h
@@ -106,6 +109,7 @@ qt_add_executable(yagf2
 target_sources(yagf2 PRIVATE src/ui/scannerdialog.cpp src/ui/scannerdialog.h)
 target_sources(yagf2 PRIVATE src/ui/documentcommands.cpp src/ui/documentcommands.h)
 target_sources(yagf2 PRIVATE src/ui/nativetrainingdialog.cpp src/ui/nativetrainingdialog.h)
+target_sources(yagf2 PRIVATE src/ui/ocrservicesdialog.cpp src/ui/ocrservicesdialog.h src/ui/ocrreadingsdialog.cpp src/ui/ocrreadingsdialog.h)
 target_sources(yagf2 PRIVATE src/ui/aipagelayoutdialog.cpp src/ui/aipagelayoutdialog.h)
 target_sources(yagf2 PRIVATE src/ui/aireviewdialog.cpp src/ui/aireviewdialog.h)
 target_sources(yagf2 PRIVATE src/ui/spellhighlighter.cpp src/ui/spellhighlighter.h)
@@ -130,6 +134,15 @@ install(FILES COPYING
 include(CTest)
 if(BUILD_TESTING)
     find_package(Qt6 6.2 REQUIRED COMPONENTS Test)
+    qt_add_executable(recognitionliveness_tests tests/recognitionliveness_tests.cpp)
+    target_link_libraries(recognitionliveness_tests PRIVATE yagf_processing Qt6::Test)
+    add_test(NAME recognitionliveness_tests COMMAND recognitionliveness_tests)
+    set_tests_properties(recognitionliveness_tests PROPERTIES TIMEOUT 40)
+    qt_add_executable(ocrservices_tests tests/ocrservices_tests.cpp src/ui/ocrservicesdialog.cpp src/ui/ocrservicesdialog.h src/ui/ocrreadingsdialog.cpp src/ui/ocrreadingsdialog.h src/ui/documentcommands.cpp src/ui/documentcommands.h)
+    target_include_directories(ocrservices_tests PRIVATE src/ui)
+    target_link_libraries(ocrservices_tests PRIVATE yagf_processing Qt6::Widgets Qt6::Network Qt6::Concurrent Qt6::Test)
+    add_test(NAME ocrservices_tests COMMAND ocrservices_tests)
+    set_tests_properties(ocrservices_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 40)
     qt_add_executable(nativetraining_tests tests/nativetraining_tests.cpp src/ui/nativetrainingdialog.cpp src/ui/nativetrainingdialog.h src/ui/documentcommands.cpp src/ui/documentcommands.h)
     target_include_directories(nativetraining_tests PRIVATE src/ui)
     target_link_libraries(nativetraining_tests PRIVATE yagf_processing yagf_export Qt6::Widgets Qt6::Concurrent Qt6::Network Qt6::Test)
@@ -249,6 +262,7 @@ if(BUILD_TESTING)
         src/ui/scannerdialog.cpp src/ui/scannerdialog.h
         src/ui/documentcommands.cpp src/ui/documentcommands.h resources/icons.qrc)
     target_sources(mainwindow_tests PRIVATE src/ui/nativetrainingdialog.cpp src/ui/nativetrainingdialog.h)
+    target_sources(mainwindow_tests PRIVATE src/ui/ocrservicesdialog.cpp src/ui/ocrservicesdialog.h src/ui/ocrreadingsdialog.cpp src/ui/ocrreadingsdialog.h)
     target_sources(mainwindow_tests PRIVATE src/ui/aipagelayoutdialog.cpp src/ui/aipagelayoutdialog.h)
     target_sources(mainwindow_tests PRIVATE src/ui/aireviewdialog.cpp src/ui/aireviewdialog.h)
     target_sources(mainwindow_tests PRIVATE src/ui/spellhighlighter.cpp src/ui/spellhighlighter.h)

@@ -196,3 +196,10 @@ See [NATIVE_TRAINING.md](NATIVE_TRAINING.md) for the shared Tesseract/Kraken/Pad
 review, training, held-out validation and explicit model activation workflow. The
 dedicated worker runs on port 8772 and stores model versions separately from these
 stock inference services.
+
+## Service discovery and parallel recognition
+
+**Tools → OCR services and parallel recognition…** discovers compatible workers
+and selects a primary plus up to three companions. The Jetson gateway advertises
+native profiles and its running PaddleOCR-VL server through port 8772. Results
+stay separate for explicit review. See [OCR_DISCOVERY.md](OCR_DISCOVERY.md).

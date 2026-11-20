@@ -217,7 +217,8 @@ std::expected<core::OcrPage, OcrError> RemoteOcrEngine::recognizeSection(
                         {"language", options.language},
                         {"page_number", options.pageNumber}};
     QUrl url = server;
-    url.setPath(provider == Provider::Native ? server.path()+QStringLiteral("/v1/recognize") : QStringLiteral("/v1/recognize"));
+    QString basePath=server.path(); while (basePath.endsWith('/')) basePath.chop(1);
+    url.setPath(basePath+QStringLiteral("/v1/recognize"));
     url.setQuery(QString());
     url.setFragment(QString());
     QNetworkRequest request(url);

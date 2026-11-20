@@ -24,7 +24,7 @@ std::expected<core::OcrPage, OcrError> MathOcrEngine::recognize(
 
 std::expected<core::OcrPage, OcrError> MathOcrEngine::recognizeBoxes(
     const QImage &image, const OcrOptions &options, std::stop_token stop, const QList<QRect> &boxes,
-    QStringList *warnings)
+    QStringList *warnings, int timeBudgetMs)
 {
     if (stop.stop_requested()) return std::unexpected(OcrError{{}, true});
     const QString python = pythonPath();
@@ -48,22 +48,39 @@ std::expected<core::OcrPage, OcrError> MathOcrEngine::recognizeBoxes(
             return std::unexpected(OcrError{QStringLiteral("Could not prepare equation crops.")});
         arguments.append(file.fileName());
     }
+    arguments << "--time-budget" << QString::number(std::max(1,timeBudgetMs)/1000.0);
+    arguments << "--crop-timeout" << QString::number(timeBudgetMs<=30000 ? 5 : 15);
+    QByteArray diagnostics,progressBytes;
+    const auto report=[&] {
+        const auto data=process.readAllStandardError(); diagnostics+=data; progressBytes+=data;
+        while (progressBytes.contains('\n')) {
+            const int end=progressBytes.indexOf('\n'); const auto line=progressBytes.left(end); progressBytes.remove(0,end+1);
+            if (!line.startsWith("YAGF_PROGRESS ")) continue;
+            const auto value=QJsonDocument::fromJson(line.mid(14)).object();
+            if (options.progress && value["total"].toInt()>0) options.progress(QStringLiteral("Recognizing formulas"),value["done"].toInt(),value["total"].toInt());
+        }
+        if (diagnostics.size()>16384) diagnostics=diagnostics.right(16384);
+        if (progressBytes.size()>16384) progressBytes=progressBytes.right(16384);
+    };
+    if (options.progress) options.progress(QStringLiteral("Loading formula recognizer"),0,boxes.size());
     process.start(python, arguments);
     if (!process.waitForStarted())
         return std::unexpected(OcrError{process.errorString()});
     QElapsedTimer timer;
     timer.start();
     while (!process.waitForFinished(100) && process.state() != QProcess::NotRunning) {
-        if (stop.stop_requested() || timer.elapsed() > 300'000) {
+        report();
+        if (stop.stop_requested() || timer.elapsed() > timeBudgetMs+10000) {
             process.kill();
             process.waitForFinished();
             return std::unexpected(OcrError{QStringLiteral("Local math OCR timed out."), stop.stop_requested()});
         }
     }
+    report();
     if (stop.stop_requested()) return std::unexpected(OcrError{{}, true});
     if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0)
         return std::unexpected(OcrError{QStringLiteral("Local math OCR failed: %1")
-            .arg(QString::fromUtf8(process.readAllStandardError()).trimmed().section('\n', -1))});
+            .arg(QString::fromUtf8(diagnostics).trimmed().section('\n', -1))});
     const auto json = QJsonDocument::fromJson(process.readAllStandardOutput());
     if (!json.isArray()) return std::unexpected(OcrError{QStringLiteral("Invalid local math OCR output.")});
 
@@ -75,6 +92,7 @@ std::expected<core::OcrPage, OcrError> MathOcrEngine::recognizeBoxes(
     page.language = QStringLiteral("auto");
     page.engineId = id();
     QStringList failures;
+    int deferred=0;
     QList<QRect> seen;
     for (const auto &item : json.array()) {
         const auto entry = item.toObject();
@@ -89,6 +107,7 @@ std::expected<core::OcrPage, OcrError> MathOcrEngine::recognizeBoxes(
             return std::unexpected(OcrError{QStringLiteral("Invalid local math OCR reading.")});
         seen.append(bounds);
         if (!entry.value("error").toString().isEmpty()) {
+            if (entry["error"].toString()=="Formula time budget exhausted") {++deferred; continue;}
             failures.append(QStringLiteral("Equation at %1,%2: %3")
                 .arg(bounds.x()).arg(bounds.y()).arg(entry.value("error").toString()));
             continue;
@@ -106,6 +125,7 @@ std::expected<core::OcrPage, OcrError> MathOcrEngine::recognizeBoxes(
     }
     if (!boxes.isEmpty() && seen.size() != boxes.size())
         return std::unexpected(OcrError{QStringLiteral("Local math OCR returned an incomplete set of crops.")});
+    if (deferred) failures.append(QStringLiteral("Kept native OCR for %1 formula candidate(s) after the formula time budget was reached. Select a smaller block to retry.").arg(deferred));
     if (!failures.isEmpty()) {
         if (!warnings) return std::unexpected(OcrError{failures.join('\n')});
         *warnings += failures;

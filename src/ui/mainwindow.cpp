@@ -16,6 +16,9 @@
 #include "aipagelayoutdialog.h"
 #include "aipageicons.h"
 #include "nativetrainingdialog.h"
+#include "ocrreadings.h"
+#include "ocrservicesdialog.h"
+#include "ocrreadingsdialog.h"
 #include "scannerdialog.h"
 #include "documentcommands.h"
 #include "wordeditor.h"
@@ -791,6 +794,10 @@ MainWindow::MainWindow()
     nativeTrainingAction = toolsMenu->addAction(aiPageAreasIcon(), tr("OCR training and adaptation…"), this, &MainWindow::trainNativeOcr);
     nativeTrainingAction->setObjectName("nativeTrainingAction");
     toolsMenu->addAction(tr("OCR engine…"), this, &MainWindow::configureOcrEngine);
+    ocrServicesAction=toolsMenu->addAction(tr("OCR services and parallel recognition…"),this,&MainWindow::configureOcrServices);
+    ocrServicesAction->setObjectName("ocrServicesAction");
+    ocrReadingsAction=toolsMenu->addAction(tr("Review OCR readings…"),this,&MainWindow::reviewOcrReadings);
+    ocrReadingsAction->setObjectName("ocrReadingsAction");
     toolsMenu->addAction(tr("Specialist OCR…"), this, &MainWindow::configureSpecialists);
     documentContextAction = toolsMenu->addAction(tr("Document context…"), this, &MainWindow::configureDocumentContext);
     documentContextAction->setObjectName(QStringLiteral("documentContextAction"));
@@ -817,6 +824,7 @@ MainWindow::MainWindow()
     recognitionMenu->addAction(recognizeAction);
     recognitionMenu->addAction(batchAction);
     recognitionMenu->addSeparator();
+    recognitionMenu->addAction(ocrReadingsAction);
     mathMode = recognitionMenu->addAction(tr("Math only"));
     mathMode->setCheckable(true);
     mathMode->setObjectName(QStringLiteral("mathOcrMode"));
@@ -841,6 +849,7 @@ MainWindow::MainWindow()
     });
     connect(mathMode, &QAction::toggled, this, [this](bool enabled) {
         processor.setMathMode(enabled);
+        updateComparisonEngines();
         if (document.mathOcr != enabled) {
             document.mathOcr = enabled;
             if (!originalPath.isEmpty()) { externalDirty = true; refreshDirty(); }
@@ -1315,6 +1324,13 @@ MainWindow::MainWindow()
     statusBar()->addPermanentWidget(status);
 
     connect(&processor, &DocumentProcessor::busyChanged, this, &MainWindow::setBusy);
+    connect(&processor, &DocumentProcessor::recognitionStage, this,
+        [this](int page,const QString &stage,int complete,int total) {
+            if (!processor.isRecognizing()) return;
+            const QString detail=total>0 ? tr("%1 · %2 / %3").arg(stage).arg(complete).arg(total) : stage;
+            status->setText(tr("Page %1: %2").arg(page).arg(detail));
+            if (recognitionProgress && recognitionProgress->isVisible()) recognitionProgress->setLabelText(tr("Page %1: %2").arg(page).arg(detail));
+        });
     connect(&processor, &DocumentProcessor::failed, this, [this](const QString &message) {
         queuedImageRegions.clear();
         verificationTarget.reset();
@@ -1396,6 +1412,7 @@ MainWindow::MainWindow()
             for (QRect &fragment : word.sourceBoxes) fragment.translate(offset);
             if (!region.isEmpty()) { word.id.clear(); word.sourceWordIds.clear(); }
         }
+        core::translateOcrReadings(newPage.ocrReadings,offset);
         if (region.isEmpty()) {
             if (oldPage) newPage.words.removeIf([&](const OcrWord &word) {
                 return std::ranges::any_of(oldPage->imageRegions, [&](const ImageRegion &block) {
@@ -1442,6 +1459,7 @@ MainWindow::MainWindow()
             merged.pendingCorrections += newPage.pendingCorrections;
             merged.engineId = newPage.engineId;
             merged.language = newPage.language;
+            core::mergeOcrReadings(merged.ocrReadings,std::move(newPage.ocrReadings),region);
             int maxBlock = 0;
             for (const OcrWord &old : merged.words) maxBlock = qMax(maxBlock, old.block);
             QHash<QString, QString> regionIds;
@@ -1551,6 +1569,8 @@ MainWindow::MainWindow()
         undoAction->setEnabled(!processor.isBusy() && !exportBusy && undoStack.canUndo());
         redoAction->setEnabled(!processor.isBusy() && !exportBusy && undoStack.canRedo());
     });
+    ocrServices=processing::readOcrServices(QJsonDocument::fromJson(QSettings("YAGF","YAGF Revival").value("ocr/serviceLibrary").toByteArray()).array());
+    updateComparisonEngines();
 }
 
 MainWindow::~MainWindow()
@@ -1617,6 +1637,8 @@ void MainWindow::updatePageControls()
     pageSpin->setValue(currentPage);
     const bool available = !processor.isBusy() && !exportBusy && !projectLoading;
     if (nativeTrainingAction) nativeTrainingAction->setEnabled(available && !originalPath.isEmpty());
+    if (ocrServicesAction) ocrServicesAction->setEnabled(available);
+    if (ocrReadingsAction) ocrReadingsAction->setEnabled(available && !imagePath.isEmpty() && document.page(currentPage) && !document.page(currentPage)->ocrReadings.isEmpty());
     if (renderingAction) renderingAction->setEnabled(available && processing::isPagedSource(originalPath));
     if (preserveFormattingAction) preserveFormattingAction->setEnabled(available);
     if (rawOcrOutputAction) rawOcrOutputAction->setEnabled(available);
@@ -2260,6 +2282,7 @@ void MainWindow::applyPagePreprocessing(const core::PreprocessSettings &proposed
     page.renderDpi = processing::isPagedSource(originalPath) ? processor.renderedDpi(currentPage) : 150;
     if (geometryChanged) {
         selectedRegionIds.clear();
+        page.ocrReadings.clear();
         page.words.clear();
         page.deletedWords.clear();
         page.pendingCorrections.clear();
@@ -2341,6 +2364,7 @@ bool MainWindow::usePaddleVlService(const QUrl &url)
     QSettings(QStringLiteral("YAGF"), QStringLiteral("YAGF Revival"))
         .setValue(QStringLiteral("ocr/paddleUrl"), url.toString());
     status->setText(tr("OCR engine: PaddleOCR-VL · %1").arg(url.toString()));
+    updateComparisonEngines();
     return true;
 }
 
@@ -2369,11 +2393,13 @@ void MainWindow::configureOcrEngine()
             QStringLiteral("http://127.0.0.1:8765"))).toString();
     const QString doctrUrl = settings.value(QStringLiteral("ocr/doctrUrl"),
         QStringLiteral("http://127.0.0.1:8766")).toString();
-    const QStringList urls{QString(), paddleUrl, doctrUrl,
+    QStringList urls{QString(), paddleUrl, doctrUrl,
         settings.value(QStringLiteral("ocr/rapidocrUrl"), QStringLiteral("http://127.0.0.1:8767")).toString(),
         settings.value(QStringLiteral("ocr/suryaUrl"), QStringLiteral("http://127.0.0.1:8768")).toString(),
         settings.value(QStringLiteral("ocr/krakenUrl"), QStringLiteral("http://127.0.0.1:8769")).toString(),
         document.nativeOcrUrl.isEmpty() ? settings.value("ocr/nativeUrl").toString() : document.nativeOcrUrl};
+    const auto activeService=processor.primaryOcrService();
+    if (currentEngine>0 && processing::validOcrServiceUrl(activeService.url)) urls[currentEngine]=activeService.url.toString();
     const QStringList settingKeys{QString(), QStringLiteral("ocr/paddleUrl"), QStringLiteral("ocr/doctrUrl"),
         QStringLiteral("ocr/rapidocrUrl"), QStringLiteral("ocr/suryaUrl"), QStringLiteral("ocr/krakenUrl"), QStringLiteral("ocr/nativeUrl")};
     auto *address = new QLineEdit(urls.at(provider->currentIndex()), &dialog);
@@ -2381,9 +2407,13 @@ void MainWindow::configureOcrEngine()
     auto *token = new QLineEdit(&dialog);
     token->setEchoMode(QLineEdit::Password);
     token->setPlaceholderText(tr("Optional bearer token; held only for this session"));
+    token->setText(activeService.token);
+    connect(address,&QLineEdit::textEdited,token,&QLineEdit::clear);
     layout->addRow(tr("Engine:"), provider);
     layout->addRow(tr("Service URL:"), address);
     layout->addRow(tr("Token:"), token);
+    auto *discover=new QPushButton(tr("Discover services / use several engines…"),&dialog); layout->addRow(discover);
+    connect(discover,&QPushButton::clicked,&dialog,[&]{dialog.done(2);});
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
     layout->addRow(buttons);
     connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
@@ -2392,10 +2422,13 @@ void MainWindow::configureOcrEngine()
         address->setEnabled(index != 0);
         token->setEnabled(index != 0);
         address->setText(urls.at(index));
+        token->clear();
     });
     address->setEnabled(provider->currentIndex() != 0);
     token->setEnabled(provider->currentIndex() != 0);
-    if (dialog.exec() != QDialog::Accepted) return;
+    const int result=dialog.exec();
+    if (result==2) {configureOcrServices(); return;}
+    if (result!=QDialog::Accepted) return;
     if (provider->currentIndex() == 0) {
         if (!document.nativeOcrUrl.isEmpty()) undoStack.push(new ChangeNativeOcrModelCommand(document, {}));
         mathMode->setChecked(false);
@@ -2405,8 +2438,7 @@ void MainWindow::configureOcrEngine()
         const QUrl url = QUrl::fromUserInput(address->text().trimmed());
         if ((url.scheme() != QStringLiteral("http") && url.scheme() != QStringLiteral("https")) ||
             url.host().isEmpty() || !url.userInfo().isEmpty() || url.hasQuery() || url.hasFragment() ||
-            (provider->currentIndex() == 6 ? !QRegularExpression("^/models/[a-f0-9-]{36}$").match(url.path()).hasMatch() :
-                (!url.path().isEmpty() && url.path() != QStringLiteral("/")))) {
+            !processing::validOcrServiceUrl(url)) {
             showError(tr("Enter the service base URL, for example http://127.0.0.1:8765"));
             return;
         }
@@ -2416,10 +2448,11 @@ void MainWindow::configureOcrEngine()
                                  selected == 3 ? Provider::RapidOcr :
                                  selected == 4 ? Provider::Surya :
                                  selected == 5 ? Provider::Kraken : selected == 6 ? Provider::Native : Provider::PaddleOcr;
-        if (selected != 6 && !document.nativeOcrUrl.isEmpty())
+        const bool nativeModel=selected==6 && QRegularExpression("^/models/[a-f0-9-]{36}$").match(url.path()).hasMatch();
+        if (!nativeModel && !document.nativeOcrUrl.isEmpty())
             undoStack.push(new ChangeNativeOcrModelCommand(document, {}));
         mathMode->setChecked(false);
-        if (selected == 6) {
+        if (nativeModel) {
             nativeOcrTokens.insert(url.adjusted(QUrl::RemovePath).toString(), token->text());
             undoStack.push(new ChangeNativeOcrModelCommand(document, url.toString()));
             // Re-entering a session token for an already selected model also
@@ -2441,6 +2474,60 @@ void MainWindow::configureOcrEngine()
             ? tr("Language configured on the PaddleOCR service, for example en")
             : tr("This engine chooses its model vocabulary; language is auto."));
     status->setText(tr("OCR engine: %1").arg(processor.engineId()));
+    updateComparisonEngines();
+}
+
+void MainWindow::updateComparisonEngines()
+{
+    if (processor.isBusy()) return;
+    const auto primary=processor.primaryOcrService().key();
+    std::vector<processing::ComparisonEngine> engines;
+    for (const auto &service:ocrServices) if (service.enabled && service.key()!=primary && engines.size()<3) {
+        auto engine=processing::makeOcrServiceEngine(service);
+        if (engine) engines.push_back({service,std::move(*engine)});
+    }
+    processor.setComparisonEngines(std::move(engines));
+}
+
+void MainWindow::configureOcrServices()
+{
+    if (processor.isBusy() || exportBusy || projectLoading) return;
+    auto current=processor.primaryOcrService(); current.language=languageEdit->text();
+    OcrServicesDialog dialog(ocrServices,current,this);
+    if (dialog.exec()!=QDialog::Accepted) return;
+    if (const auto selected=dialog.primaryService()) {
+        auto engine=processing::makeOcrServiceEngine(*selected);
+        if (!engine) {showError(engine.error()); return;}
+        mathMode->setChecked(false);
+        const bool native=selected->provider=="native" && QRegularExpression("^/models/[a-f0-9-]{36}$").match(selected->url.path()).hasMatch();
+        if (native) {
+            nativeOcrTokens.insert(selected->url.adjusted(QUrl::RemovePath).toString(),selected->token);
+            undoStack.push(new ChangeNativeOcrModelCommand(document,selected->url.toString()));
+            processor.setNativeEngine(std::move(*engine));
+        } else {
+            if (!document.nativeOcrUrl.isEmpty()) undoStack.push(new ChangeNativeOcrModelCommand(document,{}));
+            processor.setEngine(std::move(*engine));
+        }
+        const bool local=selected->provider=="tesseract";
+        languageEdit->setText(local ? processing::TesseractEngine::modelLanguage(selected->language.isEmpty() ? current.language : selected->language) : selected->language.isEmpty() ? QStringLiteral("auto") : selected->language);
+        languageEdit->setReadOnly(!local && selected->provider!="paddleocr");
+        languageEdit->setToolTip(local ? tr("Tesseract languages, for example rus+eng.") : tr("Language reported by the selected OCR service."));
+        languagePickerAction->setEnabled(local);
+    }
+    ocrServices=dialog.services();
+    QSettings("YAGF","YAGF Revival").setValue("ocr/serviceLibrary",QJsonDocument(processing::ocrServicesJson(ocrServices)).toJson(QJsonDocument::Compact));
+    updateComparisonEngines(); updatePageControls(); status->setText(tr("OCR services updated. Recognize a page, then open Review OCR readings to compare the results."));
+}
+
+void MainWindow::reviewOcrReadings()
+{
+    if (processor.isBusy() || exportBusy || imagePath.isEmpty() || !maybeApplyEditor()) return;
+    const auto *page=document.page(currentPage); if (!page || page->ocrReadings.isEmpty()) return;
+    QImage image(imagePath); if (image.isNull() || image.size()!=QSize(page->width,page->height)) {showError(tr("The page image does not match the saved OCR geometry.")); return;}
+    OcrReadingsDialog dialog(*page,std::move(image),this);
+    if (dialog.exec()!=QDialog::Accepted || !dialog.hasChanges()) return;
+    auto edited=dialog.editedPage(); core::normalizeBlockFontSizes(edited); core::setFormulaOutput(edited,document.unicodeFormulas);
+    undoStack.push(new ReplacePageCommand(document,currentPage,std::move(edited),tr("Use reviewed OCR readings")));
 }
 
 void MainWindow::configureSpecialists()
@@ -2733,6 +2820,7 @@ void MainWindow::showDocument()
     formattedPdfAction->setEnabled(!processor.isBusy() && !exportBusy && document.wordCount() > 0);
     nextSpecialistAction->setEnabled(!processor.isBusy() && !exportBusy && !imagePath.isEmpty() &&
         page && !page->words.isEmpty());
+    ocrReadingsAction->setEnabled(!processor.isBusy() && !exportBusy && !imagePath.isEmpty() && page && !page->ocrReadings.isEmpty());
     if (!page) {
         ocrButton->setToolTip(tr("Recognize the whole page"));
         selectedImageRegion = -1;
@@ -3054,6 +3142,7 @@ void MainWindow::syncNativeOcrModel()
             processing::RemoteOcrEngine::Provider::Native));
         languageEdit->setText("auto"); languageEdit->setReadOnly(true);
     }
+    updateComparisonEngines();
 }
 
 void MainWindow::classifyPageAreas()

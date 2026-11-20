@@ -19,6 +19,7 @@ import unicodedata
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import native_engines
+from ocr_catalog import LocalOcrCatalog, CatalogError
 
 PROTOCOL='yagf-native-training/1'
 ID=re.compile(r'^[a-f0-9-]{36}$')
@@ -76,6 +77,7 @@ class TrainingHost:
     def __init__(self,root,profiles):
         self.root=Path(root).resolve(); self.root.mkdir(parents=True,exist_ok=True)
         self.profiles={p['id']:p for p in profiles}; self.lock=threading.Lock(); self.active=None; self.cancel={}; self.state_lock=threading.RLock()
+        self.catalog=LocalOcrCatalog(); self.inference_slots=threading.BoundedSemaphore(2)
         # A stopped/restarted host cannot silently report an orphaned run as active.
         for state in self.root.glob('*/state.json'):
             data=json.loads(state.read_text())
@@ -89,6 +91,32 @@ class TrainingHost:
             profiles.append({'id':p['id'],'engine':p['engine'],'label':p.get('label',p['id']),'ready':ready,'reason':reason,
                              'base_model':Path(p.get('base_model','')).name})
         return {'protocol':PROTOCOL,'profiles':profiles,'max_samples':5000,'max_png_bytes':32*1024*1024}
+
+    def health(self):
+        services=[]
+        for profile in self.capabilities()['profiles']:
+            if not re.fullmatch(r'[A-Za-z0-9_-]{1,64}',profile['id']): continue
+            original=self.profiles[profile['id']]
+            services.append(dict(path='/profiles/'+profile['id'],provider='native',label=profile['label'],language=original.get('language','auto'),ready=profile['ready'],reason=profile['reason']))
+        for path in self.root.glob('*/state.json'):
+            state=self.state(path.parent.name)
+            if state.get('status')=='complete' and state.get('eligible') and state.get('scope')=='shared':
+                services.append(dict(path=state['model_url'],provider='native',label=state['label']+' · '+state['id'][:8],language='auto',ready=True))
+                if len(services)>=64: break
+        for entry in self.catalog.discover():
+            services.append(dict(path='/services/'+str(entry['port']),provider=entry['provider'],label=entry['label'],language=entry['language'],ready=True))
+        return dict(protocol='yagf-ocr/1',engine_id='native',status='ready',language='auto',services=services)
+
+    def recognize_profile(self,profile_id,request):
+        profile=self.profiles.get(profile_id)
+        if not profile: raise ValueError('Unknown OCR profile')
+        ready,reason=native_engines.readiness(profile)
+        if not ready: raise ValueError(reason)
+        png,width,height=png_bytes(request.get('image_png'))
+        with self.inference_slots,tempfile.TemporaryDirectory(dir=self.root) as temporary:
+            directory=Path(temporary); image=directory/'page.png'; image.write_bytes(png)
+            words=native_engines.recognize(profile,profile.get('base_inference_model',profile['base_model']),image,self.runner(directory,threading.Event(),180))
+        return dict(protocol='yagf-ocr/1',engine_id='native',width=width,height=height,language=profile.get('language','auto'),words=words)
 
     def directory(self,jid):
         if not isinstance(jid,str) or not ID.fullmatch(jid): raise ValueError('Invalid model/job ID')
@@ -211,7 +239,7 @@ class TrainingHost:
         if state['status']!='complete' or not state.get('eligible'): raise ValueError('This candidate is not validated for activation')
         directory=self.directory(jid); profile=json.loads((directory/'profile.json').read_text())
         png,width,height=png_bytes(request.get('image_png'))
-        with tempfile.TemporaryDirectory(dir=directory) as temporary:
+        with self.inference_slots,tempfile.TemporaryDirectory(dir=directory) as temporary:
             path=Path(temporary)/'page.png'; path.write_bytes(png)
             words=native_engines.recognize(profile,state['model_path'],path,self.runner(directory,threading.Event(),300))
         return {'protocol':'yagf-ocr/1','engine_id':'native','width':width,'height':height,'language':profile.get('language','auto'),'words':words,
@@ -234,6 +262,22 @@ def handler_for(host,token=''):
             if not self.authorized(): return
             try:
                 if self.path=='/v1/capabilities': self.send(200,host.capabilities())
+                elif self.path=='/v1/health':
+                    health=host.health(); health['requires_token']=bool(token); self.send(200,health)
+                elif re.fullmatch(r'/(?:profiles/[A-Za-z0-9_-]{1,64}|models/[a-f0-9-]{36}|services/[0-9]{1,5})/v1/health',self.path):
+                    kind,identity=self.path.split('/')[1:3]
+                    if kind=='profiles':
+                        profile=host.profiles.get(identity)
+                        if not profile: raise ValueError('Unknown OCR profile')
+                        ready,reason=native_engines.readiness(profile)
+                        self.send(200,dict(protocol='yagf-ocr/1',engine_id='native',status='ready' if ready else 'unavailable',language=profile.get('language','auto'),model=profile.get('label',identity),reason=reason))
+                    elif kind=='models':
+                        state=host.state(identity)
+                        self.send(200,dict(protocol='yagf-ocr/1',engine_id='native',status='ready' if state.get('eligible') and state['status']=='complete' else 'unavailable',language='auto',model=state.get('label',identity)))
+                    else:
+                        entry=next((e for e in host.catalog.discover() if str(e['port'])==identity),None)
+                        if not entry: raise ValueError('OCR listener is no longer available')
+                        self.send(200,dict(protocol='yagf-ocr/1',engine_id=entry['provider'],status='ready',language=entry['language'],model=entry['label']))
                 elif self.path.startswith('/v1/jobs/'): self.send(200,host.state(self.path.rsplit('/',1)[-1]))
                 elif self.path=='/v1/models':
                     models=[]
@@ -264,7 +308,14 @@ def handler_for(host,token=''):
                 elif re.fullmatch(r'/models/[a-f0-9-]{36}/v1/recognize',self.path):
                     if request.get('protocol')!='yagf-ocr/1': raise ValueError('Incompatible OCR protocol')
                     self.send(200,host.recognize(self.path.split('/')[2],request))
+                elif re.fullmatch(r'/profiles/[A-Za-z0-9_-]{1,64}/v1/recognize',self.path):
+                    if request.get('protocol')!='yagf-ocr/1': raise ValueError('Incompatible OCR protocol')
+                    self.send(200,host.recognize_profile(self.path.split('/')[2],request))
+                elif re.fullmatch(r'/services/[0-9]{1,5}/v1/recognize',self.path):
+                    if request.get('protocol')!='yagf-ocr/1': raise ValueError('Incompatible OCR protocol')
+                    self.send(200,host.catalog.recognize(self.path.split('/')[2],request))
                 else: self.send(404,{'error':'Unknown endpoint'})
+            except CatalogError as error: self.send(error.status,error.body)
             except (ValueError,KeyError,TypeError,binascii.Error) as error: self.send(400,{'error':str(error)})
             except Exception as error: self.send(500,{'error':str(error)[-6000:]})
     return Handler

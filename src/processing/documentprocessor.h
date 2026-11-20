@@ -13,6 +13,7 @@
 #include "preprocesssettings.h"
 #include "bookvocabulary.h"
 #include "iocrengine.h"
+#include "parallelocr.h"
 
 #include <memory>
 #include <stop_token>
@@ -35,6 +36,8 @@ public:
     bool isRecognizing() const;
     QString engineId() const;
     EngineCapabilities engineCapabilities() const;
+    OcrService primaryOcrService() const;
+    void setComparisonEngines(std::vector<ComparisonEngine> engines);
     void setEngine(std::unique_ptr<IOcrEngine> replacement);
     void setNativeEngine(std::unique_ptr<IOcrEngine> replacement);
     void setMathMode(bool enabled);
@@ -65,6 +68,7 @@ signals:
     void cancelled();
     void failed(const QString &message);
     void specialistWarning(const QString &message);
+    void recognitionStage(int page, const QString &stage, int complete, int total);
 private:
     enum class Job : quint8 { None, DocumentInfo, DocumentRender, Ocr, SplitBlocks, BatchRender, BatchOcr };
     void discardRenderedPage(Job finishedJob);
@@ -101,6 +105,7 @@ private:
     std::unique_ptr<IOcrEngine> nativePreviousEngine;
     std::unique_ptr<IOcrEngine> textEngine; // Restored when leaving local math mode.
     std::unique_ptr<IOcrEngine> formulaEngine, proseEngine;
+    std::vector<ComparisonEngine> comparisonEngines;
     QTemporaryDir temporaryDir;
     Job job = Job::None;
     QString documentSource;

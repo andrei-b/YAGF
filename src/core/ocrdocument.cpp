@@ -1,4 +1,5 @@
 #include "ocrdocument.h"
+#include "ocrreadings.h"
 
 #include <QJsonArray>
 #include <QHash>
@@ -473,6 +474,7 @@ QJsonObject OcrDocument::toJson(bool includeRestoredPixels) const
                                      {"regions", regionItems}, {"image_regions", imageRegionItems},
                                      {"words", wordItems},
                                      {"reading_order", readingOrder}};
+        if (!page.ocrReadings.isEmpty()) item.insert("ocr_readings",ocrReadingsJson(page.ocrReadings));
         if (includeRestoredPixels && !page.preprocessing.restoredPng.isEmpty())
             item.insert("restored_page_png", QString::fromLatin1(page.preprocessing.restoredPng.toBase64()));
         pageItems.append(item);
@@ -642,6 +644,10 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
         }
         page.engineId = object.value(QStringLiteral("engine")).toString(parsed.engine);
         page.language = object.value(QStringLiteral("language")).toString(parsed.language);
+        if (object.contains("ocr_readings")) {
+            auto readings=readOcrReadings(object["ocr_readings"],QSize(page.width,page.height));
+            if (!readings) return fail(readings.error()); page.ocrReadings=std::move(*readings);
+        }
         if (object.contains(QStringLiteral("image_regions"))) {
             const QJsonValue areas = object.value(QStringLiteral("image_regions"));
             if (!areas.isArray() || areas.toArray().size() > 1000)

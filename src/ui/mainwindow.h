@@ -151,6 +151,11 @@ private:
     QAction *nativeTrainingAction = nullptr;
     QAction *aiPageAreasAction = nullptr;
     void configureOcrEngine();
+    void configureOcrServices();
+    void updateComparisonEngines();
+    void reviewOcrReadings();
+    QVector<processing::OcrService> ocrServices;
+    QAction *ocrServicesAction=nullptr,*ocrReadingsAction=nullptr;
     void configureRendering();
     void openExperiments();
     void activateVerification(core::VerificationItem item, int action = 0);

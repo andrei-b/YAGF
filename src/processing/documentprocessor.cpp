@@ -10,6 +10,8 @@
 #include "symbolshape.h"
 #include "specialistocr.h"
 #include "pagesource.h"
+#include "remoteocrengine.h"
+#include "ocrreadings.h"
 
 #include <QFile>
 #include <QFileInfo>
@@ -18,6 +20,7 @@
 #include <QSet>
 #include <QStandardPaths>
 #include <QTimer>
+#include <QPainter>
 #include <QUuid>
 #include <QtConcurrentRun>
 #include "symbolaugmentation.h"
@@ -131,6 +134,7 @@ DocumentProcessor::DocumentProcessor(QObject *parent, const core::OcrDocument *s
                     crop.engineId = page.engineId;
                     crop.language = page.language;
                     crop.renderDpi = page.renderDpi;
+                    crop.ocrReadings = core::cropOcrReadings(page.ocrReadings,block.bounds);
                     crop.width = crop.sourceWidth = block.bounds.width();
                     crop.height = crop.sourceHeight = block.bounds.height();
                     for (auto word : page.words) if (block.bounds.contains(word.bounds.center())) {
@@ -179,6 +183,20 @@ bool DocumentProcessor::isRecognizing() const
 }
 QString DocumentProcessor::engineId() const { return engine->id(); }
 EngineCapabilities DocumentProcessor::engineCapabilities() const { return engine->capabilities(); }
+OcrService DocumentProcessor::primaryOcrService() const
+{
+    OcrService service; service.provider=engine->id();
+    if (service.provider.endsWith("-remote")) service.provider.chop(7);
+    service.label=ocrProviderLabel(service.provider);
+    if (const auto *remote=dynamic_cast<const RemoteOcrEngine *>(engine.get())) {service.url=remote->serviceUrl(); service.token=remote->sessionToken();}
+    return service;
+}
+void DocumentProcessor::setComparisonEngines(std::vector<ComparisonEngine> engines)
+{
+    if (isBusy()) return;
+    if (engines.size()>3) engines.resize(3);
+    comparisonEngines=std::move(engines);
+}
 
 void DocumentProcessor::setSpecialists(std::unique_ptr<IOcrEngine> formulas, std::unique_ptr<IOcrEngine> prose)
 {
@@ -341,6 +359,9 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
     if ((!batch && isBusy()) || (batch && batchPages.isEmpty())) return;
     options.preserveFormatting = book && book->preserveFormatting;
     const bool unicodeFormulas=book && book->unicodeFormulas;
+    options.progress=[this,number=options.pageNumber](const QString &stage,int complete,int total) {
+        emit recognitionStage(number,stage,complete,total);
+    };
     QVector<core::SymbolRule> symbolRules = book ? book->symbolRules : QVector<core::SymbolRule>{};
     if (auto shared = core::loadSymbolLibrary(); shared) {
         for (const auto &rule : *shared)
@@ -429,7 +450,22 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
             input.setDotsPerMeterX(qRound(dpi / 0.0254));
             input.setDotsPerMeterY(qRound(dpi / 0.0254));
         }
+        QVector<QRect> comparisonAreas;
+        QImage comparisonImage=input;
+        if (selected.isEmpty()) {
+            comparisonAreas.append(input.rect());
+            for (const auto &block:blocks) if (block.notText) {
+                if (comparisonImage.cacheKey()==input.cacheKey()) comparisonImage=input.copy();
+                QPainter painter(&comparisonImage); painter.fillRect(block.bounds.translated(-result.offset),Qt::white);
+            }
+        } else for (const auto &block:selected) if (!block.notText) {
+            const auto area=block.bounds.translated(-result.offset).intersected(input.rect());
+            if (!area.isEmpty()) comparisonAreas.append(area);
+        }
+        std::vector<ComparisonEngine> none;
+        ParallelOcrRun companions(splitOnly ? none : comparisonEngines,comparisonImage,options,comparisonAreas,token);
         if (smart) {
+            if (options.progress) options.progress(QStringLiteral("Detecting text and formula areas"),0,0);
             auto local = blocks;
             for (auto &block : local) block.bounds.translate(-result.offset);
             std::optional<core::OcrPage> baseline;
@@ -495,7 +531,10 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
                 return result;
             }
             page.rebuildHierarchy();
-            if (options.preserveFormatting) estimateTextFormatting(page, input, token);
+            if (options.preserveFormatting) {
+                if (options.progress) options.progress(QStringLiteral("Matching text fonts"),0,0);
+                estimateTextFormatting(page, input, token);
+            }
             QSet<QString> ids;
             for (core::OcrWord &word : page.words) {
                 if (!input.rect().contains(word.bounds) || word.bounds.isEmpty() ||
@@ -520,17 +559,19 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
                 if (token.stop_requested()) result.outcome = std::unexpected(OcrError{{}, true});
             }
             if (result.outcome && !rawOutput && !splitOnly && engine->capabilities().supportsWordBoxes) {
-                auto retries = collectSpellingFormulaReadings(page, input, token);
+                auto retries = collectSpellingFormulaReadings(page, input, token,options.progress);
                 if (!retries) result.outcome = std::unexpected(retries.error());
                 else result.warnings += *retries;
             }
             if (result.outcome && !rawOutput && !splitOnly) {
-                auto retries = collectFormulaTextReadings(page, input, options.language, token);
+                auto retries = collectFormulaTextReadings(page, input, options.language, token,options.progress);
                 if (!retries) result.outcome = std::unexpected(retries.error());
                 else result.warnings += *retries;
             }
-            if (result.outcome && !rawOutput && !splitOnly)
+            if (result.outcome && !rawOutput && !splitOnly) {
+                if (options.progress) options.progress(QStringLiteral("Applying learned symbol rules"),0,0);
                 applySymbolRules(page, input, symbolRules, token);
+            }
             if (result.outcome && !rawOutput && !splitOnly && unicodeFormulas)
                 if (const int unsupported=core::setFormulaOutput(page,true);unsupported)
                     result.warnings.append(QStringLiteral("%1 formula(s) retained LaTeX because their Unicode conversion is unsupported.").arg(unsupported));
@@ -538,6 +579,12 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
                 auto fontBlocks = blocks;
                 for (auto &block : fontBlocks) block.bounds.translate(-result.offset);
                 core::normalizeBlockFontSizes(page, fontBlocks, !region.isEmpty(), token);
+            }
+            if (result.outcome && !splitOnly && !comparisonEngines.empty()) {
+                if (options.progress) options.progress(QStringLiteral("Waiting for companion OCR results"),0,comparisonEngines.size());
+                page.ocrReadings=companions.finish();
+                for (const auto &reading:page.ocrReadings) if (!reading.error.isEmpty())
+                    result.warnings.append(reading.label+": "+reading.error+QStringLiteral(" Kept the primary reading."));
             }
             if (token.stop_requested()) result.outcome = std::unexpected(OcrError{{}, true});
         }

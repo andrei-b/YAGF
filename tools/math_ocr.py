@@ -1,5 +1,9 @@
 """Transcribe separated rows of printed mathematics from a page or region."""
 import json
+import argparse
+import contextlib
+import signal
+import time
 import re
 import sys
 from pathlib import Path
@@ -9,6 +13,39 @@ import numpy as np
 import rapid_latex_ocr
 from PIL import Image, ImageOps
 from rapid_latex_ocr import LaTeXOCR
+
+
+def create_model(weights):
+    # rapid_latex_ocr creates three independent ONNX pools with an unrestricted
+    # default. Bound all three inside this isolated helper process.
+    from rapid_latex_ocr import main, models
+    from rapid_latex_ocr.utils_load import OrtInferSession
+    class CpuSession(OrtInferSession):
+        def __init__(self, path): super().__init__(path, num_threads=2)
+        def _init_sess_opt(self):
+            super()._init_sess_opt()
+            self.sess_opt.inter_op_num_threads = 1
+            self.sess_opt.add_session_config_entry('session.intra_op.allow_spinning', '0')
+    previous = main.OrtInferSession, models.OrtInferSession
+    try:
+        main.OrtInferSession = models.OrtInferSession = CpuSession
+        return LaTeXOCR(**weights)
+    finally:
+        main.OrtInferSession, models.OrtInferSession = previous
+
+
+@contextlib.contextmanager
+def crop_deadline(seconds):
+    if not seconds or not hasattr(signal, 'setitimer'):
+        yield
+        return
+    def expired(*_): raise TimeoutError('Formula crop exceeded its time limit')
+    previous = signal.signal(signal.SIGALRM, expired)
+    timer = signal.setitimer(signal.ITIMER_REAL, seconds)
+    try: yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, *timer)
+        signal.signal(signal.SIGALRM, previous)
 
 
 def equation_boxes(gray):
@@ -83,7 +120,8 @@ def validate_latex(text):
         raise ValueError("Unclosed formula group or environment")
 
 
-def recognize(path, boxes=None):
+def recognize(path, boxes=None, time_budget=None, crop_timeout=15, progress=None):
+    started = time.monotonic()
     with Image.open(path) as source:
         gray = source.convert("L")
         if "A" in source.getbands() or "transparency" in source.info:
@@ -96,22 +134,34 @@ def recognize(path, boxes=None):
     models = Path(rapid_latex_ocr.__file__).parent / "models"
     weights = dict(image_resizer_path="image_resizer.onnx", encoder_path="encoder.onnx",
                    decoder_path="decoder.onnx", tokenizer_json="tokenizer.json")
-    model = LaTeXOCR(**{key: str(models / name) for key, name in weights.items()})
+    model = create_model({key: str(models / name) for key, name in weights.items()})
     result = []
     for left, top, right, bottom in boxes:
         entry = dict(box=[left, top, right-left, bottom-top])
         try:
-            crop = prepare_crop(gray.crop((left, top, right, bottom)))
-            text, _ = model(np.asarray(crop.convert("RGB")))
-            validate_latex(text)
-            entry["text"] = text
+            remaining = time_budget - (time.monotonic()-started) if time_budget is not None else crop_timeout
+            if remaining <= 0:
+                entry['error'] = 'Formula time budget exhausted'
+            else:
+                with crop_deadline(min(crop_timeout, remaining)):
+                    crop = prepare_crop(gray.crop((left, top, right, bottom)))
+                    text, _ = model(np.asarray(crop.convert("RGB")))
+                    validate_latex(text)
+                    entry["text"] = text
         except Exception as error:
             # Keep other successful crops; the caller retains native OCR here.
             entry["error"] = str(error)
         result.append(entry)
+        if progress: progress(len(result), len(boxes))
     return result
 
 
 if __name__ == "__main__":
-    boxes = json.loads(Path(sys.argv[2]).read_text()) if len(sys.argv) > 2 else None
-    print(json.dumps(recognize(sys.argv[1], boxes)))
+    parser = argparse.ArgumentParser()
+    parser.add_argument('image'); parser.add_argument('boxes', nargs='?')
+    parser.add_argument('--time-budget', type=float, default=300)
+    parser.add_argument('--crop-timeout', type=float, default=15)
+    args = parser.parse_args()
+    boxes = json.loads(Path(args.boxes).read_text()) if args.boxes else None
+    def progress(done, total): print('YAGF_PROGRESS '+json.dumps(dict(done=done,total=total)),file=sys.stderr,flush=True)
+    print(json.dumps(recognize(args.image, boxes, args.time_budget, args.crop_timeout, progress)))

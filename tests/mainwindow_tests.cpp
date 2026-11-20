@@ -1495,6 +1495,7 @@ int main(int argc, char **argv)
         skewPage.width = partiallyCorrected->width(); skewPage.height = partiallyCorrected->height();
         skewPage.words.append({1,1,1,1,QRect(100,100,50,12),"text","text",95,true});
         skewPage.imageRegions = {{"skew-block", {100,100,100,80}, "eng", false, "text"}};
+        yagf::core::OcrReading companion;companion.source="skew-fixture";companion.engine="doctr-remote";companion.label="Other OCR";companion.language="eng";companion.area={0,0,skewPage.width,skewPage.height};companion.items.append({{100,100,50,12},"text",1,1,1,false});skewPage.ocrReadings.append(companion);
         skewBook.replacePage(skewPage);
         const QString skewProject = directory.filePath("skew.yagf.json");
         assert(yagf::core::ProjectFile::save(skewProject, skewBook, &error));
@@ -1542,6 +1543,7 @@ int main(int argc, char **argv)
         assert(yagf::core::ProjectFile::load(skewProject, &saved, &error));
         assert(std::abs(saved.page(1)->preprocessing.deskewDegrees-4) < .6);
         assert(saved.page(1)->preprocessing.autoContrast);
+        assert(saved.page(1)->ocrReadings.isEmpty());
         QAction *skewUndo = nullptr, *skewRedo = nullptr;
         for (auto *action : skewWindow.findChildren<QAction *>()) {
             if (action->shortcut() == QKeySequence::Undo) skewUndo = action;
@@ -1558,6 +1560,7 @@ int main(int argc, char **argv)
         assert(undoSkew->isVisible() && undoSkew->isEnabled());
         undoSkew->trigger();
         assert(skewWords->count() == 1 && skewBlocks->count() == 1 && displayedImage() == before);
+        assert(skewWindow.findChild<QAction *>("ocrReadingsAction")->isEnabled());
         assert(!undoSkew->isVisible() && !undoSkew->isEnabled());
         skewRedo->trigger();
         assert(skewWords->count() == 0 && undoSkew->isVisible() && undoSkew->isEnabled());
@@ -1711,6 +1714,31 @@ int main(int argc, char **argv)
         yagf::core::OcrDocument saved; assert(yagf::core::ProjectFile::load(project,&saved,&error));
         assert(saved.page(1)->imageRegions[0].id=="manual" && saved.page(1)->words[0].text=="keep" && saved.page(1)->words[0].reviewed);
         assert(saved.page(1)->imageRegions[2].content=="picture" && saved.page(1)->imageRegions[2].notText && saved.page(1)->imageRegions[2].detectedLabel=="chart");
+    }
+
+    // Companion readings stay separate until an explicit review choice. The
+    // real window applies that choice through Undo and saves its provenance.
+    {
+        yagf::core::OcrDocument compared; compared.sourcePath=sourcePath; compared.language="eng"; compared.engine="tesseract";
+        yagf::core::OcrPage page;page.width=page.sourceWidth=200;page.height=page.sourceHeight=100;page.language="eng";page.engineId="tesseract";
+        page.words.append({1,1,1,1,{10,20,30,12},"mod","mod",90});page.words.append({1,1,1,1,{41,20,70,12},"ernization","ernization",90});page.rebuildHierarchy();
+        yagf::core::OcrReading reading;reading.source="test-companion";reading.engine="doctr-remote";reading.label="Independent OCR";reading.language="eng";reading.area={0,0,200,100};reading.items.append({{10,20,101,12},"modernization",1,1,1,false});page.ocrReadings.append(reading);compared.replacePage(page);
+        const auto project=directory.filePath("comparison.yagf.json");assert(yagf::core::ProjectFile::save(project,compared,&error));
+        yagf::ui::MainWindow comparedWindow;comparedWindow.loadProject(project);
+        auto *words=comparedWindow.findChild<QListWidget *>("recognizedWords");assert(words->count()==2);
+        auto *review=comparedWindow.findChild<QAction *>("ocrReadingsAction");assert(review && review->isEnabled());
+        QTimer::singleShot(0,&comparedWindow,[&] {
+            auto *dialog=qobject_cast<QDialog *>(QApplication::activeModalWidget());assert(dialog && dialog->objectName()=="ocrReadingsDialog");
+            auto *use=dialog->findChild<QPushButton *>("useOcrReading");assert(use && use->isEnabled());use->click();
+            dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Save)->click();
+        });
+        review->trigger();assert(words->count()==1 && words->item(0)->text()=="modernization");
+        QAction *undo=nullptr,*redo=nullptr;
+        for (auto *a:comparedWindow.findChildren<QAction *>()) {if(a->shortcut()==QKeySequence::Undo)undo=a;if(a->shortcut()==QKeySequence::Redo)redo=a;}
+        assert(undo && redo);undo->trigger();assert(words->count()==2);redo->trigger();assert(words->count()==1);
+        for(auto *a:comparedWindow.findChildren<QAction *>())if(a->text()=="Save project")a->trigger();
+        yagf::core::OcrDocument saved;assert(yagf::core::ProjectFile::load(project,&saved,&error));assert(saved.page(1)->ocrReadings.size()==1);
+        assert(saved.page(1)->words[0].reviewed && saved.page(1)->words[0].readingEngine=="Independent OCR");
     }
 
     // A failed OCR job closes progress before reporting the error.

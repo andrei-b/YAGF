@@ -3,6 +3,8 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 import tempfile
+import time
+import signal
 
 from PIL import Image, ImageDraw
 
@@ -71,6 +73,37 @@ class MathInputTests(unittest.TestCase):
         self.assertEqual([entry.get("text") for entry in result], ["x=1", None, "x=1"])
         self.assertIn("No mathematical ink", result[1]["error"])
         self.assertEqual(constructor.return_value.call_count, 2)
+
+    def test_time_budget_preserves_completed_readings(self):
+        image = Image.new('L', (30, 40), 255)
+        ImageDraw.Draw(image).rectangle((5, 5, 15, 25), fill=0)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'scan.png'; image.save(path)
+            with patch.object(math_ocr, 'create_model') as constructor, patch.object(math_ocr.time, 'monotonic', side_effect=[0,0,2,2]):
+                constructor.return_value.return_value = ('x=1', 0)
+                progress = []
+                result = math_ocr.recognize(path, [(0,0,30,40)]*3, time_budget=1, progress=lambda n,total: progress.append((n,total)))
+        self.assertEqual(result[0]['text'], 'x=1')
+        self.assertEqual([r.get('error') for r in result[1:]], ['Formula time budget exhausted']*2)
+        self.assertEqual(progress, [(1,3),(2,3),(3,3)])
+        constructor.return_value.assert_called_once()
+
+    @unittest.skipUnless(hasattr(signal, 'setitimer'), 'Requires Unix crop deadlines')
+    def test_slow_crop_does_not_block_other_formulas(self):
+        image = Image.new('L', (30, 40), 255)
+        ImageDraw.Draw(image).rectangle((5, 5, 15, 25), fill=0)
+        calls = 0
+        def model(_):
+            nonlocal calls
+            calls += 1
+            if calls == 1: time.sleep(.2)
+            return 'x=1', 0
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'scan.png'; image.save(path)
+            with patch.object(math_ocr, 'create_model', return_value=model):
+                result = math_ocr.recognize(path, [(0,0,30,40)]*2, crop_timeout=.02)
+        self.assertIn('time limit', result[0]['error'])
+        self.assertEqual(result[1]['text'], 'x=1')
 
 
 if __name__ == "__main__":

@@ -13,6 +13,8 @@ public:
     RemoteOcrEngine(QUrl server, QString bearerToken = {}, Provider provider = Provider::PaddleOcr);
     [[nodiscard]] QString id() const override;
     [[nodiscard]] EngineCapabilities capabilities() const override;
+    QUrl serviceUrl() const { return server; }
+    QString sessionToken() const { return bearerToken; }
     std::expected<core::OcrPage, OcrError> recognize(
         const QImage &image, const OcrOptions &options, std::stop_token stop) override;
 

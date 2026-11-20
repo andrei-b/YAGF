@@ -81,7 +81,7 @@ Recognition uses one dominant font size for prose within each block, including a
 
 **File → Export → PDF → Export formatted PDF…** recreates corrected text visibly in the original page blocks, retaining margins, columns, and paragraph breaks. It uses saved font families and weights, estimates missing font information from the scan, and fits text within each source block. Words keep the recognized block font size vertically; horizontal fitting accommodates source word widths. For large OCR blocks containing multiple saved lines, a local Tesseract pass can recover line positions and align the saved wording to them; weak matches fall back to fitting the original block. Layout and font estimates made during export do not modify the project. The PDF retains source images, regions marked **Not a text**, tables, and unchanged decorative headings whose geometry cannot be matched confidently; their recognized text remains searchable behind those scanned regions. Pages without OCR retain their scanned appearance. Exact matching depends on the OCR geometry, available fonts, and the amount of corrected text that must fit. **Export searchable PDF…** continues to keep the complete scanned appearance with an invisible corrected text layer.
 
-Use **Scan** on the toolbar or **File → Scan a page…** to discover SANE scanners, choose a device, resolution, and color mode, and import a page. Scanning runs in the background and can be cancelled. You can also drop a local image or PDF onto the preview, or choose **File → Paste image from clipboard** (`Ctrl+Shift+V`) for a screenshot or image copied from another app. JPEG photo orientation metadata is applied consistently to preview, OCR, and PDF export. Scans and pasted images are saved under the app's data directory. The scanner action currently imports one page per scan.
+Use **Scan** on the toolbar or **File → Scan a page…** to discover SANE scanners, choose a device, resolution, and color mode, and import a page. The scanner list and selected device are remembered until YAGF exits, so reopening Scan does not repeat discovery. **Refresh scanners** checks for changed devices. Scanning runs in the background and can be cancelled. You can also drop a local image or PDF onto the preview, or choose **File → Paste image from clipboard** (`Ctrl+Shift+V`) for a screenshot or image copied from another app. JPEG photo orientation metadata is applied consistently to preview, OCR, and PDF export. Scans and pasted images are saved under the app's data directory. The scanner action currently imports one page per scan.
 
 Use **Improve page…** to inspect the original beside a processed preview. **Detect skew** estimates a correction angle using a locally binarized copy, so uneven paper lighting does not dominate detection. **Detect orientation + skew** also uses optional Tesseract `osd` data to correct sideways/upside-down text; the rotation selector works without OSD. **Adaptive binarization** applies local black-and-white thresholding to the actual OCR image. **Auto contrast** stretches faded scans, and **Denoise (grayscale)** removes isolated specks. The settings apply to the current page and to its OCR input, including region OCR. They are saved in the project and reapplied when it opens. Changing rotation or the deskew angle moves the image, so the app asks before clearing that page's OCR boxes, corrections, and drawn regions. Contrast, denoise, and binarization keep the existing boxes. The source image is never overwritten.
 
@@ -138,6 +138,8 @@ Corrected layout is the default. Enable **Tools → Use raw OCR output** to use 
 ### Local math OCR
 
 Open [the two-equation example](examples/math-review/equations.yagf.json) and click **Recognize**. The project enables **Math only** in the **Recognize** dropdown. Use this option for a page or selection made up entirely of equations. Each separated row of printed mathematics becomes an editable LaTeX block. For pages mixing prose and equations, leave **Math only** unchecked. With automatic local recognition, if the formula model is unavailable YAGF keeps the Tesseract reading and the detected block labels for review.
+
+Recognition reports its current stage and formula counts in the status bar. Automatic formula passes have a 30-second budget and a five-second limit per crop; completed readings are retained and remaining candidates keep the native OCR text. Explicit **Math only** recognition permits longer passes. **Cancel** stops the active recognizer. Choose **Tools → Use raw OCR output** for local Tesseract text without automatic formula checks.
 
 Select an equation in the word list and click **Edit formula…** above the recognized text. Edit its LaTeX and watch the preview update. If several equations are selected, choose the one you want. **Save** applies the correction to its original position, including inline equations within prose. **Edit → Undo** reverses it. The live preview uses the optional `pdflatex` and `pdftoppm` programs. You can edit and save the source with either tool absent.
 
@@ -215,6 +217,32 @@ Kraken native training run on the Jetson using Toshiba storage. PaddleOCR has an
 adapter/export workflow but requires a compatible native training environment and
 checkpoint before its profile becomes ready. Existing symbol rules continue to
 work alongside native models. See [setup, limits and usage](service/NATIVE_TRAINING.md).
+
+### Discover services and use multiple OCR engines
+
+Open **Tools → OCR services and parallel recognition…** (also available from
+**OCR engine…**). Discovery checks configured URLs and standard OCR ports on hosts
+you name. The default `127.0.0.1` includes existing SSH forwards. A specific URL
+probes a different port or a service behind a URL prefix. Discovery sends health
+checks only.
+
+Select a service and **Use selected as primary**, or keep the current primary.
+Check **Use together** for up to three companions and **Save**. The next page,
+block or batch recognition starts the engines concurrently. A failed companion
+produces a warning and preserves the primary reading.
+
+Choose **Tools → Review OCR readings…**, also in the **Recognize** dropdown, to
+compare source crops, primary lines and independent readings. **Use this reading**
+updates the selected line/block in the review window; **Save** applies those
+choices with Undo/Redo. Larger paragraph/page-only outputs remain inspectable under
+**Show complete engine output** when there is no safe line match. Comparison
+readings are saved with the project, independently of exported text. Changing
+page geometry clears their coordinates; Undo restores them.
+
+The Jetson gateway at `http://127.0.0.1:8772` advertises English/Russian Tesseract,
+Kraken, reusable validated models and its running PaddleOCR-VL service through the
+existing SSH tunnel. The service library and companion choices are remembered;
+tokens stay in memory. See [setup and limits](service/OCR_DISCOVERY.md).
 
 ## Audit and direction
 

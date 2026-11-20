@@ -18,6 +18,7 @@ public:
 
 private:
     void discover();
+    void useCachedDevices();
     void startScan();
     void finishScan(int exitCode, QProcess::ExitStatus status);
 

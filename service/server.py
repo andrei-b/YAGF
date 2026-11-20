@@ -489,7 +489,8 @@ def handler_for(backend, token=""):
         def do_GET(self):
             if self.path == "/v1/health":
                 self.send_json(200, {"protocol": PROTOCOL, "engine_id": backend.engine_id,
-                                     "status": "ready"})
+                                     "status": "ready", "language": backend.language, "requires_token": bool(token),
+                                     "model": provenance.get("model",backend.engine_id)})
             else:
                 self.send_json(404, {"error": "Unknown endpoint"})
 

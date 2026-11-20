@@ -7,6 +7,7 @@
 
 #include <QRegularExpression>
 #include <QPainter>
+#include <QElapsedTimer>
 #include <algorithm>
 
 namespace yagf::processing {
@@ -58,7 +59,7 @@ bool dictionaryText(const core::OcrPage &reading, core::SpellChecker &checker)
 }
 
 std::expected<QStringList, OcrError> collectSpellingFormulaReadings(
-    core::OcrPage &page, const QImage &image, std::stop_token stop)
+    core::OcrPage &page, const QImage &image, std::stop_token stop, OcrProgress progress)
 {
     if (stop.stop_requested()) return std::unexpected(OcrError{{}, true});
     if (MathOcrEngine::pythonPath().isEmpty()) return QStringList{};
@@ -108,7 +109,8 @@ std::expected<QStringList, OcrError> collectSpellingFormulaReadings(
     QList<QRect> boxes;
     for (const auto &candidate : candidates) boxes.append(candidate.bounds.adjusted(-2, -2, 2, 2).intersected(image.rect()));
     MathOcrEngine math;
-    auto result = math.recognizeBoxes(image, {.language = "auto", .pageNumber = page.number}, stop, boxes, &warnings);
+    if (progress) progress(QStringLiteral("Checking suspicious text for formulas"),0,boxes.size());
+    auto result = math.recognizeBoxes(image, {.language = "auto", .pageNumber = page.number,.progress=progress}, stop, boxes, &warnings,30000);
     if (!result) {
         if (result.error().cancelled || stop.stop_requested()) return std::unexpected(result.error());
         warnings.append(result.error().message + QStringLiteral(" Kept native OCR for suspicious words."));
@@ -128,7 +130,7 @@ std::expected<QStringList, OcrError> collectSpellingFormulaReadings(
 }
 
 std::expected<QStringList, OcrError> collectFormulaTextReadings(
-    core::OcrPage &page, const QImage &image, const QString &language, std::stop_token stop)
+    core::OcrPage &page, const QImage &image, const QString &language, std::stop_token stop, OcrProgress progress)
 {
     if (stop.stop_requested()) return std::unexpected(OcrError{{}, true});
     core::SpellChecker checker;
@@ -136,6 +138,7 @@ std::expected<QStringList, OcrError> collectFormulaTextReadings(
     QStringList warnings;
     QSet<QString> failedLanguages;
     int attempts = 0;
+    QElapsedTimer budget; budget.start();
     for (auto &word : page.words) {
         if (stop.stop_requested()) return std::unexpected(OcrError{{}, true});
         if (!formulaWord(page, word) || word.reviewed || !word.alternative.text.isEmpty() ||
@@ -148,10 +151,12 @@ std::expected<QStringList, OcrError> collectFormulaTextReadings(
         if (selected.isEmpty() || selected == "auto" || failedLanguages.contains(selected)) continue;
         checker.setLanguages({selected});
         if (checker.activeDictionaries().isEmpty()) continue;
+        if (budget.elapsed()>30000) {warnings.append(QStringLiteral("Kept remaining formulas after the text-retry time budget was reached. Select a smaller block to retry.")); break;}
         if (++attempts > 128) {
             warnings.append(QStringLiteral("Text retries were limited to 128 formula crops; remaining formulas are available in the verification queue."));
             break;
         }
+        if (progress) progress(QStringLiteral("Checking formulas as text"),attempts,std::min(128,int(page.words.size())));
         // White margins help Tesseract recognize a short isolated word.
         const QRect bounds = word.bounds.adjusted(-2, -2, 2, 2).intersected(image.rect());
         QImage crop(bounds.size()+QSize(16, 16), QImage::Format_RGB32);
