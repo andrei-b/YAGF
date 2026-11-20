@@ -140,9 +140,10 @@ ExportResult LatexDocumentExporter::write(const core::OcrDocument &document,cons
             if (word.italic) *text="{\\itshape "+*text+'}';
             return text;
         };
-        for (int index=0;index<page.regions.size();++index) {
+        const auto regions = exportRegions(page);
+        for (int index=0;index<regions.size();++index) {
             if (cancelled.load()) return {.status=ExportResult::Status::Cancelled};
-            const auto &region=page.regions[index]; const auto source=regionSource(region,words);
+            const auto &region=regions[index]; const auto source=regionSource(region,words);
             const auto fail=[&](const QString &e) { return failure(QStringLiteral("Page %1, region %2: %3").arg(page.number).arg(index+1).arg(e)); };
             for (const auto &paragraph:region.paragraphs) for (const auto &line:paragraph.lines) for (const auto &id:line.wordIds) emitted.insert(id);
             if (region.isFigure()) {

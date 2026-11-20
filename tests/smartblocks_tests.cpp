@@ -168,6 +168,21 @@ private slots:
         QVERIFY(masked->imageRegions[0].notText);
     }
 
+    void aiPicturesAreExcludedAndKeepTheirMetadata()
+    {
+        const auto raw = reading({word(1, 1, {10, 10, 80, 12}, "Prose"),
+                                  word(2, 1, {300, 10, 80, 12}, "Diagram")}, {420, 80});
+        const core::ImageRegion picture{"chart", {280, 0, 140, 60}, {}, true, "picture", true, "chart", .95};
+        const auto result = processing::recognizeSmartBlocks(scan(raw), {.language = "rus"},
+            {picture}, false, {}, true, &raw);
+        QVERIFY2(result, qPrintable(result ? QString() : result.error().message));
+        QCOMPARE(text(*result), QStringList{"Prose"});
+        QCOMPARE(result->imageRegions[0].id, picture.id);
+        QCOMPARE(result->imageRegions[0].content, "picture");
+        QCOMPARE(result->imageRegions[0].detectedLabel, "chart");
+        QCOMPARE(result->imageRegions[0].detectionScore, .95);
+    }
+
     void splittingProseUsesRawParagraphs()
     {
         const auto raw = reading({word(1, 1, {10, 10, 70, 12}, "First"),

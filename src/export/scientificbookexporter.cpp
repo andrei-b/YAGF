@@ -89,23 +89,24 @@ ExportResult ScientificBookExporter::write(const core::OcrDocument &document, co
             styledWords.insert(word.id, formattedText(word));
         }
         out << "<section aria-label=\"Page " << page.number << "\">\n";
-        for (qsizetype i = 0; i < page.regions.size(); ++i) {
+        const auto regions = exportRegions(page);
+        for (qsizetype i = 0; i < regions.size(); ++i) {
             if (cancelled.load()) return {.status = ExportResult::Status::Cancelled};
             const auto isIllustration = [&](qsizetype index) {
-                return index >= 0 && index < page.regions.size() &&
-                    (page.regions[index].isFigure() || page.regions[index].type == "table");
+                return index >= 0 && index < regions.size() &&
+                    (regions[index].isFigure() || regions[index].type == "table");
             };
             // Keep an ambiguous caption between two illustrations in its own paragraph.
-            const bool leadingCaption = page.regions[i].type == "caption" &&
+            const bool leadingCaption = regions[i].type == "caption" &&
                 !isIllustration(i - 1) && isIllustration(i + 1);
             if (leadingCaption) {
-                out << "<figure><figcaption>" << regionText(page.regions[i], styledWords)
+                out << "<figure><figcaption>" << regionText(regions[i], styledWords)
                     << "</figcaption>";
                 ++i;
             }
-            const auto &region = page.regions[i];
-            const bool trailingCaption = !leadingCaption && isIllustration(i) && i + 1 < page.regions.size() &&
-                page.regions[i + 1].type == "caption" && !isIllustration(i + 2);
+            const auto &region = regions[i];
+            const bool trailingCaption = !leadingCaption && isIllustration(i) && i + 1 < regions.size() &&
+                regions[i + 1].type == "caption" && !isIllustration(i + 2);
             if (!leadingCaption && (region.isFigure() || trailingCaption)) out << "<figure>";
             const QString text = regionText(region, words);
             if (region.isFigure()) {
@@ -141,7 +142,7 @@ ExportResult ScientificBookExporter::write(const core::OcrDocument &document, co
                     << regionText(region, styledWords) << "</" << tag << ">\n";
             }
             if (trailingCaption)
-                out << "<figcaption>" << regionText(page.regions[++i], styledWords) << "</figcaption>";
+                out << "<figcaption>" << regionText(regions[++i], styledWords) << "</figcaption>";
             if (region.isFigure() || leadingCaption || trailingCaption) out << "</figure>\n";
         }
         out << "</section>\n";

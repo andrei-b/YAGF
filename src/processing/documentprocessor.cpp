@@ -371,7 +371,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
         const bool newLanguage = localText && region.isEmpty() && !savedPage->language.isEmpty() &&
             TesseractEngine::modelLanguage(savedPage->language) != options.language;
         for (const auto &block : savedPage->imageRegions) {
-            if ((splitOnly || newLanguage) && block.autoDetected) continue;
+            if (block.autoDetected && (splitOnly || (newLanguage && block.detectedLabel.isEmpty()))) continue;
             if (!region.isEmpty() && block.bounds != region) continue;
             blocks.append(block);
         }

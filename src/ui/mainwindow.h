@@ -143,6 +143,8 @@ private:
     void showPage(int number);
     void updatePageControls();
     void runOcr();
+    void classifyPageAreas();
+    QAction *aiPageAreasAction = nullptr;
     void configureOcrEngine();
     void configureRendering();
     void openExperiments();

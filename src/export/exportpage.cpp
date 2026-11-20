@@ -7,6 +7,7 @@
 #include <QImageWriter>
 #include <QPainter>
 #include <QSaveFile>
+#include <algorithm>
 
 namespace yagf::processing {
 namespace {
@@ -15,6 +16,27 @@ ExportResult failure(const QString &error)
     return {.status = ExportResult::Status::Error, .error = error};
 }
 
+}
+
+QVector<core::OcrRegion> exportRegions(const core::OcrPage &page)
+{
+    auto regions = page.regions;
+    for (const auto &block : page.imageRegions) {
+        if (block.content != "picture" || !block.notText || block.bounds.isEmpty()) continue;
+        if (std::ranges::any_of(regions, [&](const auto &region) {
+                return region.isFigure() && region.bounds.contains(block.bounds);
+            })) continue;
+        core::OcrRegion picture;
+        picture.id = QStringLiteral("picture/") + block.id;
+        picture.type = QStringLiteral("picture");
+        picture.bounds = block.bounds;
+        // Keep the relative order of OCR regions, including manually edited order.
+        const auto position = std::ranges::find_if(regions, [&](const auto &region) {
+            return region.bounds.center().y() > picture.bounds.center().y();
+        });
+        regions.insert(position, std::move(picture));
+    }
+    return regions;
 }
 
 std::expected<QImage, ExportResult> readExportPage(const core::OcrDocument &document, int number,

@@ -1,0 +1,12 @@
+[Unit]
+Description=YAGF SSH tunnel to the page layout detector
+After=network-online.target
+
+[Service]
+EnvironmentFile=%h/.config/yagf/layout-host.env
+ExecStart=/usr/bin/ssh -NT -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o IdentitiesOnly=yes -i %h/.ssh/yagf_jetson_layout -L 127.0.0.1:8771:127.0.0.1:8771 ${YAGF_JETSON_HOST}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

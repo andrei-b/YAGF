@@ -46,6 +46,7 @@ target_include_directories(yagf_symbols PUBLIC src/processing)
 
 # Providers and recognition analysis can be used without the async document controller.
 add_library(yagf_ocr STATIC
+    src/processing/aipagelayout.cpp src/processing/aipagelayout.h
     src/processing/pageorientation.cpp src/processing/pageorientation.h
     src/processing/fontestimator.cpp src/processing/fontestimator.h
     src/processing/specialistocr.cpp src/processing/specialistocr.h
@@ -101,6 +102,7 @@ qt_add_executable(yagf2
     src/ui/layoutdialog.cpp src/ui/layoutdialog.h resources/icons.qrc)
 target_sources(yagf2 PRIVATE src/ui/scannerdialog.cpp src/ui/scannerdialog.h)
 target_sources(yagf2 PRIVATE src/ui/documentcommands.cpp src/ui/documentcommands.h)
+target_sources(yagf2 PRIVATE src/ui/aipagelayoutdialog.cpp src/ui/aipagelayoutdialog.h)
 target_sources(yagf2 PRIVATE src/ui/aireviewdialog.cpp src/ui/aireviewdialog.h)
 target_sources(yagf2 PRIVATE src/ui/spellhighlighter.cpp src/ui/spellhighlighter.h)
 target_sources(yagf2 PRIVATE src/ui/symbolrulesdialog.cpp src/ui/symbolrulesdialog.h)
@@ -124,6 +126,13 @@ install(FILES COPYING
 include(CTest)
 if(BUILD_TESTING)
     find_package(Qt6 6.2 REQUIRED COMPONENTS Test)
+    qt_add_executable(aipagelayout_tests tests/aipagelayout_tests.cpp
+        src/ui/aipagelayoutdialog.cpp src/ui/aipagelayoutdialog.h
+        src/ui/documentcommands.cpp src/ui/documentcommands.h)
+    target_include_directories(aipagelayout_tests PRIVATE src/ui)
+    target_link_libraries(aipagelayout_tests PRIVATE yagf_processing yagf_export Qt6::Widgets Qt6::Concurrent Qt6::Network Qt6::Test)
+    add_test(NAME aipagelayout_tests COMMAND aipagelayout_tests)
+    set_tests_properties(aipagelayout_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     qt_add_executable(formulatext_tests tests/formulatext_tests.cpp src/ui/documentcommands.cpp src/ui/documentcommands.h)
     target_include_directories(formulatext_tests PRIVATE src/ui)
     target_link_libraries(formulatext_tests PRIVATE yagf_core Qt6::Gui)
@@ -227,6 +236,7 @@ if(BUILD_TESTING)
         src/ui/layoutdialog.cpp src/ui/layoutdialog.h
         src/ui/scannerdialog.cpp src/ui/scannerdialog.h
         src/ui/documentcommands.cpp src/ui/documentcommands.h resources/icons.qrc)
+    target_sources(mainwindow_tests PRIVATE src/ui/aipagelayoutdialog.cpp src/ui/aipagelayoutdialog.h)
     target_sources(mainwindow_tests PRIVATE src/ui/aireviewdialog.cpp src/ui/aireviewdialog.h)
     target_sources(mainwindow_tests PRIVATE src/ui/spellhighlighter.cpp src/ui/spellhighlighter.h)
     target_sources(mainwindow_tests PRIVATE src/ui/symbolrulesdialog.cpp src/ui/symbolrulesdialog.h)

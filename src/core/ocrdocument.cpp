@@ -446,9 +446,13 @@ QJsonObject OcrDocument::toJson(bool includeRestoredPixels) const
             if (!region.tableLayout.isEmpty()) item.insert("table_layout", region.tableLayout);
             regionItems.append(item);
         }
-        for (const ImageRegion &region : page.imageRegions)
-            imageRegionItems.append(QJsonObject{{"id", region.id}, {"box", boxJson(region.bounds)},
-                {"language", region.language}, {"not_text", region.notText}, {"content", region.content}, {"auto_detected", region.autoDetected}});
+        for (const ImageRegion &region : page.imageRegions) {
+            QJsonObject item{{"id", region.id}, {"box", boxJson(region.bounds)},
+                {"language", region.language}, {"not_text", region.notText}, {"content", region.content}, {"auto_detected", region.autoDetected}};
+            if (!region.detectedLabel.isEmpty()) item.insert("detected_label", region.detectedLabel);
+            if (region.detectionScore >= 0) item.insert("detection_score", region.detectionScore);
+            imageRegionItems.append(item);
+        }
         QJsonObject item{{"id", page.id}, {"number", page.number},
                                      {"width", page.width}, {"height", page.height},
                                      {"source_width", page.sourceWidth > 0 ? page.sourceWidth : page.width},
@@ -643,10 +647,17 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
                 region.autoDetected = item.value("auto_detected").toBool();
                 region.content = item.value("content").toString();
                 if (item.contains("content") && (!item.value("content").isString() ||
-                    !(region.content.isEmpty() || region.content == "text" || region.content == "math" || region.content == "mixed")))
+                    !(region.content.isEmpty() || region.content == "text" || region.content == "math" || region.content == "mixed" || region.content == "picture")))
                     return fail(QStringLiteral("Invalid image region content."));
+                region.detectedLabel = item.value("detected_label").toString();
+                region.detectionScore = item.value("detection_score").toDouble(-1);
+                if ((item.contains("detected_label") && (!item.value("detected_label").isString() || region.detectedLabel.size() > 64)) ||
+                    (item.contains("detection_score") && (!item.value("detection_score").isDouble() ||
+                     !std::isfinite(region.detectionScore) || region.detectionScore < 0 || region.detectionScore > 1)))
+                    return fail(QStringLiteral("Invalid layout detection metadata."));
                 region.language = item.value("language").toString();
                 region.notText = item.value("not_text").toBool();
+                if (region.content == "picture") region.notText = true;
                 region.id = item.value(QStringLiteral("id")).toString();
                 if (region.id.isEmpty() || ids.contains(region.id) ||
                     !parseBox(item.value(QStringLiteral("box")).toObject(),

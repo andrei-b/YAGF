@@ -1,0 +1,128 @@
+#include "aipagelayout.h"
+#include <QBuffer>
+#include <QElapsedTimer>
+#include <QEventLoop>
+#include <QJsonDocument>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QSet>
+#include <QTimer>
+#include <QUuid>
+#include <algorithm>
+#include <cmath>
+#include <limits>
+
+namespace yagf::processing {
+namespace {
+auto failure(const QString &message) { return std::unexpected(OcrError{message}); }
+bool integer(const QJsonValue &value, int low, int high) {
+    const double n=value.toDouble(-1);
+    return value.isDouble() && std::isfinite(n) && std::floor(n)==n && n>=low && n<=high;
+}
+}
+std::expected<PageLayout, OcrError> detectPageAreas(const QImage &image, const PageLayoutOptions &options, std::stop_token stop)
+{
+    if (stop.stop_requested()) return std::unexpected(OcrError{QStringLiteral("Cancelled"),true});
+    if (image.isNull() || image.width()>20000 || image.height()>20000 || qint64(image.width())*image.height()>80000000)
+        return failure(QStringLiteral("The page is empty or exceeds the layout image limit."));
+    QUrl url=options.url;
+    if (!url.isValid() || (url.scheme()!="http" && url.scheme()!="https") || url.host().isEmpty() ||
+        !url.userInfo().isEmpty() || url.hasQuery() || url.hasFragment())
+        return failure(QStringLiteral("Enter an HTTP or HTTPS layout service URL without credentials, query or fragment."));
+    if (!std::isfinite(options.threshold) || options.threshold<.1 || options.threshold>.95)
+        return failure(QStringLiteral("Invalid model-score threshold."));
+    QString path=url.path();
+    while (path.endsWith('/')) path.chop(1);
+    if (!path.endsWith("/v1/layout")) path += path.endsWith("/v1") ? "/layout" : "/v1/layout";
+    url.setPath(path);
+    QByteArray png; QBuffer buffer(&png); buffer.open(QIODevice::WriteOnly);
+    if (!image.save(&buffer,"PNG") || png.size()>32*1024*1024)
+        return failure(QStringLiteral("The page PNG exceeds the 32 MiB layout limit."));
+    const QByteArray body=QJsonDocument(QJsonObject{{"protocol","yagf-layout/1"},{"image_png",QString::fromLatin1(png.toBase64())},
+                                                   {"threshold",options.threshold}}).toJson(QJsonDocument::Compact);
+    if (stop.stop_requested()) return std::unexpected(OcrError{QStringLiteral("Cancelled"),true});
+    QNetworkAccessManager manager;
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::ContentTypeHeader,"application/json");
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,QNetworkRequest::ManualRedirectPolicy);
+    if (!options.token.isEmpty()) request.setRawHeader("Authorization",("Bearer "+options.token).toUtf8());
+    auto *reply=manager.post(request,body);
+    QEventLoop loop; QTimer timer; QElapsedTimer elapsed; elapsed.start();
+    QByteArray bytes; bool oversized=false, timedOut=false;
+    const auto read=[&] {
+        if (!reply->isOpen()) return;
+        bytes+=reply->readAll();
+        if (bytes.size()>8*1024*1024) { oversized=true; reply->abort(); }
+    };
+    QObject::connect(reply,&QNetworkReply::readyRead,&loop,read);
+    QObject::connect(reply,&QNetworkReply::finished,&loop,&QEventLoop::quit);
+    QObject::connect(&timer,&QTimer::timeout,&loop,[&] {
+        if (stop.stop_requested() || elapsed.elapsed()>options.timeoutMs) {
+            timedOut=!stop.stop_requested(); reply->abort();
+        }
+    });
+    timer.start(40); loop.exec(); read();
+    if (stop.stop_requested()) return std::unexpected(OcrError{QStringLiteral("Cancelled"),true});
+    if (oversized) return failure(QStringLiteral("The layout service response is too large."));
+    if (timedOut) return failure(QStringLiteral("The layout service timed out."));
+    const int status=reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    if (reply->error()!=QNetworkReply::NoError || status!=200)
+        return failure(QStringLiteral("Could not analyze page areas (%1). Check the layout worker and SSH tunnel. %2")
+                           .arg(status).arg(reply->errorString()));
+    QJsonParseError parse;
+    auto json=QJsonDocument::fromJson(bytes,&parse);
+    if (parse.error!=QJsonParseError::NoError || !json.isObject()) return failure(QStringLiteral("Invalid layout JSON."));
+    const auto root=json.object();
+    if (root.value("protocol")!="yagf-layout/1" || !integer(root.value("width"),image.width(),image.width()) ||
+        !integer(root.value("height"),image.height(),image.height()) || !root.value("areas").isArray() ||
+        !root.value("model").isString() || root.value("model").toString().isEmpty() || root.value("model").toString().size()>128)
+        return failure(QStringLiteral("The layout service returned incompatible geometry or schema."));
+    const auto areas=root.value("areas").toArray();
+    if (areas.size()>1000) return failure(QStringLiteral("Too many page areas."));
+    PageLayout result{root.value("model").toString(),{}}; QSet<QString> ids;
+    for (const auto &value:areas) {
+        const auto item=value.toObject(); const auto box=item.value("box").toArray();
+        const QString id=item.value("id").toString(), label=item.value("label").toString(), type=item.value("type").toString();
+        const double score=item.value("score").toDouble(-1);
+        if (!value.isObject() || id.isEmpty() || id.size()>128 || ids.contains(id) || label.isEmpty() || label.size()>64 ||
+            !(type=="text" || type=="math" || type=="mixed" || type=="picture") || !std::isfinite(score) || score<0 || score>1 ||
+            box.size()!=4 || !integer(box[0],0,image.width()-1) || !integer(box[1],0,image.height()-1) ||
+            !integer(box[2],1,image.width()) || !integer(box[3],1,image.height()))
+            return failure(QStringLiteral("The layout service returned an invalid area."));
+        QRect bounds(box[0].toInt(),box[1].toInt(),box[2].toInt(),box[3].toInt());
+        if (!image.rect().contains(bounds)) return failure(QStringLiteral("A detected area lies outside the page."));
+        ids.insert(id); result.areas.append({label,type,bounds,score});
+    }
+    consolidateInlineAreas(result.areas);
+    return result;
+}
+void consolidateInlineAreas(QVector<PageArea> &areas)
+{
+    QSet<int> remove;
+    for (int i=0;i<areas.size();++i) if (areas[i].label=="inline_formula") {
+        int best=-1; qint64 size=std::numeric_limits<qint64>::max();
+        for (int j=0;j<areas.size();++j) if (i!=j && areas[j].label!="inline_formula" &&
+            (areas[j].type=="text" || areas[j].type=="mixed") && areas[j].bounds.contains(areas[i].bounds)) {
+            const qint64 area=qint64(areas[j].bounds.width())*areas[j].bounds.height();
+            if (area<size) { size=area; best=j; }
+        }
+        if (best>=0) { areas[best].type="mixed"; remove.insert(i); }
+    }
+    for (int i=areas.size()-1;i>=0;--i) if (remove.contains(i)) areas.removeAt(i);
+}
+QVector<core::ImageRegion> mergePageAreas(const QVector<core::ImageRegion> &existing, const QVector<PageArea> &accepted, bool replaceAutomatic)
+{
+    QVector<core::ImageRegion> result;
+    for (const auto &region:existing) if (!replaceAutomatic || !region.autoDetected) result.append(region);
+    for (const auto &area:accepted) {
+        if (area.bounds.isEmpty() || std::ranges::any_of(result,[&](const auto &r){ return r.bounds.intersects(area.bounds); })) continue;
+        core::ImageRegion region;
+        region.id=QUuid::createUuid().toString(QUuid::WithoutBraces);
+        region.bounds=area.bounds; region.content=area.type; region.notText=area.type=="picture";
+        region.autoDetected=true; region.detectedLabel=area.label; region.detectionScore=area.score;
+        result.append(std::move(region));
+    }
+    return result;
+}
+}

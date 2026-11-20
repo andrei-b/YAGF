@@ -13,6 +13,7 @@
 #include <QBuffer>
 #include "imageprocessor.h"
 #include "layoutdialog.h"
+#include "aipagelayoutdialog.h"
 #include "scannerdialog.h"
 #include "documentcommands.h"
 #include "wordeditor.h"
@@ -215,6 +216,7 @@ QIcon textStyleActionIcon(bool bold)
 
 QString contentLabel(const QString &content)
 {
+    if (content == "picture") return QObject::tr("Picture");
     if (content == "text") return QObject::tr("Text");
     if (content == "math") return QObject::tr("Math");
     if (content == "mixed") return QObject::tr("Text + math");
@@ -245,7 +247,7 @@ void carryCorrections(OcrPage &fresh, const OcrPage *oldPage, bool estimateForma
     core::retainCorrections(fresh, *oldPage, estimateFormatting);
     if (!detectedBlocks.isEmpty() || fresh.engineId == "local-mixed") fresh.imageRegions = std::move(detectedBlocks);
     if (!keepLayout) {
-        fresh.imageRegions.removeIf([](const auto &block) { return block.autoDetected; });
+        fresh.imageRegions.removeIf([](const auto &block) { return block.autoDetected && block.detectedLabel.isEmpty(); });
         return;
     }
     const auto hasLayout = [](const QString &engine) {
@@ -649,6 +651,9 @@ MainWindow::MainWindow()
     auto *fileMenu = menuBar()->addMenu(tr("&File"));
     auto *editMenu = menuBar()->addMenu(tr("&Edit"));
     auto *toolsMenu = menuBar()->addMenu(tr("&Tools"));
+    aiPageAreasAction = toolsMenu->addAction(QIcon(":/actions/smart-split.png"), tr("AI page areas…"), this, &MainWindow::classifyPageAreas);
+    aiPageAreasAction->setObjectName("aiPageAreasAction");
+    aiPageAreasAction->setEnabled(false);
     verification = new VerificationController(this, document);
     auto *queueAction = toolsMenu->addAction(tr("Verification queue"), verification, &VerificationController::show);
     queueAction->setObjectName(QStringLiteral("showVerificationQueue"));
@@ -1002,7 +1007,18 @@ MainWindow::MainWindow()
     splitBlocksButton->setObjectName("smartSplit");
     splitBlocksButton->setToolTip(tr("Detect text, math and mixed blocks using the OCR language."));
     splitBlocksButton->setEnabled(false);
-    blocksLayout->addWidget(splitBlocksButton);
+    auto *splitRow = new QHBoxLayout;
+    splitRow->addWidget(splitBlocksButton, 1);
+    auto *splitOptions = new QToolButton(blocksPanel);
+    splitOptions->setObjectName("smartSplitOptions");
+    splitOptions->setToolTip(tr("More page-area detection options"));
+    splitOptions->setArrowType(Qt::DownArrow);
+    splitOptions->setPopupMode(QToolButton::InstantPopup);
+    auto *splitMenu = new QMenu(splitOptions);
+    splitMenu->addAction(aiPageAreasAction);
+    splitOptions->setMenu(splitMenu);
+    splitRow->addWidget(splitOptions);
+    blocksLayout->addLayout(splitRow);
     connect(splitBlocksButton, &QPushButton::clicked, this, [this] {
         if (!maybeApplyEditor()) return;
         mathMode->setChecked(false);
@@ -1057,6 +1073,12 @@ MainWindow::MainWindow()
     imageSplitAction = imageTools->addAction(QIcon(":/actions/smart-split.png"), tr("Smart split"));
     imageSplitAction->setObjectName("imageSmartSplitAction");
     connect(imageSplitAction, &QAction::triggered, splitBlocksButton, &QPushButton::click);
+    if (auto *button = qobject_cast<QToolButton *>(imageTools->widgetForAction(imageSplitAction))) {
+        auto *menu = new QMenu(button);
+        menu->addAction(aiPageAreasAction);
+        button->setMenu(menu);
+        button->setPopupMode(QToolButton::MenuButtonPopup);
+    }
     imageClearBlocksAction = imageTools->addAction(QIcon(":/actions/clear-blocks.png"), tr("Clear all blocks"));
     imageClearBlocksAction->setObjectName("imageClearBlocksAction");
     connect(imageClearBlocksAction, &QAction::triggered, this, [this] { clearPageBlocks(currentPage); });
@@ -2732,9 +2754,9 @@ void MainWindow::showDocument()
         box->setZValue(4);
         box->setAcceptedMouseButtons(Qt::NoButton);
         box->setToolTip(tr("Region %1 · %2").arg(i + 1)
-            .arg(region.notText ? tr("Not a text") : contentLabel(region.content)));
+            .arg(region.content == "picture" ? tr("Picture") : region.notText ? tr("Not a text") : contentLabel(region.content)));
         imageRegionBoxes.append(box);
-        QString language = region.notText ? tr("Not a text") :
+        QString language = region.content == "picture" ? tr("Picture") : region.notText ? tr("Not a text") :
             region.language.isEmpty() ? tr("Page language") : region.language;
         if (!region.notText && !region.content.isEmpty())
             language = contentLabel(region.content) + QStringLiteral(" · ") + language;
@@ -2747,6 +2769,9 @@ void MainWindow::showDocument()
         item->setTextAlignment(Qt::AlignHCenter);
         item->setToolTip(tr("Block %1 · %2\nRight-click to change its content type or language.")
             .arg(i + 1).arg(language));
+        if (!region.detectedLabel.isEmpty())
+            item->setToolTip(item->toolTip() + tr("\nDetected: %1 · model score %2%")
+                .arg(region.detectedLabel).arg(region.detectionScore * 100, 0, 'f', 1));
         if (region.notText) item->setForeground(QColor(110, 110, 110));
     }
     recognizeAction->setText(mathMode->isChecked() ? tr("Recognize math") : tr("Recognize"));
@@ -2825,7 +2850,7 @@ void MainWindow::refreshImageRegionSelection(bool updateWords)
         const bool active = selectedRegionIds.contains(page->imageRegions[i].id);
         const bool notText = page->imageRegions[i].notText;
         const auto &kind = page->imageRegions[i].content;
-        QColor color = notText ? QColor(110, 110, 110) : kind == "math" ? QColor(49, 93, 172) :
+        QColor color = kind == "picture" ? QColor(174, 109, 46) : notText ? QColor(110, 110, 110) : kind == "math" ? QColor(49, 93, 172) :
             kind == "mixed" ? QColor(127, 72, 153) : QColor(25, 135, 55);
         if (active) color = QColor(210, 65, 25);
         imageRegionBoxes[i]->setPen(QPen(color, active ? 3 : 2, notText ? Qt::DashLine : Qt::SolidLine));
@@ -2864,6 +2889,7 @@ void MainWindow::refreshImageToolbar()
     undoSkewAction->setVisible(!selected && undoSkew);
     undoSkewAction->setEnabled(ready && undoSkew);
     imageSplitAction->setEnabled(ready);
+    aiPageAreasAction->setEnabled(ready);
     const auto *page = document.page(currentPage);
     imageClearBlocksAction->setEnabled(ready && page && !page->imageRegions.isEmpty());
     for (auto *action : {imageRecognizeBlockAction, imageBlockOptionsAction, imageRemoveBlockAction}) {
@@ -2904,6 +2930,8 @@ void MainWindow::moveImageRegion(int index, const QRectF &bounds)
     OcrPage edited = *page;
     edited.imageRegions[index].bounds = area;
     edited.imageRegions[index].autoDetected = false;
+    edited.imageRegions[index].detectedLabel.clear();
+    edited.imageRegions[index].detectionScore = -1;
     selectedImageRegion = index;
     undoStack.push(new ReplacePageCommand(document, currentPage, std::move(edited), tr("Move image region")));
 }
@@ -2969,6 +2997,31 @@ QString MainWindow::blockLanguage(const ImageRegion &region) const
     return region.language.isEmpty() ? languageEdit->text().trimmed() : region.language;
 }
 
+void MainWindow::classifyPageAreas()
+{
+    if (processor.isBusy() || exportBusy || projectLoading || imagePath.isEmpty() || !maybeApplyEditor()) return;
+    QImageReader reader(imagePath);
+    const QImage image = reader.read();
+    if (image.isNull()) { showError(tr("Could not read the page image for layout analysis.")); return; }
+    const auto *old = document.page(currentPage);
+    AiPageLayoutDialog dialog(image, old ? old->imageRegions : QVector<ImageRegion>{}, this);
+    if (dialog.exec() != QDialog::Accepted) return;
+    OcrPage page = old ? *old : OcrPage{};
+    if (!old) {
+        page.number = currentPage;
+        page.id = QStringLiteral("page-%1").arg(currentPage);
+        page.width = image.width(); page.height = image.height();
+        page.sourceWidth = rawImage.width(); page.sourceHeight = rawImage.height();
+        page.preprocessing = displayedPreprocessing;
+        page.renderDpi = processor.renderedDpi(currentPage);
+    }
+    page.language = languageEdit->text();
+    page.imageRegions = dialog.regions();
+    selectedRegionIds.clear(); selectedImageRegion = -1;
+    undoStack.push(new ReplacePageCommand(document, currentPage, std::move(page), tr("AI page areas")));
+    status->setText(tr("Page areas updated. Review the blocks, then Recognize to refresh the OCR text."));
+}
+
 void MainWindow::setBlockLanguage(int index, const QString &language, bool notText)
 {
     const auto *page = document.page(currentPage);
@@ -2978,6 +3031,9 @@ void MainWindow::setBlockLanguage(int index, const QString &language, bool notTe
     auto &region = edited.imageRegions[index];
     if (region.language == language && region.notText == notText) return;
     region.autoDetected = false;
+    region.detectedLabel.clear();
+    region.detectionScore = -1;
+    if (!notText && region.content == "picture") region.content = "text";
     region.language = language;
     region.notText = notText;
     if (notText) edited.words.removeIf([&](const OcrWord &word) { return overlapsWord(word, region.bounds); });
@@ -3026,15 +3082,17 @@ void MainWindow::showBlockContextMenu(int index, const QPoint &globalPosition)
             setBlockLanguage(index, code, false);
     });
     auto *contents = menu.addMenu(tr("Block content"));
-    for (const auto &kind : QStringList{"", "text", "math", "mixed"}) {
+    for (const auto &kind : QStringList{"", "text", "math", "mixed", "picture"}) {
         auto *action = contents->addAction(contentLabel(kind));
         action->setCheckable(true);
-        action->setChecked(!region.notText && region.content == kind);
+        action->setChecked(region.content == kind && (kind == "picture" || !region.notText));
         connect(action, &QAction::triggered, this, [this, index, kind] {
             OcrPage changed = *document.page(currentPage);
             changed.imageRegions[index].autoDetected = false;
             changed.imageRegions[index].content = kind;
-            changed.imageRegions[index].notText = false;
+            changed.imageRegions[index].notText = kind == "picture";
+            changed.imageRegions[index].detectedLabel.clear();
+            changed.imageRegions[index].detectionScore = -1;
             undoStack.push(new ReplacePageCommand(document, currentPage, std::move(changed), tr("Set block content")));
         });
     }
@@ -3463,7 +3521,10 @@ void MainWindow::exportPdf(bool archive, bool formatted)
 void MainWindow::exportScientificBook()
 {
     if (processor.isBusy() || exportBusy || !maybeApplyEditor()) return;
-    if (!document.wordCount()) { showError(tr("Recognize the document before exporting its reading order.")); return; }
+    const bool pictures = std::ranges::any_of(document.pages, [](const auto &page) {
+        return std::ranges::any_of(page.imageRegions, [](const auto &block) { return block.content == "picture" && block.notText; });
+    });
+    if (!document.wordCount() && !pictures) { showError(tr("Recognize the document before exporting its reading order.")); return; }
     if (document.pages.size() < document.totalPages &&
         QMessageBox::question(this, tr("Pages without OCR"),
             tr("Export only the recognized pages?"), QMessageBox::Yes | QMessageBox::Cancel,

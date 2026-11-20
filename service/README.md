@@ -106,3 +106,67 @@ python3 -m unittest discover -s service/tests
 ```
 
 The service is not bundled into the desktop application or AppImage. The three new adapters have contract tests, but real model inference and Jetson performance have not yet been verified in this repository.
+
+## AI page-area detection on the Jetson
+
+Choose **Tools → AI page areas…**, or the arrow beside **Smart split**. Analyze,
+review the colored boxes, change labels or selection, and apply. The four block
+kinds are text, picture, formula and text with formulas. Pictures are skipped by
+OCR and included in the scientific HTML and LaTeX exports. The detector's original
+label (including tables, captions and headings) and score are saved in the project.
+Tables currently use text OCR; this feature does not infer table cell structure.
+
+Manual blocks are always preserved. By default the new selection replaces only
+automatic blocks; uncheck that option to keep all existing blocks. Proposals that
+overlap preserved blocks cannot be selected. Selecting an overlapping proposal
+unchecks the conflicting AI proposal. Inline formulas inside a detected paragraph
+make the paragraph a mixed block. Applying is undoable and leaves existing OCR
+text untouched; recognize the page again to refresh its text using the new areas.
+
+The dedicated worker uses the official Apache-2.0
+[PP-DocLayoutV3 ONNX model](https://huggingface.co/PaddlePaddle/PP-DocLayoutV3_onnx),
+pinned to revision `46bbdf188bb0a772c08aed74882ce7e51a8f1ea6`, with SHA256
+`45bf71750b00739a41fc209f132eb104a4d6b5bb29483c9078164d8b87cf28ba`.
+It uses ONNX Runtime's CPU provider with two threads; the existing GPU OCR services
+can continue running. The 130,502,049-byte model is not included in this repository.
+
+The current installation stores the model, isolated Python environment, download
+cache and temporary files on the Toshiba disk at `/mnt/toshiba/yagf-layout`.
+To reproduce it on another ARM64/Python 3.12 host (choose a writable storage path):
+
+```sh
+mkdir -p /mnt/toshiba/yagf-layout/tmp /mnt/toshiba/yagf-layout/cache /mnt/toshiba/yagf-layout/models
+export TMPDIR=/mnt/toshiba/yagf-layout/tmp PIP_CACHE_DIR=/mnt/toshiba/yagf-layout/cache
+python3 -m venv --system-site-packages /mnt/toshiba/yagf-layout/venv
+/mnt/toshiba/yagf-layout/venv/bin/pip install -r service/requirements-layout.txt
+curl -fL https://huggingface.co/PaddlePaddle/PP-DocLayoutV3_onnx/resolve/46bbdf188bb0a772c08aed74882ce7e51a8f1ea6/inference.onnx -o /mnt/toshiba/yagf-layout/models/inference.onnx
+/mnt/toshiba/yagf-layout/venv/bin/python service/layout_server.py --model /mnt/toshiba/yagf-layout/models/inference.onnx
+```
+
+The worker verifies the model hash at startup. It listens on Jetson loopback port
+8771. `yagf-layout.service` is the user-service template; its environment file
+`~/.config/yagf/layout-worker.env` defines `YAGF_LAYOUT_PYTHON` and
+`YAGF_LAYOUT_MODEL` with the paths above. Copy the worker to
+`~/.local/lib/yagf/layout_server.py` and the unit to `~/.config/systemd/user/`.
+The disk must be mounted before the service can start; a missing mount causes
+startup failure and systemd retries every five seconds.
+
+On the desktop, `yagf-layout-tunnel.service` forwards only local port 8771 using a
+dedicated SSH key `~/.ssh/yagf_jetson_layout`. Its environment file
+`~/.config/yagf/layout-host.env` defines `YAGF_JETSON_HOST` (SSH user and host).
+Authorize that key on the worker with
+`restrict,port-forwarding,permitopen="127.0.0.1:8771",command="/bin/false"`.
+Enable each unit with `systemctl --user enable --now UNIT`. The existing symbol
+training key and tunnel are separate.
+
+The dialog defaults to `http://127.0.0.1:8771`. It saves the layout URL and minimum
+score separately from OCR/AI-review settings. An optional bearer token stays in
+memory for the dialog only. For non-loopback worker binding, set
+`YAGF_LAYOUT_TOKEN` and use HTTPS or an SSH tunnel.
+`GET /v1/health` reports readiness and the pinned model identity.
+`POST /v1/layout` accepts protocol `yagf-layout/1`, `image_png` (base64 PNG) and
+`threshold` (0.1–0.95). The response contains original page dimensions and ordered
+areas with `id`, `label`, `type`, `score`, and native-pixel `box: [x,y,w,h]`.
+Requests are limited to 32 MiB PNGs and 80 million pixels. The client validates
+geometry, limits responses, supports cancellation, and never applies a partial
+or failed analysis. Model scores are not guarantees; review is required.

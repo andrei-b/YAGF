@@ -1,0 +1,17 @@
+[Unit]
+Description=YAGF AI page layout detector
+
+[Service]
+EnvironmentFile=%h/.config/yagf/layout-worker.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/env ${YAGF_LAYOUT_PYTHON} %h/.local/lib/yagf/layout_server.py --model ${YAGF_LAYOUT_MODEL} --host 127.0.0.1 --port 8771
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+MemoryMax=2G
+
+[Install]
+WantedBy=default.target
