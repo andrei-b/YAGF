@@ -473,6 +473,7 @@ QJsonObject OcrDocument::toJson(bool includeRestoredPixels) const
             {"use_raw_ocr_output", useRawOcrOutput},
             {"rendering", QJsonObject{{"dpi", rendering.dpi}, {"adaptive", rendering.adaptive}}},
             {"language", language}, {"total_pages", totalPages}, {"pages", pageItems},
+            {"symbol_rules", symbolRulesJson(symbolRules)},
             {"context", QJsonObject{{"description", context.description},
                                     {"infer_from_recognized_text", context.inferFromRecognizedText}}}};
 }
@@ -488,6 +489,11 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
         !json.value(QStringLiteral("language")).isString())
         return fail(QStringLiteral("Invalid OCR document fields."));
     OcrDocument parsed;
+    if (json.contains("symbol_rules")) {
+        auto rules = readSymbolRules(json["symbol_rules"]);
+        if (!rules) return fail(rules.error());
+        parsed.symbolRules = std::move(*rules);
+    }
     if (json.contains("preserve_formatting") && !json.value("preserve_formatting").isBool())
         return fail(QStringLiteral("Invalid format preservation mode."));
     if (json.contains("use_raw_ocr_output") && !json.value("use_raw_ocr_output").isBool())

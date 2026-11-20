@@ -3,6 +3,7 @@
 #include "preprocesssettings.h"
 #include "documentcontext.h"
 #include "rendersettings.h"
+#include "symbolrules.h"
 
 #include <QJsonArray>
 #include <QJsonObject>
@@ -113,6 +114,7 @@ public:
     bool mathOcr = false;
     RenderSettings rendering;
     QVector<OcrPage> pages;
+    QVector<SymbolRule> symbolRules;
 
     static bool fromJson(const QJsonObject &json, OcrDocument *result, QString *error);
     OcrPage *page(int number);

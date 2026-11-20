@@ -11,6 +11,7 @@ qt_standard_project_setup()
 set(CMAKE_AUTORCC ON)
 
 add_library(yagf_core STATIC
+    src/core/symbolrules.cpp src/core/symbolrules.h
     src/core/ocrbenchmark.cpp src/core/ocrbenchmark.h
     src/core/spellchecker.cpp src/core/spellchecker.h
     src/core/wordspelling.cpp src/core/wordspelling.h
@@ -36,6 +37,12 @@ add_library(yagf_imaging STATIC
 target_link_libraries(yagf_imaging PUBLIC yagf_core Qt6::Gui PRIVATE ${OpenCV_LIBS})
 target_include_directories(yagf_imaging PUBLIC src/processing)
 
+# Symbol augmentation uses source pixels and optional character-box OCR without
+# depending on the document controller, export, or widgets.
+add_library(yagf_symbols STATIC src/processing/symbolaugmentation.cpp src/processing/symbolaugmentation.h)
+target_link_libraries(yagf_symbols PUBLIC yagf_imaging PRIVATE ${OpenCV_LIBS})
+target_include_directories(yagf_symbols PUBLIC src/processing)
+
 # Providers and recognition analysis can be used without the async document controller.
 add_library(yagf_ocr STATIC
     src/processing/pageorientation.cpp src/processing/pageorientation.h
@@ -55,7 +62,7 @@ target_include_directories(yagf_ocr PUBLIC src/processing)
 add_library(yagf_processing STATIC
     src/processing/documentprocessor.cpp src/processing/documentprocessor.h
     src/processing/textguidedanalysis.cpp src/processing/textguidedanalysis.h)
-target_link_libraries(yagf_processing PUBLIC yagf_imaging yagf_ocr Qt6::Concurrent)
+target_link_libraries(yagf_processing PUBLIC yagf_imaging yagf_symbols yagf_ocr Qt6::Concurrent)
 target_include_directories(yagf_processing PUBLIC src/processing)
 
 # Export consumes snapshots and OCR support, never the DocumentProcessor or UI.
@@ -94,6 +101,7 @@ target_sources(yagf2 PRIVATE src/ui/scannerdialog.cpp src/ui/scannerdialog.h)
 target_sources(yagf2 PRIVATE src/ui/documentcommands.cpp src/ui/documentcommands.h)
 target_sources(yagf2 PRIVATE src/ui/aireviewdialog.cpp src/ui/aireviewdialog.h)
 target_sources(yagf2 PRIVATE src/ui/spellhighlighter.cpp src/ui/spellhighlighter.h)
+target_sources(yagf2 PRIVATE src/ui/symbolrulesdialog.cpp src/ui/symbolrulesdialog.h)
 target_compile_definitions(yagf2 PRIVATE YAGF_VERSION="${PROJECT_VERSION}")
 target_link_libraries(yagf2 PRIVATE yagf_experiments yagf_core yagf_processing yagf_export Qt6::Widgets Qt6::Concurrent Qt6::Network)
 
@@ -114,6 +122,15 @@ install(FILES COPYING
 include(CTest)
 if(BUILD_TESTING)
     find_package(Qt6 6.2 REQUIRED COMPONENTS Test)
+    qt_add_executable(symbolaugmentation_tests tests/symbolaugmentation_tests.cpp)
+    target_link_libraries(symbolaugmentation_tests PRIVATE yagf_processing Qt6::Widgets)
+    add_test(NAME symbolaugmentation_tests COMMAND symbolaugmentation_tests)
+    set_tests_properties(symbolaugmentation_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    qt_add_executable(symbolrulesdialog_tests tests/symbolrulesdialog_tests.cpp src/ui/symbolrulesdialog.cpp src/ui/symbolrulesdialog.h)
+    target_link_libraries(symbolrulesdialog_tests PRIVATE yagf_processing yagf_export Qt6::Widgets Qt6::Concurrent Qt6::Network Qt6::Test)
+    target_include_directories(symbolrulesdialog_tests PRIVATE src/ui)
+    add_test(NAME symbolrulesdialog_tests COMMAND symbolrulesdialog_tests)
+    set_tests_properties(symbolrulesdialog_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     qt_add_executable(spellingformulas_tests tests/spellingformulas_tests.cpp)
     target_link_libraries(spellingformulas_tests PRIVATE yagf_processing Qt6::Test)
     add_test(NAME spellingformulas_tests COMMAND spellingformulas_tests)
@@ -203,6 +220,7 @@ if(BUILD_TESTING)
         src/ui/documentcommands.cpp src/ui/documentcommands.h resources/icons.qrc)
     target_sources(mainwindow_tests PRIVATE src/ui/aireviewdialog.cpp src/ui/aireviewdialog.h)
     target_sources(mainwindow_tests PRIVATE src/ui/spellhighlighter.cpp src/ui/spellhighlighter.h)
+    target_sources(mainwindow_tests PRIVATE src/ui/symbolrulesdialog.cpp src/ui/symbolrulesdialog.h)
     target_link_libraries(mainwindow_tests PRIVATE yagf_experiments yagf_processing yagf_export Qt6::Widgets Qt6::Concurrent Qt6::Network Qt6::Test)
     target_include_directories(mainwindow_tests PRIVATE src/ui)
     add_test(NAME mainwindow_tests COMMAND mainwindow_tests)

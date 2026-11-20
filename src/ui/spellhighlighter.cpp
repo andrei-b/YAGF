@@ -65,6 +65,10 @@ bool SpellHighlighter::eventFilter(QObject *watched, QEvent *event)
             menu->insertAction(before, empty);
         }
         menu->insertSeparator(before);
+        if (!editor->actions().isEmpty()) {
+            menu->addSeparator();
+            menu->addActions(editor->actions());
+        }
         menu->exec(editor->viewport()->mapToGlobal(viewPoint));
         event->accept();
         return true;

@@ -1,0 +1,15 @@
+[Unit]
+Description=YAGF symbol recognition training worker
+
+[Service]
+ExecStart=/usr/bin/python3 %h/.local/lib/yagf/symbol_training.py --host 127.0.0.1 --port 8770
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+MemoryMax=128M
+
+[Install]
+WantedBy=default.target

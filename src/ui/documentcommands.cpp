@@ -1,6 +1,12 @@
 #include "documentcommands.h"
 
 namespace yagf::ui {
+ChangeSymbolRulesCommand::ChangeSymbolRulesCommand(core::OcrDocument &document, QVector<core::SymbolRule> after)
+    : QUndoCommand(QStringLiteral("Edit symbol recognition rules")), document(document),
+      before(document.symbolRules), after(std::move(after)) {}
+void ChangeSymbolRulesCommand::redo() { document.symbolRules = after; }
+void ChangeSymbolRulesCommand::undo() { document.symbolRules = before; }
+
 namespace {
 
 core::OcrPage updatedRegion(const core::OcrDocument &document, int pageNumber,

@@ -5,6 +5,7 @@
 #include "documentcommands.h"
 #include "imageprocessor.h"
 #include "pagesource.h"
+#include "symbolrulesdialog.h"
 #include <algorithm>
 #include <QCheckBox>
 #include <QComboBox>
@@ -18,6 +19,53 @@
 #include <QTimer>
 
 namespace yagf::ui {
+void MainWindow::editSymbolRules(bool fromSelection)
+{
+    if (processor.isBusy() || exportBusy || projectLoading || originalPath.isEmpty()) return;
+    if (fromSelection && editorPending) { showError(tr("Apply your text edits, then select the printed symbol to teach.")); return; }
+    if (!fromSelection && !maybeApplyEditor()) return;
+    QImage seed;
+    QRect bounds;
+    QString reading;
+    int wordIndex = -1, characterStart = -1, characterLength = 0;
+    if (fromSelection) {
+        const auto *page = document.page(currentPage);
+        if (!page || selectedWords.isEmpty()) return;
+        const auto cursor = selectionEditor->textCursor();
+        if (cursor.hasSelection()) {
+            for (auto it = editorWordRanges.cbegin(); it != editorWordRanges.cend(); ++it)
+                if (cursor.selectionStart() >= it.value().first && cursor.selectionEnd() <= it.value().first+it.value().second) {
+                    wordIndex = it.key(); characterStart = cursor.selectionStart()-it.value().first;
+                    characterLength = cursor.selectionEnd()-cursor.selectionStart(); reading = cursor.selectedText(); break;
+                }
+        } else if (selectedWords.size() == 1) { wordIndex = selectedWords.first(); reading = page->words[wordIndex].text; }
+        if (wordIndex < 0) { showError(tr("Select a symbol within one recognized word, or select a single word to crop its symbol.")); return; }
+        seed = QImage(imagePath); bounds = page->words[wordIndex].bounds;
+        if (seed.isNull() || bounds.isEmpty() || !seed.rect().contains(bounds)) { showError(tr("The selected text has no usable source image.")); return; }
+    }
+    auto shared = core::loadSymbolLibrary();
+    if (!shared) { showError(shared.error()); return; }
+    auto snapshot = document; snapshot.sourcePath = originalPath; snapshot.totalPages = pageCount;
+    SymbolRulesDialog dialog(std::move(snapshot), *shared, this, seed, bounds, currentPage, reading, wordIndex, characterStart, characterLength);
+    while (dialog.exec() == QDialog::Accepted) {
+        const auto sharedRules = dialog.sharedRules();
+        if (core::symbolRulesJson(sharedRules) != core::symbolRulesJson(*shared)) {
+            if (auto saved = core::saveSymbolLibrary(sharedRules); !saved) { showError(saved.error()); continue; }
+        }
+        const auto rules = dialog.bookRules();
+        const bool changed = core::symbolRulesJson(rules) != core::symbolRulesJson(document.symbolRules);
+        const auto pages = dialog.changedPages();
+        if (changed || !pages.isEmpty()) {
+            undoStack.beginMacro(tr("Update symbol recognition"));
+            if (changed) undoStack.push(new ChangeSymbolRulesCommand(document, rules));
+            for (const auto &page : pages) undoStack.push(new ReplacePageCommand(document, page.number, page, tr("Apply symbol recognition")));
+            undoStack.endMacro();
+        }
+        status->setText(tr("Symbol recognition rules saved. Trained, enabled rules will augment future OCR."));
+        break;
+    }
+}
+
 void MainWindow::openExperiments()
 {
     if(processor.isBusy() || exportBusy || originalPath.isEmpty() || !maybeApplyEditor()) return;

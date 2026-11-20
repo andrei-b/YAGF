@@ -156,6 +156,7 @@ private:
     void refreshOcrLanguageList();
     void finishProjectLoading();
     void refreshImageToolbar();
+    void editSymbolRules(bool fromSelection);
     bool canReviewSelection() const;
     void reviewSelectedWord();
     void showDocument();
@@ -264,6 +265,7 @@ private:
         QTextCursor separator; // Inside the blank line before this section, tracking edits above it.
     };
     QVector<EditorSection> editorSections;
+    QHash<int, QPair<int, int>> editorWordRanges;
     QSet<QString> selectedRegionIds;
     int selectedImageRegion = -1;
     QVector<core::ImageRegion> queuedImageRegions;
@@ -286,6 +288,8 @@ private:
     SpecialistService formulaService, proseService;
     QAction *nextSpecialistAction = nullptr;
     QAction *similarSymbolsAction = nullptr;
+    QAction *symbolRulesAction = nullptr;
+    QAction *teachSymbolAction = nullptr;
     QAction *documentContextAction = nullptr;
     QAction *preserveFormattingAction = nullptr;
     QAction *rawOcrOutputAction = nullptr;

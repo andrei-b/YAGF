@@ -8,6 +8,16 @@
 
 namespace yagf::ui {
 
+class ChangeSymbolRulesCommand final : public QUndoCommand {
+public:
+    ChangeSymbolRulesCommand(core::OcrDocument &document, QVector<core::SymbolRule> after);
+    void redo() override;
+    void undo() override;
+private:
+    core::OcrDocument &document;
+    QVector<core::SymbolRule> before, after;
+};
+
 class ChangeDocumentContextCommand final : public QUndoCommand {
 public:
     ChangeDocumentContextCommand(core::OcrDocument &document, core::DocumentContext after);

@@ -3,6 +3,8 @@
 #include "verificationcontroller.h"
 #include "correctionretention.h"
 #include "imageprocessor.h"
+#include "symbolfixture.h"
+#include "symbolrulesdialog.h"
 #include <QListView>
 #include <QPdfWriter>
 #include <QPainter>
@@ -1533,6 +1535,44 @@ int main(int argc, char **argv)
         assert(skewWords->count() == 0 && undoSkew->isVisible() && undoSkew->isEnabled());
         skewUndo->trigger();
         assert(skewWords->count() == 1 && !undoSkew->isVisible());
+    }
+
+    // A selected character opens the teaching workflow with its source image;
+    // saving and undoing a book-specific draft use the normal project history.
+    {
+        const auto pixels=symbolFixture();
+        yagf::core::OcrDocument symbolBook;
+        symbolBook.sourcePath=directory.filePath("teach-symbol.png"); assert(pixels.save(symbolBook.sourcePath));
+        symbolBook.engine="tesseract"; symbolBook.language="rus";
+        yagf::core::OcrPage page; page.number=1; page.engineId="tesseract"; page.language="rus";
+        page.width=page.sourceWidth=pixels.width(); page.height=page.sourceHeight=pixels.height();
+        page.words.append({1,1,1,1,pixels.rect(),"ф","ф",45}); symbolBook.replacePage(page);
+        const auto project=directory.filePath("teach-symbol.yagf.json"); assert(yagf::core::ProjectFile::save(project,symbolBook,&error));
+        yagf::ui::MainWindow symbolWindow; symbolWindow.show(); symbolWindow.loadProject(project);
+        auto *words=symbolWindow.findChild<QListWidget *>("recognizedWords");
+        waitUi([&] { return words->count()==1; }); words->setCurrentRow(0);
+        auto *editor=symbolWindow.findChild<QTextEdit *>("recognizedTextEditor");
+        auto cursor=editor->textCursor(); cursor.setPosition(0); cursor.setPosition(1,QTextCursor::KeepAnchor); editor->setTextCursor(cursor);
+        auto *teach=symbolWindow.findChild<QAction *>("teachSelectedSymbolAction"); assert(teach && teach->isEnabled());
+        bool taught=false;
+        QTimer teacher;
+        QObject::connect(&teacher,&QTimer::timeout,&symbolWindow,[&] {
+            auto *dialog=dynamic_cast<yagf::ui::SymbolRulesDialog *>(QApplication::activeModalWidget());
+            if (!dialog) return;
+            auto *save=dialog->findChild<QPushButton *>("saveSymbolCrop"); if (!save->isEnabled()) return;
+            teacher.stop();
+            auto *label=dialog->findChild<QLineEdit *>("symbolRuleLabel"); assert(label->text()=="ф"); label->setText("ψ");
+            save->click(); assert(dialog->bookRules().size()==1 && dialog->bookRules()[0].examples.size()==1);
+            auto *buttons=dialog->findChild<QDialogButtonBox *>(); buttons->button(QDialogButtonBox::Save)->click(); taught=true;
+        }); teacher.start(10); teach->trigger(); assert(taught);
+        const auto saveBook=[&] {
+            for (auto *action:symbolWindow.findChildren<QAction *>()) if (action->text()=="Save project") action->trigger();
+            yagf::core::OcrDocument saved; assert(yagf::core::ProjectFile::load(project,&saved,&error)); return saved;
+        };
+        const auto saved=saveBook(); assert(saved.symbolRules.size()==1 && saved.symbolRules[0].label=="ψ");
+        assert(!yagf::core::symbolRuleTrained(saved.symbolRules[0]) && saved.page(1)->words[0].text=="ф");
+        for (auto *action:symbolWindow.findChildren<QAction *>()) if (action->shortcut()==QKeySequence::Undo) action->trigger();
+        assert(saveBook().symbolRules.isEmpty());
     }
 
     // A failed OCR job closes progress before reporting the error.

@@ -23,6 +23,7 @@
 #include "spellhighlighter.h"
 #include "verificationcontroller.h"
 #include "pagesource.h"
+#include "symbolrulesdialog.h"
 
 #include <QCloseEvent>
 #include <QApplication>
@@ -757,6 +758,13 @@ MainWindow::MainWindow()
     });
     similarSymbolsAction = toolsMenu->addAction(tr("Match similar symbol images"));
     similarSymbolsAction->setCheckable(true);
+    symbolRulesAction = toolsMenu->addAction(tr("Symbol recognition rules…"));
+    symbolRulesAction->setObjectName("symbolRulesAction");
+    connect(symbolRulesAction, &QAction::triggered, this, [this] { editSymbolRules(false); });
+    teachSymbolAction = toolsMenu->addAction(tr("Teach selected symbol…"));
+    teachSymbolAction->setObjectName("teachSelectedSymbolAction");
+    teachSymbolAction->setEnabled(false);
+    connect(teachSymbolAction, &QAction::triggered, this, [this] { editSymbolRules(true); });
     const QString similarSymbolsKey = QStringLiteral("review/matchSimilarSymbolImages");
     QSettings settings(QStringLiteral("YAGF"), QStringLiteral("YAGF Revival"));
     similarSymbolsAction->setChecked(settings.value(similarSymbolsKey, false).toBool());
@@ -1075,6 +1083,17 @@ MainWindow::MainWindow()
     selectionEditor->setAcceptRichText(true);
     selectionEditor->setMinimumHeight(120);
     spellHighlighter = new SpellHighlighter(selectionEditor);
+    selectionEditor->addAction(teachSymbolAction);
+    selectionEditor->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(selectionEditor, &QTextEdit::selectionChanged, this, [this] {
+        teachSymbolAction->setEnabled(!processor.isBusy() && !exportBusy && !projectLoading &&
+            !imagePath.isEmpty() && !editorPending && !selectedWords.isEmpty());
+    });
+    connect(selectionEditor, &QTextEdit::customContextMenuRequested, this, [this](const QPoint &position) {
+        std::unique_ptr<QMenu> menu(selectionEditor->createStandardContextMenu());
+        menu->addSeparator(); menu->addAction(teachSymbolAction);
+        menu->exec(selectionEditor->viewport()->mapToGlobal(position));
+    });
     auto *wordPanel = new QWidget(editorSplitter);
     auto *wordLayout = new QVBoxLayout(wordPanel);
     wordLayout->setContentsMargins(0, 8, 0, 0);
@@ -1221,7 +1240,7 @@ MainWindow::MainWindow()
     connect(applyButton, &QPushButton::clicked, this, &MainWindow::applyCorrection);
     connect(regionOcrButton, &QPushButton::clicked, this, &MainWindow::runOcr);
     connect(reviewWordButton, &QPushButton::clicked, this, &MainWindow::reviewSelectedWord);
-    connect(selectionEditor, &QTextEdit::textChanged, this, [this] { editorPending = true; });
+    connect(selectionEditor, &QTextEdit::textChanged, this, [this] { editorPending = true; teachSymbolAction->setEnabled(false); });
     connect(view, &PageView::wordClicked, this, &MainWindow::selectWord);
     connect(wordList, &QListWidget::itemSelectionChanged, this, [this] {
         QStringList ids;
@@ -1487,6 +1506,8 @@ void MainWindow::setBusy(bool busy)
     }
     const bool blocked = busy || exportBusy || projectLoading;
     verification->setBusy(blocked);
+    symbolRulesAction->setEnabled(!blocked && !originalPath.isEmpty());
+    teachSymbolAction->setEnabled(!blocked && !imagePath.isEmpty() && !editorPending && !selectedWords.isEmpty());
     scanAction->setEnabled(!blocked);
     mathMode->setEnabled(!blocked);
     splitBlocksButton->setEnabled(!blocked && !imagePath.isEmpty());
@@ -3048,6 +3069,7 @@ void MainWindow::refreshReviewLabel()
 
 void MainWindow::updateSelection(const QVector<int> &indices)
 {
+    editorWordRanges.clear();
     selectedWords = indices;
     const auto *page = document.page(currentPage);
     editFormulaAction->setEnabled(!processor.isBusy() && !exportBusy && page &&
@@ -3108,10 +3130,12 @@ void MainWindow::updateSelection(const QVector<int> &indices)
         format.setFontWeight(word->bold ? QFont::Bold : QFont::Normal);
         format.setFontItalic(word->italic);
         if (word->fontSizePt > 0) format.setFontPointSize(word->fontSizePt);
+        editorWordRanges.insert(index, {cursor.position(), int(word->text.size())});
         cursor.insertText(word->text, format);
         previous = word;
     }
     selectionEditor->moveCursor(QTextCursor::Start);
+    teachSymbolAction->setEnabled(!processor.isBusy() && !exportBusy && !projectLoading && !imagePath.isEmpty() && !indices.isEmpty());
     refreshSpellLanguage();
 }
 

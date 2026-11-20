@@ -19,6 +19,7 @@
 #include <QTimer>
 #include <QUuid>
 #include <QtConcurrentRun>
+#include "symbolaugmentation.h"
 
 #include <algorithm>
 
@@ -326,6 +327,11 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
 {
     if ((!batch && isBusy()) || (batch && batchPages.isEmpty())) return;
     options.preserveFormatting = book && book->preserveFormatting;
+    QVector<core::SymbolRule> symbolRules = book ? book->symbolRules : QVector<core::SymbolRule>{};
+    if (auto shared = core::loadSymbolLibrary(); shared) {
+        for (const auto &rule : *shared)
+            if (!std::ranges::any_of(symbolRules, [&](const auto &r) { return r.id == rule.id; })) symbolRules.append(rule);
+    }
     const bool pagedSource = book && isPagedSource(book->sourcePath);
     const auto *savedPage = book ? book->page(options.pageNumber) : nullptr;
     const int jobDpi = pagedSource ? (batch ? selectedRenderDpi(options.pageNumber) : renderedDpi(options.pageNumber)) : 150;
@@ -379,7 +385,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
     ocrStop = std::stop_source{};
     const std::stop_token token = ocrStop.get_token();
     if (!wasBusy) emit busyChanged(true);
-    ocrWatcher.setFuture(QtConcurrent::run([this, path, image, options, region, token, formulaRegions, pagedSource, jobDpi, savedImageSize, savedDpi, batch, blocks, smart, automatic, splitOnly, selected, rawOutput] {
+    ocrWatcher.setFuture(QtConcurrent::run([this, path, image, options, region, token, formulaRegions, pagedSource, jobDpi, savedImageSize, savedDpi, batch, blocks, smart, automatic, splitOnly, selected, rawOutput, symbolRules] {
         OcrJobResult result;
         result.selected = selected;
         QImage input = image;
@@ -508,6 +514,9 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
                 if (!retries) result.outcome = std::unexpected(retries.error());
                 else result.warnings += *retries;
             }
+            if (result.outcome && !rawOutput && !splitOnly)
+                applySymbolRules(page, input, symbolRules, token);
+            if (token.stop_requested()) result.outcome = std::unexpected(OcrError{{}, true});
         }
         return result;
     }));
