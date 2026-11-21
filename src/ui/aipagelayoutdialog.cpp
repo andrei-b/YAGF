@@ -3,7 +3,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
-#include <QDoubleSpinBox>
+#include <QSlider>
 #include <QFormLayout>
 #include <QFrame>
 #include <QGraphicsRectItem>
@@ -124,9 +124,8 @@ AiPageLayoutDialog::AiPageLayoutDialog(QImage source,QVector<core::ImageRegion> 
     endpoint=new QLineEdit(settings.value("layout/url",QSettings().value("layout/url","http://127.0.0.1:8771")).toString(),this); endpoint->setObjectName("layoutEndpoint");
     token=new QLineEdit(std::move(bearerToken),this); token->setEchoMode(QLineEdit::Password); token->setPlaceholderText(tr("Optional; kept only for this session"));
     connect(endpoint,&QLineEdit::textEdited,token,&QLineEdit::clear);
-    threshold=new QDoubleSpinBox(this); threshold->setObjectName("layoutThreshold"); threshold->setRange(.1,.95); threshold->setSingleStep(.05); threshold->setValue(settings.value("layout/threshold",QSettings().value("layout/threshold",.5)).toDouble());
     replaceAutomatic=new QCheckBox(tr("Replace automatically detected blocks; keep manual blocks"),this); replaceAutomatic->setChecked(true);
-    form->addRow(tr("Layout service:"),endpoint); form->addRow(tr("Bearer token:"),token); form->addRow(tr("Minimum model score:"),threshold); form->addRow(replaceAutomatic);
+    form->addRow(tr("Layout service:"),endpoint); form->addRow(tr("Bearer token:"),token); form->addRow(replaceAutomatic);
     optionsPanel->hide(); layout->addWidget(optionsPanel);
     connect(optionsButton,&QToolButton::toggled,this,[this,optionsPanel](bool visible){optionsPanel->setVisible(visible); optionsButton->setArrowType(visible ? Qt::UpArrow : Qt::DownArrow);});
     auto *splitter=new QSplitter(this); splitter->setChildrenCollapsible(false);
@@ -138,6 +137,12 @@ AiPageLayoutDialog::AiPageLayoutDialog(QImage source,QVector<core::ImageRegion> 
     scene=new QGraphicsScene(this); scene->addPixmap(QPixmap::fromImage(image)); scene->setSceneRect(image.rect()); previewTarget=image.rect();
     preview=new QGraphicsView(scene,pagePanel); preview->setObjectName("layoutPreview"); preview->setDragMode(QGraphicsView::ScrollHandDrag); preview->setRenderHint(QPainter::SmoothPixmapTransform);
     preview->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff); preview->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff); preview->viewport()->installEventFilter(this); pageLayout->addWidget(preview,1);
+    auto *scoreRow=new QHBoxLayout;
+    auto *scoreLabel=new QLabel(tr("Minimum model score:"),pagePanel);scoreRow->addWidget(scoreLabel);
+    threshold=new QSlider(Qt::Horizontal,pagePanel);threshold->setObjectName("layoutThreshold");threshold->setRange(10,95);threshold->setSingleStep(1);threshold->setPageStep(5);
+    threshold->setValue(qRound(settings.value("layout/threshold",QSettings().value("layout/threshold",.5)).toDouble()*100));
+    threshold->setAccessibleName(tr("Minimum model score"));threshold->setToolTip(tr("Filter cached model results without analyzing the page again."));scoreLabel->setBuddy(threshold);scoreRow->addWidget(threshold,1);
+    thresholdValue=new QLabel(tr("%1%").arg(threshold->value()),pagePanel);thresholdValue->setObjectName("layoutThresholdValue");thresholdValue->setMinimumWidth(40);scoreRow->addWidget(thresholdValue);pageLayout->addLayout(scoreRow);
     connect(fit,&QToolButton::clicked,this,[this]{previewTarget=image.rect(); fitPreview();});
     connect(in,&QToolButton::clicked,this,[this]{previewTarget={}; preview->scale(1.25,1.25);});
     connect(out,&QToolButton::clicked,this,[this]{previewTarget={}; preview->scale(.8,.8);});
@@ -161,17 +166,25 @@ AiPageLayoutDialog::AiPageLayoutDialog(QImage source,QVector<core::ImageRegion> 
     applyButton->setStyleSheet(QStringLiteral("QPushButton {background: #216ec1; color: white; border: 1px solid #216ec1; padding: 8px 18px; font-weight: 700;} QPushButton:hover {background: #145fae;} QPushButton:disabled {background: #e7edf4; color: #a1acba; border-color: #e1e6ed;}"));
     connect(buttons,&QDialogButtonBox::rejected,this,&AiPageLayoutDialog::reject); connect(applyButton,&QPushButton::clicked,this,&QDialog::accept); connect(analyzeButton,&QPushButton::clicked,this,&AiPageLayoutDialog::analyze);
     connect(replaceAutomatic,&QCheckBox::toggled,this,[this]{populate(false);});
-    connect(miniatures,&QListWidget::itemChanged,this,[this](QListWidgetItem *item){if (!updating && item->data(Qt::UserRole).toInt()>=0) updateSelection(item->data(Qt::UserRole).toInt());});
+    connect(threshold,&QSlider::valueChanged,this,[this](int score){
+        thresholdValue->setText(tr("%1%").arg(score));
+        QSettings("YAGF","YAGF Revival").setValue("layout/threshold",score/100.);
+        if(hasAnalysis)filterAreas();
+    });
+    connect(miniatures,&QListWidget::itemChanged,this,[this](QListWidgetItem *item){
+        if (!updating && item->data(Qt::UserRole).toInt()>=0) {
+            const int index=item->data(Qt::UserRole).toInt();rememberSelection(index,item->checkState()==Qt::Checked);updateSelection(index);
+        }
+    });
     connect(miniatures,&QListWidget::currentItemChanged,this,[this](QListWidgetItem *item){if (!updating) {updateSelection(); focusBlock(item);}});
     connect(&watcher,&QFutureWatcherBase::finished,this,[this]{
-        busy=false; progress->hide(); analyzeButton->setEnabled(true); endpoint->setEnabled(true); token->setEnabled(true); threshold->setEnabled(true); replaceAutomatic->setEnabled(true);
+        busy=false; progress->hide(); analyzeButton->setEnabled(true); endpoint->setEnabled(true); token->setEnabled(true); replaceAutomatic->setEnabled(true);
         auto result=watcher.result();
         if (!result) {
             message->setText(result.error().cancelled ? tr("Analysis cancelled.") : result.error().message);
             emptyHint->setText(tr("Analysis unavailable.\nYour current page is unchanged.")); updateSelection(); return;
         }
-        areas=std::move(result->areas); hasAnalysis=true; populate();
-        message->setText(areas.isEmpty() ? tr("No areas found. Open Options to lower the minimum score, then analyze again.") : tr("Select a miniature to inspect a block. “Also likely” offers another strong model classification. Manual blocks stay in place."));
+        allAreas=std::move(result->rawAreas);hasAnalysis=true;filterAreas();
     });
     populate();
 }
@@ -200,12 +213,31 @@ void AiPageLayoutDialog::focusBlock(QListWidgetItem *item)
 void AiPageLayoutDialog::analyze()
 {
     if (busy) return;
-    processing::PageLayoutOptions options{QUrl(endpoint->text().trimmed()),token->text(),threshold->value()};
-    QSettings settings("YAGF","YAGF Revival"); settings.setValue("layout/url",options.url.toString()); settings.setValue("layout/threshold",options.threshold);
-    stop=std::stop_source{}; busy=true; areas.clear(); hasAnalysis=false; populate();
-    analyzeButton->setEnabled(false); endpoint->setEnabled(false); token->setEnabled(false); threshold->setEnabled(false); replaceAutomatic->setEnabled(false);
+    // Fetch the entire supported score range once. Consolidation happens only
+    // after local filtering, so rejected inline formulas cannot alter prose.
+    processing::PageLayoutOptions options{QUrl(endpoint->text().trimmed()),token->text(),.1};
+    QSettings settings("YAGF","YAGF Revival"); settings.setValue("layout/url",options.url.toString()); settings.setValue("layout/threshold",threshold->value()/100.);
+    stop=std::stop_source{}; busy=true; areas.clear();allAreas.clear();typeOverrides.clear();selectionOverrides.clear();hasAnalysis=false; populate();
+    analyzeButton->setEnabled(false); endpoint->setEnabled(false); token->setEnabled(false); replaceAutomatic->setEnabled(false);
     progress->show(); message->setText(tr("Finding text, pictures and formulas on the current page…"));
     watcher.setFuture(QtConcurrent::run([source=image,options,token=stop.get_token()]{return processing::detectPageAreas(source,options,token);}));
+}
+void AiPageLayoutDialog::filterAreas()
+{
+    areas.clear();
+    for(const auto &area:allAreas)if(area.score+1e-9>=threshold->value()/100.)areas.append(area);
+    processing::consolidateInlineAreas(areas);
+    for(auto &area:areas)if(typeOverrides.contains(area.id))area.type=typeOverrides.value(area.id);
+    populate();
+    message->setText(allAreas.isEmpty()?tr("No areas returned by the model. Use Analyze again to retry."):
+        areas.isEmpty()?tr("No areas at this score. Lower the slider to show more cached results."):
+        tr("Showing cached model results. Move the score slider to update the areas instantly. Manual blocks stay in place."));
+}
+void AiPageLayoutDialog::rememberSelection(int index,bool checked)
+{
+    selectionOverrides[areas[index].id]=checked;
+    if(checked)for(const auto &area:allAreas)
+        if(area.id!=areas[index].id && area.bounds.intersects(areas[index].bounds))selectionOverrides[area.id]=false;
 }
 void AiPageLayoutDialog::populate(bool resetSelection)
 {
@@ -213,6 +245,12 @@ void AiPageLayoutDialog::populate(bool resetSelection)
     if (!resetSelection) for (int i=0;i<areaItems.size();++i) if (areaItems[i]->checkState()==Qt::Checked) previouslySelected.insert(i);
     updating=true;
     for (auto *box:boxes) delete box;
+    // QListWidget normally defers deleting item widgets. Remove old cards now
+    // so rapid filtering cannot leave stale controls for the previous result.
+    for(int row=0;row<miniatures->count();++row) {
+        auto *item=miniatures->item(row);auto *widget=miniatures->itemWidget(item);
+        miniatures->removeItemWidget(item);delete widget;
+    }
     boxes.clear(); cards.clear(); areaItems.clear(); miniatures->clear();
     for (int i=0;i<existing.size();++i) {
         const auto &region=existing[i]; const bool kept=!replaceAutomatic->isChecked() || !region.autoDetected;
@@ -236,8 +274,8 @@ void AiPageLayoutDialog::populate(bool resetSelection)
         auto *score=new QLabel(card); score->setObjectName("layoutBlockScore"); score->setTextFormat(Qt::PlainText); score->setWordWrap(true); details->addWidget(score);
         auto *alternative=new QToolButton(card); alternative->setObjectName("layoutAlternative"); alternative->setSizePolicy(QSizePolicy::Preferred,QSizePolicy::Fixed); details->addWidget(alternative); details->addStretch(); row->addLayout(details,1);
         cards.append({card,use,type,score,alternative}); miniatures->setItemWidget(item,card);
-        connect(use,&QCheckBox::clicked,this,[this,i,item](bool checked){miniatures->setCurrentItem(item); item->setCheckState(checked ? Qt::Checked : Qt::Unchecked);});
-        connect(type,&QComboBox::currentIndexChanged,this,[this,i,type,item]{areas[i].type=type->currentData().toString(); miniatures->setCurrentItem(item); updateSelection();});
+        connect(use,&QCheckBox::clicked,this,[this,item](bool checked){miniatures->setCurrentItem(item); item->setCheckState(checked ? Qt::Checked : Qt::Unchecked);});
+        connect(type,&QComboBox::currentIndexChanged,this,[this,i,type,item]{if(updating)return;areas[i].type=type->currentData().toString();typeOverrides[areas[i].id]=areas[i].type; miniatures->setCurrentItem(item); updateSelection();});
         connect(alternative,&QToolButton::clicked,this,[this,i,alternative]{cards[i].type->setCurrentIndex(cards[i].type->findData(alternative->property("alternativeType").toString()));});
         connect(thumb,&QToolButton::clicked,this,[this,item]{miniatures->setCurrentItem(item); focusBlock(item);});
         auto *box=new AreaOutline(areas[i].bounds,[this,item]{miniatures->setCurrentItem(item); miniatures->scrollToItem(item); focusBlock(item);}); scene->addItem(box); box->setZValue(2); boxes.append(box);
@@ -245,17 +283,20 @@ void AiPageLayoutDialog::populate(bool resetSelection)
     QVector<QRect> occupied;
     for (const auto &block:existing) if (!replaceAutomatic->isChecked() || !block.autoDetected) occupied.append(block.bounds);
     QVector<int> order(areas.size()); std::iota(order.begin(),order.end(),0);
-    std::stable_sort(order.begin(),order.end(),[&](int a,int b){return areas[a].score>areas[b].score;});
+    std::stable_sort(order.begin(),order.end(),[&](int a,int b){
+        const bool explicitA=selectionOverrides.value(areas[a].id,false),explicitB=selectionOverrides.value(areas[b].id,false);
+        return explicitA!=explicitB?explicitA:areas[a].score>areas[b].score;
+    });
     for (int i:order) {
         const bool overlap=std::ranges::any_of(occupied,[&](const auto &box){return box.intersects(areas[i].bounds);});
         const bool preservedOverlap=std::ranges::any_of(existing,[&](const auto &block){return (!replaceAutomatic->isChecked() || !block.autoDetected) && block.bounds.intersects(areas[i].bounds);});
         if (preservedOverlap) {
             areaItems[i]->setFlags(Qt::ItemIsSelectable|Qt::ItemIsEnabled);
             areaItems[i]->setToolTip(tr("Overlaps a kept block. Adjust that block on the page before analyzing again.")); cards[i].use->setEnabled(false); cards[i].use->setToolTip(areaItems[i]->toolTip());
-        } else if (!overlap && (resetSelection || previouslySelected.contains(i))) {areaItems[i]->setCheckState(Qt::Checked); occupied.append(areas[i].bounds);}
+        } else if (!overlap && selectionOverrides.value(areas[i].id,resetSelection || previouslySelected.contains(i))) {areaItems[i]->setCheckState(Qt::Checked); occupied.append(areas[i].bounds);}
     }
     updating=false; updateSelection();
-    emptyHint->setVisible(miniatures->count()==0); emptyHint->setText(hasAnalysis ? tr("No areas found.\nTry a lower minimum score in Options.") : tr("Finding areas on this page…\nBlock miniatures will appear here."));
+    emptyHint->setVisible(miniatures->count()==0); emptyHint->setText(hasAnalysis ? tr("No areas at this score.\nLower the slider to show more results.") : tr("Finding areas on this page…\nBlock miniatures will appear here."));
 }
 void AiPageLayoutDialog::updateCard(int index)
 {

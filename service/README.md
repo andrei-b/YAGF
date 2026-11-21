@@ -121,6 +121,14 @@ OCR and included in the scientific HTML and LaTeX exports. The detector's origin
 label (including tables, captions and headings) and score are saved in the project.
 Tables currently use text OCR; this feature does not infer table cell structure.
 
+The **Minimum model score** slider is always visible below the image, with a
+10–95% range and a percentage readout. Analysis fetches the worker's full supported
+score range once. Moving the slider filters those cached results immediately in
+both the page preview and block list, without another upload or inference request.
+Lowering it restores hidden proposals; type edits and inclusion choices survive
+filtering. Inline formulas are regrouped with text only when they pass the current
+score. **Analyze again** replaces the cache with a fresh model result.
+
 When the same model query has a second strong class of a different block type,
 its card offers **Also likely**, with the model score. Click it to switch types;
 click again to return to the first choice. Alternatives require a score of at

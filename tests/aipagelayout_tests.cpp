@@ -14,7 +14,9 @@
 #include <QCheckBox>
 #include <QGraphicsView>
 #include <QGraphicsPixmapItem>
+#include <QGraphicsRectItem>
 #include <QToolButton>
+#include <QSlider>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTemporaryDir>
@@ -34,6 +36,7 @@ public:
     QByteArray headers;
     bool hold=false;
     int requests=0;
+    QVector<double> thresholds;
     Server() {
         if (!listen(QHostAddress::LocalHost)) qFatal("Could not listen");
         connect(this,&QTcpServer::newConnection,this,[this]{
@@ -47,6 +50,7 @@ public:
                 if (bytes.size()<split+4+size) return;
                 socket->setProperty("sent",true); headers=bytes.left(split); ++requests;
                 auto request=QJsonDocument::fromJson(bytes.mid(split+4,size)).object();
+                thresholds.append(request["threshold"].toDouble());
                 QImage image; image.loadFromData(QByteArray::fromBase64(request["image_png"].toString().toLatin1()),"PNG");
                 if (hold) return;
                 QJsonObject result{{"protocol","yagf-layout/1"},{"width",image.width()},{"height",image.height()},
@@ -82,6 +86,7 @@ private slots:
         Server server; processing::PageLayoutOptions options{server.url(),"test-token",.5};
         server.areas.append(area("inline","mixed",QRect(90,20,15,15),.8,"inline_formula"));
         auto result=processing::detectPageAreas(sample(),options); QVERIFY(result); QCOMPARE(result->areas.size(),1);
+        QCOMPARE(result->rawAreas.size(),2);QCOMPARE(result->rawAreas[0].type,"text");QCOMPARE(result->rawAreas[1].id,"inline");
         QCOMPARE(result->areas[0].bounds,QRect(80,0,100,100)); QCOMPARE(result->areas[0].type,"mixed");
         QVERIFY(server.headers.contains("POST /v1/layout ")); QVERIFY(server.headers.contains("Authorization: Bearer test-token"));
         for (int mode=0;mode<6;++mode) {
@@ -164,6 +169,48 @@ private slots:
         ui::AiPageLayoutDialog dialog(sample(),{}); dialog.show(); auto *analyze=dialog.findChild<QPushButton *>("analyzePageAreas"); analyze->click();
         QTRY_VERIFY_WITH_TIMEOUT(analyze->isEnabled(),3000); QVERIFY(!dialog.findChild<QPushButton *>("applyPageAreas")->isEnabled()); QVERIFY(dialog.regions().isEmpty());
         QVERIFY(dialog.findChild<QLabel *>("layoutMessage")->text().contains("incompatible"));
+    }
+    void scoreSliderFiltersCachedResultsAndPreservesReview() {
+        Server server;server.areas={area("high","text",{80,0,100,60},.9),
+            area("low","picture",{0,130,100,40},.3,"image"),area("boundary","math",{0,80,50,30},.5,"display_formula")};
+        QSettings settings("YAGF","YAGF Revival");settings.setValue("layout/url",server.url().toString());settings.setValue("layout/threshold",.5);
+        ui::AiPageLayoutDialog dialog(sample(),{{"manual",{0,0,20,20},"rus",false,"text",false}});dialog.show();
+        auto *slider=dialog.findChild<QSlider *>("layoutThreshold");auto *list=dialog.findChild<QListWidget *>("layoutAreas");
+        auto *preview=dialog.findChild<QGraphicsView *>("layoutPreview");auto *apply=dialog.findChild<QPushButton *>("applyPageAreas");
+        QVERIFY(slider && list && preview);QTRY_VERIFY_WITH_TIMEOUT(apply->isEnabled(),3000);
+        const auto outlines=[&]{int count=0;for(auto *item:preview->scene()->items())if(qgraphicsitem_cast<QGraphicsRectItem *>(item) && item->isVisible())++count;return count;};
+        QCOMPARE(server.requests,1);QCOMPARE(server.thresholds,QVector<double>{.1});QCOMPARE(list->count(),3);
+        QCOMPARE(outlines(),3);
+        QVERIFY(slider->mapTo(&dialog,QPoint()).y()>=preview->mapTo(&dialog,QPoint(0,preview->height())).y());
+        auto *type=dialog.findChild<QComboBox *>("layoutType0");type->setCurrentIndex(type->findData("picture"));
+        dialog.findChild<QCheckBox *>("layoutUseArea0")->click();
+        slider->setValue(95);QCOMPARE(list->count(),1);QCOMPARE(outlines(),1);QVERIFY(!apply->isEnabled());
+        QVERIFY(dialog.findChild<QLabel *>("layoutMessage")->text().contains("Lower the slider"));
+        slider->setValue(50);QCOMPARE(list->count(),3);
+        QCOMPARE(dialog.findChild<QComboBox *>("layoutType0")->currentData().toString(),"picture");
+        QVERIFY(!dialog.findChild<QCheckBox *>("layoutUseArea0")->isChecked());
+        slider->setValue(30);QCOMPARE(list->count(),4);QCOMPARE(dialog.regions().size(),3);
+        QCOMPARE(dialog.findChild<QLabel *>("layoutThresholdValue")->text(),"30%");
+        QCOMPARE(settings.value("layout/threshold").toDouble(),.3);
+        slider->setValue(10);slider->setValue(70);slider->setValue(30);
+        QCOMPARE(list->count(),4);QCOMPARE(outlines(),4);QCOMPARE(server.requests,1);
+        auto merged=dialog.regions();QCOMPARE(merged[0].id,"manual");QCOMPARE(merged[0].language,"rus");
+        list->item(3)->setCheckState(Qt::Unchecked);slider->setValue(70);slider->setValue(30);
+        QVERIFY(!dialog.findChild<QCheckBox *>("layoutUseArea2")->isChecked());
+        server.areas={area("replacement","text",{50,70,70,30},.7)};
+        auto *analyze=dialog.findChild<QPushButton *>("analyzePageAreas");analyze->click();
+        QTRY_VERIFY_WITH_TIMEOUT(server.requests==2 && analyze->isEnabled(),3000);
+        slider->setValue(10);QCOMPARE(list->count(),2);QCOMPARE(dialog.regions().size(),2);
+    }
+    void scoreFilteringRegroupsInlineFormulasFromRawEvidence() {
+        Server server;server.areas={area("text","text",{50,0,130,100},.9),
+            area("inline","mixed",{70,20,20,20},.3,"inline_formula")};
+        QSettings settings("YAGF","YAGF Revival");settings.setValue("layout/url",server.url().toString());settings.setValue("layout/threshold",.5);
+        ui::AiPageLayoutDialog dialog(sample(),{});dialog.show();auto *apply=dialog.findChild<QPushButton *>("applyPageAreas");
+        auto *slider=dialog.findChild<QSlider *>("layoutThreshold");QTRY_VERIFY_WITH_TIMEOUT(apply->isEnabled(),3000);
+        QCOMPARE(dialog.regions().size(),1);QCOMPARE(dialog.regions()[0].content,"text");
+        slider->setValue(30);QCOMPARE(dialog.regions().size(),1);QCOMPARE(dialog.regions()[0].content,"mixed");
+        slider->setValue(31);QCOMPARE(dialog.regions()[0].content,"text");QCOMPARE(server.requests,1);
     }
     void picturesSurviveHierarchyAndExports() {
         core::OcrDocument book; book.sourcePath=directory.filePath("scan.png"); QVERIFY(sample().save(book.sourcePath));
