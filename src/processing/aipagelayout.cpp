@@ -93,6 +93,7 @@ std::expected<PageLayout, OcrError> detectPageAreas(const QImage &image, const P
         QRect bounds(box[0].toInt(),box[1].toInt(),box[2].toInt(),box[3].toInt());
         if (!image.rect().contains(bounds)) return failure(QStringLiteral("A detected area lies outside the page."));
         PageArea area{label,type,bounds,score,{},type};
+        area.id=id;
         if (item.contains("alternatives")) {
             if (!item.value("alternatives").isArray() || item.value("alternatives").toArray().size()>3)
                 return failure(QStringLiteral("Invalid alternative area classifications."));
@@ -112,6 +113,7 @@ std::expected<PageLayout, OcrError> detectPageAreas(const QImage &image, const P
         }
         ids.insert(id); result.areas.append(std::move(area));
     }
+    result.rawAreas=result.areas;
     consolidateInlineAreas(result.areas);
     return result;
 }

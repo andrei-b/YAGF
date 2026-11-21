@@ -2,9 +2,10 @@
 #include "aipagelayout.h"
 #include <QDialog>
 #include <QFutureWatcher>
+#include <QHash>
 #include <stop_token>
 class QLineEdit;
-class QDoubleSpinBox;
+class QSlider;
 class QCheckBox;
 class QComboBox;
 class QLabel;
@@ -44,15 +45,21 @@ private:
     void updateCard(int index);
     void focusBlock(QListWidgetItem *item);
     void fitPreview();
+    void filterAreas();
+    void rememberSelection(int index,bool checked);
     QImage image;
     QVector<core::ImageRegion> existing;
     QVector<processing::PageArea> areas;
+    QVector<processing::PageArea> allAreas;
+    QHash<QString,QString> typeOverrides;
+    QHash<QString,bool> selectionOverrides;
     QVector<QGraphicsRectItem *> boxes;
     QVector<QGraphicsRectItem *> preservedBoxes;
     QVector<QListWidgetItem *> areaItems;
     QVector<BlockCard> cards;
     QLineEdit *endpoint, *token;
-    QDoubleSpinBox *threshold;
+    QSlider *threshold;
+    QLabel *thresholdValue;
     QCheckBox *replaceAutomatic;
     QLabel *message, *blockCount, *emptyHint;
     QPushButton *analyzeButton, *applyButton;

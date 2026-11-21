@@ -15,10 +15,12 @@ struct PageArea {
     double score = 0;
     QVector<PageAreaAlternative> alternatives;
     QString detectedType; // Retains the model's first choice when the user changes type.
+    QString id; // Stable within one model response, including live score filtering.
 };
 struct PageLayout {
     QString model;
     QVector<PageArea> areas;
+    QVector<PageArea> rawAreas; // Unconsolidated evidence for reapplying score thresholds.
 };
 struct PageLayoutOptions {
     QUrl url = QUrl(QStringLiteral("http://127.0.0.1:8771"));
