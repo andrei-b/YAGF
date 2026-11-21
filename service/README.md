@@ -47,6 +47,128 @@ python service/server.py --engine doctr --host 127.0.0.1 --port 8766 --device cp
 
 Use `--device gpu` where a compatible PyTorch CUDA build is available. The service moves the predictor to CUDA as described in the [docTR GPU guide](https://mindee.github.io/doctr/using_doctr/using_models.html). In YAGF, select **docTR (remote service)** and use `http://127.0.0.1:8766`. docTR returns individual word rectangles, so corrected text starts with more precise source mapping than PaddleOCR line output.
 
+## Optional model presets
+
+**Recognition settings → Models & services → Add service…** includes optional
+presets for the following models. They are templates, not running or downloaded
+models. Opening the preset list changes no settings, and adding a service does
+not select it for text, formulas or companion recognition. Enter the **YAGF
+worker URL**, then save explicitly when ready. Discovery replaces preset metadata
+with the capabilities advertised by that worker.
+
+| Preset / `--engine` | Backend | Evidence |
+| --- | --- | --- |
+| PP-OCRv6 small / `pp-ocrv6-small` | Paddle detection and recognition pair | Text-line boxes and confidence |
+| PP-OCRv6 medium / `pp-ocrv6-medium` | Paddle detection and recognition pair | Text-line boxes and confidence |
+| GLM-OCR / `glm-ocr` | OpenAI-compatible chat server | Unlocated Markdown, formulas and tables |
+| LightOnOCR-3-0.8B / `lightonocr` | OpenAI-compatible chat server | Grounded text, formulas, tables and figures |
+| MinerU2.5-Pro / `mineru` | MinerU SDK HTTP client | Native structured blocks with coordinates |
+| Chandra OCR 2 / `chandra` | Chandra SDK with vLLM method | Native layout HTML and source boxes |
+| docTR FormulaNet / `doctr-formulanet` | docTR formula predictor | LaTeX and native formula confidence |
+
+The packaged service directory includes `server.py`, `optional_backends.py`,
+`optional-models.example.json` and the optional requirements files. Deploy these
+together when updating an inference worker. To inspect the catalog without
+inference packages, downloads, server startup or configuration writes:
+
+```sh
+python service/server.py --list-models
+```
+
+Use a separate environment for each inference framework. None of these packages
+is a mandatory desktop, Debian package or AppImage dependency, and none of the
+commands below runs automatically. This integration has protocol and simulated
+SDK tests; model accuracy, GPU memory and Jetson runtime compatibility require
+testing with the installed model on the chosen inference host.
+
+### PP-OCRv6 small and medium
+
+Install a compatible PaddlePaddle runtime for the host, then install the optional
+Python dependency:
+
+```sh
+python -m pip install -r service/requirements-pp-ocrv6.txt
+python service/server.py --engine pp-ocrv6-small --device cpu --port 8765
+# Or, in a separate process/environment:
+python service/server.py --engine pp-ocrv6-medium --device cpu --port 8766
+```
+
+The adapters explicitly select `PP-OCRv6_small_det` / `PP-OCRv6_small_rec` or
+`PP-OCRv6_medium_det` / `PP-OCRv6_medium_rec`, following the
+[Paddle pipeline API](https://www.paddleocr.ai/latest/en/version3.x/pipeline_usage/OCR.html).
+Both advertise language `auto`; selecting the preset does not promise support for
+a particular document's script. See the [official model description](https://www.paddleocr.ai/latest/en/version3.x/algorithm/PP-OCRv6/PP-OCRv6.html)
+for language coverage. The original `--engine paddleocr` defaults are unchanged.
+
+### GLM-OCR and LightOnOCR
+
+Start the model independently using its supported inference runtime. The YAGF
+bridges use Python's standard library and connect to an existing chat server;
+they do not load model weights. Replace the example loopback port with the
+upstream listener chosen for that model:
+
+```sh
+python service/server.py --engine glm-ocr --port 8767 \
+  --vl-endpoint http://127.0.0.1:8082/v1/chat/completions
+python service/server.py --engine lightonocr --port 8768 \
+  --vl-endpoint http://127.0.0.1:8082/v1/chat/completions
+```
+
+`--vl-model NAME` overrides the upstream served model name. Default model IDs are
+`zai-org/GLM-OCR` and `lightonai/LightOnOCR-3-0.8B`. Supply an upstream bearer token
+through `YAGF_UPSTREAM_TOKEN`; the independent `YAGF_OCR_TOKEN` protects the YAGF
+worker. Tokens are not included in model profiles or recognition evidence.
+
+GLM uses its documented [text, formula and table prompts](https://huggingface.co/zai-org/GLM-OCR),
+and keeps output without detected coordinates unlocated. LightOn uses its
+[grounding prompt and normalized block coordinates](https://huggingface.co/lightonai/LightOnOCR-3-0.8B)
+for page text/layout and an image-only prompt for formula crops. It disables
+thinking in the chat template, retains raw grounding output, and converts actual
+0–1000 boxes into input-image pixels. Truncated chat responses fail explicitly.
+
+### MinerU2.5-Pro and Chandra OCR 2
+
+Install only the SDK needed by the selected worker, and start its model server
+separately. The current MinerU preset pins the upstream model name to
+`opendatalab/MinerU2.5-Pro-2605-1.2B`; Chandra uses `datalab-to/chandra-ocr-2`.
+
+```sh
+python -m pip install -r service/requirements-mineru.txt
+python service/server.py --engine mineru --port 8767 \
+  --vl-endpoint http://127.0.0.1:8082
+
+# Use a separate environment for Chandra:
+python -m pip install -r service/requirements-chandra.txt
+python service/server.py --engine chandra --port 8768 \
+  --vl-endpoint http://127.0.0.1:8082
+```
+
+MinerU uses the [official `MinerUClient.two_step_extract` and `json2md` API](https://huggingface.co/opendatalab/MinerU2.5-Pro-2605-1.2B),
+retaining normalized block geometry and the native block list. Chandra uses its
+[official `InferenceManager` SDK](https://github.com/datalab-to/chandra#python-sdk)
+with `prompt_type="ocr_layout"`, and retains the raw layout HTML. Missing Chandra
+coordinates remain absent: the adapter reads actual raw `data-bbox` attributes
+instead of accepting the SDK's full-image fallback for a missing box. Model
+licenses and runtime requirements are maintained by the respective upstreams.
+
+### docTR FormulaNet
+
+This is docTR's [standalone `formula_predictor("formulanet")`](https://mindee.github.io/doctr/latest/models/formula.html),
+separate from the Paddle PP-FormulaNet_plus-L worker. The optional requirements
+file pins a verified docTR revision exporting that API; the older `v1.1.0` tag
+does not export it. Install in an isolated environment with Python 3.11 or newer:
+
+```sh
+python -m pip install -r service/requirements-doctr-formulanet.txt
+python service/server.py --engine doctr-formulanet --device cpu --port 8769
+```
+
+Use `--device gpu` with a compatible PyTorch/CUDA environment. Model weights may
+be downloaded when this worker is explicitly started. Its profile advertises
+formulas only, so discovery offers it in the Formula selector and excludes it
+from Text and companion recognition. The input crop is not reported as a
+model-detected box, and confidence comes from the predictor's native score.
+
 ## RapidOCR
 
 The adapter uses the [current RapidOCR Python API](https://rapidai.github.io/RapidOCRDocs/main/en/install_usage/rapidocr/usage/) and returns text-line rectangles. Its default ONNX Runtime pipeline runs on CPU:

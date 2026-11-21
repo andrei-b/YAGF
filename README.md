@@ -44,8 +44,14 @@ approve corrections before exporting your document.
 | --- | --- | --- |
 | **Tesseract** | Text OCR with installed language models | Local, default engine |
 | **PaddleOCR** | Text OCR | Optional OCR service |
+| **PP-OCRv6 small / medium** | Text OCR with explicit detection and recognition models | Optional Paddle service presets |
 | **PaddleOCR-VL** | Vision-based text and formula recognition | Direct vision server or YAGF bridge |
+| **GLM-OCR** | Text, formulas, and tables | Optional bridge to a running vision server |
+| **LightOnOCR-3-0.8B** | Text, formulas, tables, and grounded page blocks | Optional bridge to a running vision server |
+| **MinerU2.5-Pro** | Structured document extraction with block coordinates | Optional MinerU SDK bridge |
+| **Chandra OCR 2** | Document text, math, tables, and layout | Optional Chandra SDK bridge |
 | **docTR** | Text OCR and specialist readings for uncertain text | Optional OCR service |
+| **docTR FormulaNet** | Formula crops to LaTeX | Optional formula-only docTR worker |
 | **RapidOCR** | Text-line recognition with ONNX models | Optional OCR service |
 | **Surya** | Text, mathematics, ordered layout blocks, and tables | Optional OCR service |
 | **Kraken** | Text OCR with a selected recognition model | Optional OCR service |

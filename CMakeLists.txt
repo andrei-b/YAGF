@@ -76,6 +76,7 @@ add_library(yagf_ocr STATIC
     src/processing/tesseractengine.cpp src/processing/tesseractengine.h
     src/processing/remoteocrengine.cpp src/processing/remoteocrengine.h)
 qt_add_resources(yagf_ocr "local_math" PREFIX "/math" BASE tools FILES tools/math_ocr.py)
+qt_add_resources(yagf_ocr "optional_models" PREFIX "/ocr" BASE service FILES service/optional-models.example.json)
 target_link_libraries(yagf_ocr PUBLIC yagf_core Qt6::Gui PRIVATE Qt6::Network)
 target_include_directories(yagf_ocr PUBLIC src/processing)
 

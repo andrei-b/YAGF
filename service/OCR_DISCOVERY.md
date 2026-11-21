@@ -11,6 +11,13 @@ Only **Save** applies model/language changes; **Cancel** retains the current set
 **Models & services** contains discovery hosts, the editable service library,
 session tokens, add/remove controls and optional companion text checkboxes.
 
+**Add service…** offers optional templates for PP-OCRv6 small/medium, GLM-OCR,
+LightOnOCR-3-0.8B, MinerU2.5-Pro, Chandra OCR 2 and docTR FormulaNet. Templates
+are never inserted automatically, enabled for comparison or selected as active
+engines. They require separately installed/started workers; see the
+[optional worker instructions](README.md#optional-model-presets). No settings
+change until the user adds a service and saves the settings window.
+
 **Tools → Recognition settings…** checks `GET BASE/v1/health`
 on named hosts and saved service URLs. A hostname probes ports 8765–8769,
 8771 (page layout), 8772 and 8082; a URL or `host:port` probes that exact endpoint. Up to 32 endpoints

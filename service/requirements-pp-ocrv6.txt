@@ -1,0 +1,2 @@
+# Install a compatible PaddlePaddle runtime separately for the inference host.
+paddleocr>=3.7.0,<4

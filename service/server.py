@@ -327,17 +327,26 @@ class PaddleOcrBackend:
     result_key = "lines"
     geometry = "line"
 
-    def __init__(self, device, language):
+    def __init__(self, device, language, variant=None):
         from paddleocr import PaddleOCR
 
-        self.language = language
+        self.language = 'auto' if variant else language
         self.lock = threading.Lock()
-        self.pipeline = PaddleOCR(
-            lang=language, device=device,
+        settings = dict(device=device,
             use_doc_orientation_classify=False,
             use_doc_unwarping=False,
             use_textline_orientation=False,
         )
+        if variant:
+            from optional_backends import model_spec
+            if variant not in ('small', 'medium'):
+                raise ValueError('Unsupported PP-OCRv6 variant')
+            self.profile = model_spec('pp-ocrv6-' + variant)['profile']
+            self.model = self.profile['model']
+            settings.update(text_detection_model_name=self.model + '_det', text_recognition_model_name=self.model + '_rec')
+        else:
+            settings['lang'] = language
+        self.pipeline = PaddleOCR(**settings)
 
     def recognize(self, png, width, height, language):
         if language != self.language:
@@ -495,7 +504,7 @@ class FormulaNetBackend:
 
 def benchmark_details(backend):
     """Describe measured resources without treating a remote VL bridge as the GPU host."""
-    remote = isinstance(backend, PaddleVlBackend)
+    remote = isinstance(backend, PaddleVlBackend) or getattr(backend, 'remote_inference', False)
     packages = {"paddleocr": "paddleocr", "doctr": "python-doctr", "rapidocr": "rapidocr",
                 "surya": "surya-ocr", "kraken": "kraken"}
     version = "unreported"
@@ -530,10 +539,14 @@ def handler_for(backend, token=""):
     # A VL bridge accepts language hints; it cannot promise a language inventory.
     if not isinstance(backend, PaddleVlBackend):
         profile["languages"] = [backend.language]
+    if hasattr(backend, 'profile'):
+        profile = backend.profile
     inference_lock = threading.Lock()
     class Handler(BaseHTTPRequestHandler):
         def send_json(self, code, payload):
             data = json.dumps(payload, ensure_ascii=False, allow_nan=False).encode("utf-8")
+            if len(data) > 8 * 1024 * 1024:
+                raise ValueError('OCR response exceeds the size limit')
             self.send_response(code)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(data)))
@@ -593,7 +606,11 @@ def handler_for(backend, token=""):
                 queued = time.perf_counter()
                 with inference_lock:
                     started = time.perf_counter()
-                    items = backend.recognize(png, width, height, language, task) if isinstance(backend, PaddleVlBackend) else backend.recognize(png, width, height, language)
+                    if hasattr(backend, 'recognize_evidence'):
+                        output = {'recognition': backend.recognize_evidence(png, width, height, language, task, page_number)}
+                    else:
+                        items = backend.recognize(png, width, height, language, task) if isinstance(backend, PaddleVlBackend) else backend.recognize(png, width, height, language)
+                        output = {backend.result_key: items}
                     details = dict(provenance, inference_ms=(time.perf_counter()-started)*1000,
                                    queue_ms=(started-queued)*1000)
                     if resource is not None:
@@ -601,7 +618,7 @@ def handler_for(backend, token=""):
                         details["peak_rss_bytes"] = peak if platform.system() == "Darwin" else peak*1024
                 self.send_json(200, {"protocol": PROTOCOL, "engine_id": backend.engine_id,
                                      "width": width, "height": height,
-                                     "language": language, backend.result_key: items, "run_details": details})
+                                     "language": language, **output, "run_details": details})
             except TranscriptionTruncated as exc:
                 self.send_json(400, {"error": str(exc), "code": "transcription_truncated"})
             except (ValueError, TypeError, KeyError, binascii.Error, json.JSONDecodeError) as exc:
@@ -614,18 +631,24 @@ def handler_for(backend, token=""):
 
 
 def main():
+    optional_engines = ('pp-ocrv6-small', 'pp-ocrv6-medium', 'glm-ocr', 'lightonocr', 'mineru', 'chandra', 'doctr-formulanet')
     parser = argparse.ArgumentParser(description="YAGF OCR inference service")
-    parser.add_argument("--engine", choices=("paddleocr", "paddleocr-vl", "pp-formulanet", "doctr", "rapidocr", "surya", "kraken"),
+    parser.add_argument("--engine", choices=("paddleocr", "paddleocr-vl", "pp-formulanet", "doctr", "rapidocr", "surya", "kraken") + optional_engines,
                         default="paddleocr")
+    parser.add_argument('--list-models', action='store_true', help='Print optional model templates without loading models or changing configuration')
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--device", help="Inference device: gpu or cpu; defaults vary by engine")
     parser.add_argument("--language", help="PaddleOCR language code; other engines use auto")
     parser.add_argument("--model", help="Kraken model file or installed PP-FormulaNet_plus-L model directory")
     parser.add_argument("--vl-endpoint", default="http://127.0.0.1:8082/v1/chat/completions",
-                        help="PaddleOCR-VL OpenAI-compatible chat endpoint")
-    parser.add_argument("--vl-model", default="PaddleOCR-VL-1.6", help="PaddleOCR-VL server model name")
+                        help="Upstream vision server chat endpoint for the selected bridge")
+    parser.add_argument("--vl-model", help="Upstream vision server model name; defaults to the selected adapter's model")
     args = parser.parse_args()
+    if args.list_models:
+        from optional_backends import model_catalog
+        print(json.dumps(model_catalog(), indent=2))
+        return
     token = os.environ.get("YAGF_OCR_TOKEN", "")
     if args.host not in ("127.0.0.1", "localhost", "::1") and not token:
         parser.error("YAGF_OCR_TOKEN is required when binding to a network address")
@@ -635,14 +658,28 @@ def main():
         parser.error(f"{args.engine} requires --model PATH")
     if args.engine not in ("kraken", "pp-formulanet") and args.model:
         parser.error("--model is only used with Kraken or PP-FormulaNet")
-    device = args.device or ("cpu" if args.engine in ("rapidocr", "pp-formulanet") else
+    device = args.device or ("cpu" if args.engine in ("rapidocr", "pp-formulanet", "doctr-formulanet", "pp-ocrv6-small", "pp-ocrv6-medium") else
                              "auto" if args.engine == "kraken" else "gpu")
     if args.engine == "rapidocr" and device != "cpu":
         parser.error("RapidOCR's default ONNX backend runs on CPU; use --device cpu")
     if args.engine == "paddleocr":
         backend = PaddleOcrBackend(device, args.language or "en")
+    elif args.engine in ('pp-ocrv6-small', 'pp-ocrv6-medium'):
+        backend = PaddleOcrBackend(device, 'auto', args.engine.rsplit('-', 1)[1])
+    elif args.engine in ('glm-ocr', 'lightonocr'):
+        from optional_backends import ChatBackend
+        backend = ChatBackend(args.engine, args.vl_endpoint, args.vl_model)
+    elif args.engine == 'mineru':
+        from optional_backends import MinerUBackend
+        backend = MinerUBackend(args.vl_endpoint, args.vl_model)
+    elif args.engine == 'chandra':
+        from optional_backends import ChandraBackend
+        backend = ChandraBackend(args.vl_endpoint, args.vl_model)
+    elif args.engine == 'doctr-formulanet':
+        from optional_backends import FormulaNetBackend as DoctrFormulaNetBackend
+        backend = DoctrFormulaNetBackend(device)
     elif args.engine == "paddleocr-vl":
-        backend = PaddleVlBackend(args.vl_endpoint, args.vl_model)
+        backend = PaddleVlBackend(args.vl_endpoint, args.vl_model or 'PaddleOCR-VL-1.6')
     elif args.engine == "pp-formulanet":
         backend = FormulaNetBackend(args.model, device)
     elif args.engine == "doctr":

@@ -120,6 +120,7 @@ OcrServicesDialog::OcrServicesDialog(QVector<OcrService> services,OcrService act
     if (formulas.provider!="rapid-latex-ocr" && std::ranges::none_of(entries,[&](const auto &s){return s.key()==formulas.key();})) entries.append(formulas);
     connect(formulaEngine,&QComboBox::currentIndexChanged,this,[this](int index) {if (!filling && index>=0) {selectedFormula=formulaEngine->itemData(index).toString(); refresh();}});
     auto *tools=new QHBoxLayout; add=new QPushButton(tr("Add service…"),this); remove=new QPushButton(tr("Remove"),this); usePrimary=new QPushButton(tr("Use selected for text"),this); usePrimary->setObjectName("usePrimaryOcrService");
+    add->setObjectName("addOcrService");
     useFormula=new QPushButton(tr("Use for formulas"),this); useFormula->setObjectName("useFormulaOcrService");
     connect(useFormula,&QPushButton::clicked,this,[this] {const int row=table->currentRow(); if (row>=0 && entries[row].supportsFormulas()) {selectedFormula=entries[row].key(); populate(row);}});
     useLayout=new QPushButton(tr("Use selected for layout"),this); useLayout->setObjectName("useLayoutService");
@@ -255,17 +256,31 @@ void OcrServicesDialog::save() {
 }
 void OcrServicesDialog::addService() {
     QDialog dialog(this); dialog.setWindowTitle(tr("Add OCR service")); auto *form=new QFormLayout(&dialog);
+    dialog.setObjectName("addOcrServiceDialog");
+    const auto presets=optionalOcrModels();auto *preset=new QComboBox(&dialog);preset->setObjectName("optionalOcrModelPreset");preset->addItem(tr("Custom service"));
+    for(const auto &entry:presets)preset->addItem(entry.label);
+    form->addRow(tr("Optional model preset:"),preset);
     auto *provider=new QComboBox(&dialog); for (const auto &p:ocrProviders()) if (!localOcrProvider(p)) provider->addItem(ocrProviderLabel(p),p);
     auto *name=new QLineEdit(&dialog),*url=new QLineEdit("http://127.0.0.1:8765",&dialog),*language=new QLineEdit("auto",&dialog); name->setMaxLength(128); language->setMaxLength(64);
-    auto *model=new QLineEdit(&dialog); model->setMaxLength(256); model->setPlaceholderText(tr("Model name for a direct PaddleOCR-VL vision server"));
+    auto *model=new QLineEdit(&dialog); model->setMaxLength(256); model->setPlaceholderText(tr("Model name advertised by the recognition service"));
+    model->setObjectName("optionalOcrModelName");
+    connect(preset,&QComboBox::currentIndexChanged,&dialog,[&](int index){
+        if(index<=0)return;const auto &entry=presets[index-1];
+        if(provider->findData(entry.provider)<0)provider->addItem(entry.label,entry.provider);
+        provider->setCurrentIndex(provider->findData(entry.provider));name->setText(entry.label);model->setText(entry.model);language->setText(entry.language);
+    });
     form->addRow(tr("Model:"),model);
     form->addRow(tr("Engine:"),provider); form->addRow(tr("Name:"),name); form->addRow(tr("Service URL:"),url); form->addRow(tr("Language:"),language);
     auto *error=new QLabel(&dialog); error->setWordWrap(true); form->addRow(error);
     auto *buttons=new QDialogButtonBox(QDialogButtonBox::Ok|QDialogButtonBox::Cancel,&dialog); form->addRow(buttons);
     connect(buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
-    connect(buttons,&QDialogButtonBox::accepted,&dialog,[&] {if (!validOcrServiceUrl(QUrl(url->text().trimmed()))) error->setText(tr("Enter an HTTP(S) URL without credentials, query or fragment.")); else if (provider->currentData()=="paddleocr-vl" && model->text().trimmed().isEmpty()) error->setText(tr("Enter the vision server's model name, or use discovery.")); else dialog.accept();});
+    connect(buttons,&QDialogButtonBox::accepted,&dialog,[&] {if (!validOcrServiceUrl(QUrl(url->text().trimmed()))) error->setText(tr("Enter an HTTP(S) URL without credentials, query or fragment.")); else if ((preset->currentIndex()>0 || provider->currentData()=="paddleocr-vl") && model->text().trimmed().isEmpty()) error->setText(tr("Enter the service's model name, or use discovery.")); else dialog.accept();});
     if (dialog.exec()!=QDialog::Accepted) return;
     OcrService service; service.provider=provider->currentData().toString(); service.label=name->text().trimmed(); if (service.label.isEmpty()) service.label=ocrProviderLabel(service.provider); service.url=QUrl(url->text().trimmed()); service.language=language->text().trimmed(); service.model=model->text().trimmed();
+    if(preset->currentIndex()>0 && service.provider==presets[preset->currentIndex()-1].provider) {
+        service.profile=presets[preset->currentIndex()-1].profile;service.profile->model=service.model;
+        service.tasks=service.profile->tasks;service.protocol="yagf-ocr/1";
+    }
     const auto found=std::ranges::find_if(entries,[&](const auto &s){return s.key()==service.key();});
     if (found!=entries.end()) {populate(found-entries.begin()); status->setText(tr("That service is already listed.")); return;}
     entries.append(std::move(service)); populate(entries.size()-1);

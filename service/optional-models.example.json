@@ -1,0 +1,158 @@
+[
+  {
+    "id": "pp-ocrv6-small",
+    "provider": "paddleocr",
+    "label": "PP-OCRv6 small",
+    "profile": {
+      "model": "PP-OCRv6_small",
+      "tasks": [
+        "text"
+      ],
+      "geometry": "line",
+      "formats": [
+        "json"
+      ],
+      "languages": [
+        "auto"
+      ],
+      "max_image_pixels": 80000000,
+      "supports_batching": false
+    }
+  },
+  {
+    "id": "pp-ocrv6-medium",
+    "provider": "paddleocr",
+    "label": "PP-OCRv6 medium",
+    "profile": {
+      "model": "PP-OCRv6_medium",
+      "tasks": [
+        "text"
+      ],
+      "geometry": "line",
+      "formats": [
+        "json"
+      ],
+      "languages": [
+        "auto"
+      ],
+      "max_image_pixels": 80000000,
+      "supports_batching": false
+    }
+  },
+  {
+    "id": "glm-ocr",
+    "provider": "glm-ocr",
+    "label": "GLM-OCR",
+    "profile": {
+      "model": "zai-org/GLM-OCR",
+      "tasks": [
+        "text",
+        "formula",
+        "table"
+      ],
+      "geometry": "none",
+      "formats": [
+        "markdown",
+        "json"
+      ],
+      "languages": [
+        "auto"
+      ],
+      "max_image_pixels": 80000000,
+      "supports_batching": false
+    }
+  },
+  {
+    "id": "lightonocr",
+    "provider": "lightonocr",
+    "label": "LightOnOCR-3-0.8B",
+    "profile": {
+      "model": "lightonai/LightOnOCR-3-0.8B",
+      "tasks": [
+        "text",
+        "layout",
+        "formula",
+        "table"
+      ],
+      "geometry": "block",
+      "formats": [
+        "markdown",
+        "json"
+      ],
+      "languages": [
+        "auto"
+      ],
+      "max_image_pixels": 80000000,
+      "supports_batching": false
+    }
+  },
+  {
+    "id": "mineru",
+    "provider": "mineru",
+    "label": "MinerU2.5-Pro",
+    "profile": {
+      "model": "opendatalab/MinerU2.5-Pro-2605-1.2B",
+      "tasks": [
+        "text",
+        "layout",
+        "formula",
+        "table"
+      ],
+      "geometry": "block",
+      "formats": [
+        "markdown",
+        "json"
+      ],
+      "languages": [
+        "auto"
+      ],
+      "max_image_pixels": 80000000,
+      "supports_batching": false
+    }
+  },
+  {
+    "id": "chandra",
+    "provider": "chandra",
+    "label": "Chandra OCR 2",
+    "profile": {
+      "model": "datalab-to/chandra-ocr-2",
+      "tasks": [
+        "text",
+        "layout",
+        "formula",
+        "table"
+      ],
+      "geometry": "block",
+      "formats": [
+        "markdown",
+        "json"
+      ],
+      "languages": [
+        "auto"
+      ],
+      "max_image_pixels": 80000000,
+      "supports_batching": false
+    }
+  },
+  {
+    "id": "doctr-formulanet",
+    "provider": "doctr",
+    "label": "docTR FormulaNet",
+    "profile": {
+      "model": "formulanet",
+      "tasks": [
+        "formula"
+      ],
+      "geometry": "none",
+      "formats": [
+        "latex",
+        "json"
+      ],
+      "languages": [
+        "auto"
+      ],
+      "max_image_pixels": 80000000,
+      "supports_batching": false
+    }
+  }
+]

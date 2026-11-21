@@ -1,0 +1,2 @@
+# SDK client adapter; does not install or start a vLLM server.
+chandra-ocr>=0.3.0,<0.4

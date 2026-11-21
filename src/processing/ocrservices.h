@@ -23,6 +23,7 @@ struct OcrService {
 std::optional<OcrService> selectOcrModel(const QVector<OcrService> &services,
     const ModelRequirements &requirements, const QString &preferredKey = {});
 OcrService localFormulaService();
+QVector<OcrService> optionalOcrModels(); // Templates only; never saved or started automatically.
 bool localOcrProvider(const QString &provider);
 QStringList ocrProviders();
 QString ocrProviderLabel(const QString &provider);

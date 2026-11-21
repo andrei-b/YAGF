@@ -226,6 +226,48 @@ private slots:
         b.url=QUrl("http://user:password@host/");QVERIFY(!processing::makeOcrServiceEngine(b));QVERIFY(processing::readOcrServices(processing::ocrServicesJson({b})).isEmpty());
         QCOMPARE(processing::ocrDiscoveryTargets("host.example",{}).size(),8);QCOMPARE(processing::ocrDiscoveryTargets("https://host:9876/api",{}).size(),1);
     }
+    void optionalModelTemplatesAreCompleteAndNeverEnableServices() {
+        QSettings settings("YAGF","YAGF Revival");const auto keys=settings.allKeys();
+        const auto models=processing::optionalOcrModels();QCOMPARE(models.size(),7);
+        QSet<QString> names;
+        for(auto service:models) {
+            QVERIFY(service.profile.has_value());QVERIFY(!service.ready);QVERIFY(!service.enabled);QVERIFY(service.url.isEmpty());
+            QVERIFY(!names.contains(service.model));names.insert(service.model);
+            service.url=QUrl("http://model-host.example:8765");
+            auto restored=processing::readOcrServices(processing::ocrServicesJson({service}));QCOMPARE(restored.size(),1);
+            QVERIFY(processing::makeOcrServiceEngine(restored[0]));
+            QCOMPARE(restored[0].profile->tasks,service.profile->tasks);
+        }
+        const auto &formula=models.last();QCOMPARE(formula.provider,"doctr");QCOMPARE(formula.model,"formulanet");
+        QVERIFY(formula.supportsFormulas());QVERIFY(!formula.supportsText());
+        QCOMPARE(settings.allKeys(),keys);
+    }
+    void optionalPresetIsAddedOnlyAfterConfirmationAndKeepsActiveChoices() {
+        QSettings settings("YAGF","YAGF Revival");const auto keys=settings.allKeys();
+        processing::OcrService primary;primary.provider="tesseract";primary.label="Local text";
+        ui::OcrServicesDialog dialog({},primary);
+        const auto initial=dialog.services().size();const auto formulaKey=dialog.formulaService().key();
+        for(bool accept:{false,true}) {
+            bool inspected=false;
+            QTimer::singleShot(0,[&] {
+                auto *modal=qobject_cast<QDialog *>(QApplication::activeModalWidget());
+                if(!modal)return;
+                auto *preset=modal->findChild<QComboBox *>("optionalOcrModelPreset");
+                if(preset && preset->count()==8) {
+                    preset->setCurrentIndex(7);
+                    inspected=modal->findChild<QLineEdit *>("optionalOcrModelName")->text()=="formulanet";
+                }
+                if(accept && inspected)modal->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Ok)->click();
+                else modal->reject();
+            });
+            dialog.findChild<QPushButton *>("addOcrService")->click();QVERIFY(inspected);
+            QCOMPARE(dialog.services().size(),initial+(accept?1:0));
+            QCOMPARE(dialog.formulaService().key(),formulaKey);
+            QCOMPARE(dialog.findChild<QComboBox *>("textOcrEngine")->currentData().toString(),primary.key());
+        }
+        QCOMPARE(dialog.services().last().profile->tasks,QStringList{"formula"});
+        QVERIFY(!dialog.services().last().enabled);QCOMPARE(settings.allKeys(),keys);
+    }
     void modelProfilesValidateAndKeepUnknownCapabilitiesUnknown() {
         QJsonObject json{{"model","document-model"},{"tasks",QJsonArray{"ocr","layout","table","formula"}},
             {"geometry","block"},{"formats",QJsonArray{"markdown","json"}},{"languages",QJsonArray{"auto","rus"}},

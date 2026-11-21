@@ -5,6 +5,7 @@
 #include <QCryptographicHash>
 #include <QElapsedTimer>
 #include <QEventLoop>
+#include <QFile>
 #include <QJsonDocument>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
@@ -69,6 +70,16 @@ std::optional<OcrService> selectOcrModel(const QVector<OcrService> &services,con
 }
 OcrService localFormulaService() {
     OcrService s; s.provider="rapid-latex-ocr"; s.label=ocrProviderLabel(s.provider); s.language="auto"; s.tasks={"formula"}; s.ready=!MathOcrEngine::pythonPath().isEmpty(); return s;
+}
+QVector<OcrService> optionalOcrModels() {
+    QFile file(":/ocr/optional-models.example.json");if(!file.open(QIODevice::ReadOnly))return {};
+    QVector<OcrService> result;
+    for(const auto &value:QJsonDocument::fromJson(file.readAll()).array()) {
+        const auto entry=value.toObject();OcrService service;
+        service.provider=entry["provider"].toString();service.label=entry["label"].toString();service.language="auto";service.protocol="yagf-ocr/1";
+        if(validProvider(service.provider) && applyProfile(service,entry) && service.profile)result.append(std::move(service));
+    }
+    return result;
 }
 QString ocrProviderLabel(const QString &provider) {
     if (provider=="tesseract") return "Tesseract (this computer)";

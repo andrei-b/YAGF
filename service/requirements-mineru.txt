@@ -1,0 +1,3 @@
+# HTTP client adapter; the model runs on an explicitly started upstream server.
+mineru-vl-utils>=2.0.9,<3
+Pillow>=10
