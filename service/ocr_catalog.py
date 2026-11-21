@@ -2,6 +2,7 @@
 import concurrent.futures
 import base64
 import json
+import re
 import threading
 import time
 import urllib.error
@@ -41,10 +42,21 @@ class LocalOcrCatalog:
                         if not model or len(model)>256: return None
                         return dict(port=port,provider='paddleocr',label=model,language='auto',kind='vl',model=model,tasks=['ocr','formula'])
                     provider=health.get('engine_id')
-                    if health.get('protocol')!='yagf-ocr/1' or health.get('status')!='ready' or provider not in PROVIDERS: return None
+                    profile=health.get('profile')
+                    profiles=health.get('profiles')
+                    if health.get('protocol')!='yagf-ocr/1' or health.get('status')!='ready' or not isinstance(provider,str) or not re.fullmatch(r'[a-z][a-z0-9_-]{0,63}',provider): return None
+                    if provider not in PROVIDERS and not isinstance(profile,dict) and not isinstance(profiles,list): return None
                     tasks=health.get('tasks',['ocr','formula'] if provider=='surya' else ['ocr'])
-                    tasks=[task for task in tasks if task in ('ocr','formula')] if isinstance(tasks,list) else ['ocr']
-                    return dict(port=port,provider=provider,label=str(health.get('model') or provider)[:128],model=str(health.get('model') or '')[:256],language=str(health.get('language') or 'auto')[:64],kind='ocr',tasks=tasks)
+                    tasks=[task for task in tasks[:32] if isinstance(task,str) and len(task)<=64] if isinstance(tasks,list) else ['ocr']
+                    entry=dict(port=port,provider=provider,label=str(health.get('model') or provider)[:128],model=str(health.get('model') or '')[:256],language=str(health.get('language') or 'auto')[:64],kind='ocr',tasks=tasks)
+                    if isinstance(profile,dict):
+                        entry['profile']=profile
+                        entry['model']=str(profile.get('model') or entry['model'])[:256]
+                    elif 'profile' in health: return None
+                    if 'profiles' in health:
+                        if not isinstance(profiles,list) or len(profiles)>64 or any(not isinstance(p,dict) for p in profiles): return None
+                        entry['profiles']=profiles
+                    return entry
                 except (OSError,ValueError,TypeError): return None
             ports=self.ports+((self.vl_port,) if self.vl_port else ())
             with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:

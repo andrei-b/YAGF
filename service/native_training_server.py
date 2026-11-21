@@ -104,8 +104,16 @@ class TrainingHost:
                 services.append(dict(path=state['model_url'],provider='native',label=state['label']+' · '+state['id'][:8],language='auto',ready=True))
                 if len(services)>=64: break
         for entry in self.catalog.discover():
+            if 'profiles' in entry:
+                for profile in entry['profiles']:
+                    model=profile.get('model')
+                    if not isinstance(model,str) or not model or len(model)>256: continue
+                    services.append(dict(path='/services/'+str(entry['port']),provider=entry['provider'],label=model[:128],
+                                         model=model,language=entry['language'],ready=True,profile=profile))
+                continue
             services.append(dict(path='/services/'+str(entry['port']),provider=entry['provider'],label=entry['label'],model=entry.get('model',entry['label']),language=entry['language'],ready=True,tasks=entry.get('tasks',['ocr'])))
-        return dict(protocol='yagf-ocr/1',engine_id='native',status='ready',language='auto',services=services)
+            if 'profile' in entry: services[-1]['profile']=entry['profile']
+        return dict(protocol='yagf-ocr/1',engine_id='native',status='ready',language='auto',services=services[:64])
 
     def recognize_profile(self,profile_id,request):
         profile=self.profiles.get(profile_id)
@@ -277,7 +285,12 @@ def handler_for(host,token=''):
                     else:
                         entry=next((e for e in host.catalog.discover() if str(e['port'])==identity),None)
                         if not entry: raise ValueError('OCR listener is no longer available')
-                        self.send(200,dict(protocol='yagf-ocr/1',engine_id=entry['provider'],status='ready',language=entry['language'],model=entry.get('model',entry['label']),tasks=entry.get('tasks',['ocr'])))
+                        health=dict(protocol='yagf-ocr/1',engine_id=entry['provider'],status='ready',language=entry['language'],model=entry.get('model',entry['label']),tasks=entry.get('tasks',['ocr']))
+                        if 'profile' in entry: health['profile']=entry['profile']
+                        if 'profiles' in entry:
+                            health.pop('model',None)
+                            health['profiles']=entry['profiles']
+                        self.send(200,health)
                 elif self.path.startswith('/v1/jobs/'): self.send(200,host.state(self.path.rsplit('/',1)[-1]))
                 elif self.path=='/v1/models':
                     models=[]

@@ -107,6 +107,7 @@ public:
 class Server:public QTcpServer {
 public:
     bool stall=false,layout=false,formulaOnly=false; int posts=0; QByteArray lastPath;
+    QJsonObject healthOverride,recognitionOverride,lastRequest;
     Server() {if (!listen(QHostAddress::LocalHost)) qFatal("listen failed");
         connect(this,&QTcpServer::newConnection,this,[this]{auto *s=nextPendingConnection(); connect(s,&QTcpSocket::disconnected,s,&QObject::deleteLater);
             connect(s,&QTcpSocket::readyRead,s,[this,s,data=QByteArray{}]()mutable {
@@ -115,6 +116,7 @@ public:
                 if(data.size()<end+4+length)return; s->setProperty("sent",true); lastPath=data.split(' ').value(1);
                 if(stall)return;
                 const auto body=QJsonDocument::fromJson(data.mid(end+4,length)).object(); QJsonObject result;
+                if(data.startsWith("POST "))lastRequest=body;
                 if(data.startsWith("GET ")) result={{"protocol","yagf-ocr/1"},{"engine_id","native"},{"status","ready"},{"services",QJsonArray{
                     QJsonObject{{"path","/profiles/rus"},{"provider","native"},{"label","Russian model"},{"language","rus"},{"ready",true}},
                     QJsonObject{{"path","/gateway/doctr"},{"provider","doctr"},{"label","Remote docTR"},{"language","auto"},{"ready",true}},
@@ -132,6 +134,8 @@ public:
                         {"areas",QJsonArray{QJsonObject{{"id","formula"},{"label","display_formula"},{"type","math"},{"score",.95},{"box",QJsonArray{90,65,90,55}}},
                             QJsonObject{{"id","prose"},{"label","text"},{"type","text"},{"score",.95},{"box",QJsonArray{0,0,80,40}}}}}};
                 }
+                if(data.startsWith("GET ") && !healthOverride.isEmpty())result=healthOverride;
+                if(data.startsWith("POST ") && !recognitionOverride.isEmpty())result=recognitionOverride;
                 const auto bytes=QJsonDocument(result).toJson(QJsonDocument::Compact);
                 s->write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: "+QByteArray::number(bytes.size())+"\r\nConnection: close\r\n\r\n"+bytes); s->disconnectFromHost();
             });
@@ -221,6 +225,90 @@ private slots:
         auto b=a;b.url.setPath("/nested/");QCOMPARE(a.key(),b.key());
         b.url=QUrl("http://user:password@host/");QVERIFY(!processing::makeOcrServiceEngine(b));QVERIFY(processing::readOcrServices(processing::ocrServicesJson({b})).isEmpty());
         QCOMPARE(processing::ocrDiscoveryTargets("host.example",{}).size(),8);QCOMPARE(processing::ocrDiscoveryTargets("https://host:9876/api",{}).size(),1);
+    }
+    void modelProfilesValidateAndKeepUnknownCapabilitiesUnknown() {
+        QJsonObject json{{"model","document-model"},{"tasks",QJsonArray{"ocr","layout","table","formula"}},
+            {"geometry","block"},{"formats",QJsonArray{"markdown","json"}},{"languages",QJsonArray{"auto","rus"}},
+            {"max_image_pixels",12000000},{"supports_batching",true}};
+        auto p=processing::readModelProfile(json);QVERIFY(p);QVERIFY(p->tasks.contains("text"));QVERIFY(!p->tasks.contains("ocr"));
+        processing::ModelRequirements requirements;requirements.tasks={"text","table"};requirements.geometry="block";
+        requirements.format="markdown";requirements.language="rus";requirements.imageSize={4000,3000};requirements.batching=true;
+        QVERIFY(p->incompatibilities(requirements).isEmpty());
+        auto copy=processing::readModelProfile(processing::modelProfileJson(*p));QVERIFY(copy);QVERIFY(copy->incompatibilities(requirements).isEmpty());
+        requirements.geometry="word";QVERIFY(!p->incompatibilities(requirements).isEmpty());requirements.geometry="block";
+        requirements.imageSize={4000,3001};QVERIFY(!p->incompatibilities(requirements).isEmpty());requirements.imageSize={4000,3000};
+        requirements.language="deu";QVERIFY(!p->incompatibilities(requirements).isEmpty());requirements.language="rus";
+        requirements.format="hocr";QVERIFY(!p->incompatibilities(requirements).isEmpty());
+        for(const auto &key:QStringList{"tasks","formats","languages","geometry","max_image_pixels","supports_batching"}) {
+            auto bad=json;bad[key]=QJsonObject{};QVERIFY(!processing::readModelProfile(bad));
+        }
+        for(double pixels:{-1.,0.,1.5,9007199254740992.}) {auto bad=json;bad["max_image_pixels"]=pixels;QVERIFY(!processing::readModelProfile(bad));}
+        auto unknown=processing::readModelProfile(QJsonObject{{"model","legacy-shaped"},{"tasks",QJsonArray{"text"}}});QVERIFY(unknown);
+        QVERIFY(!unknown->supportsBatching.has_value());QCOMPARE(unknown->geometry,"unknown");
+        processing::ModelRequirements strict;strict.tasks={"text"};strict.batching=true;
+        QVERIFY(!unknown->incompatibilities(strict).isEmpty());
+    }
+    void advertisedProfilesOverrideProviderAssumptionsAndDriveSelection() {
+        processing::OcrService text;text.provider="surya";text.label="Text only";text.url=QUrl("http://model-host.example:8765");text.ready=true;
+        processing::ModelProfile profile;profile.model="text-model";profile.tasks={"text"};profile.geometry="word";
+        profile.formats={"json"};profile.languages={"auto"};profile.maxImagePixels=12000000;profile.supportsBatching=false;
+        text.model=profile.model;text.profile=profile;
+        QVERIFY(text.supportsText());QVERIFY(!text.supportsFormulas());
+        auto formula=text;formula.model="formula-model";formula.profile->model=formula.model;
+        formula.profile->tasks={"formula"};formula.profile->geometry="none";formula.token="session-secret";
+        QVERIFY(formula.supportsFormulas());QVERIFY(!formula.supportsText());QVERIFY(text.key()!=formula.key());
+        auto json=processing::ocrServicesJson({text,formula});QVERIFY(!QJsonDocument(json).toJson().contains("session-secret"));
+        auto restored=processing::readOcrServices(json);QCOMPARE(restored.size(),2);QCOMPARE(restored[1].profile->geometry,"none");
+        processing::ModelRequirements r;r.tasks={"formula"};r.imageSize={4000,3000};
+        auto chosen=processing::selectOcrModel({text,formula},r,text.key());QVERIFY(chosen);QCOMPARE(chosen->key(),formula.key());
+        formula.ready=false;QVERIFY(!processing::selectOcrModel({text,formula},r));formula.ready=true;
+        auto other=formula;other.model="other";other.profile->model=other.model;
+        QCOMPARE(processing::selectOcrModel({formula,other},r,other.key())->key(),other.key());
+        ui::OcrServicesDialog dialog({text,formula},text,nullptr,formula);
+        auto *textChoice=dialog.findChild<QComboBox *>("textOcrEngine");auto *formulaChoice=dialog.findChild<QComboBox *>("formulaOcrEngine");
+        QVERIFY(textChoice->findData(text.key())>=0);QCOMPARE(textChoice->findData(formula.key()),-1);
+        QCOMPARE(formulaChoice->findData(text.key()),-1);QCOMPARE(formulaChoice->currentData().toString(),formula.key());
+        QVERIFY(dialog.findChild<QLabel *>("textOcrModelDetails")->text().contains("12000000"));
+        QVERIFY(dialog.findChild<QLabel *>("formulaOcrModelDetails")->text().contains("none"));
+    }
+    void genericProfileDiscoveryNegotiatesTasksAndLimitsBeforeUpload() {
+        Server server;processing::ModelProfile p;p.model="document-vlm";p.tasks={"text","table","formula"};
+        p.geometry="none";p.formats={"markdown","json"};p.languages={"auto"};p.maxImagePixels=28000;p.supportsBatching=true;
+        auto formula=p;formula.model="formula-specialist";formula.tasks={"formula"};
+        server.healthOverride={{"protocol","yagf-ocr/1"},{"engine_id","example-vlm"},{"status","ready"},
+            {"profiles",QJsonArray{processing::modelProfileJson(p),processing::modelProfileJson(formula)}}};
+        auto discovered=processing::discoverOcrServices({server.url()},{},{});QVERIFY(discovered);QCOMPARE(discovered->services.size(),2);
+        QCOMPARE(server.posts,0);QVERIFY(discovered->diagnostics.isEmpty());
+        const auto service=discovered->services[0];QCOMPARE(service.model,p.model);QVERIFY(service.supportsText());QVERIFY(service.supportsFormulas());
+        auto restored=processing::readOcrServices(processing::ocrServicesJson(discovered->services));QCOMPARE(restored.size(),2);
+        QCOMPARE(restored[0].protocol,"yagf-ocr/1");
+        auto engine=processing::makeOcrServiceEngine(service);QVERIFY(engine);QVERIFY((*engine)->capabilities().supportsTables);QVERIFY(!(*engine)->capabilities().supportsWordBoxes);
+        processing::OcrOptions options;options.language="auto";
+        auto result=(*engine)->recognizeResult(QImage(201,140,QImage::Format_RGB32),options,{});QVERIFY(!result);QCOMPARE(server.posts,0);
+        options.language="rus";result=(*engine)->recognizeResult(image,options,{});QVERIFY(!result);QCOMPARE(server.posts,0);
+        options.language="auto";options.task="layout";result=(*engine)->recognizeResult(image,options,{});QVERIFY(!result);QCOMPARE(server.posts,0);
+        options.task="table";options.outputFormat="hocr";result=(*engine)->recognizeResult(image,options,{});QVERIFY(!result);QCOMPARE(server.posts,0);
+        options.outputFormat="markdown";
+        server.recognitionOverride={{"protocol","yagf-ocr/1"},{"engine_id","example-vlm"},{"width",image.width()},{"height",image.height()},
+            {"markdown","| a | b |\n|---|---|\n| 1 | 2 |"}};
+        result=(*engine)->recognizeResult(image,options,{});QVERIFY2(result,result?"":qPrintable(result.error().message));
+        QCOMPARE(server.posts,1);QCOMPARE(server.lastRequest["model"].toString(),p.model);QCOMPARE(server.lastRequest["task"].toString(),"table");
+        QCOMPARE(server.lastRequest["output_format"].toString(),"markdown");QVERIFY(result->text.isEmpty());QVERIFY(!result->markdown.isEmpty());
+        QCOMPARE(result->provenance.model,p.model);QCOMPARE(result->provenance.task,"table");
+        processing::DocumentProcessor processor(nullptr,nullptr);processor.setEngine(std::move(*engine));
+        QCOMPARE(processor.primaryOcrService().key(),service.key());QVERIFY(processor.primaryOcrService().profile.has_value());
+        server.healthOverride.remove("profiles");server.healthOverride["profile"]=QJsonObject{{"model","broken"},{"tasks",false}};
+        discovered=processing::discoverOcrServices({server.url()},{},{});QVERIFY(discovered);QVERIFY(discovered->services.isEmpty());QVERIFY(!discovered->diagnostics.isEmpty());
+        server.healthOverride={{"data",QJsonArray{QJsonObject{{"id",p.model},{"protocol","yagf-ocr/1"},{"engine_id","example-vlm"},{"profile",processing::modelProfileJson(p)}}}}};
+        discovered=processing::discoverOcrServices({server.url()},{},{});QVERIFY(discovered);QCOMPARE(discovered->services.size(),1);
+        QCOMPARE(discovered->services[0].provider,"example-vlm");QCOMPARE(discovered->services[0].model,p.model);
+        QVERIFY(discovered->diagnostics.isEmpty());QCOMPARE(server.posts,1);
+        auto gateway=service;gateway.url=QUrl(server.url().toString()+"/services/8768");
+        server.healthOverride={{"protocol","yagf-ocr/1"},{"engine_id","native"},{"status","ready"},
+            {"services",QJsonArray{QJsonObject{{"path","/services/8768"},{"provider","example-vlm"},{"label",p.model},
+                {"model",p.model},{"ready",true},{"profile",processing::modelProfileJson(p)}}}}};
+        discovered=processing::discoverOcrServices({server.url()},{gateway},{});QVERIFY(discovered);QCOMPARE(discovered->services.size(),1);
+        QCOMPARE(discovered->services[0].key(),gateway.key());QCOMPARE(discovered->services[0].profile->formats,p.formats);
     }
     void directVisionDiscoveryAdvertisesFormulasWithoutUploadingImages() {
         VisionServer server;

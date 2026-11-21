@@ -139,7 +139,10 @@ def handler_for(backend, token=""):
         def do_GET(self):
             if self.path == "/v1/health":
                 self.send(200, {"protocol": PROTOCOL, "status": "ready", "model": MODEL_ID,
-                                "revision": MODEL_REVISION, "sha256": MODEL_SHA256, "device": "cpu"})
+                                "revision": MODEL_REVISION, "sha256": MODEL_SHA256, "device": "cpu",
+                                "profile": {"model": MODEL_ID, "tasks": ["layout"], "geometry": "block",
+                                            "formats": ["json"], "max_image_pixels": 80_000_000,
+                                            "supports_batching": False}})
             else:
                 self.send(404, {"error": "Unknown endpoint"})
 

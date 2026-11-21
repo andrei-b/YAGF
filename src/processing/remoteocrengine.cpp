@@ -62,13 +62,14 @@ QString providerName(RemoteOcrEngine::Provider provider)
     case RemoteOcrEngine::Provider::Kraken: return QStringLiteral("kraken");
     case RemoteOcrEngine::Provider::Native: return QStringLiteral("native");
     case RemoteOcrEngine::Provider::PaddleVl: return QStringLiteral("paddleocr-vl");
+    case RemoteOcrEngine::Provider::Generic: return {};
     }
     return {};
 }
 
 std::expected<RecognitionResult, OcrError> parseResponse(
     const QByteArray &bytes, const QSize &imageSize, const OcrOptions &options,
-    RemoteOcrEngine::Provider provider)
+    RemoteOcrEngine::Provider provider, const QString &engineName)
 {
     if (bytes.size() > maxResponseBytes)
         return std::unexpected(OcrError{QStringLiteral("The OCR server response is too large.")});
@@ -78,11 +79,12 @@ std::expected<RecognitionResult, OcrError> parseResponse(
         return std::unexpected(OcrError{QStringLiteral("The OCR server returned invalid JSON.")});
     const QJsonObject root = json.object();
     const bool orderedWords = provider == RemoteOcrEngine::Provider::DocTr ||
-                              provider == RemoteOcrEngine::Provider::Kraken || provider == RemoteOcrEngine::Provider::Native;
+                              provider == RemoteOcrEngine::Provider::Kraken || provider == RemoteOcrEngine::Provider::Native ||
+                              (provider == RemoteOcrEngine::Provider::Generic && root["words"].isArray());
     const bool structured = orderedWords || provider == RemoteOcrEngine::Provider::Surya;
     const QString itemKey = orderedWords ? QStringLiteral("words") : QStringLiteral("lines");
     if (root.value(QStringLiteral("protocol")).toString() != QLatin1String(protocol) ||
-        root.value(QStringLiteral("engine_id")).toString() != providerName(provider) ||
+        root.value(QStringLiteral("engine_id")).toString() != engineName ||
         root.value(QStringLiteral("width")).toInt(-1) != imageSize.width() ||
         root.value(QStringLiteral("height")).toInt(-1) != imageSize.height())
         return std::unexpected(OcrError{QStringLiteral("The OCR server response has an incompatible schema or image size.")});
@@ -91,14 +93,14 @@ std::expected<RecognitionResult, OcrError> parseResponse(
         auto result = core::readRecognitionResult(root["recognition"].toObject());
         if (!result || result->provenance.imageSize != imageSize)
             return std::unexpected(OcrError{result ? QStringLiteral("Incompatible recognition image size.") : result.error()});
-        result->engineId = providerName(provider)+"-remote";
+        result->engineId = engineName+"-remote";
         result->provenance.pageNumber = options.pageNumber;
         return *result;
     }
     if (!root.value(itemKey).isArray()) {
         if (!root["markdown"].isString() || root["markdown"].toString().trimmed().isEmpty())
             return std::unexpected(OcrError{"The OCR server response has an incompatible schema."});
-        RecognitionResult result; result.engineId = providerName(provider)+"-remote";
+        RecognitionResult result; result.engineId = engineName+"-remote";
         result.modelVersion = root.value("model_version").toString();
         result.provenance = {.model=root.value("model").toString(), .task=options.formula ? "formula" : "ocr",
             .language=root.value("language").toString(options.language), .pageNumber=options.pageNumber, .imageSize=imageSize};
@@ -109,7 +111,7 @@ std::expected<RecognitionResult, OcrError> parseResponse(
     if (items.size() > 10000)
         return std::unexpected(OcrError{QStringLiteral("The OCR server returned too many text items.")});
     RecognitionResult result;
-    result.engineId = providerName(provider) + QStringLiteral("-remote");
+    result.engineId = engineName + QStringLiteral("-remote");
     result.modelVersion = root.value("model_version").toString();
     result.provenance = {.model=root.value("model").toString(), .task=options.formula ? "formula" : "ocr",
         .language=root.value("language").toString(options.language), .pageNumber=options.pageNumber, .imageSize=imageSize};
@@ -184,16 +186,21 @@ std::expected<RecognitionResult, OcrError> parseResponse(
 }
 }
 
-RemoteOcrEngine::RemoteOcrEngine(QUrl server, QString bearerToken, Provider provider, QString model, bool formulas)
-    : server(std::move(server)), bearerToken(std::move(bearerToken)), provider(provider), model(std::move(model)), formulas(formulas) {}
+RemoteOcrEngine::RemoteOcrEngine(QUrl server, QString bearerToken, Provider provider, QString model, bool formulas,
+    std::optional<ModelProfile> profile,QString engineId)
+    : server(std::move(server)), bearerToken(std::move(bearerToken)), provider(provider), model(std::move(model)), formulas(formulas),
+      profile(std::move(profile)),engineName(provider==Provider::Generic?std::move(engineId):providerName(provider)) {}
 
 QString RemoteOcrEngine::id() const
 {
-    return providerName(provider) + QStringLiteral("-remote");
+    return engineName + QStringLiteral("-remote");
 }
 
 EngineCapabilities RemoteOcrEngine::capabilities() const
 {
+    if(profile)return {.supportsRegions=true,.supportsWordBoxes=profile->geometry=="word",
+        .supportsLayout=profile->tasks.contains("layout"),.supportsTables=profile->tasks.contains("table"),
+        .supportsFormulas=profile->tasks.contains("formula")};
     switch (provider) {
     case Provider::DocTr:
     case Provider::Kraken:
@@ -207,6 +214,8 @@ EngineCapabilities RemoteOcrEngine::capabilities() const
     case Provider::PaddleOcr:
     case Provider::RapidOcr:
         return {.supportsRegions = true, .supportsConfidence = true, .supportsFormulas = formulas};
+    case Provider::Generic:
+        return {};
     }
     return {};
 }
@@ -215,9 +224,29 @@ std::expected<RecognitionResult, OcrError> RemoteOcrEngine::recognizeResult(
     const QImage &image, const OcrOptions &options, std::stop_token stop)
 {
     runDetails = {};
+    if(stop.stop_requested())return std::unexpected(OcrError{{},true});
+    auto requestOptions=options;
+    if(!options.task.isEmpty()) {
+        if(options.formula && canonicalModelTask(options.task)!="formula")
+            return std::unexpected(OcrError{QStringLiteral("Conflicting formula and recognition task options.")});
+        requestOptions.formula=canonicalModelTask(options.task)=="formula";
+        if(provider==Provider::PaddleVl && canonicalModelTask(options.task)!="text" && canonicalModelTask(options.task)!="formula")
+            return std::unexpected(OcrError{QStringLiteral("This chat adapter supports text and formula tasks only.")});
+    }
+    if(profile) {
+        ModelRequirements requirements;requirements.tasks={options.task.isEmpty()?(options.formula?QStringLiteral("formula"):QStringLiteral("text")):canonicalModelTask(options.task)};
+        requirements.format=options.outputFormat;
+        if(profile->maxImagePixels)requirements.imageSize=image.size();
+        // A missing list means unknown. An advertised list is authoritative.
+        if(!profile->languages.isEmpty())requirements.language=options.language;
+        const auto errors=profile->incompatibilities(requirements);
+        if(!errors.isEmpty())return std::unexpected(OcrError{errors.join(' ')});
+    }
     if(options.collectBenchmarkMetrics)runDetails["inference_ms_scope"]="Successful responses only; client latency includes retries and failures";
-    auto result = recognizeSection(image, options, stop, 0);
+    auto result = recognizeSection(image, requestOptions, stop, 0);
     if (!result) return result;
+    if(result->provenance.model.isEmpty())result->provenance.model=model;
+    if(!options.task.isEmpty())result->provenance.task=canonicalModelTask(options.task);
     if (auto valid = core::validateRecognitionResult(*result); !valid)
         return std::unexpected(OcrError{valid.error()});
     return result;
@@ -242,6 +271,9 @@ std::expected<RecognitionResult, OcrError> RemoteOcrEngine::recognizeSection(
                         {"language", options.language},
                         {"page_number", options.pageNumber}};
     if (options.formula) payload.insert("task", "formula");
+    if(!options.task.isEmpty())payload.insert("task",canonicalModelTask(options.task)=="text"?QStringLiteral("ocr"):options.task);
+    if(!options.outputFormat.isEmpty())payload.insert("output_format",options.outputFormat);
+    if(profile)payload.insert("model",model);
     QUrl url = server;
     QString basePath=server.path(); while (basePath.endsWith('/')) basePath.chop(1);
     url.setPath(basePath+QStringLiteral("/v1/recognize"));
@@ -367,7 +399,7 @@ std::expected<RecognitionResult, OcrError> RemoteOcrEngine::recognizeSection(
         }
         return result;
     }
-    auto parsed=parseResponse(response, image.size(), options, provider);
+    auto parsed=parseResponse(response, image.size(), options, provider,engineName);
     if(parsed && options.collectBenchmarkMetrics) {
         const auto root=QJsonDocument::fromJson(response).object();
         const auto details=root.value("run_details").toObject();

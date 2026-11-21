@@ -34,10 +34,23 @@ QString modelChoice(const OcrService &s) {
     if (!s.ready && !s.error.isEmpty()) label+=OcrServicesDialog::tr(" — unavailable");
     return label;
 }
+QString capabilityDetails(const OcrService &s) {
+    const auto p=s.modelProfile();
+    QStringList details{OcrServicesDialog::tr("Tasks: %1").arg(p.tasks.join(", "))};
+    if(!s.profile)details.append(OcrServicesDialog::tr("Legacy service: other capabilities unknown"));
+    else {
+        details.append(OcrServicesDialog::tr("Geometry: %1").arg(p.geometry));
+        if(!p.formats.isEmpty())details.append(OcrServicesDialog::tr("Formats: %1").arg(p.formats.join(", ")));
+        if(!p.languages.isEmpty())details.append(OcrServicesDialog::tr("Languages: %1").arg(p.languages.join(", ")));
+        if(p.maxImagePixels)details.append(OcrServicesDialog::tr("Maximum image: %1 pixels").arg(p.maxImagePixels));
+        if(p.supportsBatching)details.append(*p.supportsBatching?OcrServicesDialog::tr("Batch requests supported"):OcrServicesDialog::tr("Single-image requests"));
+    }
+    return details.join(" · ");
+}
 QString modelDetails(const OcrService &s) {
     const auto state=s.ready ? OcrServicesDialog::tr("Ready") : s.error.isEmpty() ? OcrServicesDialog::tr("Not checked") : OcrServicesDialog::tr("Unavailable: %1").arg(s.error);
     const auto location=localOcrProvider(s.provider) ? OcrServicesDialog::tr("Runs on this computer") : OcrServicesDialog::tr("Remote service: %1").arg(s.url.toString());
-    return state+" · "+ocrProviderLabel(s.provider)+'\n'+location;
+    return state+" · "+ocrProviderLabel(s.provider)+'\n'+location+'\n'+capabilityDetails(s);
 }
 }
 OcrServicesDialog::OcrServicesDialog(QVector<OcrService> services,OcrService active,QWidget *parent,OcrService formulas,QString layoutToken)
@@ -110,7 +123,9 @@ OcrServicesDialog::OcrServicesDialog(QVector<OcrService> services,OcrService act
     useFormula=new QPushButton(tr("Use for formulas"),this); useFormula->setObjectName("useFormulaOcrService");
     connect(useFormula,&QPushButton::clicked,this,[this] {const int row=table->currentRow(); if (row>=0 && entries[row].supportsFormulas()) {selectedFormula=entries[row].key(); populate(row);}});
     useLayout=new QPushButton(tr("Use selected for layout"),this); useLayout->setObjectName("useLayoutService");
-    connect(useLayout,&QPushButton::clicked,this,[this] {const int row=table->currentRow();if (row>=0 && entries[row].supportsPageLayout()) {layoutEndpoint->setText(entries[row].url.toString());layoutAuth=entries[row].token;}});
+    // The page-area dialog currently speaks yagf-layout/1. A layout task on an
+    // OCR endpoint describes evidence; it does not change the wire protocol.
+    connect(useLayout,&QPushButton::clicked,this,[this] {const int row=table->currentRow();if (row>=0 && entries[row].provider=="layout" && entries[row].supportsPageLayout()) {layoutEndpoint->setText(entries[row].url.toString());layoutAuth=entries[row].token;}});
     tools->addWidget(add); tools->addWidget(remove); tools->addStretch(); tools->addWidget(useLayout); tools->addWidget(useFormula); tools->addWidget(usePrimary); serviceLayout->addLayout(tools);
     auto *auth=new QHBoxLayout; auth->addWidget(new QLabel(tr("Selected service token:"),this)); token=new QLineEdit(this); token->setObjectName("ocrServiceToken"); token->setEchoMode(QLineEdit::Password); token->setPlaceholderText(tr("Optional bearer token; kept only in memory")); auth->addWidget(token,1); serviceLayout->addLayout(auth);
     summary=new QLabel(this); summary->setTextFormat(Qt::PlainText); summary->setWordWrap(true); layout->addWidget(summary);
@@ -119,7 +134,7 @@ OcrServicesDialog::OcrServicesDialog(QVector<OcrService> services,OcrService act
     if (std::ranges::none_of(entries,[](const auto &s){return s.provider=="tesseract";})) {
         OcrService local; local.provider="tesseract"; local.label=ocrProviderLabel(local.provider); local.ready=!QStandardPaths::findExecutable("tesseract").isEmpty(); entries.prepend(local);
     }
-    if (ocrProviders().contains(primary.provider) && std::ranges::none_of(entries,[&](const auto &s){return s.key()==primary.key();})) entries.append(primary);
+    if ((ocrProviders().contains(primary.provider) || primary.profile) && std::ranges::none_of(entries,[&](const auto &s){return s.key()==primary.key();})) entries.append(primary);
     for (auto &s:entries) if (s.key()==primary.key()) {s.language=primary.language;s.token=primary.token;}
     connect(table,&QTableWidget::cellChanged,this,[this](int row,int column) {
         if (filling || row<0 || row>=entries.size()) return;
@@ -150,7 +165,7 @@ OcrServicesDialog::OcrServicesDialog(QVector<OcrService> services,OcrService act
             for (auto discovered:result->services) {
                 auto found=std::ranges::find_if(entries,[&](const auto &s){return s.key()==discovered.key();});
                 if (found==entries.end()) {if (entries.size()<64) entries.append(std::move(discovered));}
-                else {found->ready=discovered.ready; found->error=discovered.error; if (found->language.isEmpty()) found->language=discovered.language; found->tasks=discovered.tasks; found->model=discovered.model;}
+                else {found->ready=discovered.ready; found->error=discovered.error; if (found->language.isEmpty()) found->language=discovered.language; found->tasks=discovered.tasks; found->model=discovered.model;found->profile=discovered.profile;found->protocol=discovered.protocol;}
             }
             const int ready=std::ranges::count_if(result->services,[](const auto &s){return s.ready;});
             status->setText(tr("%1 remote recognition/layout services ready. Unavailable endpoints can be checked again after starting their service or SSH tunnel.").arg(ready));
@@ -169,9 +184,10 @@ void OcrServicesDialog::populate(int selected) {
         const auto &s=entries[row];
         auto *check=new QTableWidgetItem; check->setFlags(Qt::ItemIsEnabled|Qt::ItemIsSelectable|Qt::ItemIsUserCheckable); check->setCheckState(s.enabled ? Qt::Checked : Qt::Unchecked); if (!s.supportsText()) check->setFlags(Qt::ItemIsEnabled|Qt::ItemIsSelectable); table->setItem(row,0,check);
         const QStringList values{s.label,s.model.isEmpty() ? ocrProviderLabel(s.provider) : s.model,s.url.toString(),s.language,s.ready ? tr("Ready") : s.error.isEmpty() ? tr("Not checked") : s.error,
-            s.supportsPageLayout() ? tr("Page layout") : s.supportsFormulas() ? (s.supportsText() ? tr("Text, formulas") : tr("Formulas")) : tr("Text")};
+            s.modelProfile().tasks.join(", ")};
         for (int column=1;column<7;++column) {
             auto *item=new QTableWidgetItem(values[column-1]); item->setToolTip(values[column-1]);
+            if(column==6)item->setToolTip(capabilityDetails(s));
             if (column==2 || column==5 || column==6 || (column==3 && s.provider=="tesseract")) item->setFlags(item->flags()&~Qt::ItemIsEditable);
             if (column==4) item->setToolTip(tr("An empty local Tesseract language follows the primary language. Remote services normally report their fixed language or auto."));
             table->setItem(row,column,item);
@@ -200,7 +216,7 @@ void OcrServicesDialog::refresh() {
     textLanguage->setToolTip(textLanguage->isReadOnly() ? tr("Language reported by this model.") : tr("Language used by the selected text model."));
     summary->setText(enabled>3 ? tr("Select at most three companion text engines before saving.") : tr("%1 companion text engines. Changes take effect when you save.").arg(enabled));
     table->setEnabled(!busy); hosts->setEnabled(!busy); scan->setEnabled(!busy); stopButton->setVisible(busy); add->setEnabled(!busy && entries.size()<64);
-    remove->setEnabled(!busy && selected && !localOcrProvider(entries[row].provider)); usePrimary->setEnabled(!busy && selected && entries[row].supportsText()); useFormula->setEnabled(!busy && selected && entries[row].supportsFormulas()); formulaEngine->setEnabled(!busy); textEngine->setEnabled(!busy); textLanguage->setEnabled(!busy); layoutEndpoint->setEnabled(!busy); layoutThreshold->setEnabled(!busy); automaticLayout->setEnabled(!busy); useLayout->setEnabled(!busy && selected && entries[row].supportsPageLayout()); token->setEnabled(!busy && selected && !localOcrProvider(entries[row].provider)); saveButton->setEnabled(!busy && enabled<=3);
+    remove->setEnabled(!busy && selected && !localOcrProvider(entries[row].provider)); usePrimary->setEnabled(!busy && selected && entries[row].supportsText()); useFormula->setEnabled(!busy && selected && entries[row].supportsFormulas()); formulaEngine->setEnabled(!busy); textEngine->setEnabled(!busy); textLanguage->setEnabled(!busy); layoutEndpoint->setEnabled(!busy); layoutThreshold->setEnabled(!busy); automaticLayout->setEnabled(!busy); useLayout->setEnabled(!busy && selected && entries[row].provider=="layout" && entries[row].supportsPageLayout()); token->setEnabled(!busy && selected && !localOcrProvider(entries[row].provider)); saveButton->setEnabled(!busy && enabled<=3);
 }
 void OcrServicesDialog::discover() {
     if (busy) return; busy=true; stop=std::stop_source{}; const auto cancellation=stop.get_token();

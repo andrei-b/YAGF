@@ -275,6 +275,8 @@ class PaddleVlBackend:
     engine_id = "paddleocr"
     result_key = "lines"
     language = "auto"
+    tasks = ("ocr", "formula")
+    geometry = "none"  # Bounds in this bridge describe the supplied crop.
 
     def __init__(self, endpoint, model):
         url = urlsplit(endpoint)
@@ -323,6 +325,7 @@ class PaddleVlBackend:
 class PaddleOcrBackend:
     engine_id = "paddleocr"
     result_key = "lines"
+    geometry = "line"
 
     def __init__(self, device, language):
         from paddleocr import PaddleOCR
@@ -349,6 +352,7 @@ class PaddleOcrBackend:
 class DocTrBackend:
     engine_id = "doctr"
     result_key = "words"
+    geometry = "word"
     language = "auto"
 
     def __init__(self, device):
@@ -379,6 +383,7 @@ class DocTrBackend:
 class RapidOcrBackend:
     engine_id = "rapidocr"
     result_key = "lines"
+    geometry = "line"
     language = "auto"
 
     def __init__(self):
@@ -400,6 +405,8 @@ class SuryaBackend:
     engine_id = "surya"
     result_key = "lines"
     language = "auto"
+    tasks = ("ocr", "formula")
+    geometry = "block"
 
     def __init__(self):
         from surya.inference import SuryaInferenceManager
@@ -421,6 +428,7 @@ class SuryaBackend:
 class KrakenBackend:
     engine_id = "kraken"
     result_key = "words"
+    geometry = "word"
     language = "auto"
 
     def __init__(self, model_path, device):
@@ -457,6 +465,7 @@ class FormulaNetBackend:
     language = "auto"
     tasks = ("formula",)
     model = "PP-FormulaNet_plus-L"
+    geometry = "none"
 
     def __init__(self, model_path, device="cpu", threads=2):
         required = ("inference.json", "inference.pdiparams", "inference.yml")
@@ -512,7 +521,15 @@ def benchmark_details(backend):
 
 def handler_for(backend, token=""):
     provenance = benchmark_details(backend)
-    tasks = list(getattr(backend, "tasks", ("ocr", "formula") if isinstance(backend, PaddleVlBackend) or backend.engine_id == "surya" else ("ocr",)))
+    tasks = list(getattr(backend, "tasks", ("ocr",)))
+    profile = dict(model=provenance.get("model", backend.engine_id),
+                   tasks=["text" if task == "ocr" else task for task in tasks],
+                   geometry=getattr(backend, "geometry", "unknown"), formats=["json"],
+                   max_image_pixels=getattr(backend, "max_image_pixels", 80_000_000),
+                   supports_batching=False)
+    # A VL bridge accepts language hints; it cannot promise a language inventory.
+    if not isinstance(backend, PaddleVlBackend):
+        profile["languages"] = [backend.language]
     inference_lock = threading.Lock()
     class Handler(BaseHTTPRequestHandler):
         def send_json(self, code, payload):
@@ -528,7 +545,7 @@ def handler_for(backend, token=""):
                 self.send_json(200, {"protocol": PROTOCOL, "engine_id": backend.engine_id,
                                      "status": "ready", "language": backend.language, "requires_token": bool(token),
                                      "model": provenance.get("model",backend.engine_id),
-                                     "tasks": tasks})
+                                     "tasks": tasks, "profile": profile})
             else:
                 self.send_json(404, {"error": "Unknown endpoint"})
 
@@ -561,6 +578,12 @@ def handler_for(backend, token=""):
                 if len(png) > MAX_PNG:
                     raise ValueError("PNG image is too large")
                 width, height = png_size(png)
+                if width * height > profile["max_image_pixels"]:
+                    raise ValueError("Image exceeds this model's pixel limit")
+                if "model" in request and request["model"] != profile["model"]:
+                    raise ValueError("Requested model is not served by this endpoint")
+                if request.get("output_format", "json") not in profile["formats"]:
+                    raise ValueError("Requested output format is not supported")
                 language = request.get("language") or backend.language
                 if not isinstance(language, str) or len(language) > 64:
                     raise ValueError("Invalid language")

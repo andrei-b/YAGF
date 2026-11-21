@@ -1,5 +1,6 @@
 #pragma once
 #include "iocrengine.h"
+#include "modelprofile.h"
 #include <QUrl>
 #include <memory>
 
@@ -10,11 +11,17 @@ struct OcrService {
     bool enabled=false, ready=false;
     QString model;
     QStringList tasks;
+    std::optional<ModelProfile> profile;
+    QString protocol; // Empty in legacy settings; kept separate from capabilities.
     QString key() const;
     bool supportsFormulas() const;
     bool supportsText() const;
-    bool supportsPageLayout() const {return provider=="layout";}
+    bool supportsPageLayout() const;
+    ModelProfile modelProfile() const;
 };
+// Prefer an existing user choice when it matches. Never select an unready model.
+std::optional<OcrService> selectOcrModel(const QVector<OcrService> &services,
+    const ModelRequirements &requirements, const QString &preferredKey = {});
 OcrService localFormulaService();
 bool localOcrProvider(const QString &provider);
 QStringList ocrProviders();

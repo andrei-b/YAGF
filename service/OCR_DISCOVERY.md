@@ -26,8 +26,70 @@ Tokens can be entered for a selected service and remain in memory.
 Discovery also checks `BASE/v1/models` for PaddleOCR-VL vision servers. It retains
 the returned model name and supports base URLs ending in `/v1` or a path prefix.
 Unrelated chat models are ignored. The service library stores the model name and
-advertised `tasks` (`ocr`, `formula`), while tokens remain session-only. Legacy
+advertised tasks and capability profiles, while tokens remain session-only. Legacy
 workers without task metadata remain usable for text; Surya retains formula support.
+
+## Model capability profiles
+
+Capability metadata extends discovery without changing the existing wire protocols.
+An OCR worker may add `profile` to its `yagf-ocr/1` health response, and the gateway
+preserves that object in each `services` entry and child health response:
+
+```json
+{
+  "protocol": "yagf-ocr/1",
+  "engine_id": "example-vlm",
+  "status": "ready",
+  "profile": {
+    "model": "example-document-model",
+    "tasks": ["text", "layout", "table", "formula"],
+    "geometry": "block",
+    "formats": ["markdown", "json"],
+    "languages": ["auto"],
+    "max_image_pixels": 12000000,
+    "supports_batching": true
+  }
+}
+```
+
+Only the model name and a nonempty task list are required inside a profile. Other
+missing fields mean unknown. `ocr` is accepted as a legacy alias for `text`.
+Geometry is `none`, `page`, `block`, `line`, `word`, or `unknown`; it describes
+actual model evidence. `none` is appropriate when a bridge knows only its input
+crop extent. Language `auto` means automatic language selection, not a promise to
+accept every explicit language code. Formats describe the evidence requested
+inside the protocol's JSON response envelope.
+
+A multi-model OCR endpoint can publish `profiles: [PROFILE, ...]` instead of one
+`profile`. Discovery keeps separate identities for each provider, URL and model.
+Requests to `/v1/recognize` include the chosen `model`. Alternatively,
+`/v1/models` entries may include `id`, `protocol: "yagf-ocr/1"`, `engine_id` and
+`profile`; the profile's model must match `id`. This explicitly identifies the
+recognition protocol instead of guessing it from an unfamiliar model name.
+Existing PaddleOCR-VL chat servers still use their existing adapter.
+
+An advertised profile is authoritative, including for familiar providers. Invalid
+profiles are rejected with discovery diagnostics rather than replaced with guessed
+capabilities. Older workers retain legacy task defaults. Saved settings retain
+profiles, but never bearer tokens. Settings show tasks, geometry, formats,
+languages, image limits and batching status. Text/formula selectors use the profile
+tasks; discovering metadata does not automatically replace a selected model.
+
+`ModelRequirements` and `selectOcrModel()` match ready models by task, exact evidence
+granularity, format, language, image size and batching. Explicit requirements need
+advertised support; an unknown capability does not satisfy them. Among matching
+models the caller's preferred model wins, otherwise discovery order is retained;
+the matcher makes no unsupported quality ranking. Remote recognition validates
+known task/language/image limits before uploading. `OcrOptions.task` and
+`outputFormat` carry negotiated requests; `text` maps to the legacy `ocr` wire task.
+
+The bundled workers advertise their implemented JSON output and single-image
+requests. Batching metadata is available for matching; the current scheduler still
+sends individual images. A layout capability on an OCR model describes its
+evidence; the AI page-area window continues to require a `yagf-layout/1` service.
+The layout worker advertises its own block-geometry profile.
+
+## Recognition and layout selections
 
 The same settings window also selects the **Text engine** and the **AI page layout service**. Layout workers publish `yagf-layout/1` health, appear as **Page layout**, and cannot be selected as primary or companion OCR engines. Select one and click **Use selected for layout**, or enter a URL directly. Layout URL and minimum score are shared with **AI page areas…**. Text and formula engine selections persist across restarts; bearer tokens remain in memory.
 

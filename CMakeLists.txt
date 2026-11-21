@@ -59,6 +59,7 @@ target_include_directories(yagf_symbols PUBLIC src/processing)
 
 # Providers and recognition analysis can be used without the async document controller.
 add_library(yagf_ocr STATIC
+    src/processing/modelprofile.cpp src/processing/modelprofile.h
     src/processing/recognitionadapter.cpp src/processing/recognitionadapter.h
     src/processing/ocrservices.cpp src/processing/ocrservices.h
     src/processing/parallelocr.cpp src/processing/parallelocr.h

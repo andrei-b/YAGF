@@ -32,6 +32,9 @@ struct OcrOptions {
     OcrProgress progress;
     bool formula = false;
     int timeoutMs = 180000;
+    // Optional negotiated task/format. Empty retains the existing OCR/formula call.
+    QString task;
+    QString outputFormat;
 };
 
 struct OcrError {

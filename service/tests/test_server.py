@@ -106,6 +106,9 @@ class FormulaNetTests(unittest.TestCase):
             health = json.loads(connection.getresponse().read())
             self.assertEqual(health["tasks"], ["formula"])
             self.assertEqual(health["model"], "PP-FormulaNet_plus-L")
+            self.assertEqual(health["profile"]["tasks"], ["formula"])
+            self.assertEqual(health["profile"]["model"], health["model"])
+            self.assertFalse(health["profile"]["supports_batching"])
             self.assertEqual(backend.calls, 0)
             png = b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR" + struct.pack(">II", 20, 10)
             payload = dict(protocol=PROTOCOL, image_png=base64.b64encode(png).decode(), page_number=1)
@@ -113,6 +116,11 @@ class FormulaNetTests(unittest.TestCase):
                 payload["task"] = task
                 connection.request("POST", "/v1/recognize", json.dumps(payload), {"Content-Type": "application/json"})
                 response = connection.getresponse(); self.assertEqual(response.status, expected); response.read()
+            self.assertEqual(backend.calls, 1)
+            for key, value in (("model", "different-model"), ("output_format", "markdown")):
+                bad = dict(payload, **{key: value})
+                connection.request("POST", "/v1/recognize", json.dumps(bad), {"Content-Type": "application/json"})
+                response = connection.getresponse(); self.assertEqual(response.status, 400); response.read()
             self.assertEqual(backend.calls, 1)
             connection.close()
         finally:

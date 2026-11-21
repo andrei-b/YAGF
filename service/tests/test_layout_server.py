@@ -64,7 +64,10 @@ class LayoutTests(unittest.TestCase):
             return urllib.request.urlopen(req,timeout=3)
         try:
             with urllib.request.urlopen(url+'/v1/health',timeout=3) as r:
-                self.assertEqual(json.load(r)['sha256'],worker.MODEL_SHA256)
+                health=json.load(r)
+                self.assertEqual(health['sha256'],worker.MODEL_SHA256)
+                self.assertEqual(health['profile']['tasks'],['layout'])
+                self.assertEqual(health['profile']['geometry'],'block')
             with post(payload) as r:
                 result=json.load(r)
                 self.assertEqual((result['width'],result['height']),(100,200))

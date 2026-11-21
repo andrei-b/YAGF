@@ -22,6 +22,7 @@ YAGF/
     core/preprocesssettings.h         per-page, persisted quality options
     processing/documentprocessor.{h,cpp}  async OCR jobs, PDF rendering and batching
     processing/iocrengine.h          engine contract and capability flags
+    processing/modelprofile.{h,cpp}  validated model capabilities and requirement matching
     processing/tesseractengine.{h,cpp}    Tesseract subprocess and TSV adapter
     processing/remoteocrengine.{h,cpp}   HTTP client for PaddleOCR and docTR services
     processing/imageprocessor.{h,cpp}     deskew detection, contrast, denoise, rotation

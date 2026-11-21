@@ -35,6 +35,28 @@ class Upstream(BaseHTTPRequestHandler):
 
 
 class CatalogTests(unittest.TestCase):
+    def test_generic_model_profile_is_preserved_through_gateway(self):
+        profile=dict(model='document-vlm',tasks=['text','layout','table','formula'],geometry='block',
+                     formats=['markdown','json'],languages=['auto'],max_image_pixels=12000000,supports_batching=True)
+        health=dict(protocol='yagf-ocr/1',engine_id='example-vlm',status='ready',model=profile['model'],profile=profile)
+        catalog=LocalOcrCatalog([8768],None)
+        with patch('ocr_catalog.get_json',return_value=health): entries=catalog.discover()
+        self.assertEqual(entries[0]['profile'],profile)
+        with tempfile.TemporaryDirectory() as root:
+            host=worker.TrainingHost(root,[])
+            with patch.object(host.catalog,'discover',return_value=entries): published=host.health()['services']
+        self.assertEqual(published[0]['profile'],profile)
+        self.assertEqual(published[0]['provider'],'example-vlm')
+        second=dict(profile,model='formula-specialist',tasks=['formula'])
+        health.pop('profile');health.pop('model');health['profiles']=[profile,second]
+        catalog.checked=0
+        with patch('ocr_catalog.get_json',return_value=health): entries=catalog.discover()
+        with tempfile.TemporaryDirectory() as root:
+            host=worker.TrainingHost(root,[])
+            with patch.object(host.catalog,'discover',return_value=entries): published=host.health()['services']
+        self.assertEqual([s['model'] for s in published],['document-vlm','formula-specialist'])
+        self.assertEqual(published[0]['path'],published[1]['path'])
+
     def test_formula_only_model_and_tasks_reach_gateway_discovery(self):
         catalog=LocalOcrCatalog([8769],None)
         health=dict(protocol='yagf-ocr/1',engine_id='paddleocr',status='ready',

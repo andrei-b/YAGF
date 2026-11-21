@@ -198,8 +198,9 @@ OcrService DocumentProcessor::primaryOcrService() const
     OcrService service; service.provider=engine->id();
     if (service.provider.endsWith("-remote")) service.provider.chop(7);
     service.label=ocrProviderLabel(service.provider);
-    if (const auto *remote=dynamic_cast<const RemoteOcrEngine *>(engine.get())) {service.url=remote->serviceUrl(); service.token=remote->sessionToken(); service.model=remote->modelName();}
-    if (engine->capabilities().supportsFormulas) service.tasks={"ocr","formula"};
+    if (const auto *remote=dynamic_cast<const RemoteOcrEngine *>(engine.get())) {service.url=remote->serviceUrl(); service.token=remote->sessionToken(); service.model=remote->modelName();service.profile=remote->modelProfile();service.protocol=remote->serviceProtocol();}
+    if(service.profile)service.tasks=service.profile->tasks;
+    else if (engine->capabilities().supportsFormulas) service.tasks={"ocr","formula"};
     return service;
 }
 OcrService DocumentProcessor::formulaOcrService() const
