@@ -101,6 +101,14 @@ Place script character sets from `tesseract-ocr/langdata_lstm` in the profile's
 `radical-stroke.txt`). New training characters extend the original unicharset and
 remap the LSTM output head. The original weights are never overwritten.
 
+#### Add a Tesseract language profile
+
+For example, to publish **Tesseract German** alongside **Tesseract English**:
+
+1. On the worker, put the German `deu.traineddata` from the same `tessdata_best` revision as English in the directory containing `eng.traineddata`.
+2. Open the JSON file passed to the worker's `--config` option. In its `profiles` array, copy the English entry. Set the copy's `id` to `tesseract-deu`, `label` to `Tesseract German`, `language` to `deu`, and `base_model` to the absolute path of `deu.traineddata`. Keep the `tesseract` engine and the shared `langdata` directory.
+3. When the worker is idle, run `systemctl --user restart yagf-native-training.service` on that host. In YAGF, click **Refresh models** in **Recognition settings**. The German profile is now available in the **Text recognition** selector.
+
 ### Kraken
 
 Create an isolated environment without system site packages. The tested CPU

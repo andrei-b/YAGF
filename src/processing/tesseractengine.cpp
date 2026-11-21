@@ -19,6 +19,30 @@
 
 namespace yagf::processing {
 
+std::expected<TesseractLanguages,QString> installedTesseractLanguages()
+{
+    QProcess process;
+    process.start("tesseract", {"--list-langs"});
+    if (!process.waitForFinished(5000) || process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
+        const auto error = process.error() == QProcess::UnknownError
+            ? QString::fromUtf8(process.readAllStandardError()).trimmed() : process.errorString();
+        if (process.state() != QProcess::NotRunning) { process.kill(); process.waitForFinished(); }
+        return std::unexpected(error);
+    }
+    const QString output = QString::fromUtf8(process.readAllStandardOutput() + process.readAllStandardError());
+    static const QRegularExpression location(QStringLiteral("List of available languages in \"([^\"]+)\""));
+    static const QRegularExpression code(QStringLiteral("^[A-Za-z][A-Za-z0-9_/-]*$"));
+    TesseractLanguages languages;
+    languages.directory = location.match(output).captured(1);
+    for (const auto &line : output.split('\n')) {
+        const auto name = line.trimmed();
+        if (name != "osd" && code.match(name).hasMatch()) languages.codes.append(name);
+    }
+    languages.codes.removeDuplicates();
+    languages.codes.sort(Qt::CaseInsensitive);
+    return languages;
+}
+
 QString TesseractEngine::modelLanguage(const QString &language)
 {
     // Region settings and imported projects can carry the short provider codes.

@@ -5,6 +5,12 @@
 
 namespace yagf::processing {
 
+struct TesseractLanguages {
+    QStringList codes;
+    QString directory;
+};
+std::expected<TesseractLanguages,QString> installedTesseractLanguages();
+
 class TesseractEngine final : public IOcrEngine {
 public:
     [[nodiscard]] QString id() const override { return QStringLiteral("tesseract"); }

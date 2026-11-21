@@ -20,6 +20,7 @@
 #include "nativetrainingdialog.h"
 #include "ocrreadings.h"
 #include "ocrservicesdialog.h"
+#include "ocrlanguagedialog.h"
 #include "ocrreadingsdialog.h"
 #include "scannerdialog.h"
 #include "documentcommands.h"
@@ -87,7 +88,6 @@
 #include <QWheelEvent>
 #include <QPushButton>
 #include <QPlainTextEdit>
-#include <QProcess>
 #include <QProgressDialog>
 #include <QSignalBlocker>
 #include <QSaveFile>
@@ -926,13 +926,24 @@ MainWindow::MainWindow()
     ocrLanguageList->setObjectName("availableOcrLanguages");
     ocrLanguageList->setMinimumHeight(180);
     languageLayout->addWidget(ocrLanguageList);
+    auto *addLanguagePack = new QPushButton(tr("Add language…"), languagePanel);
+    addLanguagePack->setObjectName("addToolbarOcrLanguage");
+    languageLayout->addWidget(addLanguagePack);
+    connect(addLanguagePack, &QPushButton::clicked, this, [this,languageMenu] {
+        languageMenu->close();
+        if (const auto codes = chooseAdditionalOcrLanguage(this,languageEdit->text())) {
+            languageEdit->setText(*codes);
+            refreshOcrLanguageList();
+        }
+    });
     auto *doneLanguages = new QPushButton(tr("Done"), languagePanel);
     languageLayout->addWidget(doneLanguages);
     auto *languageWidget = new QWidgetAction(languageMenu);
     languageWidget->setDefaultWidget(languagePanel);
     languageMenu->addAction(languageWidget);
     languagePickerButton->setMenu(languageMenu);
-    connect(languageMenu, &QMenu::aboutToShow, this, [this, languageMenu] {
+    connect(languageMenu, &QMenu::aboutToShow, this, [this, languageMenu, addLanguagePack] {
+        addLanguagePack->setVisible(processor.engineId() == "tesseract");
         languageMenu->setProperty("previousLanguages", languageEdit->text());
         refreshOcrLanguageList();
     });
@@ -2795,21 +2806,12 @@ void MainWindow::refreshOcrLanguageList()
     ocrLanguageStatus->setText(local ? tr("Check languages to recognize together. The first code is primary.")
         : languageEdit->toolTip());
     if (!local) return;
-    QProcess process;
-    process.start(QStringLiteral("tesseract"), {QStringLiteral("--list-langs")});
-    if (!process.waitForFinished(5000) || process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
-        process.kill(); process.waitForFinished();
-        ocrLanguageStatus->setText(tr("Could not list installed languages. Enter a language code or combination above."));
+    const auto installed = processing::installedTesseractLanguages();
+    if (!installed) {
+        ocrLanguageStatus->setText(tr("Could not list installed Tesseract languages. %1").arg(installed.error()));
         return;
     }
-    QStringList languages;
-    const QString output = QString::fromUtf8(process.readAllStandardOutput() + process.readAllStandardError());
-    const QRegularExpression code(QStringLiteral("^[A-Za-z][A-Za-z0-9_/-]*$"));
-    for (const QString &row : output.split(QLatin1Char('\n'))) {
-        const QString name = row.trimmed();
-        if (code.match(name).hasMatch() && name != "osd") languages.append(name);
-    }
-    languages.removeDuplicates(); languages.sort(Qt::CaseInsensitive);
+    const auto &languages = installed->codes;
     const auto selected = languageEdit->text().split('+', Qt::SkipEmptyParts);
     for (const auto &language : languages) {
         auto *item = new QListWidgetItem(language, ocrLanguageList);
@@ -2817,7 +2819,7 @@ void MainWindow::refreshOcrLanguageList()
         item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
         item->setCheckState(selected.contains(language) ? Qt::Checked : Qt::Unchecked);
     }
-    if (languages.isEmpty()) ocrLanguageStatus->setText(tr("No installed languages found. Enter a language code above."));
+    if (languages.isEmpty()) ocrLanguageStatus->setText(tr("No installed OCR languages found. Choose Add language… to find a language pack."));
 }
 
 void MainWindow::runBatchOcr(bool remainingOnly)
@@ -3461,6 +3463,12 @@ void MainWindow::showBlockContextMenu(int index, const QPoint &globalPosition)
         ? QStringList{"", "eng", "deu", "fra", "spa", "ita", "por", "rus", "ukr", "chi_sim", "jpn", "kor", "ara", "heb"}
         : QStringList{"auto", "en", "de", "fr", "es", "it", "pt", "ru", "uk", "zh", "ja", "ko", "ar", "he"};
     for (int i = tesseract ? 1 : 0; i < labels.size(); ++i) addLanguage(labels[i], codes[i]);
+    if (processor.engineId() == "tesseract") {
+        languages->addAction(tr("Add language…"), this, [this, index, region] {
+            if (const auto codes = chooseAdditionalOcrLanguage(this, region.language))
+                setBlockLanguage(index, *codes, false);
+        });
+    }
     auto *other = languages->addAction(tr("Other language…"));
     connect(other, &QAction::triggered, this, [this, index, region] {
         bool ok = false;

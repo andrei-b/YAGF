@@ -1,5 +1,6 @@
 #pragma once
 #include "ocrservices.h"
+#include "ocrlanguagedialog.h"
 #include <QDialog>
 #include <QFutureWatcher>
 #include <optional>
@@ -32,6 +33,9 @@ protected:
     void reject() override;
 private:
     void discover();
+    void refreshLocalLanguages();
+    void selectTextModel(const QString &key, std::optional<QString> language = {});
+    void populateTextModels();
     void populate(int selected=0);
     void refresh();
     void choosePrimary();
@@ -53,6 +57,9 @@ private:
     RecognitionModelPanel *textPanel,*formulaPanel;
     QPushButton *scan,*stopButton,*usePrimary,*useFormula,*useLayout,*remove,*saveButton,*add;
     QFutureWatcher<std::expected<processing::OcrDiscovery,processing::OcrError>> watcher;
+    QFutureWatcher<QList<OcrLanguageChoice>> languageWatcher;
+    QList<OcrLanguageChoice> localLanguages;
+    QStringList hiddenLanguages;
     std::stop_source stop;
     bool opened=false,busy=false,filling=false;
 };

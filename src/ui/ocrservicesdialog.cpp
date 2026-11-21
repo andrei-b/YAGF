@@ -11,6 +11,7 @@
 #include <QStyle>
 #include <QToolButton>
 #include <QHeaderView>
+#include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
@@ -29,6 +30,10 @@
 namespace yagf::ui {
 using namespace processing;
 namespace {
+constexpr int LocalLanguageRole = Qt::UserRole + 1;
+const QString addLanguageKey = QStringLiteral("add-local-language");
+const QString removeLanguageKey = QStringLiteral("remove-local-language");
+
 QString modelLabel(const OcrService &s) {
     return s.model.isEmpty() || s.label.contains(s.model,Qt::CaseInsensitive) ? s.label : s.label+" — "+s.model;
 }
@@ -62,10 +67,11 @@ QString modelDetails(const OcrService &s) {
 // Both selectors expose the same model metadata. Keep the extra capabilities
 // behind a disclosure so a long service profile does not bury the controls.
 class RecognitionModelPanel final : public QFrame {
-    QLabel *state, *location, *details;
+    QLabel *state, *location, *details, *hint;
 public:
     QComboBox *selector;
     QLineEdit *language = nullptr;
+    QPushButton *addLanguage = nullptr;
 
     explicit RecognitionModelPanel(bool formula, QWidget *parent) : QFrame(parent) {
         setObjectName("recognitionModelPanel");
@@ -121,10 +127,15 @@ public:
             auto *label = new QLabel(tr("Language"),this);
             label->setBuddy(language);
             panel->addWidget(label);
-            panel->addWidget(language);
+            auto *languageRow = new QHBoxLayout;
+            languageRow->addWidget(language,1);
+            addLanguage = new QPushButton(tr("Add language…"),this);
+            addLanguage->setObjectName("addSettingsOcrLanguage");
+            languageRow->addWidget(addLanguage);
+            panel->addLayout(languageRow);
         }
-        auto *hint = new QLabel(formula ? tr("Reads equations in mixed blocks and in Math only mode. Raw OCR bypasses this model.")
-                                        : tr("For Tesseract, combine language codes with +, for example rus+eng."),this);
+        hint = new QLabel(formula ? tr("Reads equations in mixed blocks and in Math only mode. Raw OCR bypasses this model.")
+                                        : QString{},this);
         hint->setObjectName("settingsHint");
         hint->setWordWrap(true);
         panel->addWidget(hint);
@@ -150,6 +161,12 @@ public:
     }
 
     void setService(const OcrService &s) {
+        if (addLanguage) {
+            addLanguage->setVisible(s.provider == "tesseract");
+            hint->setText(s.provider == "tesseract" ? tr("Add an installed language or find a new language pack. The first language is primary.")
+                          : s.provider == "paddleocr" ? tr("Enter a language supported by this PaddleOCR service.")
+                                                     : tr("This model reports its languages. Additional languages depend on the service."));
+        }
         const QString availability = s.ready ? "ready" : s.error.isEmpty() ? "unknown" : "offline";
         if (state->property("availability").toString() != availability) {
             state->setProperty("availability",availability);
@@ -205,9 +222,6 @@ OcrServicesDialog::OcrServicesDialog(QVector<OcrService> services,OcrService act
     textLanguage = textPanel->language;
     formulaEngine = formulaPanel->selector;
     recognition->addLayout(modelPanels);
-    auto *manage = new QPushButton(tr("Manage models and services…"),recognitionPage);
-    manage->setObjectName("manageOcrModels");
-    recognition->addWidget(manage,0,Qt::AlignLeft);
     recognition->addStretch();
     scroll->setWidget(recognitionPage);
     tabs->addTab(scroll,tr("Recognition"));
@@ -236,7 +250,6 @@ OcrServicesDialog::OcrServicesDialog(QVector<OcrService> services,OcrService act
     serviceLayout->setContentsMargins(14,16,14,12);
     serviceLayout->setSpacing(10);
     tabs->addTab(servicesPage,tr("Models && services"));
-    connect(manage,&QPushButton::clicked,this,[tabs,servicesPage]{tabs->setCurrentWidget(servicesPage);});
     auto *search=new QHBoxLayout;
     hosts=new QLineEdit(QSettings("YAGF","YAGF Revival").value("ocr/discoveryHosts","127.0.0.1").toString(),this); hosts->setObjectName("ocrDiscoveryHosts");
     hosts->setPlaceholderText(tr("127.0.0.1, jetson-host, https://server:8765")); hosts->setToolTip(tr("Host names probe ports 8765–8769, layout on 8771, the gateway on 8772 and PaddleOCR-VL on 8082. A URL or host:port probes that exact service. Existing configured URLs are also checked. Up to 32 endpoints; no document images are sent during discovery."));
@@ -252,14 +265,48 @@ OcrServicesDialog::OcrServicesDialog(QVector<OcrService> services,OcrService act
     serviceLayout->addWidget(table,1);
     connect(textEngine,&QComboBox::currentIndexChanged,this,[this](int index) {
         if (filling || index<0) return;
-        selectedPrimary=textEngine->itemData(index).toString();
-        for (auto &s:entries) if (s.key()==selectedPrimary) s.enabled=false;
-        populate(table->currentRow());
+        const auto key = textEngine->itemData(index).toString();
+        if (key == addLanguageKey || key == removeLanguageKey) return;
+        const auto code = textEngine->itemData(index, LocalLanguageRole);
+        selectTextModel(key, code.isValid() ? std::optional{code.toString()} : std::nullopt);
     });
-    connect(textLanguage,&QLineEdit::textEdited,this,[this](const QString &value) {
-        const auto key=textEngine->currentData().toString();
-        for (auto &s:entries) if (s.key()==key) {s.language=value.trimmed(); selectedPrimary=key;}
-        populate(table->currentRow());
+    connect(textEngine, &QComboBox::activated, this, [this](int index) {
+        const auto action = textEngine->itemData(index).toString();
+        if (action != addLanguageKey && action != removeLanguageKey) return;
+        populateTextModels(); // Actions themselves never become the selected model.
+        if (action == removeLanguageKey) {
+            QStringList names, codes;
+            for (const auto &language : localLanguages) {
+                if (hiddenLanguages.contains(language.code)) continue;
+                names.append(tr("%1 (%2)").arg(language.name, language.code));
+                codes.append(language.code);
+            }
+            bool ok = false;
+            const auto choice = QInputDialog::getItem(this, tr("Remove Tesseract language from list"),
+                tr("Choose a language to hide. Its OCR pack stays installed."), names, 0, false, &ok);
+            if (ok && names.contains(choice)) {
+                hiddenLanguages.append(codes.at(names.indexOf(choice)));
+                populateTextModels();
+            }
+            return;
+        }
+        if (const auto code = chooseAdditionalOcrLanguage(this, {})) {
+            hiddenLanguages.removeAll(*code);
+            selectTextModel("local-tesseract", *code);
+            refreshLocalLanguages();
+        }
+    });
+    connect(textLanguage, &QLineEdit::textEdited, this, [this](const QString &value) {
+        selectTextModel(textEngine->currentData().toString(), value.trimmed());
+    });
+    connect(textPanel->addLanguage, &QPushButton::clicked, this, [this] {
+        if (const auto codes = chooseAdditionalOcrLanguage(this, textLanguage->text())) {
+            const auto previousCodes = textLanguage->text().split('+', Qt::SkipEmptyParts);
+            for (const auto &code : codes->split('+', Qt::SkipEmptyParts))
+                if (!previousCodes.contains(code)) hiddenLanguages.removeAll(code);
+            selectTextModel("local-tesseract", *codes);
+            refreshLocalLanguages();
+        }
     });
     layoutEndpoint=new QLineEdit(QSettings("YAGF","YAGF Revival").value("layout/url",QSettings().value("layout/url","http://127.0.0.1:8771")).toString(),this);
     layoutEndpoint->setObjectName("pageLayoutServiceUrl"); layoutEndpoint->setPlaceholderText(tr("http://layout-host.example:8771 or a local forward"));
@@ -317,8 +364,7 @@ OcrServicesDialog::OcrServicesDialog(QVector<OcrService> services,OcrService act
         else if (column==4) s.language=table->item(row,4)->text().trimmed();
         if (selectedPrimary==previous || (selectedPrimary.isEmpty() && primary.key()==previous)) selectedPrimary=s.key();
         if (selectedFormula==previous) selectedFormula=s.key();
-        const auto textChoice=textEngine->findData(previous);
-        if (textChoice>=0) {textEngine->setItemData(textChoice,s.key());textEngine->setItemText(textChoice,modelChoice(s));}
+        populateTextModels();
         const auto chosen=formulaEngine->findData(previous);
         if (chosen>=0) {formulaEngine->setItemData(chosen,s.key()); formulaEngine->setItemText(chosen,modelChoice(s));}
         refresh();
@@ -329,6 +375,12 @@ OcrServicesDialog::OcrServicesDialog(QVector<OcrService> services,OcrService act
     connect(usePrimary,&QPushButton::clicked,this,&OcrServicesDialog::choosePrimary); connect(add,&QPushButton::clicked,this,&OcrServicesDialog::addService);
     connect(remove,&QPushButton::clicked,this,[this] {const int row=table->currentRow(); if (row<0 || localOcrProvider(entries[row].provider)) return; if (entries[row].key()==selectedPrimary || (selectedPrimary.isEmpty() && entries[row].key()==primary.key())) selectedPrimary="local-tesseract"; if (entries[row].key()==selectedFormula) selectedFormula=localFormulaService().key(); entries.removeAt(row); populate();});
     connect(buttons,&QDialogButtonBox::accepted,this,&OcrServicesDialog::save); connect(buttons,&QDialogButtonBox::rejected,this,&OcrServicesDialog::reject);
+    hiddenLanguages = QSettings("YAGF","YAGF Revival").value("ocr/hiddenTesseractLanguages").toStringList();
+    connect(&languageWatcher, &QFutureWatcherBase::finished, this, [this] {
+        localLanguages = languageWatcher.result();
+        populateTextModels();
+        refresh();
+    });
     connect(&watcher,&QFutureWatcherBase::finished,this,[this] {
         busy=false; auto result=watcher.result();
         if (!result) status->setText(result.error().cancelled ? tr("Discovery stopped.") : result.error().message);
@@ -371,9 +423,7 @@ void OcrServicesDialog::populate(int selected) {
         }
         table->setRowHeight(row,std::max(32,table->fontMetrics().height()+14));
     }
-    textEngine->clear();
-    for (const auto &s:entries) if (s.supportsText()) {textEngine->addItem(modelChoice(s),s.key()); textEngine->setItemData(textEngine->count()-1,modelDetails(s),Qt::ToolTipRole);}
-    textEngine->setCurrentIndex(textEngine->findData(selectedPrimary.isEmpty() ? primary.key() : selectedPrimary));
+    populateTextModels();
     formulaEngine->clear();
     const auto local=localFormulaService(); formulaEngine->addItem(modelChoice(local),local.key()); formulaEngine->setItemData(0,modelDetails(local),Qt::ToolTipRole);
     for (const auto &s:entries) if (s.supportsFormulas() && s.provider!="rapid-latex-ocr") {formulaEngine->addItem(modelChoice(s),s.key()); formulaEngine->setItemData(formulaEngine->count()-1,modelDetails(s),Qt::ToolTipRole);}
@@ -381,6 +431,54 @@ void OcrServicesDialog::populate(int selected) {
     selectedFormula=formulaEngine->currentData().toString();
     table->setCurrentCell(entries.isEmpty() ? -1 : std::clamp(selected,0,int(entries.size())-1),1); filling=false; refresh();
 }
+void OcrServicesDialog::populateTextModels()
+{
+    const QSignalBlocker block(textEngine);
+    const QString activeKey = selectedPrimary.isEmpty() ? primary.key() : selectedPrimary;
+    int selected = -1;
+    textEngine->clear();
+    for (const auto &service : entries) {
+        if (!service.supportsText()) continue;
+        const auto key = service.key();
+        textEngine->addItem(modelChoice(service), key);
+        const auto row = textEngine->count() - 1;
+        textEngine->setItemData(row, modelDetails(service), Qt::ToolTipRole);
+        if (key == activeKey) selected = row;
+        if (service.provider != "tesseract") continue;
+        const int firstLanguageRow = textEngine->count();
+        for (const auto &language : localLanguages) {
+            if (hiddenLanguages.contains(language.code)) continue;
+            textEngine->addItem(tr("Tesseract %1 (local)").arg(language.name), key);
+            const auto index = textEngine->count() - 1;
+            textEngine->setItemData(index, language.code, LocalLanguageRole);
+            textEngine->setItemData(index, tr("Local Tesseract language: %1").arg(language.code), Qt::ToolTipRole);
+            if (key == activeKey && service.language == language.code) selected = index;
+        }
+        const bool hasVisibleLanguages = textEngine->count() > firstLanguageRow;
+        textEngine->addItem(tr("Add Tesseract language…"), addLanguageKey);
+        if (hasVisibleLanguages)
+            textEngine->addItem(tr("Remove Tesseract language from list…"), removeLanguageKey);
+    }
+    textEngine->setCurrentIndex(selected);
+}
+
+void OcrServicesDialog::selectTextModel(const QString &key, std::optional<QString> language)
+{
+    for (auto &service : entries) {
+        if (service.key() != key) continue;
+        if (language) service.language = *language;
+        service.enabled = false;
+        selectedPrimary = key;
+        populate(table->currentRow());
+        return;
+    }
+}
+
+void OcrServicesDialog::refreshLocalLanguages()
+{
+    languageWatcher.setFuture(QtConcurrent::run(installedOcrLanguageChoices));
+}
+
 void OcrServicesDialog::refresh() {
     const int row=table->currentRow(); const bool selected=row>=0 && row<entries.size();
     const auto active=primaryService(); const auto key=active ? active->key() : primary.key();
@@ -392,6 +490,7 @@ void OcrServicesDialog::refresh() {
     textLanguage->setReadOnly(textService.provider!="tesseract" && textService.provider!="paddleocr");
     textLanguage->setToolTip(textLanguage->isReadOnly() ? tr("Language reported by this model.") : tr("Language used by the selected text model."));
     summary->setText(enabled>3 ? tr("Select at most three companion text engines before saving.") : tr("Comparison engines selected: %1 of 3").arg(enabled));
+    textPanel->addLanguage->setEnabled(!busy);
     comparisonWarning->setVisible(enabled>3);
     status->setVisible(enabled<=3);
     table->setEnabled(!busy); hosts->setEnabled(!busy); scan->setEnabled(!busy); stopButton->setVisible(busy); add->setEnabled(!busy && entries.size()<64);
@@ -399,6 +498,7 @@ void OcrServicesDialog::refresh() {
 }
 void OcrServicesDialog::discover() {
     if (busy) return; busy=true; stop=std::stop_source{}; const auto cancellation=stop.get_token();
+    refreshLocalLanguages();
     auto targets=ocrDiscoveryTargets(hosts->text(),entries);
     const auto layoutUrl=QUrl(layoutEndpoint->text().trimmed());
     if ((QSettings("YAGF","YAGF Revival").contains("layout/url") || QSettings().contains("layout/url") || layoutEndpoint->isModified()) && targets.size()<32 && validOcrServiceUrl(layoutUrl) && !targets.contains(layoutUrl)) targets.append(layoutUrl);
@@ -430,7 +530,10 @@ void OcrServicesDialog::save() {
         if (!validOcrServiceUrl(QUrl(host.contains("://") ? host : "http://"+host))) {
             status->setText(tr("Enter host names or HTTP(S) URLs without embedded credentials, query or fragment.")); return;
         }
-    QSettings("YAGF","YAGF Revival").setValue("ocr/discoveryHosts",hosts->text().trimmed()); accept();
+    QSettings settings("YAGF","YAGF Revival");
+    settings.setValue("ocr/discoveryHosts",hosts->text().trimmed());
+    settings.setValue("ocr/hiddenTesseractLanguages", hiddenLanguages);
+    accept();
 }
 void OcrServicesDialog::addService() {
     QDialog dialog(this); dialog.setWindowTitle(tr("Add OCR service")); auto *form=new QFormLayout(&dialog);

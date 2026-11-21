@@ -1,5 +1,6 @@
 #include "ocrservices.h"
 #include "ocrservicesdialog.h"
+#include "ocrlanguagedialog.h"
 #include "ocrreadingsdialog.h"
 #include "documentprocessor.h"
 #include "documentcommands.h"
@@ -16,11 +17,14 @@
 #include <QPainter>
 #include <QJsonDocument>
 #include <QLineEdit>
+#include <QInputDialog>
 #include <QLabel>
 #include <QListWidget>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSettings>
+#include <QScopeGuard>
+#include <QTreeWidget>
 #include <QSignalSpy>
 #include <QTableWidget>
 #include <QTabWidget>
@@ -432,21 +436,145 @@ private slots:
         ui::OcrServicesDialog dialog({text1,text2,formula,vision,layout},primary,nullptr,vision);
         auto *text=dialog.findChild<QComboBox *>("textOcrEngine"),*math=dialog.findChild<QComboBox *>("formulaOcrEngine");
         auto *tabs=dialog.findChild<QTabWidget *>("recognitionSettingsTabs");QVERIFY(tabs);QCOMPARE(tabs->currentIndex(),0);
-        QCOMPARE(text->count(),4);QCOMPARE(math->count(),3);
+        QCOMPARE(text->count(),5);QCOMPARE(math->count(),3);
         QVERIFY(text->findData(formula.key())<0);QVERIFY(text->findData(layout.key())<0);QVERIFY(math->findData(text1.key())<0);
         QVERIFY(math->itemText(math->findData(formula.key())).contains(formula.model));
         QVERIFY(text->itemText(text->findData(text1.key())).contains(text1.model));
         math->setCurrentIndex(math->findData(formula.key()));
         QCOMPARE(text->currentData().toString(),primary.key());QCOMPARE(dialog.formulaService().key(),formula.key());
         text->setCurrentIndex(text->findData(text2.key()));
+        auto *addLanguage = dialog.findChild<QPushButton *>("addSettingsOcrLanguage");
+        QVERIFY(addLanguage && addLanguage->isHidden());
         QCOMPARE(dialog.primaryService()->key(),text2.key());QCOMPARE(math->currentData().toString(),formula.key());
         QVERIFY(dialog.findChild<QLabel *>("formulaOcrModelDetails")->text().contains("Ready"));
         QVERIFY(std::ranges::none_of(dialog.services(),[](const auto &s){return s.enabled;}));
-        dialog.findChild<QPushButton *>("manageOcrModels")->click();QCOMPARE(tabs->currentIndex(),2);
+        QCOMPARE(tabs->indexOf(dialog.findChild<QTableWidget *>("ocrServicesTable")->parentWidget()), 2);
         text->setCurrentIndex(text->findData(primary.key()));
+        QVERIFY(!addLanguage->isHidden());
         auto *language=dialog.findChild<QLineEdit *>("textOcrLanguage");QCOMPARE(language->text(),"rus");
         language->setFocus();language->selectAll();QTest::keyClicks(language,"rus+eng");
         QCOMPARE(dialog.primaryService()->language,"rus+eng");QCOMPARE(dialog.formulaService().key(),formula.key());
+    }
+    void addOcrLanguage() {
+        QTemporaryDir fixture;
+        QVERIFY(fixture.isValid());
+        const auto write = [&](const QString &name, const QByteArray &content) {
+            QFile file(fixture.filePath(name));
+            return file.open(QIODevice::WriteOnly) && file.write(content) == content.size()
+                && file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
+        };
+        QVERIFY(write("eng.traineddata", "test"));
+        QVERIFY(write("tesseract",
+                "#!/bin/sh\n"
+                "cd \"${0%/*}\" || exit 1\n"
+                "printf 'List of available languages in \"%s\":\\n' \"$PWD\"\n"
+                "for f in *.traineddata; do echo \"${f%.traineddata}\"; done\n"));
+        QVERIFY(write("apt-cache",
+                "#!/bin/sh\n"
+                "echo 'tesseract-ocr-fra - tesseract-ocr language files for French'\n"));
+        QVERIFY(write("apt-get",
+                "#!/bin/sh\n"
+                "for pkg do :; done\n"
+                "test \"$pkg\" = \"tesseract-ocr-fra\" && touch language.deb\n"));
+        QVERIFY(write("dpkg-deb",
+                "#!/bin/sh\n"
+                "test \"$1\" = \"-x\" && test -f \"$2\" && mkdir -p \"$3/tessdata\" && echo French > \"$3/tessdata/fra.traineddata\"\n"));
+        const auto oldPath = qgetenv("PATH");
+        const auto restorePath = qScopeGuard([&] { qputenv("PATH",oldPath); });
+        qputenv("PATH", fixture.path().toLocal8Bit() + ':' + oldPath);
+
+        // First install a code that has already been typed, then select the
+        // installed language by name without downloading it a second time.
+        for (const bool available : {false,true}) {
+            QTimer::singleShot(0, this, [available] {
+                auto *chooser = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+                QVERIFY(chooser);
+                QTimer::singleShot(5000, chooser, &QDialog::reject);
+                auto *search = chooser->findChild<QLineEdit *>("languagePackSearch");
+                auto *list = chooser->findChild<QTreeWidget *>("ocrLanguagePacks");
+                auto *add = chooser->findChild<QPushButton *>("confirmOcrLanguage");
+                QVERIFY(search && list && add);
+                QTRY_VERIFY_WITH_TIMEOUT(search->isEnabled(), 3000);
+                search->setText("French");
+                QVERIFY(list->currentItem());
+                QCOMPARE(list->currentItem()->text(1), "fra");
+                QCOMPARE(add->text(), available ? "Add to selection" : "Install and add");
+                QVERIFY(add->isEnabled());
+                add->click();
+            });
+            auto selection = ui::chooseAdditionalOcrLanguage(nullptr, available ? "eng" : "eng+fra");
+            QVERIFY(selection);
+            QCOMPARE(*selection,"eng+fra");
+            QVERIFY(QFileInfo::exists(fixture.filePath("fra.traineddata")));
+        }
+
+        QVERIFY(write("custom_book.traineddata", "test"));
+        processing::OcrService local;
+        local.provider = "tesseract";
+        local.label = processing::ocrProviderLabel("tesseract");
+        local.language = "eng+fra";
+        QSettings settings("YAGF","YAGF Revival");
+        const QString hiddenKey = "ocr/hiddenTesseractLanguages";
+        // Test both the saved list and the language actually handed to the OCR engine.
+        {
+            ui::OcrServicesDialog dialog({}, local);
+            auto *models = dialog.findChild<QComboBox *>("textOcrEngine");
+            dialog.findChild<QLineEdit *>("ocrDiscoveryHosts")->setText("http://127.0.0.1:1");
+            dialog.show();
+            QTRY_VERIFY(models->isEnabled() && models->findText("Tesseract custom_book (local)") >= 0);
+            QVERIFY(!dialog.primaryService());
+            models->setCurrentIndex(models->findText("Tesseract French (local)"));
+            QVERIFY(dialog.primaryService());
+            QCOMPARE(dialog.primaryService()->language, "fra");
+            const auto formula = dialog.formulaService().key();
+            QTimer::singleShot(0, this, [] {
+                auto *picker = qobject_cast<QInputDialog *>(QApplication::activeModalWidget());
+                QVERIFY(picker);
+                QTimer::singleShot(5000, picker, &QDialog::reject);
+                QVERIFY(picker->comboBoxItems().contains("French (fra)"));
+                picker->setTextValue("French (fra)");
+                picker->accept();
+            });
+            int index = models->findText("Remove Tesseract language from list…");
+            QVERIFY(index >= 0);
+            models->setCurrentIndex(index);
+            models->activated(index);
+            QCOMPARE(models->findText("Tesseract French (local)"), -1);
+            QCOMPARE(dialog.primaryService()->language, "fra");
+            QCOMPARE(dialog.formulaService().key(), formula);
+            QVERIFY(!settings.value(hiddenKey).toStringList().contains("fra"));
+            dialog.findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Save)->click();
+            QCOMPARE(dialog.result(), int(QDialog::Accepted));
+            QVERIFY(settings.value(hiddenKey).toStringList().contains("fra"));
+            QVERIFY(QFileInfo::exists(fixture.filePath("fra.traineddata")));
+        }
+        {
+            ui::OcrServicesDialog dialog({}, local);
+            auto *models = dialog.findChild<QComboBox *>("textOcrEngine");
+            dialog.show();
+            QTRY_VERIFY(models->isEnabled() && models->findText("Tesseract custom_book (local)") >= 0);
+            QCOMPARE(models->findText("Tesseract French (local)"), -1);
+            QTimer::singleShot(0, this, [] {
+                auto *picker = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+                QVERIFY(picker);
+                QTimer::singleShot(5000, picker, &QDialog::reject);
+                auto *search = picker->findChild<QLineEdit *>("languagePackSearch");
+                QVERIFY(search);
+                QTRY_VERIFY(search->isEnabled());
+                search->setText("French");
+                auto *add = picker->findChild<QPushButton *>("confirmOcrLanguage");
+                QCOMPARE(add->text(), "Add to selection");
+                add->click();
+            });
+            const int index = models->findText("Add Tesseract language…");
+            QVERIFY(index >= 0);
+            models->setCurrentIndex(index);
+            models->activated(index);
+            QTRY_COMPARE(models->currentText(), "Tesseract French (local)");
+            QCOMPARE(dialog.primaryService()->language, "fra");
+            dialog.findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Save)->click();
+            QVERIFY(!settings.value(hiddenKey).toStringList().contains("fra"));
+        }
     }
     void formulaOnlyDiscoveryRetainsModelAndOfflineSelection() {
         Server server;server.formulaOnly=true;
