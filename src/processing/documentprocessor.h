@@ -125,6 +125,7 @@ private:
     QVector<BatchPageOptions> batchPages;
     qsizetype batchIndex = 0;
     QSize batchSourceSize;
+    core::CoordinatePipeline batchCoordinates;
     QHash<int, int> renderedDpis;
     QHash<int, int> readyDpis;
     bool adaptivePilot = false;

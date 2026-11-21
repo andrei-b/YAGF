@@ -62,6 +62,7 @@ QJsonObject recognitionResultJson(const RecognitionResult &result) {
     QJsonObject provenance{{"model", p.model}, {"task", p.task}, {"language", p.language}, {"page_number", p.pageNumber},
         {"width", p.imageSize.width()}, {"height", p.imageSize.height()}};
     if (!p.inputArea.isEmpty()) provenance["input_area"] = boxJson(p.inputArea);
+    if(p.sourceToInput.isDefined())provenance["source_to_input"]=p.sourceToInput.toJson();
     return {{"engine_id", result.engineId}, {"model_version", result.modelVersion}, {"text", text}, {"formulas", formulas},
         {"tables", tables}, {"figures", figures}, {"markdown", result.markdown}, {"structured_output", result.structuredOutput},
         {"provenance", provenance}};
@@ -70,6 +71,7 @@ QJsonObject recognitionResultJson(const RecognitionResult &result) {
 std::expected<void, QString> validateRecognitionResult(const RecognitionResult &result) {
     const auto fail = [] { return std::unexpected(QStringLiteral("Invalid recognition evidence.")); };
     const auto &p = result.provenance;
+    if(p.sourceToInput.isDefined() && (!p.sourceToInput.validate() || p.sourceToInput.outputSize()!=QSizeF(p.imageSize)))return fail();
     if (!p.inputArea.isNull() && (p.inputArea.isEmpty() ||
         qint64(p.inputArea.x())+p.inputArea.width() > std::numeric_limits<int>::max() ||
         qint64(p.inputArea.y())+p.inputArea.height() > std::numeric_limits<int>::max())) return fail();
@@ -121,6 +123,10 @@ std::expected<RecognitionResult, QString> readRecognitionResult(const QJsonObjec
     result.provenance.model = p["model"].toString(); result.provenance.task = p["task"].toString();
     result.provenance.language = p["language"].toString(); result.provenance.imageSize = {width, height};
     if (p.contains("input_area") && !readBox(p["input_area"], result.provenance.inputArea)) return fail();
+    if(p.contains("source_to_input")) {
+        if(!p["source_to_input"].isObject())return fail();auto coordinates=CoordinatePipeline::fromJson(p["source_to_input"].toObject());
+        if(!coordinates)return fail();result.provenance.sourceToInput=std::move(*coordinates);
+    }
     for (const auto &key : {"text", "formulas", "tables", "figures"}) {
         if (!json[key].isArray() || json[key].toArray().size() > 10000) return fail();
         for (const auto &item : json[key].toArray()) {

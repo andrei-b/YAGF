@@ -1,6 +1,7 @@
 #include "ocrreadings.h"
 #include "wordeditor.h"
 #include "formulatext.h"
+#include "coordinateframes.h"
 #include <QSet>
 #include <QJsonDocument>
 #include <algorithm>
@@ -27,21 +28,21 @@ QString join(const QVector<OcrReadingItem> &items) {
     return result;
 }
 }
-QJsonArray ocrReadingsJson(const QVector<OcrReading> &readings) {
+QJsonArray ocrReadingsJson(const QVector<OcrReading> &readings,CoordinateFrames *frames) {
     QJsonArray result;
     for (const auto &r:readings) {
         QJsonArray items;
         for (const auto &i:r.items) items.append(QJsonObject{{"box",box(i.bounds)},{"text",i.text},{"block",i.block},{"paragraph",i.paragraph},{"line",i.line},{"layout_block",i.layoutBlock},{"geometry_inferred",i.geometryInferred}});
         QJsonObject value{{"source",r.source},{"engine",r.engine},{"label",r.label},{"language",r.language},{"error",r.error},{"area",box(r.area)},{"items",items}};
         if (!r.recognitionEvidence.isEmpty()) {
-            QJsonArray evidence; for (const auto &e : r.recognitionEvidence) evidence.append(recognitionResultJson(e));
+            QJsonArray evidence; for (const auto &e : r.recognitionEvidence) evidence.append(frames?frames->encode(e):recognitionResultJson(e));
             value["recognition_evidence"] = evidence;
         }
         result.append(value);
     }
     return result;
 }
-std::expected<QVector<OcrReading>,QString> readOcrReadings(const QJsonValue &json,QSize size) {
+std::expected<QVector<OcrReading>,QString> readOcrReadings(const QJsonValue &json,QSize size,const CoordinateFrames *frames) {
     const auto fail=[] { return std::unexpected(QStringLiteral("Invalid parallel OCR readings.")); };
     if (!json.isArray() || json.toArray().size()>8) return fail();
     QVector<OcrReading> result; QSet<QString> sources; qsizetype characters=0;
@@ -59,7 +60,7 @@ std::expected<QVector<OcrReading>,QString> readOcrReadings(const QJsonValue &jso
                 QJsonDocument(evidence.toArray()).toJson(QJsonDocument::Compact).size()>16*1024*1024) return fail();
             for (const auto &entry : evidence.toArray()) {
                 if (!entry.isObject()) return fail();
-                auto result = readRecognitionResult(entry.toObject()); if (!result) return fail();
+                auto result = frames?frames->decode(entry.toObject()):readRecognitionResult(entry.toObject()); if (!result) return fail();
                 r.recognitionEvidence.append(std::move(*result));
             }
         }

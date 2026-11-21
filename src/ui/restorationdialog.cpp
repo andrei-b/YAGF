@@ -116,6 +116,7 @@ RestorationDialog::RestorationDialog(QImage source, QImage initial, QWidget *par
     : QDialog(parent), original(std::move(source)), base(std::move(initial)), working(base)
 {
     setWindowTitle(tr("Restore damaged page"));
+    geometry.sourceSize=base.size();
     resize(920, 740);
     auto *layout = new QVBoxLayout(this);
     auto *row = new QHBoxLayout;
@@ -209,6 +210,7 @@ RestorationDialog::RestorationDialog(QImage source, QImage initial, QWidget *par
     });
     connect(reset, &QPushButton::clicked, this, [this] {
         working = base;
+        geometry.steps.clear();
         straightened = edited = false;
         canvas->guides.clear();
         canvas->region = {};
@@ -217,7 +219,9 @@ RestorationDialog::RestorationDialog(QImage source, QImage initial, QWidget *par
     });
     connect(merge, &QPushButton::clicked, this, &RestorationDialog::mergeCapture);
     connect(applyGuides, &QPushButton::clicked, this, [this] {
-        run([page=working, guides=canvas->guides]{ return restore::straighten(page, guides); }, true);
+        auto mapping=restore::straighteningGeometry(working.size(),canvas->guides);
+        if(!mapping){status->setText(mapping.error());return;}
+        run([page=working, guides=canvas->guides]{ return restore::straighten(page, guides); }, true,*mapping);
     });
     connect(applyRegion, &QPushButton::clicked, this, [this] {
         run([page=working, region=canvas->region, len=length->value(), dir=angle->value(), s=strength->value(),
@@ -279,17 +283,22 @@ void RestorationDialog::updateDetail()
     show(after, working.copy(crop));
 }
 
-void RestorationDialog::run(std::function<restore::Result()> operation, bool changesGeometry)
+void RestorationDialog::run(std::function<restore::Result()> operation, bool changesGeometry,core::CoordinatePipeline mapping)
 {
     busy = true;
     updateControls();
     status->setText(tr("Processing page…"));
     auto *watcher = new QFutureWatcher<restore::Result>(this);
-    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, changesGeometry] {
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, changesGeometry,mapping] {
         auto result = watcher->result();
         watcher->deleteLater();
         busy = false;
         if (result) {
+            if(mapping.isDefined()) {
+                auto combined=geometry;combined.steps+=mapping.steps;
+                if(auto valid=combined.validate();!valid){status->setText(valid.error());updateControls();return;}
+                geometry=std::move(combined);
+            }
             working = std::move(*result);
             edited = true;
             straightened |= changesGeometry;

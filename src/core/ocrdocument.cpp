@@ -1,5 +1,6 @@
 #include "ocrdocument.h"
 #include "ocrreadings.h"
+#include "coordinateframes.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -429,6 +430,7 @@ QJsonObject OcrDocument::toJson(bool includeRestoredPixels) const
 {
     QJsonArray pageItems;
     for (const OcrPage &page : pages) {
+        CoordinateFrames coordinateFrames;
         QJsonArray wordItems, regionItems, imageRegionItems, readingOrder, deletedItems, pendingItems;
         for (const auto &word : page.deletedWords) deletedItems.append(wordJson(word));
         for (const auto &word : page.pendingCorrections) pendingItems.append(wordJson(word));
@@ -478,12 +480,22 @@ QJsonObject OcrDocument::toJson(bool includeRestoredPixels) const
                                      {"regions", regionItems}, {"image_regions", imageRegionItems},
                                      {"words", wordItems},
                                      {"reading_order", readingOrder}};
-        if (!page.ocrReadings.isEmpty()) item.insert("ocr_readings",ocrReadingsJson(page.ocrReadings));
+        if (!page.ocrReadings.isEmpty()) item.insert("ocr_readings",ocrReadingsJson(page.ocrReadings,&coordinateFrames));
+        if(page.coordinates.isDefined())item["coordinates"]=page.coordinates.toJson();
+        if(!page.sourceGeometry.isEmpty())item["source_geometry"]=geometryAnchorsJson(page.sourceGeometry);
+        auto preprocessing=item["preprocessing"].toObject();
+        if(page.preprocessing.restorationGeometry.isDefined())preprocessing["restoration_geometry"]=page.preprocessing.restorationGeometry.toJson();
+        if(!page.preprocessing.perspective.isIdentity()) {
+            const auto &m=page.preprocessing.perspective;
+            preprocessing["perspective"]=QJsonArray{m.m11(),m.m12(),m.m13(),m.m21(),m.m22(),m.m23(),m.m31(),m.m32(),m.m33()};
+        }
+        item["preprocessing"]=preprocessing;
         if (!page.recognitionEvidence.isEmpty()) {
             QJsonArray evidence;
-            for (const auto &result : page.recognitionEvidence) evidence.append(recognitionResultJson(result));
+            for (const auto &result : page.recognitionEvidence) evidence.append(coordinateFrames.encode(result));
             item.insert("recognition_evidence", evidence);
         }
+        const auto frames=coordinateFrames.toJson();if(!frames.isEmpty())item["recognition_frames"]=frames;
         if (includeRestoredPixels && !page.preprocessing.restoredPng.isEmpty())
             item.insert("restored_page_png", QString::fromLatin1(page.preprocessing.restoredPng.toBase64()));
         pageItems.append(item);
@@ -574,6 +586,11 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
     for (const auto &value : pageItems) {
         if (!value.isObject()) return fail(QStringLiteral("Invalid page entry."));
         const QJsonObject object = value.toObject();
+        CoordinateFrames coordinateFrames;
+        if(object.contains("recognition_frames")) {
+            if(!object["recognition_frames"].isObject())return fail(QStringLiteral("Invalid recognition coordinate frames."));
+            if(auto loaded=coordinateFrames.load(object["recognition_frames"].toObject());!loaded)return fail(loaded.error());
+        }
         OcrPage page;
         if (!integer(object, QStringLiteral("number"), &page.number) ||
             !integer(object, QStringLiteral("width"), &page.width) ||
@@ -603,6 +620,15 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
                 return fail(QStringLiteral("Invalid preprocessing values."));
             page.preprocessing = {.deskewDegrees = angle.toDouble(),
                                   .autoContrast = contrast.toBool(), .denoise = denoise.toBool()};
+            if(settings.contains("restoration_geometry")) {
+                if(!settings["restoration_geometry"].isObject())return fail(QStringLiteral("Invalid restoration geometry."));
+                auto mapping=CoordinatePipeline::fromJson(settings["restoration_geometry"].toObject());if(!mapping)return fail(mapping.error());page.preprocessing.restorationGeometry=std::move(*mapping);
+            }
+            if(settings.contains("perspective")) {
+                QJsonObject mapping{{"source_unit","pixels"},{"source_size",QJsonArray{1,1}},{"steps",QJsonArray{QJsonObject{
+                    {"operation","perspective"},{"input",QJsonArray{1,1}},{"output",QJsonArray{1,1}},{"matrix",settings["perspective"]}}}}};
+                auto parsed=CoordinatePipeline::fromJson(mapping);if(!parsed)return fail(parsed.error());page.preprocessing.perspective=parsed->steps.first().projective;
+            }
             if (settings.contains("quarter_turns") &&
                 (!integer(settings, "quarter_turns", &page.preprocessing.quarterTurns) ||
                  page.preprocessing.quarterTurns < 0 || page.preprocessing.quarterTurns > 3))
@@ -652,6 +678,16 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
             }
         }
         page.engineId = object.value(QStringLiteral("engine")).toString(parsed.engine);
+        if(object.contains("coordinates")) {
+            if(!object["coordinates"].isObject())return fail(QStringLiteral("Invalid page coordinates."));
+            auto coordinates=CoordinatePipeline::fromJson(object["coordinates"].toObject());
+            if(!coordinates || coordinates->outputSize()!=QSizeF(page.width,page.height))return fail(QStringLiteral("Coordinate pipeline does not match the page."));
+            page.coordinates=std::move(*coordinates);
+        }
+        if(object.contains("source_geometry")) {
+            if(!object["source_geometry"].isObject() || !page.coordinates.isDefined())return fail(QStringLiteral("Invalid source geometry anchors."));
+            auto anchors=readGeometryAnchors(object["source_geometry"].toObject());if(!anchors)return fail(anchors.error());page.sourceGeometry=std::move(*anchors);
+        }
         page.language = object.value(QStringLiteral("language")).toString(parsed.language);
         if (object.contains("recognition_evidence")) {
             const auto evidence = object["recognition_evidence"];
@@ -662,13 +698,13 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
                 if (!entry.isObject()) return fail(QStringLiteral("Invalid saved recognition evidence."));
                 bytes += QJsonDocument(entry.toObject()).toJson(QJsonDocument::Compact).size();
                 if (bytes > 16*1024*1024) return fail(QStringLiteral("Saved recognition evidence is too large."));
-                auto result = readRecognitionResult(entry.toObject());
+                auto result = coordinateFrames.decode(entry.toObject());
                 if (!result) return fail(result.error());
                 page.recognitionEvidence.append(std::move(*result));
             }
         }
         if (object.contains("ocr_readings")) {
-            auto readings=readOcrReadings(object["ocr_readings"],QSize(page.width,page.height));
+            auto readings=readOcrReadings(object["ocr_readings"],QSize(page.width,page.height),&coordinateFrames);
             if (!readings) return fail(readings.error()); page.ocrReadings=std::move(*readings);
         }
         if (object.contains(QStringLiteral("image_regions"))) {

@@ -1,5 +1,6 @@
 #include "correctionretention.h"
 #include "wordeditor.h"
+#include "pagegeometry.h"
 
 #include <QRegularExpression>
 #include <QSet>
@@ -71,6 +72,16 @@ OcrPage rescalePageGeometry(const OcrPage &source, int width, int height, int so
 {
     if (width <= 0 || height <= 0 || sourceWidth <= 0 || sourceHeight <= 0 ||
         source.width <= 0 || source.height <= 0 || !validRenderDpi(dpi)) return source;
+    if(source.coordinates.isDefined()) {
+        auto destination=source.coordinates;
+        destination.appendProjective("resolution",QTransform::fromScale(double(width)/source.width,double(height)/source.height),QSize(width,height));
+        auto mapped=remapPageGeometry(source,std::move(destination));
+        if(mapped) {
+            mapped->sourceWidth=sourceWidth;mapped->sourceHeight=sourceHeight;mapped->renderDpi=dpi;
+            for(auto &word:mapped->words)if(word.sourceFontSizePx>0)word.sourceFontSizePx=std::clamp(qRound(double(word.sourceFontSizePx)*height/source.height),1,4096);
+            return *mapped;
+        }
+    }
     OcrPage page = source;
     const QRect from(0, 0, source.width, source.height), to(0, 0, width, height);
     const auto rescale = [&](OcrWord &word) {
@@ -93,7 +104,13 @@ OcrPage rescalePageGeometry(const OcrPage &source, int width, int height, int so
 RetentionResult retainCorrections(OcrPage &fresh, const OcrPage &previous, bool preserveFormatting)
 {
     RetentionResult report;
-    const OcrPage old = rescalePageGeometry(previous, fresh.width, fresh.height, fresh.sourceWidth, fresh.sourceHeight, fresh.renderDpi);
+    OcrPage old;
+    bool compatible=true;
+    if(previous.coordinates.isDefined() && fresh.coordinates.isDefined()) {
+        auto mapped=remapPageGeometry(previous,fresh.coordinates);
+        if(mapped)old=std::move(*mapped);
+        else {compatible=false;old=rescalePageGeometry(previous,fresh.width,fresh.height,fresh.sourceWidth,fresh.sourceHeight,fresh.renderDpi);}
+    } else old=rescalePageGeometry(previous,fresh.width,fresh.height,fresh.sourceWidth,fresh.sourceHeight,fresh.renderDpi);
     fresh.imageRegions = old.imageRegions;
     fresh.deletedWords = old.deletedWords;
     fresh.pendingCorrections.clear();
@@ -134,6 +151,7 @@ RetentionResult retainCorrections(OcrPage &fresh, const OcrPage &previous, bool 
              row <= bounds.bottom() * 64 / std::max(1, fresh.height) + 1; ++row)
             for (int i : rows.value(row)) candidates.insert(i);
         for (int first : candidates) {
+            if(!compatible)break;
             if (used.contains(first)) continue;
             QRect span;
             QString text;

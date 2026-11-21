@@ -20,15 +20,17 @@ public:
     RestorationDialog(QImage original, QImage base, QWidget *parent);
     const QImage &resultImage() const { return working; }
     bool geometryChanged() const { return straightened; }
+    const core::CoordinatePipeline &geometryMapping() const {return geometry;}
 
 private:
     void updateControls();
     void refreshPage();
     void updateDetail();
     void mergeCapture();
-    void run(std::function<processing::restoration::Result()> operation, bool changesGeometry);
+    void run(std::function<processing::restoration::Result()> operation, bool changesGeometry,core::CoordinatePipeline mapping={});
 
     QImage original, base, working;
+    core::CoordinatePipeline geometry;
     QPixmap thumbnail, focusThumbnail;
     RestorationCanvas *canvas;
     QComboBox *tool, *profile;

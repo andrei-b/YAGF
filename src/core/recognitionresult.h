@@ -7,6 +7,7 @@
 #include <QVector>
 #include <expected>
 #include <optional>
+#include "coordinatetransform.h"
 
 namespace yagf::core {
 
@@ -48,6 +49,7 @@ struct RecognitionProvenance {
     // Placement of this input/crop in the document image; region boxes remain
     // relative to imageSize. No endpoint, authentication or machine identity.
     QRect inputArea;
+    CoordinatePipeline sourceToInput; // Snapshot at recognition time; native region coordinates stay immutable.
 };
 struct RecognitionResult {
     QString engineId, modelVersion;

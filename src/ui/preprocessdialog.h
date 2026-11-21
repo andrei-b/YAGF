@@ -31,6 +31,7 @@ private:
     void analyzeText();
     QString pilotLanguage;
     int inkThreshold;
+    core::PreprocessSettings retainedSettings;
     QFutureWatcher<std::expected<processing::TextGuidance, processing::OcrError>> textWatcher;
     std::stop_source textStop;
 

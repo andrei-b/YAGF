@@ -3,8 +3,9 @@
 #include <expected>
 
 namespace yagf::core {
-QJsonArray ocrReadingsJson(const QVector<OcrReading> &readings);
-std::expected<QVector<OcrReading>, QString> readOcrReadings(const QJsonValue &json, QSize size);
+class CoordinateFrames;
+QJsonArray ocrReadingsJson(const QVector<OcrReading> &readings,CoordinateFrames *frames=nullptr);
+std::expected<QVector<OcrReading>, QString> readOcrReadings(const QJsonValue &json, QSize size,const CoordinateFrames *frames=nullptr);
 QString ocrReadingText(const OcrReading &reading);
 QVector<QVector<int>> ocrReadingSpans(const OcrPage &page);
 QString matchedOcrReading(const OcrPage &page, const QVector<int> &span, const OcrReading &reading);

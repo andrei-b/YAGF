@@ -18,6 +18,9 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 add_library(yagf_core STATIC
+    src/core/coordinateframes.cpp src/core/coordinateframes.h
+    src/core/pagegeometry.cpp src/core/pagegeometry.h
+    src/core/coordinatetransform.cpp src/core/coordinatetransform.h
     src/core/recognitionresult.cpp src/core/recognitionresult.h
     src/core/ocrreadings.cpp src/core/ocrreadings.h
     src/core/blockfont.cpp src/core/blockfont.h
@@ -36,7 +39,7 @@ add_library(yagf_core STATIC
     src/core/correctionmemory.cpp src/core/correctionmemory.h
     src/core/projectfile.cpp src/core/projectfile.h
     src/core/wordeditor.cpp src/core/wordeditor.h)
-target_link_libraries(yagf_core PUBLIC Qt6::Core)
+target_link_libraries(yagf_core PUBLIC Qt6::Core Qt6::Gui)
 target_include_directories(yagf_core PUBLIC src/core)
 
 # Image/source operations have no OCR, network, or job-controller dependency.
@@ -162,6 +165,9 @@ install(DIRECTORY service/
 
 include(CTest)
 if(BUILD_TESTING)
+    qt_add_executable(coordinatetransform_tests tests/coordinatetransform_tests.cpp)
+    target_link_libraries(coordinatetransform_tests PRIVATE yagf_imaging Qt6::Test)
+    add_test(NAME coordinatetransform_tests COMMAND coordinatetransform_tests)
     qt_add_executable(recognitionresult_tests tests/recognitionresult_tests.cpp)
     target_link_libraries(recognitionresult_tests PRIVATE yagf_ocr Qt6::Network Qt6::Test)
     add_test(NAME recognitionresult_tests COMMAND recognitionresult_tests)
@@ -169,7 +175,9 @@ if(BUILD_TESTING)
     qt_add_executable(recognitionliveness_tests tests/recognitionliveness_tests.cpp)
     target_link_libraries(recognitionliveness_tests PRIVATE yagf_processing Qt6::Test)
     add_test(NAME recognitionliveness_tests COMMAND recognitionliveness_tests)
-    set_tests_properties(recognitionliveness_tests PROPERTIES TIMEOUT 40)
+    # These subprocess/cancellation tests enforce wall-clock deadlines; isolate
+    # them from CPU-heavy scan regressions running in the same CTest invocation.
+    set_tests_properties(recognitionliveness_tests PROPERTIES TIMEOUT 40 RUN_SERIAL TRUE)
     qt_add_executable(ocrservices_tests tests/ocrservices_tests.cpp src/ui/ocrservicesdialog.cpp src/ui/ocrservicesdialog.h src/ui/ocrreadingsdialog.cpp src/ui/ocrreadingsdialog.h src/ui/documentcommands.cpp src/ui/documentcommands.h)
     target_include_directories(ocrservices_tests PRIVATE src/ui)
     target_link_libraries(ocrservices_tests PRIVATE yagf_processing Qt6::Widgets Qt6::Network Qt6::Concurrent Qt6::Test)

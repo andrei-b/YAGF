@@ -201,8 +201,11 @@ QImage flattenBend(const QImage &source, int sag)
     flat.fill(Qt::white);
     QPainter painter(&flat);
     const auto shift = [&](int x) {
-        const double t = double(x) / std::max(1, source.width()-1);
-        return std::max(0, sag) - qRound(4. * sag * t * (1.-t));
+        // Rasterize the same bilinear displacement field recorded by the
+        // coordinate pipeline, rounding only at the final pixel placement.
+        const double grid=(x+.5)*128/source.width();const int col=std::clamp(int(grid),0,127);
+        const auto offset=[&](int node){const double t=node/128.;return std::max(0,sag)-4.*sag*t*(1-t);};
+        return qRound(std::lerp(offset(col),offset(col+1),grid-col));
     };
     for (int start = 0; start < source.width();) {
         const int offset = shift(start);
@@ -391,6 +394,60 @@ std::expected<QualityAssessment, QString> ImageProcessor::assess(const QImage &s
     return quality;
 }
 
+std::expected<core::CoordinatePipeline,QString> ImageProcessor::coordinatePipeline(
+    QSize sourceSize,const core::PreprocessSettings &settings,int pdfDpi)
+{
+    if(sourceSize.isEmpty() || sourceSize.width()>1000000 || sourceSize.height()>1000000 ||
+        !std::isfinite(settings.deskewDegrees) || std::abs(settings.deskewDegrees)>15 ||
+        settings.quarterTurns<0 || settings.quarterTurns>3 || !std::isfinite(settings.bendPercent) ||
+        std::abs(settings.bendPercent)>core::PreprocessSettings::maxBendPercent || pdfDpi<0 || pdfDpi>10000)
+        return std::unexpected(QStringLiteral("Invalid preprocessing geometry."));
+    core::CoordinatePipeline pipeline;
+    pipeline.sourceSize=sourceSize;
+    if(!settings.restoredPng.isEmpty() && !settings.restorationGeometry.isDefined())pipeline.sourceFrame="restored";
+    if(pdfDpi) {
+        pipeline.sourceUnit="page-points-top-left";pipeline.sourceSize=QSizeF(sourceSize)*(72./pdfDpi);
+        pipeline.appendProjective("render",QTransform::fromScale(pdfDpi/72.,pdfDpi/72.),sourceSize);
+    }
+    QSize current=sourceSize;
+    if(!settings.restoredPng.isEmpty() && settings.restorationGeometry.isDefined()) {
+        pipeline.sourceFrame=settings.restorationGeometry.sourceFrame;
+        if(!settings.restorationGeometry.validate() || settings.restorationGeometry.sourceUnit!="pixels")
+            return std::unexpected(QStringLiteral("Restoration geometry does not match the source raster."));
+        if(settings.restorationGeometry.sourceSize!=QSizeF(current))pipeline.appendProjective("restoration-input-scale",
+            QTransform::fromScale(settings.restorationGeometry.sourceSize.width()/current.width(),settings.restorationGeometry.sourceSize.height()/current.height()),settings.restorationGeometry.sourceSize);
+        for(const auto &step:settings.restorationGeometry.steps)pipeline.steps.append(step);
+        if(pipeline.outputSize()!=QSizeF(current))pipeline.appendProjective("restoration-output-scale",
+            QTransform::fromScale(current.width()/pipeline.outputSize().width(),current.height()/pipeline.outputSize().height()),current);
+    }
+    if(settings.quarterTurns) {
+        const QTransform rotation=QImage::trueMatrix(QTransform().rotate(settings.quarterTurns*90),current.width(),current.height());
+        const QSize output=settings.quarterTurns%2 ? current.transposed() : current;
+        pipeline.appendProjective("orientation",rotation,output);current=output;
+    }
+    if(!settings.perspective.isIdentity()) {
+        const auto mapping=QTransform::fromScale(1./current.width(),1./current.height())*settings.perspective*QTransform::fromScale(current.width(),current.height());
+        pipeline.appendProjective("perspective",mapping,current);
+    }
+    const int sag=qRound(settings.bendPercent*current.height()/100.);
+    if(sag) {
+        core::CoordinateStep step;step.operation="dewarp";step.inputSize=current;step.outputSize=QSize(current.width(),current.height()+std::abs(sag));step.gridSize={129,2};
+        for(int row=0;row<2;++row)for(int col=0;col<129;++col) {
+            const double t=col/128.;step.displacement.append({0,std::max(0,sag)-4.*sag*t*(1-t)});
+        }
+        pipeline.steps.append(step);current=step.outputSize.toSize();
+    }
+    if(std::abs(settings.deskewDegrees)>=.01) {
+        const auto rotation=QTransform().rotate(-settings.deskewDegrees);
+        const auto mapping=QImage::trueMatrix(rotation,current.width(),current.height());
+        const auto outline=mapping.map(core::rectangleOutline(QRectF(QPointF(),current)));
+        const auto output=core::enclosingPixels(outline).size();
+        pipeline.appendProjective("deskew",mapping,output);
+    }
+    if(auto valid=pipeline.validate();!valid)return std::unexpected(valid.error());
+    return pipeline;
+}
+
 std::expected<QImage, QString> ImageProcessor::apply(const QImage &source,
                                                      const core::PreprocessSettings &settings)
 {
@@ -420,6 +477,13 @@ std::expected<QImage, QString> ImageProcessor::apply(const QImage &source,
     current = current.convertToFormat(QImage::Format_ARGB32);
     if (settings.quarterTurns)
         current = current.transformed(QTransform().rotate(settings.quarterTurns * 90), Qt::FastTransformation);
+    if(!settings.perspective.isIdentity()) {
+        core::CoordinatePipeline unit;unit.sourceSize={1,1};unit.appendProjective("perspective",settings.perspective,{1,1});
+        if(auto valid=unit.validate();!valid)return std::unexpected(valid.error());
+        QImage rectified(current.size(),QImage::Format_ARGB32);rectified.fill(Qt::white);
+        const auto mapping=QTransform::fromScale(1./current.width(),1./current.height())*settings.perspective*QTransform::fromScale(current.width(),current.height());
+        QPainter painter(&rectified);painter.setRenderHint(QPainter::SmoothPixmapTransform);painter.setTransform(mapping);painter.drawImage(QPoint(),current);painter.end();current=std::move(rectified);
+    }
     if (settings.levelShadows) current = levelPaper(current).convertToFormat(QImage::Format_ARGB32);
     const int sag = qRound(settings.bendPercent * current.height() / 100.);
     if (sag) {

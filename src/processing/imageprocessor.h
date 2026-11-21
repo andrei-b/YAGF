@@ -20,6 +20,10 @@ struct QualityAssessment {
 
 class ImageProcessor {
 public:
+    // PDF coordinates use points in the rendered page's top-left, y-down frame;
+    // raster coordinates use pixel edges. Positive pdfDpi adds the render step.
+    static std::expected<core::CoordinatePipeline, QString> coordinatePipeline(
+        QSize sourceSize, const core::PreprocessSettings &settings, int pdfDpi = 0);
     [[nodiscard]] static QImage normalizedTextPilot(const QImage &pilot);
     [[nodiscard]] static std::optional<double> estimateBendPercent(const QImage &upright);
     // Estimate ink/paper separation from confident word boxes on the same pilot image.

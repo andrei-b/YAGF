@@ -16,7 +16,7 @@
 namespace yagf::ui {
 
 PreprocessDialog::PreprocessDialog(const QImage &source, core::PreprocessSettings initial, QWidget *parent, QString language)
-    : QDialog(parent), pilotLanguage(std::move(language)), inkThreshold(initial.inkThreshold), previewSource(source.width() > 460 || source.height() > 550
+    : QDialog(parent), pilotLanguage(std::move(language)), inkThreshold(initial.inkThreshold), retainedSettings(initial), previewSource(source.width() > 460 || source.height() > 550
         ? source.scaled(QSize(460, 550), Qt::KeepAspectRatio, Qt::SmoothTransformation) : source)
 {
     analysisSource = source.width() > 2200 || source.height() > 2200
@@ -240,13 +240,11 @@ void PreprocessDialog::detectOrientation()
 
 core::PreprocessSettings PreprocessDialog::settings() const
 {
-    return {.deskewDegrees = angleSpin->value(),
-            .autoContrast = contrastCheck->isChecked(),
-            .denoise = denoiseCheck->isChecked(),
-            .quarterTurns = rotationCombo->currentIndex(),
-            .adaptiveBinarization = binaryCheck->isChecked(),
-            .inkThreshold = binaryCheck->isChecked() ? inkThreshold : 0,
-            .bendPercent = bendSpin->value(), .levelShadows = shadowCheck->isChecked()};
+    auto result=retainedSettings;
+    result.deskewDegrees=angleSpin->value();result.autoContrast=contrastCheck->isChecked();result.denoise=denoiseCheck->isChecked();
+    result.quarterTurns=rotationCombo->currentIndex();result.adaptiveBinarization=binaryCheck->isChecked();
+    result.inkThreshold=binaryCheck->isChecked()?inkThreshold:0;result.bendPercent=bendSpin->value();result.levelShadows=shadowCheck->isChecked();
+    return result;
 }
 
 void PreprocessDialog::refreshPreview()

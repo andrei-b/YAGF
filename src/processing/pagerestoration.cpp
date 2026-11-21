@@ -210,9 +210,10 @@ Result mergeCaptures(const QImage &reference, const QImage &second) try
 }
 catch (const cv::Exception &e) { return std::unexpected(QString::fromUtf8(e.what())); }
 
-Result straighten(const QImage &page, QVector<QPolygonF> guides) try
+std::expected<core::CoordinatePipeline,QString> straighteningGeometry(QSize page,QVector<QPolygonF> guides)
 {
-    if (!valid(page) || guides.size() < 2 || guides.size() > 12)
+    if (page.isEmpty() || page.width()>=32767 || page.height()>=32767 || qint64(page.width())*page.height()>80'000'000 ||
+        guides.size() < 2 || guides.size() > 12)
         return std::unexpected(QStringLiteral("Trace between two and twelve lines."));
     std::vector<double> targets;
     for (const auto &line : guides) {
@@ -230,28 +231,56 @@ Result straighten(const QImage &page, QVector<QPolygonF> guides) try
     std::vector<int> order(guides.size());
     std::iota(order.begin(), order.end(), 0);
     std::ranges::sort(order, {}, [&](int i) { return targets[i]; });
-    const QImage rgb = paperRgb(page);
-    auto input = pixels(rgb);
-    cv::Mat out(input.size(), input.type());
-    for (int x = 0; x < input.cols; ++x) {
-        double lastSrc = 0, lastDest = 0;
-        for (size_t i = 0; i <= order.size(); ++i) {
-            const double sy = i == order.size() ? input.rows - 1 : lineY(guides[order[i]], x, targets[order[i]]);
-            const double dy = i == order.size() ? input.rows - 1 : targets[order[i]];
-            if (sy - lastSrc < 1 || dy - lastDest < 1) return std::unexpected(QStringLiteral("Guides cross or touch. Trace separate lines."));
-            for (int y = int(std::ceil(lastDest)); y <= int(std::floor(dy)); ++y) {
-                const double sample = std::lerp(lastSrc, sy, (y - lastDest) / (dy - lastDest));
-                const int lo = std::clamp(int(sample), 0, input.rows - 1), hi = std::min(lo + 1, input.rows - 1);
-                const auto a = input.at<cv::Vec3b>(lo, x), b = input.at<cv::Vec3b>(hi, x);
-                auto &d = out.at<cv::Vec3b>(y, x);
-                for (int c = 0; c < 3; ++c) d[c] = cv::saturate_cast<uchar>(std::lerp(double(a[c]), double(b[c]), sample - lo));
-            }
-            lastSrc = sy; lastDest = dy;
+    core::CoordinatePipeline pipeline;pipeline.sourceSize=page;
+    core::CoordinateStep field;field.operation="traced-dewarp";field.inputSize=field.outputSize=page;field.gridSize={129,129};
+    const auto nodes=[&](double x) {
+        QVector<QPointF> pairs{{0,0}};
+        for(int index:order)pairs.append({lineY(guides[index],x-.5,targets[index])+.5,targets[index]+.5});
+        pairs.append({double(page.height()),double(page.height())});return pairs;
+    };
+    // Validate every source column as well as the sampled mesh nodes.
+    for(int x=0;x<page.width();++x) {
+        const auto pairs=nodes(x+.5);
+        for(int i=1;i<pairs.size();++i)if(pairs[i].x()-pairs[i-1].x()<1 || pairs[i].y()-pairs[i-1].y()<1)
+            return std::unexpected(QStringLiteral("Guides cross or touch. Trace separate lines."));
+    }
+    for(int row=0;row<129;++row)for(int col=0;col<129;++col) {
+        const double x=double(col)*page.width()/128,y=double(row)*page.height()/128;
+        const auto pairs=nodes(x);int segment=0;
+        while(segment+2<pairs.size() && y>pairs[segment+1].x())++segment;
+        const auto a=pairs[segment],b=pairs[segment+1];
+        const double destination=std::lerp(a.y(),b.y(),(y-a.x())/(b.x()-a.x()));
+        field.displacement.append({0,destination-y});
+    }
+    pipeline.steps.append(std::move(field));if(auto valid=pipeline.validate();!valid)return std::unexpected(valid.error());return pipeline;
+}
+
+Result straighten(const QImage &page,QVector<QPolygonF> guides) try
+{
+    if(!valid(page))return std::unexpected(QStringLiteral("Invalid restoration image."));
+    auto geometry=straighteningGeometry(page.size(),std::move(guides));if(!geometry)return std::unexpected(geometry.error());
+    const auto &field=geometry->steps.first();
+    const QImage rgb=paperRgb(page);const auto input=pixels(rgb);cv::Mat out(input.size(),input.type());
+    // Vertical mesh inversion is piecewise linear. Reuse its column knots for
+    // every output pixel instead of running a general inverse per pixel.
+    for(int x=0;x<input.cols;++x) {
+        const double gx=(x+.5)*128/input.cols;const int col=std::clamp(int(gx),0,127);const double u=gx-col;
+        std::array<double,129> knots;
+        for(int row=0;row<129;++row)knots[row]=double(row)*input.rows/128+std::lerp(field.displacement[row*129+col].y(),field.displacement[row*129+col+1].y(),u);
+        int segment=0;
+        for(int y=0;y<input.rows;++y) {
+            const double destination=y+.5;
+            while(segment<127 && destination>knots[segment+1])++segment;
+            const double sample=(segment+(destination-knots[segment])/(knots[segment+1]-knots[segment]))*input.rows/128-.5;
+            const int lo=std::clamp(int(std::floor(sample)),0,input.rows-1),hi=std::min(lo+1,input.rows-1);
+            const double fraction=std::clamp(sample-lo,0.,1.);
+            const auto a=input.at<cv::Vec3b>(lo,x),b=input.at<cv::Vec3b>(hi,x);auto &pixel=out.at<cv::Vec3b>(y,x);
+            for(int channel=0;channel<3;++channel)pixel[channel]=cv::saturate_cast<uchar>(std::lerp(double(a[channel]),double(b[channel]),fraction));
         }
     }
-    return resultImage(out, page);
+    return resultImage(out,page);
 }
-catch (const cv::Exception &e) { return std::unexpected(QString::fromUtf8(e.what())); }
+catch(const cv::Exception &e){return std::unexpected(QString::fromUtf8(e.what()));}
 
 Result deblur(const QImage &page, QRect region, double length, double degrees, double strength, QRect output, BlurProfile profile) try
 {

@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <QByteArray>
+#include "coordinatetransform.h"
 
 namespace yagf::core {
 
@@ -19,11 +20,13 @@ struct PreprocessSettings {
     bool levelShadows = false;
 
     QByteArray restoredPng; // Full page before rotation and tonal preprocessing.
+    CoordinatePipeline restorationGeometry; // Original raster -> restored raster, when geometry changed.
+    QTransform perspective; // Upright normalized coordinates -> normalized output coordinates.
 
     bool operator==(const PreprocessSettings &) const = default;
     [[nodiscard]] bool isIdentity() const
     {
-        return std::abs(deskewDegrees) < 0.01 && !autoContrast && !denoise && quarterTurns == 0 && !adaptiveBinarization && bendPercent == 0 && !levelShadows && restoredPng.isEmpty();
+        return std::abs(deskewDegrees) < 0.01 && !autoContrast && !denoise && quarterTurns == 0 && !adaptiveBinarization && bendPercent == 0 && !levelShadows && restoredPng.isEmpty() && perspective.isIdentity();
     }
 };
 

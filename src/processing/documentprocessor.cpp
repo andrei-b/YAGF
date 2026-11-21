@@ -1,5 +1,6 @@
 #include "blockfont.h"
 #include "documentprocessor.h"
+#include "pagegeometry.h"
 #include "fontestimator.h"
 
 #include "imageprocessor.h"
@@ -136,6 +137,14 @@ DocumentProcessor::DocumentProcessor(QObject *parent, const core::OcrDocument *s
                     crop.language = page.language;
                     crop.renderDpi = page.renderDpi;
                     crop.ocrReadings = core::cropOcrReadings(page.ocrReadings,block.bounds);
+                    crop.recognitionEvidence=page.recognitionEvidence;
+                    for(auto &reading:crop.recognitionEvidence) {
+                        auto &area=reading.provenance.inputArea;
+                        if(area.isEmpty())area=QRect(QPoint(),reading.provenance.imageSize);
+                        area.translate(-block.bounds.topLeft());
+                    }
+                    crop.coordinates=page.coordinates;
+                    if(crop.coordinates.isDefined())crop.coordinates.appendProjective("selected-block",QTransform::fromTranslate(-block.bounds.x(),-block.bounds.y()),block.bounds.size());
                     crop.width = crop.sourceWidth = block.bounds.width();
                     crop.height = crop.sourceHeight = block.bounds.height();
                     for (auto word : page.words) if (block.bounds.contains(word.bounds.center())) {
@@ -399,6 +408,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
     const auto *savedPage = book ? book->page(options.pageNumber) : nullptr;
     const int jobDpi = pagedSource ? (batch ? selectedRenderDpi(options.pageNumber) : renderedDpi(options.pageNumber)) : 150;
     const QSize savedImageSize = savedPage ? QSize(savedPage->width, savedPage->height) : QSize{};
+    const auto savedCoordinates=batch?batchCoordinates:(savedPage?savedPage->coordinates:core::CoordinatePipeline{});
     const int savedDpi = savedPage ? savedPage->renderDpi : jobDpi;
     if (book && engine->id() == "tesseract") {
         options.language = TesseractEngine::modelLanguage(options.language);
@@ -467,7 +477,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
     ocrStop = std::stop_source{};
     const std::stop_token token = ocrStop.get_token();
     if (!wasBusy) emit busyChanged(true);
-    ocrWatcher.setFuture(QtConcurrent::run([this, path, image, options, region, token, formulaRegions, pagedSource, jobDpi, savedImageSize, savedDpi, batch, blocks, smart, automatic, localText, splitOnly, selected, rawOutput, symbolRules, unicodeFormulas, layoutService, automaticLayout, deferredCompanion, parallelFormulas] {
+    ocrWatcher.setFuture(QtConcurrent::run([this, path, image, options, region, token, formulaRegions, pagedSource, jobDpi, savedImageSize, savedDpi, batch, blocks, smart, automatic, localText, splitOnly, selected, rawOutput, symbolRules, unicodeFormulas, layoutService, automaticLayout, deferredCompanion, parallelFormulas, savedCoordinates] {
         OcrJobResult result;
         result.selected = selected;
         QImage input = image;
@@ -578,6 +588,9 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
             });
             if (!smart) page.engineId = engine->id();
             page.renderDpi = dpi;
+            page.coordinates=savedCoordinates;
+            if(!page.coordinates.isDefined())page.coordinates.sourceSize=input.size();
+            else if(!region.isEmpty())page.coordinates.appendProjective("selected-region",QTransform::fromTranslate(-result.offset.x(),-result.offset.y()),input.size());
             if (page.number != options.pageNumber || page.width != input.width() ||
                 page.height != input.height()) {
                 result.outcome = std::unexpected(OcrError{
@@ -645,6 +658,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
                 for (const auto &reading:page.ocrReadings) if (!reading.error.isEmpty())
                     result.warnings.append(reading.label+": "+reading.error+QStringLiteral(" Kept the primary reading."));
             }
+            if(result.outcome)core::attachRecognitionCoordinates(page);
             if (token.stop_requested()) result.outcome = std::unexpected(OcrError{{}, true});
         }
         return result;
@@ -732,6 +746,9 @@ void DocumentProcessor::prepareBatchImage(const QString &path)
     if (!processed) { finishBatchError(processed.error()); return; }
     readyDpis[batchPages.at(batchIndex).number] = selectedRenderDpi(batchPages.at(batchIndex).number);
     batchSourceSize = source.size();
+    auto coordinates=ImageProcessor::coordinatePipeline(source.size(),batchPages.at(batchIndex).preprocessing,
+        pageSourceKind(documentSource)==PageSourceKind::Pdf?selectedRenderDpi(batchPages.at(batchIndex).number):0);
+    if(!coordinates){finishBatchError(coordinates.error());return;}batchCoordinates=*coordinates;
     startOcrImage({}, *processed,
         {.language = batchPages.at(batchIndex).language,
          .pageNumber = batchPages.at(batchIndex).number}, {}, true);

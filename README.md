@@ -29,6 +29,7 @@ approve corrections before exporting your document.
   Reviewed corrections survive recognition reruns when safely matched.
 - **Page preparation and batch OCR.** Rotate, deskew, improve contrast, restore
   damaged scans, edit regions, and recognize individual blocks or entire books.
+  Saved coordinate transforms preserve text and corrections as geometry changes.
   Import images, PDFs, DjVu files, scanner pages, and clipboard images.
 - **Learning and evaluation.** Teach recurring symbol errors, adapt native OCR
   profiles from reviewed examples, and compare pipelines using CER/WER and timing

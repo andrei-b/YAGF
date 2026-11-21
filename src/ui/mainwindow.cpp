@@ -23,6 +23,7 @@
 #include "documentcommands.h"
 #include "wordeditor.h"
 #include "correctionretention.h"
+#include "pagegeometry.h"
 #include "remoteocrengine.h"
 #include "tesseractengine.h"
 #include "aireviewdialog.h"
@@ -1423,6 +1424,12 @@ MainWindow::MainWindow()
             newPage.sourceWidth = rawImage.width();
             newPage.sourceHeight = rawImage.height();
         }
+        if(oldPage && oldPage->coordinates.isDefined())newPage.coordinates=oldPage->coordinates;
+        else {
+            auto coordinates=ImageProcessor::coordinatePipeline(rawImage.size(),displayedPreprocessing,
+                processing::pageSourceKind(originalPath)==processing::PageSourceKind::Pdf?processor.renderedDpi(currentPage):0);
+            if(!coordinates){showError(coordinates.error());return;}newPage.coordinates=*coordinates;
+        }
         for (OcrWord &word : newPage.words) {
             word.bounds.translate(offset);
             for (QRect &fragment : word.sourceBoxes) fragment.translate(offset);
@@ -1434,6 +1441,7 @@ MainWindow::MainWindow()
             if (area.isEmpty()) area = QRect(QPoint(), result.provenance.imageSize);
             area.translate(offset);
         }
+        core::attachRecognitionCoordinates(newPage);
         if (region.isEmpty()) {
             if (oldPage) newPage.words.removeIf([&](const OcrWord &word) {
                 return std::ranges::any_of(oldPage->imageRegions, [&](const ImageRegion &block) {
@@ -1480,6 +1488,7 @@ MainWindow::MainWindow()
             merged.pendingCorrections += newPage.pendingCorrections;
             merged.engineId = newPage.engineId;
             merged.language = newPage.language;
+            merged.coordinates=newPage.coordinates;
             processing::appendRecognitionEvidence(merged, newPage);
             core::mergeOcrReadings(merged.ocrReadings,std::move(newPage.ocrReadings),region);
             int maxBlock = 0;
@@ -2160,8 +2169,19 @@ void MainWindow::loadImage(const QString &path)
         }
         const auto scaledImage = ImageProcessor::apply(source, page->preprocessing);
         if (!scaledImage) { showError(scaledImage.error()); return; }
-        auto scaled = core::rescalePageGeometry(*page, scaledImage->width(), scaledImage->height(), source.width(), source.height(), dpi);
-        document.replacePage(std::move(scaled));
+        auto prior=*page;
+        if(!prior.coordinates.isDefined()) {
+            auto old=ImageProcessor::coordinatePipeline({page->sourceWidth,page->sourceHeight},page->preprocessing,
+                processing::pageSourceKind(originalPath)==processing::PageSourceKind::Pdf?page->renderDpi:0);
+            if(!old){showError(old.error());return;}prior.coordinates=*old;
+        }
+        auto destination=ImageProcessor::coordinatePipeline(source.size(),page->preprocessing,
+            processing::pageSourceKind(originalPath)==processing::PageSourceKind::Pdf?dpi:0);
+        if(!destination){showError(destination.error());return;}
+        auto scaled=core::remapPageGeometry(prior,*destination);
+        if(!scaled){showError(scaled.error());return;}
+        scaled->sourceWidth=source.width();scaled->sourceHeight=source.height();scaled->renderDpi=dpi;
+        document.replacePage(std::move(*scaled));
         page = document.page(currentPage);
         externalDirty = true; refreshDirty();
     }
@@ -2176,6 +2196,13 @@ void MainWindow::loadImage(const QString &path)
     if (page && (page->width != image.width() || page->height != image.height())) {
         showError(tr("The processed page size does not match the saved OCR geometry."));
         return;
+    }
+    if(page && !page->coordinates.isDefined()) {
+        auto mapping=ImageProcessor::coordinatePipeline(source.size(),settings,
+            processing::pageSourceKind(originalPath)==processing::PageSourceKind::Pdf?dpi:0);
+        if(!mapping){showError(mapping.error());return;}
+        auto migrated=*page;migrated.coordinates=*mapping;core::attachRecognitionCoordinates(migrated);
+        document.replacePage(std::move(migrated));page=document.page(currentPage);
     }
     QString recognitionPath = path;
     if (!settings.isIdentity() || oriented) {
@@ -2262,6 +2289,8 @@ void MainWindow::improveCurrentPage()
     if (dialog.exec() != QDialog::Accepted) return;
     auto proposed = dialog.settings();
     proposed.restoredPng = current.restoredPng;
+    proposed.restorationGeometry=current.restorationGeometry;
+    proposed.perspective=current.perspective;
     if (proposed == current) return;
     const bool geometryChanged = std::abs(proposed.deskewDegrees - current.deskewDegrees) >= 0.01 ||
                                  proposed.quarterTurns != current.quarterTurns || proposed.bendPercent != current.bendPercent;
@@ -2310,6 +2339,11 @@ void MainWindow::restoreCurrentPage()
         showError(tr("Could not save the restored page."));
         return;
     }
+    auto restorationGeometry=ImageProcessor::coordinatePipeline(rawImage.size(),
+        {.restoredPng=settings.restoredPng,.restorationGeometry=settings.restorationGeometry});
+    if(!restorationGeometry){showError(restorationGeometry.error());return;}
+    restorationGeometry->steps+=dialog.geometryMapping().steps;
+    settings.restorationGeometry=std::move(*restorationGeometry);
     settings.restoredPng = std::move(png);
     applyPagePreprocessing(settings, dialog.geometryChanged());
 }
@@ -2318,20 +2352,27 @@ void MainWindow::applyPagePreprocessing(const core::PreprocessSettings &proposed
                                        bool recordSkewCorrection)
 {
     const auto *existing = document.page(currentPage);
-    if (geometryChanged && existing &&
-        (!existing->words.isEmpty() || !existing->imageRegions.isEmpty() || !existing->regions.isEmpty() ||
-         !existing->deletedWords.isEmpty() || !existing->pendingCorrections.isEmpty()) &&
-        QMessageBox::warning(this, tr("Rebuild page geometry"),
-            tr("Changing page geometry moves the text and will clear OCR boxes, corrections, and image regions on this page. Continue?"),
-            QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Yes) return;
     const auto processed = ImageProcessor::apply(rawImage, proposed);
     if (!processed) { showError(processed.error()); return; }
+    const int pdfDpi=processing::pageSourceKind(originalPath)==processing::PageSourceKind::Pdf?processor.renderedDpi(currentPage):0;
+    auto coordinates=ImageProcessor::coordinatePipeline(rawImage.size(),proposed,pdfDpi);
+    if(!coordinates){showError(coordinates.error());return;}
+    if(coordinates->outputSize()!=QSizeF(processed->size())){showError(tr("Preprocessing coordinates do not match the prepared image."));return;}
+    OcrPage page=existing?*existing:OcrPage{};
+    if(existing && geometryChanged) {
+        if(!page.coordinates.isDefined()) {
+            auto old=ImageProcessor::coordinatePipeline(rawImage.size(),existing->preprocessing,pdfDpi);
+            if(!old){showError(old.error());return;}page.coordinates=*old;
+        }
+        auto mapped=core::remapPageGeometry(page,*coordinates);
+        if(!mapped) {showError(mapped.error());return;}
+        page=std::move(*mapped);
+    } else page.coordinates=*coordinates;
     if (!proposed.isIdentity() &&
         !processed->save(preparedDir.filePath(QStringLiteral("page-%1-prepared.png").arg(currentPage)), "PNG")) {
         showError(tr("Could not save the prepared page image."));
         return;
     }
-    OcrPage page = existing ? *existing : OcrPage{};
     page.id = QStringLiteral("page-%1").arg(currentPage);
     page.number = currentPage;
     page.sourceWidth = rawImage.width();
@@ -2340,21 +2381,12 @@ void MainWindow::applyPagePreprocessing(const core::PreprocessSettings &proposed
     page.height = processed->height();
     page.preprocessing = proposed;
     page.renderDpi = processing::isPagedSource(originalPath) ? processor.renderedDpi(currentPage) : 150;
-    if (geometryChanged) {
-        selectedRegionIds.clear();
-        page.ocrReadings.clear();
-        page.words.clear();
-        page.deletedWords.clear();
-        page.pendingCorrections.clear();
-        page.regions.clear();
-        page.imageRegions.clear();
-        selectedImageRegion = -1;
-    }
+    core::attachRecognitionCoordinates(page);
     if (recordSkewCorrection)
         undoStack.push(new CorrectSkewCommand(document, currentPage, std::move(page), tr("Correct skew")));
     else
         undoStack.push(new ReplacePageCommand(document, currentPage, std::move(page), tr("Improve page")));
-    status->setText(tr("Improvement applied to page %1. Recognize it to update OCR.").arg(currentPage));
+    status->setText(tr("Improvement applied to page %1. Text, corrections, and regions were preserved.").arg(currentPage));
 }
 
 void MainWindow::runOcr()

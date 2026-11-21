@@ -119,6 +119,8 @@ struct OcrPage {
     QVector<OcrWord> pendingCorrections; // Ambiguous retention is reviewed explicitly.
     QVector<OcrReading> ocrReadings;
     QVector<RecognitionResult> recognitionEvidence; // Immutable model output, separate from edits.
+    CoordinatePipeline coordinates;
+    QHash<QString, GeometryAnchor> sourceGeometry;
     [[nodiscard]] QVector<int> specialistSpan(int start) const;
     void rebuildHierarchy();
     bool moveRegion(int index, int direction);

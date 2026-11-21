@@ -1319,7 +1319,8 @@ int main(int argc, char **argv)
     assert(yagf::core::ProjectFile::load(resolutionProject, &resolutionLoaded, &error));
     assert(resolutionLoaded.rendering.dpi == 200 && resolutionLoaded.page(2)->renderDpi == 200);
     assert(resolutionLoaded.page(1)->renderDpi == 150 && resolutionLoaded.page(2)->words[0].text == "modern");
-    assert(resolutionLoaded.page(2)->words[0].reviewed && resolutionLoaded.page(2)->words[0].bounds.x() == 27);
+    // Pixel-edge mappings round outward so no source ink is cropped away.
+    assert(resolutionLoaded.page(2)->words[0].reviewed && resolutionLoaded.page(2)->words[0].bounds.x() == 26);
     for (auto *action : resolutionWindow.findChildren<QAction *>())
         if (action->shortcut() == QKeySequence::Undo) action->trigger();
     waitUi([&] { return resolutionView->scene()->sceneRect().width() == 1200; });
@@ -1519,8 +1520,8 @@ int main(int argc, char **argv)
         assert(clearRegions->count() == 2);
     }
 
-    // Correct skew adds the residual tilt to existing preprocessing. Cancelling
-    // preserves OCR geometry; accepting clears it and undo restores both.
+    // Correct skew adds the residual tilt and maps OCR/corrections through the
+    // original coordinate frame. Undo restores the prior image and geometry.
     {
         using yagf::processing::ImageProcessor;
         QImage clean(900, 650, QImage::Format_ARGB32);
@@ -1571,22 +1572,8 @@ int main(int argc, char **argv)
         const QImage before = displayedImage();
         const auto beforeAssessment = ImageProcessor::assess(before);
         assert(beforeAssessment && std::abs(beforeAssessment->skewDegrees-2) < .6);
-        const auto correctWithAnswer = [&](QMessageBox::StandardButton answer) {
-            bool confirmed = false;
-            QTimer::singleShot(0, &skewWindow, [&] {
-                auto *dialog = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
-                assert(dialog && dialog->windowTitle() == "Rebuild page geometry");
-                confirmed = true;
-                dialog->button(answer)->click();
-            });
-            skewAction->trigger();
-            assert(confirmed);
-        };
-        correctWithAnswer(QMessageBox::Cancel);
-        assert(skewWords->count() == 1 && displayedImage() == before);
-        assert(!undoSkew->isVisible() && !undoSkew->isEnabled());
-        correctWithAnswer(QMessageBox::Yes);
-        assert(skewWords->count() == 0 && skewBlocks->count() == 0);
+        skewAction->trigger();
+        assert(skewWords->count() == 1 && skewBlocks->count() == 1);
         assert(undoSkew->isVisible() && undoSkew->isEnabled() && !undoSkew->icon().isNull());
         const auto afterAssessment = ImageProcessor::assess(displayedImage());
         assert(afterAssessment && std::abs(afterAssessment->skewDegrees) < 1);
@@ -1596,7 +1583,11 @@ int main(int argc, char **argv)
         assert(yagf::core::ProjectFile::load(skewProject, &saved, &error));
         assert(std::abs(saved.page(1)->preprocessing.deskewDegrees-4) < .6);
         assert(saved.page(1)->preprocessing.autoContrast);
-        assert(saved.page(1)->ocrReadings.isEmpty());
+        assert(saved.page(1)->ocrReadings.size()==1);
+        assert(saved.page(1)->words[0].text=="text" && saved.page(1)->words[0].reviewed);
+        assert(saved.page(1)->words[0].id==skewBook.page(1)->words[0].id);
+        assert(saved.page(1)->words[0].bounds!=skewBook.page(1)->words[0].bounds);
+        assert(saved.page(1)->coordinates.isDefined() && !saved.page(1)->sourceGeometry.isEmpty());
         QAction *skewUndo = nullptr, *skewRedo = nullptr;
         for (auto *action : skewWindow.findChildren<QAction *>()) {
             if (action->shortcut() == QKeySequence::Undo) skewUndo = action;
@@ -1616,7 +1607,7 @@ int main(int argc, char **argv)
         assert(skewWindow.findChild<QAction *>("ocrReadingsAction")->isEnabled());
         assert(!undoSkew->isVisible() && !undoSkew->isEnabled());
         skewRedo->trigger();
-        assert(skewWords->count() == 0 && undoSkew->isVisible() && undoSkew->isEnabled());
+        assert(skewWords->count() == 1 && skewBlocks->count()==1 && undoSkew->isVisible() && undoSkew->isEnabled());
         skewUndo->trigger();
         assert(skewWords->count() == 1 && !undoSkew->isVisible());
     }
