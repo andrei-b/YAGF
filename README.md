@@ -11,8 +11,7 @@ approve corrections before exporting your document.
 
 - **AI page understanding.** Detect text, formulas, tables, and pictures with
   PP-DocLayoutV3. Review detected regions and route text and equations to
-  independently selected recognition models. Resplit a selected block with AI,
-  or refine formula boundaries using nearby symbol distances.
+  independently selected recognition models. Resplit a selected block with AI.
 - **AI-assisted correction.** Ask a vision model to inspect an uncertain word or
   passage using its source crop, nearby text, and document context. Compare its
   suggested readings and choose which correction to apply.
@@ -171,6 +170,14 @@ the desktop package does not download models or enable services automatically.
 - [Native OCR training and adaptation](service/NATIVE_TRAINING.md)
 - [Symbol training service](service/SYMBOL_TRAINING.md)
 - [OCR experiments and benchmark CLI](docs/experiments.md)
+
+### Recognition evidence and decisions
+
+Every recognition attempt is retained in the project: engine and model identity, reported version/hash, exact input PNG, source-file and preprocessing SHA-256 fingerprints, original coordinate mappings, full structured output, elapsed time, errors and warnings. Tesseract also records its version, traineddata fingerprints and original TSV. Remote retries retain their individual responses and crop coordinates. Shared input images and coordinate frames are stored once per page.
+
+Open **Review OCR readings → Recognition history…** to inspect a run and its crop, output, preprocessing, coordinate frames and decisions. Accepting a companion or specialist reading records an acceptance; **Reject this reading** or keeping a specialist's original text records a rejection. Review choices apply when you save the review window and support Undo/Redo.
+
+Rerunning OCR, recognizing selected blocks and changing preprocessing retain earlier evidence. Failed and cancelled attempts are retained without replacing the current text. Unknown model versions, hashes and original-image mappings remain explicitly unknown; YAGF cannot recover processing steps that a remote service does not report. Older projects remain readable. History increases project size; oversized or invalid history produces a save error instead of being silently removed.
 
 ## Build and test from source
 

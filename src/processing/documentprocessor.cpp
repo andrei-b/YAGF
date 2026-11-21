@@ -13,8 +13,11 @@
 #include "pagesource.h"
 #include "remoteocrengine.h"
 #include "ocrreadings.h"
+#include "recognitionrecorder.h"
 
 #include <QFile>
+#include <QJsonDocument>
+#include <QDateTime>
 #include <QFileInfo>
 #include <QImageReader>
 #include <QRegularExpression>
@@ -95,6 +98,8 @@ DocumentProcessor::DocumentProcessor(QObject *parent, const core::OcrDocument *s
         OcrJobResult result = ocrWatcher.result();
         const bool batch = job == Job::BatchOcr;
         const bool split = job == Job::SplitBlocks;
+        if((cancellationRequested || !result.outcome) && !result.historyPage.recognitionHistory.runs.isEmpty())
+            emit recognitionHistoryReady(result.historyPage);
         if (cancellationRequested || (!result.outcome && result.outcome.error().cancelled)) {
             cancellationRequested = false;
             batchPages.clear();
@@ -137,6 +142,7 @@ DocumentProcessor::DocumentProcessor(QObject *parent, const core::OcrDocument *s
                     crop.language = page.language;
                     crop.renderDpi = page.renderDpi;
                     crop.ocrReadings = core::cropOcrReadings(page.ocrReadings,block.bounds);
+                    crop.recognitionHistory=page.recognitionHistory;
                     crop.recognitionEvidence=page.recognitionEvidence;
                     for(auto &reading:crop.recognitionEvidence) {
                         auto &area=reading.provenance.inputArea;
@@ -410,6 +416,8 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
     const int jobDpi = pagedSource ? (batch ? selectedRenderDpi(options.pageNumber) : renderedDpi(options.pageNumber)) : 150;
     const QSize savedImageSize = savedPage ? QSize(savedPage->width, savedPage->height) : QSize{};
     const auto savedCoordinates=batch?batchCoordinates:(savedPage?savedPage->coordinates:core::CoordinatePipeline{});
+    const auto preprocessing=batch?batchPages.at(batchIndex).preprocessing:(savedPage?savedPage->preprocessing:core::PreprocessSettings{});
+    const QString sourcePath=book?book->sourcePath:path;
     const int savedDpi = savedPage ? savedPage->renderDpi : jobDpi;
     if (book && engine->id() == "tesseract") {
         options.language = TesseractEngine::modelLanguage(options.language);
@@ -478,7 +486,11 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
     ocrStop = std::stop_source{};
     const std::stop_token token = ocrStop.get_token();
     if (!wasBusy) emit busyChanged(true);
-    ocrWatcher.setFuture(QtConcurrent::run([this, path, image, options, region, token, formulaRegions, pagedSource, jobDpi, savedImageSize, savedDpi, batch, blocks, smart, automatic, localText, splitOnly, selected, rawOutput, symbolRules, unicodeFormulas, layoutService, automaticLayout, deferredCompanion, parallelFormulas, savedCoordinates] {
+    ocrWatcher.setFuture(QtConcurrent::run([this, path, image, options, region, token, formulaRegions, pagedSource, jobDpi, savedImageSize, savedDpi, batch, blocks, smart, automatic, localText, splitOnly, selected, rawOutput, symbolRules, unicodeFormulas, layoutService, automaticLayout, deferredCompanion, parallelFormulas, savedCoordinates, preprocessing, sourcePath]() mutable {
+        options.history=std::make_shared<RecognitionRecorder>(recognitionSourceHash(sourcePath,token),core::preprocessingEvidence(preprocessing,jobDpi));
+        const auto startedUtc=QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+        QElapsedTimer elapsed;elapsed.start();QImage auditInput;core::OcrPage auditPage;
+        auto perform=[&]() -> OcrJobResult {
         OcrJobResult result;
         result.selected = selected;
         QImage input = image;
@@ -493,6 +505,14 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
             }
         }
         const int dpi = pagedSource && !batch && savedImageSize == input.size() ? savedDpi : jobDpi;
+        auditInput=input;
+        auditPage.id=QStringLiteral("page-%1").arg(options.pageNumber);auditPage.number=options.pageNumber;
+        auditPage.width=auditPage.sourceWidth=input.width();auditPage.height=auditPage.sourceHeight=input.height();
+        auditPage.renderDpi=dpi;auditPage.preprocessing=preprocessing;auditPage.coordinates=savedCoordinates;
+        options.historyCoordinates=savedCoordinates;
+        if(!options.historyCoordinates.isDefined()) {
+            options.historyCoordinates.sourceSize=input.size();options.historyCoordinates.sourceFrame="ocr-input";
+        }
         if (!region.isEmpty()) {
             const QRect bounded = region.intersected(input.rect());
             if (bounded.isEmpty()) {
@@ -502,6 +522,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
             }
             result.offset = bounded.topLeft();
             result.region = bounded;
+            options=croppedOcrOptions(options,bounded);
             input = input.copy(bounded);
         }
         if (pagedSource && options.preserveFormatting) {
@@ -530,7 +551,15 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
             for (auto &block : local) block.bounds.translate(-result.offset);
             if (automaticLayout) {
                 if (options.progress) options.progress(QStringLiteral("Analyzing AI page layout"),0,0);
-                auto layout=detectPageAreas(input,*layoutService,token);
+                auto layoutOptions=options;layoutOptions.historyRole="layout";
+                auto run=options.history->begin("ai-page-layout","auto",input,layoutOptions);
+                run.preprocessing["layout_threshold"]=layoutService->threshold;
+                run.preprocessingHash=core::sha256(QJsonDocument(run.preprocessing).toJson(QJsonDocument::Compact));
+                QElapsedTimer timer;timer.start();
+                QJsonObject output;auto layout=detectPageAreas(input,*layoutService,token,&output);
+                if(layout)run.model=layout->model;
+                options.history->finish(std::move(run),timer.elapsed(),layout?"succeeded":layout.error().cancelled?"cancelled":"failed",
+                    layout?QString():layout.error().message,output);
                 if (!layout) {
                     if (layout.error().cancelled || token.stop_requested()) {result.outcome=std::unexpected(layout.error());return result;}
                     result.warnings.append(QStringLiteral("AI page layout failed: %1 Used the existing blocks and local detection.").arg(layout.error().message));
@@ -556,7 +585,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
                     result.outcome = std::unexpected(OcrError{QStringLiteral("The selected region is outside the image.")});
                     return result;
                 }
-                auto settings = options;
+                auto settings = croppedOcrOptions(options,crop);
                 if (!block.language.isEmpty()) settings.language = TesseractEngine::modelLanguage(block.language);
                 auto reading = engine->recognize(input.copy(crop), settings, token);
                 if (!reading) { result.outcome = std::unexpected(reading.error()); return result; }
@@ -624,16 +653,16 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
                 QVector<QRect> localAreas = formulaRegions;
                 for (auto &area : localAreas) area.translate(-result.offset);
                 result.warnings = collectSpecialistReadings(page, input, localAreas,
-                    formulaEngine.get(), proseEngine.get(), token);
+                    formulaEngine.get(), proseEngine.get(), token,options);
                 if (token.stop_requested()) result.outcome = std::unexpected(OcrError{{}, true});
             }
             if (result.outcome && !rawOutput && !splitOnly && engine->capabilities().supportsWordBoxes) {
-                auto retries = collectSpellingFormulaReadings(page, input, token,options.progress,formulaRecognizer.get());
+                auto retries = collectSpellingFormulaReadings(page, input, token,options.progress,formulaRecognizer.get(),options);
                 if (!retries) result.outcome = std::unexpected(retries.error());
                 else result.warnings += *retries;
             }
             if (result.outcome && !rawOutput && !splitOnly) {
-                auto retries = collectFormulaTextReadings(page, input, options.language, token,options.progress);
+                auto retries = collectFormulaTextReadings(page, input, options.language, token,options.progress,options);
                 if (!retries) result.outcome = std::unexpected(retries.error());
                 else result.warnings += *retries;
             }
@@ -662,6 +691,17 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
             if(result.outcome)core::attachRecognitionCoordinates(page);
             if (token.stop_requested()) result.outcome = std::unexpected(OcrError{{}, true});
         }
+        return result;
+        };
+        auto result=perform();
+        if(!auditInput.isNull()) {
+            auto context=options;context.historyRole="pipeline";context.historyCoordinates=savedCoordinates;context.historyOffset={};
+            auto run=options.history->begin("yagf-pipeline","YAGF",auditInput,context);run.startedUtc=startedUtc;
+            options.history->finish(std::move(run),elapsed.elapsed(),result.outcome?"succeeded":result.outcome.error().cancelled?"cancelled":"failed",
+                result.outcome?QString():result.outcome.error().message,{}, {},result.warnings);
+        }
+        auditPage.recognitionHistory=options.history->snapshot();result.historyPage=std::move(auditPage);
+        if(result.outcome)result.outcome->recognitionHistory=result.historyPage.recognitionHistory;
         return result;
     }));
 }

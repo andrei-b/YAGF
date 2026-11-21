@@ -59,7 +59,7 @@ bool dictionaryText(const core::OcrPage &reading, core::SpellChecker &checker)
 }
 
 std::expected<QStringList, OcrError> collectSpellingFormulaReadings(
-    core::OcrPage &page, const QImage &image, std::stop_token stop, OcrProgress progress, IOcrEngine *formulaProvider)
+    core::OcrPage &page, const QImage &image, std::stop_token stop, OcrProgress progress, IOcrEngine *formulaProvider, const OcrOptions &context)
 {
     if (stop.stop_requested()) return std::unexpected(OcrError{{}, true});
     if (!formulaProvider && MathOcrEngine::pythonPath().isEmpty()) return QStringList{};
@@ -109,7 +109,8 @@ std::expected<QStringList, OcrError> collectSpellingFormulaReadings(
     QList<QRect> boxes;
     for (const auto &candidate : candidates) boxes.append(candidate.bounds.adjusted(-2, -2, 2, 2).intersected(image.rect()));
     if (progress) progress(QStringLiteral("Checking suspicious text for formulas"),0,boxes.size());
-    auto result = recognizeFormulaBoxes(formulaProvider, image, {.language = "auto", .pageNumber = page.number,.progress=progress}, stop, boxes, &warnings,30000);
+    auto settings=context; settings.language="auto"; settings.pageNumber=page.number; settings.progress=progress; settings.historyRole="spelling-formula";
+    auto result = recognizeFormulaBoxes(formulaProvider,image,settings,stop,boxes,&warnings,30000);
     if (!result) {
         if (result.error().cancelled || stop.stop_requested()) return std::unexpected(result.error());
         warnings.append(result.error().message + QStringLiteral(" Kept native OCR for suspicious words."));
@@ -124,13 +125,13 @@ std::expected<QStringList, OcrError> collectSpellingFormulaReadings(
         QStringList tokens;
         for (int i : candidate.indices) tokens.append(page.words[i].text);
         if (reading.text.simplified() == tokens.join(' ').simplified()) continue;
-        page.words[candidate.indices.first()].alternative = {reading.readingEngine, reading.text, tokens, true};
+        page.words[candidate.indices.first()].alternative = {reading.readingEngine, reading.text, tokens, true, [&]{QStringList ids;for(const auto &run:result->recognitionHistory.runs)ids.append(run.id);return ids;}()};
     }
     return warnings;
 }
 
 std::expected<QStringList, OcrError> collectFormulaTextReadings(
-    core::OcrPage &page, const QImage &image, const QString &language, std::stop_token stop, OcrProgress progress)
+    core::OcrPage &page, const QImage &image, const QString &language, std::stop_token stop, OcrProgress progress, const OcrOptions &context)
 {
     if (stop.stop_requested()) return std::unexpected(OcrError{{}, true});
     core::SpellChecker checker;
@@ -162,7 +163,8 @@ std::expected<QStringList, OcrError> collectFormulaTextReadings(
         QImage crop(bounds.size()+QSize(16, 16), QImage::Format_RGB32);
         crop.fill(Qt::white);
         { QPainter painter(&crop); painter.drawImage(QPoint(8, 8), image, bounds); }
-        auto reading = text.recognize(crop, {.language = selected, .pageNumber = page.number, .singleTextLine = true}, stop);
+        auto settings=croppedOcrOptions(context,bounds,8); settings.language=selected; settings.pageNumber=page.number; settings.singleTextLine=true; settings.historyRole="formula-text";
+        auto reading = text.recognize(crop,settings,stop);
         if (!reading) {
             if (reading.error().cancelled || stop.stop_requested()) return std::unexpected(reading.error());
             warnings.append(reading.error().message + QStringLiteral(" Kept the formula reading."));
@@ -172,11 +174,12 @@ std::expected<QStringList, OcrError> collectFormulaTextReadings(
         }
         appendRecognitionEvidence(page, *reading, bounds.topLeft()-QPoint(8, 8));
         if (!dictionaryText(*reading, checker)) continue;
+        QStringList historyIds;for(const auto &run:reading->recognitionHistory.runs)historyIds.append(run.id);
         core::OcrDocument excerpt;
         excerpt.pages.append(std::move(*reading));
         const QString alternative = excerpt.plainText().trimmed();
         if (alternative.isEmpty() || alternative.size() > 16384 || alternative == word.text) continue;
-        word.alternative = {text.id(), alternative, {word.text}, false};
+        word.alternative = {text.id(), alternative, {word.text}, false,historyIds};
     }
     return warnings;
 }

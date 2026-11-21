@@ -1,4 +1,5 @@
 #include "projectfile.h"
+#include "coordinateframes.h"
 
 #include <QFile>
 #include <QCryptographicHash>
@@ -40,6 +41,10 @@ bool fail(QString *error, const QString &message)
 
 bool ProjectFile::save(const QString &path, const OcrDocument &document, QString *error)
 {
+    for (const auto &page:document.pages) {
+        auto valid=validateRecognitionHistory(page.recognitionHistory);
+        if(!valid) { if(error)*error=valid.error(); return false; }
+    }
     const QString temporaryPath = path + QLatin1Char('.') +
         QUuid::createUuid().toString(QUuid::WithoutBraces) + QStringLiteral(".tmp");
     QFile file(temporaryPath);
@@ -53,7 +58,14 @@ bool ProjectFile::save(const QString &path, const OcrDocument &document, QString
         if (!relative.startsWith(QStringLiteral("../")) && relative != QStringLiteral("..") &&
             !QDir::isAbsolutePath(relative)) stored.sourcePath = relative;
     }
-    const QJsonObject project{{"project_version", 2}, {"document", stored.toJson()}};
+    const auto documentJson=stored.toJson();
+    for(const auto &page:documentJson["pages"].toArray()) {
+        CoordinateFrames frames;
+        if(auto valid=frames.load(page.toObject()["recognition_frames"].toObject());!valid) {
+            if(error)*error=valid.error();file.close();QFile::remove(temporaryPath);return false;
+        }
+    }
+    const QJsonObject project{{"project_version", 2}, {"document", documentJson}};
     const QByteArray bytes = QJsonDocument(project).toJson(QJsonDocument::Indented);
     if (file.write(bytes) != bytes.size() || !file.flush() || ::fsync(file.handle()) != 0) {
         if (error) *error = file.error() == QFileDevice::NoError

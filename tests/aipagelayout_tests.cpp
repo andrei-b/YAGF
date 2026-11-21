@@ -75,6 +75,22 @@ private slots:
         QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,directory.path());
         QSettings::setPath(QSettings::NativeFormat,QSettings::UserScope,directory.path());
     }
+    void historyKeepsEveryLayoutAnalysisAndOriginalCoordinates() {
+        Server server;QSettings("YAGF","YAGF Revival").setValue("layout/url",server.url().toString());
+        ui::AiPageLayoutDialog dialog(sample(),{});
+        processing::OcrOptions context;context.historyCoordinates.sourceSize={400,300};
+        context=processing::croppedOcrOptions(context,{40,20,sample().width(),sample().height()});
+        dialog.enableHistory(context,{},core::preprocessingEvidence({},150));dialog.show();
+        QTRY_COMPARE_WITH_TIMEOUT(server.requests,1,2000);
+        QTRY_VERIFY_WITH_TIMEOUT(dialog.findChild<QPushButton *>("analyzePageAreas")->isEnabled(),2000);
+        auto history=dialog.recordedHistory();QCOMPARE(history.runs.size(),1);QVERIFY(history.runs[0].output.contains("areas"));
+        QCOMPARE(history.runs[0].processedCrop.topLeft(),QPoint(40,20));QCOMPARE(history.runs[0].role,"layout");
+        QVERIFY(core::validateRecognitionHistory(history));
+        dialog.findChild<QPushButton *>("analyzePageAreas")->click();
+        QTRY_VERIFY_WITH_TIMEOUT(dialog.findChild<QPushButton *>("analyzePageAreas")->isEnabled(),2000);
+        QCOMPARE(dialog.recordedHistory().runs.size(),2);dialog.done(QDialog::Rejected);
+        QCOMPARE(dialog.recordedHistory().runs.size(),2);
+    }
     void legacyLayoutSettingsRemainReadable() {
         QSettings current("YAGF","YAGF Revival");current.remove("layout/url");
         QSettings().setValue("layout/url","http://127.0.0.1:9871");

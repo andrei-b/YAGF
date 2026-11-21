@@ -1,4 +1,5 @@
 #include "wordeditor.h"
+#include "ocrreadings.h"
 
 #include <QSet>
 #include <QRegularExpression>
@@ -194,6 +195,11 @@ std::expected<OcrPage, QString> WordEditor::acceptSpecialist(const OcrPage &page
         return std::unexpected(QStringLiteral("This reading is empty, too long or no longer matches the page."));
     OcrPage edited = page;
     const auto &alternative = page.words[anchor].alternative;
+    if(!alternative.historyIds.isEmpty()) {
+        OcrReading evidence;evidence.historyIds=alternative.historyIds;
+        const auto choice=text==alternative.text?QStringLiteral("accepted"):text==alternative.sourceTokens.join(' ')?QStringLiteral("rejected"):QString();
+        if(!choice.isEmpty())recordReadingDecision(edited,page,span,evidence,alternative.text,choice);
+    }
     const QString engine = text == alternative.text ? alternative.engine : QString{};
     edited.words[anchor].alternative = {};
     if (text == alternative.sourceTokens.join(' ')) {

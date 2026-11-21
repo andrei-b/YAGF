@@ -5,6 +5,7 @@
 #include "rendersettings.h"
 #include "symbolrules.h"
 #include "recognitionresult.h"
+#include "recognitionhistory.h"
 
 #include <QJsonArray>
 #include <QJsonObject>
@@ -20,6 +21,7 @@ struct SpecialistReading {
     QString text;
     QStringList sourceTokens;
     bool formula = false;
+    QStringList historyIds;
 };
 
 struct OcrWord {
@@ -91,6 +93,7 @@ struct OcrReadingItem {
     int block = 0, paragraph = 0, line = 0;
     bool layoutBlock = false;
     bool geometryInferred = false;
+    QString historyId; // The exact crop/run that produced this item.
 };
 
 // Independent engine output. It never replaces the primary text automatically.
@@ -99,6 +102,7 @@ struct OcrReading {
     QRect area;
     QVector<OcrReadingItem> items;
     QVector<RecognitionResult> recognitionEvidence;
+    QStringList historyIds; // Stable references into the page's immutable run history.
 };
 
 struct OcrPage {
@@ -119,6 +123,7 @@ struct OcrPage {
     QVector<OcrWord> pendingCorrections; // Ambiguous retention is reviewed explicitly.
     QVector<OcrReading> ocrReadings;
     QVector<RecognitionResult> recognitionEvidence; // Immutable model output, separate from edits.
+    RecognitionHistory recognitionHistory;
     CoordinatePipeline coordinates;
     QHash<QString, GeometryAnchor> sourceGeometry;
     [[nodiscard]] QVector<int> specialistSpan(int start) const;

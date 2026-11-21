@@ -103,6 +103,7 @@ OcrPage rescalePageGeometry(const OcrPage &source, int width, int height, int so
 
 RetentionResult retainCorrections(OcrPage &fresh, const OcrPage &previous, bool preserveFormatting)
 {
+    auto history=previous.recognitionHistory;mergeRecognitionHistory(history,fresh.recognitionHistory);fresh.recognitionHistory=std::move(history);
     RetentionResult report;
     OcrPage old;
     bool compatible=true;

@@ -6,13 +6,13 @@
 #include "latexdocumentexporter.h"
 #include "verifiedsampleexporter.h"
 #include "mainwindow.h"
+#include <QScopeGuard>
 #include "blockminiaturelist.h"
 #include "projectfile.h"
 #include "preprocessdialog.h"
 #include "restorationdialog.h"
 #include <QBuffer>
 #include "imageprocessor.h"
-#include "mathblockgravity.h"
 #include "layoutdialog.h"
 #include "aipagelayoutdialog.h"
 #include "aipageicons.h"
@@ -679,9 +679,6 @@ MainWindow::MainWindow()
     aiPageAreasAction->setObjectName("aiPageAreasAction");
     aiPageAreasAction->setIconVisibleInMenu(true);
     aiPageAreasAction->setEnabled(false);
-    refineBlocksAction=pageToolsMenu->addAction(tr("Refine blocks"),this,&MainWindow::refinePageBlocks);
-    refineBlocksAction->setObjectName("refineBlocksAction");refineBlocksAction->setEnabled(false);
-    refineBlocksAction->setToolTip(tr("Pull nearby small marks into formula blocks when they are closer to formula ink. Adjust adjacent boundaries without cutting text. Undo is available."));
     aiSplitBlockAction=pageToolsMenu->addAction(aiPageAreasIcon(),tr("AI split selected block…"),this,&MainWindow::splitSelectedBlockWithAi);
     aiSplitBlockAction->setObjectName("aiSplitBlockAction");aiSplitBlockAction->setEnabled(false);
     verification = new VerificationController(this, document);
@@ -1059,7 +1056,7 @@ MainWindow::MainWindow()
     splitOptions->setPopupMode(QToolButton::InstantPopup);
     auto *splitMenu = new QMenu(splitOptions);
     splitMenu->addAction(aiPageAreasAction);
-    splitMenu->addAction(aiSplitBlockAction);splitMenu->addAction(refineBlocksAction);
+    splitMenu->addAction(aiSplitBlockAction);
     splitOptions->setMenu(splitMenu);
     splitRow->addWidget(splitOptions);
     blocksLayout->addLayout(splitRow);
@@ -1121,7 +1118,7 @@ MainWindow::MainWindow()
         button->setObjectName("imageSmartSplitButton");
         auto *menu = new QMenu(button);
         menu->addAction(aiPageAreasAction);
-        menu->addAction(aiSplitBlockAction);menu->addAction(refineBlocksAction);
+        menu->addAction(aiSplitBlockAction);
         button->setMenu(menu);
         button->setPopupMode(QToolButton::MenuButtonPopup);
     }
@@ -1419,6 +1416,13 @@ MainWindow::MainWindow()
         undoStack.push(new ReplacePageCommand(document, currentPage, std::move(page), tr("Smart split")));
         status->setText(tr("%1 blocks detected. Review their types, then click Recognize.").arg(count));
     });
+    connect(&processor,&DocumentProcessor::recognitionHistoryReady,this,[this](const OcrPage &evidence) {
+        const auto *previous=document.page(evidence.number);
+        auto page=previous?*previous:evidence;
+        core::mergeRecognitionHistory(page.recognitionHistory,evidence.recognitionHistory);
+        document.sourcePath=originalPath;document.totalPages=pageCount;
+        undoStack.push(new ReplacePageCommand(document,evidence.number,std::move(page),tr("Save recognition history")));
+    });
     connect(&processor, &DocumentProcessor::recognized, this,
             [this](OcrPage newPage, const QPoint &offset, const QRect &region) {
         QImageReader reader(imagePath);
@@ -1664,7 +1668,7 @@ void MainWindow::setBusy(bool busy)
         recognitionProgress->hide();
         recognitionProgress->reset();
     }
-    const bool blocked = busy || exportBusy || projectLoading || blockRefinementBusy;
+    const bool blocked = busy || exportBusy || projectLoading;
     verification->setBusy(blocked);
     symbolRulesAction->setEnabled(!blocked && !originalPath.isEmpty());
     teachSymbolAction->setEnabled(!blocked && !imagePath.isEmpty() && !editorPending && !selectedWords.isEmpty());
@@ -1715,7 +1719,7 @@ void MainWindow::updatePageControls()
     const bool available = !processor.isBusy() && !exportBusy && !projectLoading;
     if (nativeTrainingAction) nativeTrainingAction->setEnabled(available && !originalPath.isEmpty());
     if (ocrServicesAction) ocrServicesAction->setEnabled(available);
-    if (ocrReadingsAction) ocrReadingsAction->setEnabled(available && !imagePath.isEmpty() && document.page(currentPage) && !document.page(currentPage)->ocrReadings.isEmpty());
+    if (ocrReadingsAction) ocrReadingsAction->setEnabled(available && !imagePath.isEmpty() && document.page(currentPage) && (!document.page(currentPage)->ocrReadings.isEmpty() || !document.page(currentPage)->recognitionHistory.runs.isEmpty()));
     if (renderingAction) renderingAction->setEnabled(available && processing::isPagedSource(originalPath));
     if (preserveFormattingAction) preserveFormattingAction->setEnabled(available);
     if (rawOcrOutputAction) rawOcrOutputAction->setEnabled(available);
@@ -2642,7 +2646,7 @@ void MainWindow::configureOcrServices()
 void MainWindow::reviewOcrReadings()
 {
     if (processor.isBusy() || exportBusy || imagePath.isEmpty() || !maybeApplyEditor()) return;
-    const auto *page=document.page(currentPage); if (!page || page->ocrReadings.isEmpty()) return;
+    const auto *page=document.page(currentPage); if (!page || (page->ocrReadings.isEmpty() && page->recognitionHistory.runs.isEmpty())) return;
     QImage image(imagePath); if (image.isNull() || image.size()!=QSize(page->width,page->height)) {showError(tr("The page image does not match the saved OCR geometry.")); return;}
     OcrReadingsDialog dialog(*page,std::move(image),this);
     if (dialog.exec()!=QDialog::Accepted || !dialog.hasChanges()) return;
@@ -2940,7 +2944,7 @@ void MainWindow::showDocument()
     formattedPdfAction->setEnabled(!processor.isBusy() && !exportBusy && document.wordCount() > 0);
     nextSpecialistAction->setEnabled(!processor.isBusy() && !exportBusy && !imagePath.isEmpty() &&
         page && !page->words.isEmpty());
-    ocrReadingsAction->setEnabled(!processor.isBusy() && !exportBusy && !imagePath.isEmpty() && page && !page->ocrReadings.isEmpty());
+    ocrReadingsAction->setEnabled(!processor.isBusy() && !exportBusy && !imagePath.isEmpty() && page && (!page->ocrReadings.isEmpty() || !page->recognitionHistory.runs.isEmpty()));
     if (!page) {
         ocrButton->setToolTip(tr("Recognize the whole page"));
         selectedImageRegion = -1;
@@ -3117,7 +3121,7 @@ void MainWindow::refreshImageToolbar()
 {
     if (!rotateLeftAction) return;
     const bool selected = !selectedRegionIds.isEmpty();
-    const bool ready = !processor.isBusy() && !exportBusy && !projectLoading && !blockRefinementBusy && !imagePath.isEmpty();
+    const bool ready = !processor.isBusy() && !exportBusy && !projectLoading && !imagePath.isEmpty();
     rotateLeftAction->setVisible(!selected);
     rotateRightAction->setVisible(!selected);
     correctSkewAction->setVisible(!selected);
@@ -3130,8 +3134,6 @@ void MainWindow::refreshImageToolbar()
     imageSplitAction->setEnabled(ready);
     aiPageAreasAction->setEnabled(ready);
     const auto *page = document.page(currentPage);
-    refineBlocksAction->setEnabled(ready && page && page->imageRegions.size()>1 &&
-        std::ranges::any_of(page->imageRegions,[](const auto &r){return !r.notText && r.content=="math";}));
     aiSplitBlockAction->setEnabled(ready && page && selectedRegionIds.size()==1);
     imageClearBlocksAction->setEnabled(ready && page && !page->imageRegions.isEmpty());
     for (auto *action : {imageRecognizeBlockAction, imageBlockOptionsAction, imageRemoveBlockAction}) {
@@ -3278,12 +3280,27 @@ QImage MainWindow::displayedPageImage() const
 
 void MainWindow::classifyPageAreas()
 {
-    if (processor.isBusy() || exportBusy || projectLoading || blockRefinementBusy || imagePath.isEmpty() || !maybeApplyEditor()) return;
+    if (processor.isBusy() || exportBusy || projectLoading || imagePath.isEmpty() || !maybeApplyEditor()) return;
     const QImage image=displayedPageImage();
     if (image.isNull()) { showError(tr("Could not read the page image for layout analysis.")); return; }
     const auto *old = document.page(currentPage);
     AiPageLayoutDialog dialog(image, old ? old->imageRegions : QVector<ImageRegion>{}, this, currentPage, layoutSessionToken);
+    processing::OcrOptions context;context.pageNumber=currentPage;
+    auto mapping=ImageProcessor::coordinatePipeline(rawImage.size(),displayedPreprocessing,
+        processing::pageSourceKind(originalPath)==processing::PageSourceKind::Pdf?processor.renderedDpi(currentPage):0);
+    if(mapping)context.historyCoordinates=*mapping;
+    dialog.enableHistory(context,originalPath,core::preprocessingEvidence(displayedPreprocessing,processor.renderedDpi(currentPage)));
     const int outcome=dialog.exec(); layoutSessionToken=dialog.sessionToken();updatePageLayoutService();
+    const auto history=dialog.recordedHistory();bool historyStored=false;
+    auto preserve=qScopeGuard([&] {
+        if(historyStored || history.runs.isEmpty())return;
+        auto page=document.page(currentPage)?*document.page(currentPage):OcrPage{};
+        if(!document.page(currentPage)){page.id=QStringLiteral("page-%1").arg(currentPage);page.number=currentPage;
+            page.width=image.width();page.height=image.height();page.sourceWidth=rawImage.width();page.sourceHeight=rawImage.height();
+            page.preprocessing=displayedPreprocessing;if(mapping)page.coordinates=*mapping;}
+        core::mergeRecognitionHistory(page.recognitionHistory,history);
+        undoStack.push(new ReplacePageCommand(document,currentPage,std::move(page),tr("Record layout recognition history")));
+    });
     if (outcome != QDialog::Accepted) return;
     OcrPage page = old ? *old : OcrPage{};
     if (!old) {
@@ -3296,56 +3313,43 @@ void MainWindow::classifyPageAreas()
     }
     page.language = languageEdit->text();
     page.imageRegions = dialog.regions();
+    core::mergeRecognitionHistory(page.recognitionHistory,history);historyStored=true;
     selectedRegionIds.clear(); selectedImageRegion = -1;
     undoStack.push(new ReplacePageCommand(document, currentPage, std::move(page), tr("AI page areas")));
     status->setText(tr("Page areas updated. Review the blocks, then Recognize to refresh the OCR text."));
 }
 
-void MainWindow::refinePageBlocks()
-{
-    if(processor.isBusy() || exportBusy || projectLoading || blockRefinementBusy || imagePath.isEmpty() || !maybeApplyEditor())return;
-    const auto *page=document.page(currentPage);if(!page)return;
-    const QImage image=displayedPageImage();if(image.isNull()){showError(tr("Could not read the page image."));return;}
-    const int number=currentPage;const auto before=page->imageRegions;
-    std::stop_source cancellation;
-    QProgressDialog progress(tr("Comparing small marks with formula and text ink…"),tr("Cancel"),0,0,this);
-    progress.setObjectName("refineBlocksProgress");progress.setWindowTitle(tr("Refine blocks"));progress.setWindowModality(Qt::WindowModal);
-    progress.setMinimumDuration(0);progress.setAutoClose(false);
-    QFutureWatcher<std::expected<processing::MathBlockRefinement,QString>> watcher;
-    connect(&progress,&QProgressDialog::canceled,&progress,[&]{cancellation.request_stop();});
-    connect(&watcher,&QFutureWatcherBase::finished,&progress,&QDialog::accept);
-    blockRefinementBusy=true;setBusy(true);refreshImageToolbar();
-    watcher.setFuture(QtConcurrent::run([image,before,token=cancellation.get_token()]{return processing::refineMathBlocks(image,before,token);}));
-    progress.exec();
-    if(!watcher.isFinished()){cancellation.request_stop();watcher.waitForFinished();}
-    blockRefinementBusy=false;setBusy(false);refreshImageToolbar();
-    if(cancellation.stop_requested() || progress.wasCanceled()){status->setText(tr("Block refinement cancelled."));return;}
-    auto refined=watcher.result();if(!refined){showError(refined.error());return;}
-    const auto *current=document.page(number);
-    if(currentPage!=number || !current || current->imageRegions.size()!=before.size())return;
-    for(int i=0;i<before.size();++i)if(current->imageRegions[i].id!=before[i].id || current->imageRegions[i].bounds!=before[i].bounds)return;
-    if(!refined->changedBlocks){status->setText(tr("No confident math boundary changes found."));return;}
-    OcrPage edited=*current;edited.imageRegions=std::move(refined->regions);
-    undoStack.push(new ReplacePageCommand(document,number,std::move(edited),tr("Refine blocks")));
-    status->setText(tr("%1 small elements moved into formulas; %2 block boundaries updated. Recognize to refresh the text.").arg(refined->movedComponents).arg(refined->changedBlocks));
-}
-
 void MainWindow::splitSelectedBlockWithAi()
 {
-    if(processor.isBusy() || exportBusy || projectLoading || blockRefinementBusy || imagePath.isEmpty() || selectedRegionIds.size()!=1 || !maybeApplyEditor())return;
+    if(processor.isBusy() || exportBusy || projectLoading || imagePath.isEmpty() || selectedRegionIds.size()!=1 || !maybeApplyEditor())return;
     const auto *page=document.page(currentPage);if(!page)return;
     const auto parent=std::ranges::find_if(page->imageRegions,[&](const auto &r){return selectedRegionIds.contains(r.id);});
     if(parent==page->imageRegions.end())return;
     const ImageRegion original=*parent;const QImage image=displayedPageImage();
     if(image.isNull() || !image.rect().contains(original.bounds)){showError(tr("The selected block lies outside the displayed page."));return;}
     AiPageLayoutDialog dialog(image.copy(original.bounds),{},this,currentPage,layoutSessionToken,true);
+    processing::OcrOptions context;context.pageNumber=currentPage;context.historyCoordinates=page->coordinates;
+    if(!context.historyCoordinates.isDefined()) {
+        auto mapping=ImageProcessor::coordinatePipeline(rawImage.size(),displayedPreprocessing,
+            processing::pageSourceKind(originalPath)==processing::PageSourceKind::Pdf?processor.renderedDpi(currentPage):0);
+        if(mapping)context.historyCoordinates=*mapping;
+    }
+    context=processing::croppedOcrOptions(context,original.bounds);
+    dialog.enableHistory(context,originalPath,core::preprocessingEvidence(displayedPreprocessing,processor.renderedDpi(currentPage)));
     const int outcome=dialog.exec();layoutSessionToken=dialog.sessionToken();updatePageLayoutService();
+    const auto history=dialog.recordedHistory();bool historyStored=false;
+    auto preserve=qScopeGuard([&] {
+        const auto *saved=document.page(currentPage);if(historyStored || history.runs.isEmpty() || !saved)return;
+        auto revised=*saved;core::mergeRecognitionHistory(revised.recognitionHistory,history);
+        undoStack.push(new ReplacePageCommand(document,currentPage,std::move(revised),tr("Record layout recognition history")));
+    });
     if(outcome!=QDialog::Accepted)return;
     auto subdivisions=dialog.regions();if(subdivisions.size()<2)return;
     page=document.page(currentPage);if(!page)return;
     const auto found=std::ranges::find_if(page->imageRegions,[&](const auto &r){return r.id==original.id && r.bounds==original.bounds;});
     if(found==page->imageRegions.end() || page->imageRegions.size()-1+subdivisions.size()>1000)return;
-    OcrPage edited=*page;const int index=found-page->imageRegions.begin();edited.imageRegions.removeAt(index);
+    OcrPage edited=*page;core::mergeRecognitionHistory(edited.recognitionHistory,history);
+    const int index=found-page->imageRegions.begin();edited.imageRegions.removeAt(index);
     for(int i=0;i<subdivisions.size();++i) {
         auto &region=subdivisions[i];region.bounds.translate(original.bounds.topLeft());
         if(!original.bounds.contains(region.bounds))return;
@@ -3354,6 +3358,7 @@ void MainWindow::splitSelectedBlockWithAi()
         edited.imageRegions.insert(index+i,region);
     }
     selectedRegionIds.clear();selectedImageRegion=-1;
+    historyStored=true;
     undoStack.push(new ReplacePageCommand(document,currentPage,std::move(edited),tr("AI split block")));
     status->setText(tr("Selected block replaced with %1 subdivisions. Review their types, then Recognize to refresh the text.").arg(subdivisions.size()));
 }
@@ -3432,7 +3437,7 @@ void MainWindow::showBlockContextMenu(int index, const QPoint &globalPosition)
             undoStack.push(new ReplacePageCommand(document, currentPage, std::move(changed), tr("Set block content")));
         });
     }
-    menu.addAction(aiSplitBlockAction);menu.addAction(refineBlocksAction);
+    menu.addAction(aiSplitBlockAction);
     auto *copy=menu.addAction(QIcon::fromTheme("edit-copy",style()->standardIcon(QStyle::SP_FileIcon)),tr("Copy block as image"));
     copy->setObjectName("copyBlockImageAction");
     copy->setIconVisibleInMenu(true);

@@ -20,6 +20,8 @@ private:
     void showSpan();
     void showReading();
     void useReading();
+    void rejectReading();
+    void showHistory();
     core::OcrPage page;
     QImage image;
     QVector<QVector<int>> spans;
@@ -27,7 +29,7 @@ private:
     QComboBox *engines;
     QLabel *preview,*status;
     QPlainTextEdit *primaryText,*alternative;
-    QPushButton *use;
+    QPushButton *use,*reject;
     QCheckBox *complete;
     QString matching;
     bool changed=false;

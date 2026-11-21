@@ -223,7 +223,7 @@ EngineCapabilities RemoteOcrEngine::capabilities() const
 std::expected<RecognitionResult, OcrError> RemoteOcrEngine::recognizeResult(
     const QImage &image, const OcrOptions &options, std::stop_token stop)
 {
-    runDetails = {};
+    runDetails = {}; responses={};
     if(stop.stop_requested())return std::unexpected(OcrError{{},true});
     auto requestOptions=options;
     if(!options.task.isEmpty()) {
@@ -319,10 +319,21 @@ std::expected<RecognitionResult, OcrError> RemoteOcrEngine::recognizeSection(
     if (!reply->isFinished()) loop.exec();
     poll.stop();
     deadline.stop();
-    if (stop.stop_requested()) return std::unexpected(OcrError{{}, true});
-    if (timedOut) return std::unexpected(OcrError{QStringLiteral("Remote OCR timed out.")});
     const QByteArray response = reply->readAll();
     const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    if(options.history) {
+        const auto json=QJsonDocument::fromJson(response);
+        QJsonObject attempt{{"http_status",status},{"depth",depth},{"input_sha256",core::sha256(png)},
+            {"input_size",QJsonArray{image.width(),image.height()}},
+            {"processed_offset",QJsonArray{options.historyOffset.x(),options.historyOffset.y()}},
+            {"source_to_input",options.historyCoordinates.toJson()}};
+        if(json.isObject())attempt["response"]=json.object();
+        else if(json.isArray())attempt["response"]=json.array();
+        else attempt["raw_response_base64"]=QString::fromLatin1(response.toBase64());
+        responses.append(attempt);
+    }
+    if (stop.stop_requested()) return std::unexpected(OcrError{{}, true});
+    if (timedOut) return std::unexpected(OcrError{QStringLiteral("Remote OCR timed out.")});
     if (reply->error() != QNetworkReply::NoError || status != 200) {
         const QJsonObject error = QJsonDocument::fromJson(response).object();
         const QString message = error.value(QStringLiteral("error")).toString();
@@ -341,7 +352,7 @@ std::expected<RecognitionResult, OcrError> RemoteOcrEngine::recognizeSection(
             int nextOrder = 0, blockOffset = 0;
             for (int sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex) {
                 const auto &section = sections[sectionIndex];
-                auto part = recognizeSection(image.copy(section), options, stop, depth + 1);
+                auto part = recognizeSection(image.copy(section), croppedOcrOptions(options,section), stop, depth + 1);
                 if (!part) return std::unexpected(part.error()); // Never publish only half a page.
                 nativeSections.append(core::recognitionResultJson(*part));
                 const auto relocate = [&](auto &regions) {

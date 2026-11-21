@@ -1,4 +1,7 @@
 #include "aipagelayoutdialog.h"
+#include "recognitionrecorder.h"
+#include <QElapsedTimer>
+#include <QJsonDocument>
 #include "aipageicons.h"
 #include <QCheckBox>
 #include <QComboBox>
@@ -193,6 +196,14 @@ AiPageLayoutDialog::AiPageLayoutDialog(QImage source,QVector<core::ImageRegion> 
     });
     populate();
 }
+void AiPageLayoutDialog::enableHistory(processing::OcrOptions context,QString sourcePath,QJsonObject preprocessing) {
+    historyContext=std::move(context);historySourcePath=std::move(sourcePath);
+    historyContext.history=std::make_shared<processing::RecognitionRecorder>(QString(),std::move(preprocessing));
+    historyContext.historyRole="layout";
+}
+core::RecognitionHistory AiPageLayoutDialog::recordedHistory() {
+    watcher.waitForFinished();return historyContext.history?historyContext.history->snapshot():core::RecognitionHistory{};
+}
 QString AiPageLayoutDialog::sessionToken() const {return token->text();}
 AiPageLayoutDialog::~AiPageLayoutDialog() {stop.request_stop(); watcher.waitForFinished();}
 void AiPageLayoutDialog::reject() {stop.request_stop(); QDialog::reject();}
@@ -225,7 +236,22 @@ void AiPageLayoutDialog::analyze()
     stop=std::stop_source{}; busy=true; areas.clear();allAreas.clear();typeOverrides.clear();selectionOverrides.clear();hasAnalysis=false; populate();
     analyzeButton->setEnabled(false); endpoint->setEnabled(false); token->setEnabled(false); replaceAutomatic->setEnabled(false);
     progress->show(); message->setText(blockScope?tr("Finding finer areas within the selected block…"):tr("Finding text, pictures and formulas on the current page…"));
-    watcher.setFuture(QtConcurrent::run([source=image,options,token=stop.get_token()]{return processing::detectPageAreas(source,options,token);}));
+    watcher.setFuture(QtConcurrent::run([source=image,options,context=historyContext,path=historySourcePath,token=stop.get_token()] {
+        core::RecognitionRun run;
+        if(context.history) {
+            run=context.history->begin("ai-page-layout","auto",source,context);
+            run.sourceHash=processing::recognitionSourceHash(path,token);run.preprocessing["layout_threshold"]=options.threshold;
+            run.preprocessingHash=core::sha256(QJsonDocument(run.preprocessing).toJson(QJsonDocument::Compact));
+        }
+        QElapsedTimer timer;timer.start();QJsonObject output;
+        auto result=processing::detectPageAreas(source,options,token,&output);
+        if(context.history) {
+            if(result)run.model=result->model;
+            context.history->finish(std::move(run),timer.elapsed(),result?"succeeded":result.error().cancelled?"cancelled":"failed",
+                result?QString():result.error().message,output);
+        }
+        return result;
+    }));
 }
 void AiPageLayoutDialog::filterAreas()
 {

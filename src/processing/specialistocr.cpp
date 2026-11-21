@@ -13,7 +13,7 @@ bool looksLikeFormula(const QString &line)
 }
 
 QStringList collectSpecialistReadings(core::OcrPage &page, const QImage &image,
-    const QVector<QRect> &formulaRegions, IOcrEngine *math, IOcrEngine *prose, const std::stop_token &stop)
+    const QVector<QRect> &formulaRegions, IOcrEngine *math, IOcrEngine *prose, const std::stop_token &stop, const OcrOptions &context)
 {
     QStringList errors;
     for (int begin = 0; begin < page.words.size() && (math || prose) && !stop.stop_requested();) {
@@ -42,7 +42,8 @@ QStringList collectSpecialistReadings(core::OcrPage &page, const QImage &image,
         if (!engine) continue;
         // A small margin retains antialiased edges without submitting adjacent passages.
         const QRect crop = bounds.adjusted(-2, -2, 2, 2).intersected(image.rect());
-        auto result = engine->recognize(image.copy(crop), {.language = "auto", .pageNumber = page.number}, stop);
+        auto settings=croppedOcrOptions(context,crop); settings.language="auto"; settings.pageNumber=page.number; settings.historyRole="specialist"; settings.formula=formula && engine==math;
+        auto result = engine->recognize(image.copy(crop),settings,stop);
         if (!result) {
             if (result.error().cancelled || stop.stop_requested()) break;
             errors.append(engine->id() + ": " + result.error().message);
@@ -51,10 +52,11 @@ QStringList collectSpecialistReadings(core::OcrPage &page, const QImage &image,
             continue;
         }
         appendRecognitionEvidence(page, *result, crop.topLeft());
+        QStringList historyIds;for(const auto &run:result->recognitionHistory.runs)historyIds.append(run.id);
         core::OcrDocument excerpt;
         excerpt.pages.append(std::move(*result));
         if (const QString reading = excerpt.plainText().trimmed(); !reading.isEmpty() && reading.size() <= 16384 && reading != baseline)
-            page.words[anchor].alternative = {engine->id(), reading, tokens, formula && engine == math};
+            page.words[anchor].alternative = {engine->id(), reading, tokens, formula && engine == math,historyIds};
     }
     return errors;
 }

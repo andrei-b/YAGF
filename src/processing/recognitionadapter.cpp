@@ -129,6 +129,7 @@ RecognitionResult recognitionFromPage(const OcrPage &page) {
 }
 
 void appendRecognitionEvidence(OcrPage &page, const OcrPage &reading, QPoint offset) {
+    core::mergeRecognitionHistory(page.recognitionHistory,reading.recognitionHistory);
     const auto incoming = reading.recognitionEvidence;
     for (auto result : incoming) {
         auto &area = result.provenance.inputArea;

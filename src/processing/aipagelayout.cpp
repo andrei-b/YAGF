@@ -21,7 +21,7 @@ bool integer(const QJsonValue &value, int low, int high) {
     return value.isDouble() && std::isfinite(n) && std::floor(n)==n && n>=low && n<=high;
 }
 }
-std::expected<PageLayout, OcrError> detectPageAreas(const QImage &image, const PageLayoutOptions &options, std::stop_token stop)
+std::expected<PageLayout, OcrError> detectPageAreas(const QImage &image, const PageLayoutOptions &options, std::stop_token stop, QJsonObject *evidence)
 {
     if (stop.stop_requested()) return std::unexpected(OcrError{QStringLiteral("Cancelled"),true});
     if (image.isNull() || image.width()>20000 || image.height()>20000 || qint64(image.width())*image.height()>80000000)
@@ -63,6 +63,11 @@ std::expected<PageLayout, OcrError> detectPageAreas(const QImage &image, const P
         }
     });
     timer.start(40); loop.exec(); read();
+    if(evidence) {
+        const auto json=QJsonDocument::fromJson(bytes);
+        if(json.isObject())*evidence=json.object();
+        else *evidence=QJsonObject{{"raw_response_base64",QString::fromLatin1(bytes.toBase64())}};
+    }
     if (stop.stop_requested()) return std::unexpected(OcrError{QStringLiteral("Cancelled"),true});
     if (oversized) return failure(QStringLiteral("The layout service response is too large."));
     if (timedOut) return failure(QStringLiteral("The layout service timed out."));
@@ -113,6 +118,7 @@ std::expected<PageLayout, OcrError> detectPageAreas(const QImage &image, const P
         }
         ids.insert(id); result.areas.append(std::move(area));
     }
+    result.rawOutput=root;
     result.rawAreas=result.areas;
     consolidateInlineAreas(result.areas);
     return result;

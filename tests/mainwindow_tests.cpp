@@ -7,7 +7,6 @@
 #include "symbolrulesdialog.h"
 #include "formulatext.h"
 #include "aipagelayoutdialog.h"
-#include "mathgravityfixture.h"
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QJsonDocument>
@@ -1759,29 +1758,6 @@ int main(int argc, char **argv)
         yagf::core::OcrDocument saved; assert(yagf::core::ProjectFile::load(project,&saved,&error));
         assert(saved.page(1)->imageRegions[0].id=="manual" && saved.page(1)->words[0].text=="keep" && saved.page(1)->words[0].reviewed);
         assert(saved.page(1)->imageRegions[2].content=="picture" && saved.page(1)->imageRegions[2].notText && saved.page(1)->imageRegions[2].detectedLabel=="chart");
-    }
-
-    // Explicit formula gravity changes only block geometry and is undoable.
-    {
-        const auto image=yagf::tests::mathGravityImage();const auto raster=directory.filePath("gravity.png");assert(image.save(raster));
-        yagf::core::OcrDocument book;book.sourcePath=raster;book.language="rus";book.engine="tesseract";
-        yagf::core::OcrPage page;page.width=page.sourceWidth=image.width();page.height=page.sourceHeight=image.height();page.language="rus";
-        page.imageRegions=yagf::tests::mathGravityRegions();page.words.append({1,1,1,1,{90,40,9,20},"keep","keep",95,true});page.rebuildHierarchy();book.replacePage(page);
-        const auto project=directory.filePath("gravity.yagf.json");QString error;assert(yagf::core::ProjectFile::save(project,book,&error));
-        yagf::ui::MainWindow gravityWindow;gravityWindow.show();gravityWindow.loadProject(project);
-        auto *action=gravityWindow.findChild<QAction *>("refineBlocksAction");assert(action);waitUi([&]{return action->isEnabled();});
-        auto *options=gravityWindow.findChild<QToolButton *>("smartSplitOptions");assert(options->menu()->actions().contains(action));
-        const auto save=[&]{for(auto *a:gravityWindow.findChildren<QAction *>())if(a->text()=="Save project")a->trigger();};
-        QAction *undo=nullptr,*redo=nullptr;for(auto *a:gravityWindow.findChildren<QAction *>()) {
-            if(a->shortcut()==QKeySequence::Undo)undo=a;if(a->shortcut()==QKeySequence::Redo)redo=a;
-        }
-        assert(undo && redo);action->trigger();save();yagf::core::OcrDocument saved;
-        assert(yagf::core::ProjectFile::load(project,&saved,&error));assert(saved.page(1)->imageRegions[1].bounds==QRect(70,75,100,65));
-        assert(saved.page(1)->words.size()==1 && saved.page(1)->words[0].reviewed && saved.page(1)->words[0].text=="keep");
-        undo->trigger();save();assert(yagf::core::ProjectFile::load(project,&saved,&error));assert(saved.page(1)->imageRegions[1].bounds==page.imageRegions[1].bounds);
-        redo->trigger();save();assert(yagf::core::ProjectFile::load(project,&saved,&error));assert(saved.page(1)->imageRegions[1].bounds==QRect(70,75,100,65));
-        QTimer::singleShot(0,&gravityWindow,[&]{auto *progress=qobject_cast<QProgressDialog *>(QApplication::activeModalWidget());assert(progress);progress->cancel();progress->reject();});
-        action->trigger();save();assert(yagf::core::ProjectFile::load(project,&saved,&error));assert(saved.page(1)->imageRegions[1].bounds==QRect(70,75,100,65));
     }
 
     // AI splitting sends only the selected crop, reviews before replacing it,

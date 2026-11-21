@@ -27,6 +27,8 @@ public:
     ~AiPageLayoutDialog() override;
     QVector<core::ImageRegion> regions() const;
     QString sessionToken() const;
+    void enableHistory(processing::OcrOptions context,QString sourcePath,QJsonObject preprocessing);
+    core::RecognitionHistory recordedHistory();
 protected:
     void reject() override;
     void showEvent(QShowEvent *event) override;
@@ -75,6 +77,8 @@ private:
     bool hasAnalysis=false;
     bool blockScope=false;
     std::stop_source stop;
+    processing::OcrOptions historyContext;
+    QString historySourcePath;
     QFutureWatcher<std::expected<processing::PageLayout,processing::OcrError>> watcher;
 };
 }

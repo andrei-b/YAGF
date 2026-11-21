@@ -67,6 +67,7 @@ signals:
     void thumbnailReady(int pageNumber, const QString &imagePath);
     void blocksSplit(core::OcrPage page);
     void recognized(core::OcrPage page, const QPoint &offset, const QRect &region);
+    void recognitionHistoryReady(core::OcrPage page);
     void batchPageRecognized(core::OcrPage page, const QSize &sourceSize);
     void batchProgress(qsizetype completed, qsizetype total);
     void batchFinished();
@@ -92,6 +93,7 @@ private:
 
     struct OcrJobResult {
         std::expected<core::OcrPage, OcrError> outcome;
+        core::OcrPage historyPage;
         QStringList warnings;
         QPoint offset;
         QRect region;

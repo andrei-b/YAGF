@@ -18,6 +18,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 add_library(yagf_core STATIC
+    src/core/recognitionhistory.cpp src/core/recognitionhistory.h
     src/core/coordinateframes.cpp src/core/coordinateframes.h
     src/core/pagegeometry.cpp src/core/pagegeometry.h
     src/core/coordinatetransform.cpp src/core/coordinatetransform.h
@@ -44,7 +45,6 @@ target_include_directories(yagf_core PUBLIC src/core)
 
 # Image/source operations have no OCR, network, or job-controller dependency.
 add_library(yagf_imaging STATIC
-    src/processing/mathblockgravity.cpp src/processing/mathblockgravity.h
     src/processing/pagerestoration.cpp src/processing/pagerestoration.h
     src/processing/pagesource.cpp src/processing/pagesource.h
     src/processing/imageprocessor.cpp src/processing/imageprocessor.h src/processing/pagebend.cpp
@@ -60,6 +60,7 @@ target_include_directories(yagf_symbols PUBLIC src/processing)
 
 # Providers and recognition analysis can be used without the async document controller.
 add_library(yagf_ocr STATIC
+    src/processing/recognitionrecorder.cpp src/processing/recognitionrecorder.h
     src/processing/modelprofile.cpp src/processing/modelprofile.h
     src/processing/recognitionadapter.cpp src/processing/recognitionadapter.h
     src/processing/ocrservices.cpp src/processing/ocrservices.h
@@ -168,9 +169,12 @@ install(DIRECTORY service/
 
 include(CTest)
 if(BUILD_TESTING)
-    qt_add_executable(mathblockgravity_tests tests/mathblockgravity_tests.cpp)
-    target_link_libraries(mathblockgravity_tests PRIVATE yagf_imaging Qt6::Test)
-    add_test(NAME mathblockgravity_tests COMMAND mathblockgravity_tests)
+    qt_add_executable(recognitionhistory_tests tests/recognitionhistory_tests.cpp
+        src/ui/ocrreadingsdialog.cpp src/ui/ocrreadingsdialog.h src/ui/documentcommands.cpp src/ui/documentcommands.h)
+    target_include_directories(recognitionhistory_tests PRIVATE src/ui)
+    target_link_libraries(recognitionhistory_tests PRIVATE yagf_processing Qt6::Widgets Qt6::Test)
+    add_test(NAME recognitionhistory_tests COMMAND recognitionhistory_tests)
+    set_tests_properties(recognitionhistory_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     qt_add_executable(coordinatetransform_tests tests/coordinatetransform_tests.cpp)
     target_link_libraries(coordinatetransform_tests PRIVATE yagf_imaging Qt6::Test)
     add_test(NAME coordinatetransform_tests COMMAND coordinatetransform_tests)

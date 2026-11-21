@@ -74,7 +74,7 @@ QJsonObject wordJson(const OcrWord &word)
     if (!word.alternative.sourceTokens.isEmpty()) {
         const auto &a = word.alternative;
         result.insert("specialist_reading", QJsonObject{{"engine", a.engine}, {"text", a.text},
-            {"source_tokens", QJsonArray::fromStringList(a.sourceTokens)}, {"formula", a.formula}});
+            {"source_tokens", QJsonArray::fromStringList(a.sourceTokens)}, {"formula", a.formula},{"history_ids",QJsonArray::fromStringList(a.historyIds)}});
     }
     if (!word.symbolShape.isEmpty()) result.insert("symbol_shape", QString::fromLatin1(word.symbolShape.toHex()));
     if (word.layoutBlock) result.insert("layout_block", true);
@@ -102,6 +102,13 @@ bool parseWord(const QJsonObject &json, int pageNumber, int width, int height, O
         a.engine = obj.value("engine").toString();
         a.text = obj.value("text").toString();
         a.formula = obj.value("formula").toBool();
+        if(obj.contains("history_ids")) {
+            if(!obj["history_ids"].isArray() || obj["history_ids"].toArray().size()>10000)return false;
+            for(const auto &id:obj["history_ids"].toArray()) {
+                if(!id.isString() || id.toString().isEmpty() || id.toString().size()>128 || a.historyIds.contains(id.toString()))return false;
+                a.historyIds.append(id.toString());
+            }
+        }
         const auto tokens = obj.value("source_tokens").toArray();
         if (tokens.isEmpty() || tokens.size() > 1024 || a.text.trimmed().isEmpty() ||
             a.text.size() > 16384 || a.engine.isEmpty() || !obj.value("formula").isBool()) return false;
@@ -495,6 +502,7 @@ QJsonObject OcrDocument::toJson(bool includeRestoredPixels) const
             for (const auto &result : page.recognitionEvidence) evidence.append(coordinateFrames.encode(result));
             item.insert("recognition_evidence", evidence);
         }
+        if (!page.recognitionHistory.runs.isEmpty()) item["recognition_history"]=recognitionHistoryJson(page.recognitionHistory,&coordinateFrames);
         const auto frames=coordinateFrames.toJson();if(!frames.isEmpty())item["recognition_frames"]=frames;
         if (includeRestoredPixels && !page.preprocessing.restoredPng.isEmpty())
             item.insert("restored_page_png", QString::fromLatin1(page.preprocessing.restoredPng.toBase64()));
@@ -703,9 +711,22 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
                 page.recognitionEvidence.append(std::move(*result));
             }
         }
+        if (object.contains("recognition_history")) {
+            auto history=readRecognitionHistory(object["recognition_history"],&coordinateFrames);
+            if(!history)return fail(history.error());
+            page.recognitionHistory=std::move(*history);
+        }
         if (object.contains("ocr_readings")) {
             auto readings=readOcrReadings(object["ocr_readings"],QSize(page.width,page.height),&coordinateFrames);
             if (!readings) return fail(readings.error()); page.ocrReadings=std::move(*readings);
+            QSet<QString> runIds; for(const auto &run:page.recognitionHistory.runs) runIds.insert(run.id);
+            for(const auto &reading:page.ocrReadings) for(const auto &id:reading.historyIds)
+                if(!runIds.contains(id))return fail(QStringLiteral("Unknown reading history reference."));
+        }
+        {
+            QSet<QString> ids;for(const auto &run:page.recognitionHistory.runs)ids.insert(run.id);
+            for(const auto *words:{&page.words,&page.pendingCorrections,&page.deletedWords})for(const auto &word:*words)for(const auto &id:word.alternative.historyIds)
+                if(!ids.contains(id))return fail(QStringLiteral("Unknown specialist history reference."));
         }
         if (object.contains(QStringLiteral("image_regions"))) {
             const QJsonValue areas = object.value(QStringLiteral("image_regions"));

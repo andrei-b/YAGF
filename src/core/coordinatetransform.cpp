@@ -54,7 +54,7 @@ void CoordinatePipeline::appendProjective(QString operation,QTransform mapping,Q
 std::expected<void,QString> CoordinatePipeline::validate() const {
     const auto fail=[] {return std::unexpected(QStringLiteral("Invalid coordinate transformation pipeline."));};
     if(!sizeValid(sourceSize) || (sourceUnit!="pixels" && sourceUnit!="page-points-top-left") ||
-        (sourceFrame!="original" && sourceFrame!="restored") || steps.size()>32)return fail();
+        (sourceFrame!="original" && sourceFrame!="restored" && sourceFrame!="ocr-input") || steps.size()>32)return fail();
     QSizeF prior=sourceSize;
     for(const auto &s:steps) {
         if(s.operation.isEmpty() || s.operation.size()>64 || s.inputSize!=prior || !sizeValid(s.outputSize))return fail();

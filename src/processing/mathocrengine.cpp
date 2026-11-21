@@ -1,4 +1,5 @@
 #include "mathocrengine.h"
+#include "recognitionrecorder.h"
 
 #include <QElapsedTimer>
 #include <QFile>
@@ -8,6 +9,7 @@
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QRegularExpression>
+#include <QScopeGuard>
 
 namespace yagf::processing {
 
@@ -37,7 +39,7 @@ std::expected<core::OcrPage, OcrError> recognizeFormulaBoxes(
             if (!warnings) return std::unexpected(OcrError{message});
             warnings->append(message); break;
         }
-        auto settings = options; settings.language = "auto"; settings.formula = true;
+        auto settings = croppedOcrOptions(options,box); settings.formula=true; settings.historyRole="formula"; settings.language = "auto"; settings.formula = true;
         settings.timeoutMs = std::min(remaining, 30000);
         if (options.progress) options.progress(QStringLiteral("Recognizing formulas"), i, boxes.size());
         auto reading = provider->recognize(image.copy(box), settings, stop);
@@ -106,7 +108,13 @@ std::expected<core::OcrPage, OcrError> MathOcrEngine::recognizeBoxes(
     const QImage &image, const OcrOptions &options, std::stop_token stop, const QList<QRect> &boxes,
     QStringList *warnings, int timeBudgetMs)
 {
+    const bool record=options.history && !options.historyNativeCall;
+    core::RecognitionRun run;if(record)run=options.history->begin(id(),"Rapid LaTeX OCR",image,options);
+    QElapsedTimer elapsed;elapsed.start();
+    auto perform=[&]() -> std::expected<core::OcrPage,OcrError> {
     if (stop.stop_requested()) return std::unexpected(OcrError{{}, true});
+    QJsonArray requested;for(const auto &box:boxes)requested.append(QJsonArray{box.x(),box.y(),box.width(),box.height()});
+    structuredOutput={{"requested_crops",requested},{"time_budget_ms",timeBudgetMs},{"crop_timeout_seconds",timeBudgetMs<=30000?5:15}};
     const QString python = pythonPath();
     if (!QFileInfo(python).isExecutable())
         return std::unexpected(OcrError{QStringLiteral("Local math OCR is not installed. See Local math OCR in the YAGF README.")});
@@ -139,9 +147,14 @@ std::expected<core::OcrPage, OcrError> MathOcrEngine::recognizeBoxes(
             const auto value=QJsonDocument::fromJson(line.mid(14)).object();
             if (options.progress && value["total"].toInt()>0) options.progress(QStringLiteral("Recognizing formulas"),value["done"].toInt(),value["total"].toInt());
         }
-        if (diagnostics.size()>16384) diagnostics=diagnostics.right(16384);
+        if (!options.history && diagnostics.size()>16384) diagnostics=diagnostics.right(16384);
         if (progressBytes.size()>16384) progressBytes=progressBytes.right(16384);
     };
+    const auto capture=qScopeGuard([&] {
+        report();structuredOutput["stderr"]=QString::fromUtf8(diagnostics);
+        if(!structuredOutput.contains("results") && !structuredOutput.contains("raw_output_base64"))
+            structuredOutput["raw_output_base64"]=QString::fromLatin1(process.readAllStandardOutput().toBase64());
+    });
     if (options.progress) options.progress(QStringLiteral("Loading formula recognizer"),0,boxes.size());
     process.start(python, arguments);
     if (!process.waitForStarted())
@@ -157,11 +170,17 @@ std::expected<core::OcrPage, OcrError> MathOcrEngine::recognizeBoxes(
         }
     }
     report();
+    structuredOutput["stderr"]=QString::fromUtf8(diagnostics);
     if (stop.stop_requested()) return std::unexpected(OcrError{{}, true});
     if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0)
         return std::unexpected(OcrError{QStringLiteral("Local math OCR failed: %1")
             .arg(QString::fromUtf8(diagnostics).trimmed().section('\n', -1))});
-    const auto json = QJsonDocument::fromJson(process.readAllStandardOutput());
+    structuredOutput["stderr"]=QString::fromUtf8(diagnostics);
+    const auto bytes=process.readAllStandardOutput();
+    const auto json = QJsonDocument::fromJson(bytes);
+    structuredOutput["stderr"]=QString::fromUtf8(diagnostics);
+    if(json.isArray())structuredOutput["results"]=json.array();
+    else structuredOutput["raw_output_base64"]=QString::fromLatin1(bytes.toBase64());
     if (!json.isArray()) return std::unexpected(OcrError{QStringLiteral("Invalid local math OCR output.")});
 
     core::OcrPage page;
@@ -213,9 +232,20 @@ std::expected<core::OcrPage, OcrError> MathOcrEngine::recognizeBoxes(
     page.rebuildHierarchy();
     for (auto &region : page.regions) region.type = QStringLiteral("equation");
     auto evidence = recognitionFromPage(page);
+    evidence.structuredOutput=structuredOutput;
     evidence.provenance.model = "Rapid LaTeX OCR"; evidence.provenance.task = "formula";
     page.recognitionEvidence.append(std::move(evidence));
     return page;
+    };
+    auto result=perform();
+    if(record) {
+        QJsonArray crops;for(const auto &box:boxes)crops.append(QJsonArray{box.x(),box.y(),box.width(),box.height()});
+        auto output=structuredOutput;output["requested_crops"]=crops;
+        auto evidence=options.history->finish(std::move(run),elapsed.elapsed(),result?"succeeded":result.error().cancelled?"cancelled":"failed",
+            result?QString():result.error().message,output,{},warnings?*warnings:QStringList{});
+        if(result)result->recognitionHistory.runs.append(std::move(evidence));
+    }
+    return result;
 }
 
 } // namespace yagf::processing

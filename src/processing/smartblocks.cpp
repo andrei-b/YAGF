@@ -559,7 +559,7 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
                 QPainter painter(&line);
                 painter.drawImage(QPoint(pad, pad), pixels, row.box);
             }
-            auto textSettings = settings;
+            auto textSettings = croppedOcrOptions(settings,row.box,pad);
             textSettings.language = language;
             textSettings.singleTextLine = true;
             auto retry = prose.recognize(line, textSettings, stop);

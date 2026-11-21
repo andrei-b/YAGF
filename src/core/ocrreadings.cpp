@@ -3,6 +3,8 @@
 #include "formulatext.h"
 #include "coordinateframes.h"
 #include <QSet>
+#include <QUuid>
+#include <QDateTime>
 #include <QJsonDocument>
 #include <algorithm>
 #include <cmath>
@@ -32,8 +34,9 @@ QJsonArray ocrReadingsJson(const QVector<OcrReading> &readings,CoordinateFrames 
     QJsonArray result;
     for (const auto &r:readings) {
         QJsonArray items;
-        for (const auto &i:r.items) items.append(QJsonObject{{"box",box(i.bounds)},{"text",i.text},{"block",i.block},{"paragraph",i.paragraph},{"line",i.line},{"layout_block",i.layoutBlock},{"geometry_inferred",i.geometryInferred}});
+        for (const auto &i:r.items) items.append(QJsonObject{{"box",box(i.bounds)},{"text",i.text},{"block",i.block},{"paragraph",i.paragraph},{"line",i.line},{"layout_block",i.layoutBlock},{"geometry_inferred",i.geometryInferred},{"history_id",i.historyId}});
         QJsonObject value{{"source",r.source},{"engine",r.engine},{"label",r.label},{"language",r.language},{"error",r.error},{"area",box(r.area)},{"items",items}};
+        if (!r.historyIds.isEmpty()) value["history_ids"]=QJsonArray::fromStringList(r.historyIds);
         if (!r.recognitionEvidence.isEmpty()) {
             QJsonArray evidence; for (const auto &e : r.recognitionEvidence) evidence.append(frames?frames->encode(e):recognitionResultJson(e));
             value["recognition_evidence"] = evidence;
@@ -54,6 +57,13 @@ std::expected<QVector<OcrReading>,QString> readOcrReadings(const QJsonValue &jso
         r.source=o["source"].toString(); r.engine=o["engine"].toString(); r.label=o["label"].toString();
         r.language=o["language"].toString(); r.error=o["error"].toString();
         if (sources.contains(r.source)) return fail(); sources.insert(r.source);
+        if(o.contains("history_ids")) {
+            if(!o["history_ids"].isArray() || o["history_ids"].toArray().size()>10000)return fail();
+            for(const auto &id:o["history_ids"].toArray()) {
+                if(!id.isString() || id.toString().isEmpty() || id.toString().size()>128 || r.historyIds.contains(id.toString()))return fail();
+                r.historyIds.append(id.toString());
+            }
+        }
         if (o.contains("recognition_evidence")) {
             const auto evidence = o["recognition_evidence"];
             if (!evidence.isArray() || evidence.toArray().size()>10000 ||
@@ -75,6 +85,10 @@ std::expected<QVector<OcrReading>,QString> readOcrReadings(const QJsonValue &jso
             i.text=item["text"].toString(); i.block=item["block"].toInt(); i.paragraph=item["paragraph"].toInt(); i.line=item["line"].toInt(); i.layoutBlock=item["layout_block"].toBool();
             if (item.contains("geometry_inferred") && !item["geometry_inferred"].isBool()) return fail();
             i.geometryInferred=item["geometry_inferred"].toBool();
+            if(item.contains("history_id")) {
+                if(!string(item,"history_id",128))return fail();i.historyId=item["history_id"].toString();
+                if(!i.historyId.isEmpty() && !r.historyIds.contains(i.historyId))return fail();
+            }
             characters+=i.text.size(); if (characters>8*1024*1024) return fail(); r.items.append(std::move(i));
         }
         result.append(std::move(r));
@@ -114,10 +128,45 @@ std::expected<OcrPage,QString> acceptOcrReading(const OcrPage &page,const QVecto
     auto result=structured ? WordEditor::apply(page,span,{{text.trimmed(),first.bold,first.italic,first.fontSizePt,first.fontFamily,true}})
                            : WordEditor::acceptPassage(page,span,text);
     if (result) {
+        recordReadingDecision(*result,page,span,reading,text,QStringLiteral("accepted"));
         const auto count=result->words.size()-(page.words.size()-span.size());
         for (int n=span.first();n<span.first()+count;++n) {auto &word=result->words[n]; word.reviewed=true; word.alternative={}; word.readingEngine=reading.label;}
     }
     return result;
+}
+void recordReadingDecision(OcrPage &target,const OcrPage &before,const QVector<int> &span,const OcrReading &reading,const QString &text,const QString &choice) {
+    if(choice!="accepted" && choice!="rejected")return;
+    QRect area;QStringList ids,primary;
+    for(int i:span) {if(i<0 || i>=before.words.size())return;area|=before.words[i].bounds;ids.append(before.words[i].id);primary.append(before.words[i].text);}
+    if(area.isEmpty())return;
+    QSet<QString> direct;
+    const QRect nearby=area.adjusted(-std::max(3,area.height()/3),-3,std::max(3,area.height()/3),3);
+    for(const auto &item:reading.items)if(!item.historyId.isEmpty() && nearby.contains(item.bounds.center()))direct.insert(item.historyId);
+    QVector<const RecognitionRun *> candidates;
+    for(const auto &run:before.recognitionHistory.runs) {
+        if(!reading.historyIds.contains(run.id) || (!direct.isEmpty() && !direct.contains(run.id)))continue;
+        // Runs retain their original frames. Match the selected region in that
+        // frame rather than comparing boxes from different preprocessing runs.
+        QRectF runArea=run.processedCrop;
+        if(direct.isEmpty() && run.sourceToInput.isDefined() && before.coordinates.isDefined() &&
+            run.sourceToInput.sourceFrame==before.coordinates.sourceFrame && run.sourceToInput.sourceUnit==before.coordinates.sourceUnit &&
+            run.sourceToInput.sourceSize==before.coordinates.sourceSize) {
+            auto outline=before.coordinates.mapOutline(rectangleOutline(area),true);
+            if(!outline)continue;
+            QPolygonF mapped;bool valid=true;
+            for(const auto &point:*outline){auto p=run.sourceToInput.fromSource(point);if(!p){valid=false;break;}mapped.append(*p);}
+            if(!valid || !mapped.boundingRect().intersects(QRectF(QPointF(),run.inputSize)))continue;
+        } else if(direct.isEmpty() && !runArea.intersects(area))continue;
+        candidates.append(&run);
+    }
+    if(candidates.isEmpty())return;
+    const auto latestSession=candidates.last()->session;
+    for(const auto *candidate:candidates) {
+        const auto &run=*candidate;if(direct.isEmpty() && run.session!=latestSession)continue;
+        RecognitionDecision d;d.id=QUuid::createUuid().toString(QUuid::WithoutBraces);d.runId=run.id;d.decision=choice;
+        d.timestampUtc=QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);d.proposedText=text;d.primaryText=primary.join(' ');
+        d.wordIds=ids;d.processedArea=area;d.sourceToProcessed=before.coordinates;target.recognitionHistory.decisions.append(std::move(d));
+    }
 }
 void translateOcrReadings(QVector<OcrReading> &readings,QPoint offset) {
     for (auto &reading:readings) {
@@ -147,7 +196,7 @@ void mergeOcrReadings(QVector<OcrReading> &target,QVector<OcrReading> incoming,Q
     for (auto &r:incoming) {
         auto found=std::ranges::find(target,r.source,&OcrReading::source);
         if (found==target.end()) target.append(std::move(r));
-        else {found->items+=r.items; found->recognitionEvidence+=r.recognitionEvidence; found->area|=r.area; found->error=r.error; found->language=r.language; found->label=r.label;}
+        else {found->historyIds+=r.historyIds; found->historyIds.removeDuplicates(); found->items+=r.items; found->recognitionEvidence+=r.recognitionEvidence; found->area|=r.area; found->error=r.error; found->language=r.language; found->label=r.label;}
     }
     while (target.size()>8) target.removeFirst();
     target.removeIf([](const auto &r){return r.items.isEmpty() && r.error.isEmpty();});

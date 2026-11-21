@@ -19,11 +19,12 @@ public:
         const std::atomic_bool *cancelled);
 
     static QString modelLanguage(const QString &language);
+    QJsonObject lastStructuredOutput() const override { return structuredOutput; }
     QJsonObject lastRunDetails() const override { return runDetails; }
     static std::expected<core::OcrPage, OcrError> parseTsv(
         const QByteArray &tsv, const QSize &imageSize, const OcrOptions &options);
 private:
-    QJsonObject runDetails;
+    QJsonObject runDetails,structuredOutput;
 };
 
 } // namespace yagf::processing

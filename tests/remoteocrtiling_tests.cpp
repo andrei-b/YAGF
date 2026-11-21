@@ -2,6 +2,7 @@
 #include <QCoreApplication>
 #include <QJsonDocument>
 #include <QJsonArray>
+#include "recognitionrecorder.h"
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTimer>
@@ -37,10 +38,17 @@ private slots:
         });
         RemoteOcrEngine engine(QUrl(QStringLiteral("http://127.0.0.1:%1").arg(server.serverPort())));
         QImage image(320,400,QImage::Format_RGB32);image.fill(Qt::white);
-        auto result=engine.recognize(image,{.language="auto",.pageNumber=2},{});QVERIFY(result.has_value());QCOMPARE(calls,3);QCOMPARE(result->words.size(),2);
+        OcrOptions options;options.language="auto";options.pageNumber=2;options.historyCoordinates.sourceSize=image.size();
+        options.history=std::make_shared<RecognitionRecorder>(QString(),QJsonObject{});
+        auto result=engine.recognize(image,options,{});QVERIFY(result.has_value());QCOMPARE(calls,3);QCOMPARE(result->words.size(),2);
         QCOMPARE(result->width,320);QCOMPARE(result->height,400);QCOMPARE(result->words[0].bounds,QRect(0,0,320,200));QCOMPARE(result->words[1].bounds,QRect(0,200,320,200));
         QCOMPARE(result->words[1].page,2);QVERIFY(result->words[0].id!=result->words[1].id);QVERIFY(!result->words[0].bounds.intersects(result->words[1].bounds));
         QCOMPARE(result->regions.size(),2);QCOMPARE(result->regions[1].bounds,result->words[1].bounds);
+        auto history=options.history->snapshot();QCOMPARE(history.runs.size(),1);
+        auto responses=history.runs[0].output["engine_output"].toObject()["responses"].toArray();QCOMPARE(responses.size(),3);
+        QCOMPARE(responses[0].toObject()["http_status"].toInt(),400);
+        QCOMPARE(responses[2].toObject()["processed_offset"].toArray(),QJsonArray({0,200}));
+        QVERIFY(yagf::core::readRecognitionHistory(yagf::core::recognitionHistoryJson(history)));
         calls=0;mode=1;result=engine.recognize(image,{.language="auto"},{});QVERIFY(!result);QCOMPARE(calls,3);
         calls=0;mode=2;result=engine.recognize(image,{.language="auto"},{});QVERIFY(!result);QCOMPARE(calls,3);QCOMPARE(result.error().message,"Backend failed");
         calls=0;mode=3;result=engine.recognize(image,{.language="auto"},stop.get_token());QVERIFY(!result && result.error().cancelled);QCOMPARE(calls,2);

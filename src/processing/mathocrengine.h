@@ -10,6 +10,7 @@ public:
     EngineCapabilities capabilities() const override
     { return {.supportsRegions = true, .supportsLayout = true, .supportsFormulas = true}; }
     static QString pythonPath();
+    QJsonObject lastStructuredOutput() const override { return structuredOutput; }
     // With warnings, individual failed crops are omitted so the caller can
     // retain native text there. Without warnings, any crop failure is an error.
     std::expected<core::OcrPage, OcrError> recognizeBoxes(
@@ -17,6 +18,8 @@ public:
         QStringList *warnings = nullptr, int timeBudgetMs = 300000);
     std::expected<RecognitionResult, OcrError> recognizeResult(
         const QImage &image, const OcrOptions &options, std::stop_token stop) override;
+private:
+    QJsonObject structuredOutput;
 };
 
 // Uses the selected remote recognizer, or batches through the local model when null.

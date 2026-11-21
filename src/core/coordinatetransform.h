@@ -23,7 +23,7 @@ struct CoordinateStep {
 
 struct CoordinatePipeline {
     QString sourceUnit = QStringLiteral("pixels");
-    QString sourceFrame = QStringLiteral("original"); // Legacy restored images may have no known map to the original.
+    QString sourceFrame = QStringLiteral("original"); // restored / ocr-input explicitly indicate an unknown original mapping.
     QSizeF sourceSize;
     QVector<CoordinateStep> steps;
 

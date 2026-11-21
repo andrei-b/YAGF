@@ -4,6 +4,7 @@
 #include "modelprofile.h"
 
 #include <QUrl>
+#include <QJsonArray>
 
 namespace yagf::processing {
 
@@ -24,9 +25,12 @@ public:
     std::expected<RecognitionResult, OcrError> recognizeResult(
         const QImage &image, const OcrOptions &options, std::stop_token stop) override;
 
+    QString modelIdentifier() const override { return model.isEmpty()?id():model; }
+    QJsonObject lastStructuredOutput() const override { return {{"responses",responses}}; }
     QJsonObject lastRunDetails() const override { return runDetails; }
 private:
     QJsonObject runDetails;
+    QJsonArray responses;
     std::expected<RecognitionResult, OcrError> recognizeSection(
         const QImage &image, const OcrOptions &options, std::stop_token stop, int depth);
     QUrl server;

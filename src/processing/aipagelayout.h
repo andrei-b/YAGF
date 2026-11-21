@@ -20,6 +20,7 @@ struct PageArea {
 struct PageLayout {
     QString model;
     QVector<PageArea> areas;
+    QJsonObject rawOutput;
     QVector<PageArea> rawAreas; // Unconsolidated evidence for reapplying score thresholds.
 };
 struct PageLayoutOptions {
@@ -29,7 +30,7 @@ struct PageLayoutOptions {
     int timeoutMs = 120000;
 };
 std::expected<PageLayout, OcrError> detectPageAreas(const QImage &image, const PageLayoutOptions &options,
-                                                  std::stop_token stop = {});
+                                                  std::stop_token stop = {}, QJsonObject *evidence = nullptr);
 // Inline formulas belong to their containing text block. Keep the paragraph intact
 // and route it through mixed OCR rather than proposing overlapping tiny blocks.
 void consolidateInlineAreas(QVector<PageArea> &areas);

@@ -1,4 +1,10 @@
 #include "tesseractengine.h"
+#include "recognitionrecorder.h"
+#include <QScopeGuard>
+#include <QJsonDocument>
+#include <QDir>
+#include <QJsonArray>
+#include <QRegularExpression>
 
 #include <QElapsedTimer>
 #include <QFile>
@@ -37,13 +43,15 @@ std::expected<RecognitionResult, OcrError> TesseractEngine::recognizeResult(
     auto result = recognitionFromPage(*page);
     result.provenance.model = page->language;
     result.provenance.task = "ocr";
+    result.structuredOutput=structuredOutput;
+    result.modelVersion=structuredOutput["model_version"].toString();
     return result;
 }
 
 std::expected<core::OcrPage, OcrError> TesseractEngine::recognize(
     const QImage &image, const OcrOptions &options, std::stop_token stop, const std::atomic_bool *cancelled)
 {
-    runDetails = {};
+    runDetails = {}; structuredOutput={};
     const auto interrupted = [&] { return stop.stop_requested() || (cancelled && cancelled->load()); };
     if (interrupted()) return std::unexpected(OcrError{{}, true});
     if (image.isNull() || options.pageNumber < 1)
@@ -71,6 +79,57 @@ std::expected<core::OcrPage, OcrError> TesseractEngine::recognize(
     }
     arguments << QStringLiteral("tsv");
     QProcess process;
+    const auto capture=qScopeGuard([&]{
+        if(!structuredOutput.contains("tsv")) {
+            structuredOutput["format"]="tesseract-tsv";
+            structuredOutput["tsv"]=QString::fromUtf8(process.readAllStandardOutput());
+            structuredOutput["stderr"]=QString::fromUtf8(process.readAllStandardError());
+            structuredOutput["exit_code"]=process.exitCode();
+        }
+    });
+    QJsonObject modelEvidence;
+    if(options.history) {
+        // Resolve version and data location once per executable/environment.
+        // Recheck traineddata fingerprints independently, using file identity.
+        static std::mutex metadataMutex;static QHash<QString,QPair<QString,QString>> metadataCache;
+        const auto executable=QStandardPaths::findExecutable("tesseract");
+        const auto key=executable+':'+QString::number(QFileInfo(executable).lastModified().toMSecsSinceEpoch())+':'+qEnvironmentVariable("TESSDATA_PREFIX");
+        QPair<QString,QString> metadataValue;
+        {
+            std::lock_guard lock(metadataMutex);
+            if(!metadataCache.contains(key)) {
+                QPair<QString,QString> found;QProcess metadata;metadata.start(executable,{"--version"});
+                if(metadata.waitForFinished(2000))found.first=QString::fromUtf8(metadata.readAllStandardOutput()).section('\n',0,0).trimmed();
+                if(metadata.state()!=QProcess::NotRunning){metadata.kill();metadata.waitForFinished();}
+                metadata.start(executable,{"--list-langs"});
+                if(metadata.waitForFinished(2000)) {
+                    const auto message=QString::fromUtf8(metadata.readAllStandardOutput()+metadata.readAllStandardError());
+                    const auto location=QRegularExpression(QStringLiteral("List of available languages in \"([^\"]+)\"")).match(message);
+                    if(location.hasMatch())found.second=location.captured(1);
+                }
+                if(metadata.state()!=QProcess::NotRunning){metadata.kill();metadata.waitForFinished();}
+                if(metadataCache.size()>32)metadataCache.clear();metadataCache.insert(key,found);
+            }
+            metadataValue=metadataCache[key];
+        }
+        modelEvidence["model_version"]=metadataValue.first;
+        if(!metadataValue.second.isEmpty()) {
+            {
+                QJsonArray models;bool complete=true;
+                for(const auto &language:resolved.language.split('+')) {
+                    const auto hash=recognitionSourceHash(QDir(metadataValue.second).filePath(language+".traineddata"),stop);
+                    if(hash.isEmpty()){complete=false;break;}
+                    models.append(QJsonObject{{"language",language},{"sha256",hash}});
+                }
+                if(complete && !models.isEmpty()) {
+                    modelEvidence["traineddata"]=models;
+                    modelEvidence["model_hash"]=models.size()==1?models.first().toObject()["sha256"]:QJsonValue(core::sha256(QJsonDocument(models).toJson(QJsonDocument::Compact)));
+                    modelEvidence["model_hash_kind"]=models.size()==1?"traineddata-sha256":"traineddata-manifest-sha256";
+                }
+            }
+        }
+    }
+    structuredOutput=modelEvidence;
     auto environment = QProcessEnvironment::systemEnvironment();
     // Avoid excessive OpenMP workers on document/region queues; honor user overrides.
     if (!environment.contains("OMP_THREAD_LIMIT")) environment.insert("OMP_THREAD_LIMIT", "2");
@@ -103,10 +162,14 @@ std::expected<core::OcrPage, OcrError> TesseractEngine::recognize(
         }
         process.waitForFinished(100);
     }
+    const auto tsv=process.readAllStandardOutput();
+    const auto diagnostics=process.readAllStandardError();
+    structuredOutput["format"]="tesseract-tsv";structuredOutput["tsv"]=QString::fromUtf8(tsv);
+    structuredOutput["stderr"]=QString::fromUtf8(diagnostics);structuredOutput["exit_code"]=process.exitCode();
     if (interrupted()) return std::unexpected(OcrError{{}, true});
     if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0)
         return std::unexpected(OcrError{QStringLiteral("Tesseract failed: %1")
-            .arg(QString::fromUtf8(process.readAllStandardError()).trimmed())});
+            .arg(QString::fromUtf8(diagnostics).trimmed())});
     if(measureMemory) {
         QFile memory(memoryFile);
         if(memory.open(QIODevice::ReadOnly)) {
@@ -114,7 +177,7 @@ std::expected<core::OcrPage, OcrError> TesseractEngine::recognize(
             if(ok && kib>0){runDetails["peak_rss_bytes"]=kib*1024;runDetails["peak_rss_scope"]="Recognition child process";}
         }
     }
-    return parseTsv(process.readAllStandardOutput(), image.size(), resolved);
+    return parseTsv(tsv, image.size(), resolved);
 }
 
 std::expected<core::OcrPage, OcrError> TesseractEngine::parseTsv(
