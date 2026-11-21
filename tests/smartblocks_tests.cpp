@@ -1,8 +1,12 @@
 #include "smartblocks.h"
+#include "recognitionrecorder.h"
+#include "formulatext.h"
+#include "wordeditor.h"
 
 #include <QFile>
 #include <QDir>
 #include <QPainter>
+#include <QFontDatabase>
 #include <QTemporaryDir>
 #include <QtTest>
 #include <atomic>
@@ -118,6 +122,113 @@ class SmartBlocksTests : public QObject {
     }
 
 private slots:
+    void printedMathGlyphs_data()
+    {
+        QTest::addColumn<QString>("glyph");
+        QTest::addColumn<QString>("family");
+        QTest::addColumn<bool>("italic");
+        QTest::addColumn<bool>("expectFormula");
+        for (const auto &s : {"x","z","u","v"}) {
+            QTest::newRow(qPrintable("italic "+QString(s))) << QString(s) << QString("Liberation Serif") << true << true;
+            QTest::newRow(qPrintable("upright "+QString(s))) << QString(s) << QString("Liberation Serif") << false << false;
+        }
+        for (const auto &s : {"𝔄","ℜ","∑","∏","∫"})
+            QTest::newRow(s) << QString(s) << QString("Latin Modern Math") << false << true;
+    }
+
+    void printedMathGlyphs()
+    {
+        QFETCH(QString,glyph); QFETCH(QString,family); QFETCH(bool,italic); QFETCH(bool,expectFormula);
+        if (!QFontDatabase::families().contains(family)) QSKIP("Test font unavailable");
+        QImage image(220,80,QImage::Format_RGB32);
+        image.fill(Qt::white);
+        QPainter p(&image);
+        QFont font(family);
+        font.setPixelSize(40);
+        font.setItalic(italic);
+        p.setFont(font);
+        p.drawText(95,53,glyph);
+        p.end();
+        QRect ink;
+        for (int y=0; y<image.height(); ++y) for (int x=0; x<image.width(); ++x)
+            if (qGray(image.pixel(x,y))<175) ink |= QRect(x,y,1,1);
+        QVERIFY(!ink.isEmpty());
+        const auto raw=reading({word(1,1,{8,35,55,17},"Пусть"),word(1,1,ink,"у"),
+                                word(1,1,{156,35,55,17},"равно")},image.size());
+        QPainter prose(&image);
+        prose.fillRect(raw.words.first().bounds,Qt::black);
+        prose.fillRect(raw.words.last().bounds,Qt::black);
+        prose.end();
+        mathBackend();
+        processing::OcrOptions options{.language="rus"};
+        options.history=std::make_shared<processing::RecognitionRecorder>(QString(),QJsonObject{});
+        auto result=processing::recognizeSmartBlocks(image,options,
+            {{"line",image.rect(),"rus",false,"mixed"}},false,{},true,&raw);
+        QVERIFY2(result,qPrintable(result ? QString() : result.error().message));
+        QCOMPARE(result->words.size(),3);
+        QCOMPARE(result->words[1].layoutBlock,expectFormula);
+        if (expectFormula) {
+            const QHash<QString,QString> latex{{"𝔄","\\mathfrak{A}"},{"ℜ","\\mathfrak{R}"},
+                {"∑","\\sum"},{"∫","\\int"},{"∏","\\prod"}};
+            const auto expected = QStringLiteral("\\(%1\\)").arg(latex.value(glyph,glyph));
+            QCOMPARE(result->words[1].text,expected);
+            QCOMPARE(result->words[1].alternative.text,QStringLiteral("\\(x=1\\)"));
+            QCOMPARE(result->specialistSpan(1),QVector<int>{1});
+            QVERIFY(!result->words[1].alternative.historyIds.isEmpty());
+            auto unicode = *result;
+            QCOMPARE(core::setFormulaOutput(unicode,true),0);
+            QCOMPARE(unicode.specialistSpan(1),QVector<int>{1});
+            auto accepted = core::WordEditor::acceptSpecialist(unicode,1,unicode.words[1].alternative.text);
+            QVERIFY(accepted);
+            QCOMPARE(accepted->words[1].text,QStringLiteral("x=1"));
+            QCOMPARE(core::formulaSourceText(accepted->words[1]),QStringLiteral("\\(x=1\\)"));
+            const auto &runs = result->recognitionHistory.runs;
+            QVERIFY(std::ranges::any_of(runs,[&](const auto &run) {
+                return run.engine == "math-glyph-matcher" && run.modelHash.size()==64 && run.processedCrop == ink;
+            }));
+        } else QCOMPARE(result->words[1].text,QStringLiteral("у"));
+        QCOMPARE(result->words.first().id,raw.words.first().id);
+        QCOMPARE(result->words.last().id,raw.words.last().id);
+        QCOMPARE(result->words[1].sourceWordIds,raw.words[1].sourceWordIds);
+    }
+
+    void operatorCollectsScriptsAndSideOperands()
+    {
+        const QRect op(90,42,14,32);
+        const auto raw=reading({word(1,1,{5,48,35,12},"Пусть"),word(1,1,{77,52,6,10},"2"),
+            word(1,1,op,"∫"),word(1,1,{110,49,6,13},"t"),word(1,1,{170,48,40,12},"далее"),
+            word(1,2,{96,31,6,6},"n"),word(1,3,{92,80,5,5},"0")},{225,105});
+        // Native reading order interleaves the limits with prose elsewhere.
+        // Explicit Math allows that association; Mixed keeps native prose in order.
+        auto image=scan(raw);
+        const QVector<core::ImageRegion> blocks{{"left",{0,0,42,105},{},false,"text"},
+            {"equation",op,{},false,"math"},{"right",{155,0,70,105},{},false,"text"}};
+        mathBackend();
+        auto result=processing::recognizeSmartBlocks(image,{.language="rus"},blocks,false,{},true,&raw);
+        QVERIFY2(result,qPrintable(result ? QString() : result.error().message));
+        QCOMPARE(text(*result),(QStringList{"Пусть","x=1","далее"}));
+        const auto &formula=result->words[1];
+        for (int i : {1,2,3,5,6}) QVERIFY(formula.bounds.contains(raw.words[i].bounds));
+        QCOMPARE(result->imageRegions[1].bounds,op);
+        auto selected=processing::recognizeSmartBlocks(image,{.language="rus"},{blocks[1]},false,{},false,&raw);
+        QVERIFY(selected);
+        QCOMPARE(selected->words.size(),1);
+        QCOMPARE(selected->words[0].bounds,op);
+        auto mixed=processing::recognizeSmartBlocks(image,{.language="rus"},
+            {{"mixed",image.rect(),{},false,"mixed"}},false,{},true,&raw);
+        QVERIFY2(mixed,qPrintable(mixed ? QString() : mixed.error().message));
+        QCOMPARE(text(*mixed),(QStringList{"Пусть","\\(x=1\\)","далее"}));
+        for (int i : {1,2,3,5,6}) QVERIFY(mixed->words[1].bounds.contains(raw.words[i].bounds));
+
+        const QVector<core::ImageRegion> sideBySide{{"mixed",{0,0,108,105},"rus",false,"mixed"},
+            {"text",{108,0,117,105},"rus",false,"text"}};
+        auto across=processing::recognizeSmartBlocks(image,{.language="rus"},sideBySide,false,{},true,&raw);
+        QVERIFY(across);
+        QCOMPARE(text(*across),(QStringList{"Пусть","\\(x=1\\)","далее"}));
+        QVERIFY(across->words[1].bounds.contains(raw.words[3].bounds));
+        QCOMPARE(across->imageRegions[1].bounds,sideBySide[1].bounds);
+    }
+
     void textAndFormulaScheduling_data() {
         QTest::addColumn<bool>("eager");
         QTest::addColumn<bool>("parallel");
@@ -526,5 +637,5 @@ private slots:
     }
 };
 
-QTEST_GUILESS_MAIN(SmartBlocksTests)
+QTEST_MAIN(SmartBlocksTests)
 #include "smartblocks_tests.moc"

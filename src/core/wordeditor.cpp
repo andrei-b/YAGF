@@ -1,5 +1,6 @@
 #include "wordeditor.h"
 #include "ocrreadings.h"
+#include "formulatext.h"
 
 #include <QSet>
 #include <QRegularExpression>
@@ -195,21 +196,28 @@ std::expected<OcrPage, QString> WordEditor::acceptSpecialist(const OcrPage &page
         return std::unexpected(QStringLiteral("This reading is empty, too long or no longer matches the page."));
     OcrPage edited = page;
     const auto &alternative = page.words[anchor].alternative;
+    QStringList displayed;
+    for (int i : span) displayed.append(page.words[i].text);
+    const bool keep = text == alternative.sourceTokens.join(' ') || text == displayed.join(' ');
     if(!alternative.historyIds.isEmpty()) {
         OcrReading evidence;evidence.historyIds=alternative.historyIds;
-        const auto choice=text==alternative.text?QStringLiteral("accepted"):text==alternative.sourceTokens.join(' ')?QStringLiteral("rejected"):QString();
+        const auto choice=text==alternative.text?QStringLiteral("accepted"):keep?QStringLiteral("rejected"):QString();
         if(!choice.isEmpty())recordReadingDecision(edited,page,span,evidence,alternative.text,choice);
     }
     const QString engine = text == alternative.text ? alternative.engine : QString{};
     edited.words[anchor].alternative = {};
-    if (text == alternative.sourceTokens.join(' ')) {
+    if (keep) {
         for (int i : span) { edited.words[i].reviewed = true; edited.words[i].alternative = {}; }
         return edited;
     }
-    if (alternative.formula && text != alternative.sourceTokens.join(' ')) {
+    if (alternative.formula) {
         auto &block = edited.words[anchor];
         block.originalText = alternative.sourceTokens.join(' ');
         block.text = text;
+        if (!block.latexText.isEmpty()) {
+            block.text = unicodeFormulaText(text,true).text;
+            block.latexText = block.text == text ? QString{} : text;
+        }
         block.layoutBlock = true;
         block.reviewed = true;
         block.symbolShape.clear();

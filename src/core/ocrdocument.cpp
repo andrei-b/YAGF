@@ -1,6 +1,7 @@
 #include "ocrdocument.h"
 #include "ocrreadings.h"
 #include "coordinateframes.h"
+#include "formulatext.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -216,7 +217,8 @@ QVector<int> OcrPage::specialistSpan(int start) const
     QVector<int> indices;
     for (int i = 0; i < tokens.size(); ++i) {
         const auto &word = words[start + i];
-        if (word.reviewed || word.originalText != tokens[i] || word.text != tokens[i] ||
+        if (word.reviewed || word.originalText != tokens[i] ||
+            (word.text != tokens[i] && formulaSourceText(word) != tokens[i]) ||
             word.block != first.block || word.paragraph != first.paragraph || word.line != first.line)
             return {};
         indices.append(start + i);

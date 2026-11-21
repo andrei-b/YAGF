@@ -26,6 +26,7 @@ int main(int argc,char **argv)
         {R"({x+y}^{2})","(x+y)²"},
         {R"(\sqrt{x+1}+\sqrt[3]{y})","√(x+1)+∛(y)"},
         {R"(\mathbb{R}\to\mathbb{C})","ℝ→ℂ"},
+        {R"(\mathfrak{ACHIRZ})","𝔄ℭℌℑℜℨ"},
         {R"(\mathbf{x}+\mathcal{F})","𝐱+ℱ"},
         {R"(\not\in A)","∉A"},
         {R"(\text{если }x\in A)","если x∈A"},

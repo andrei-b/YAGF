@@ -1,4 +1,7 @@
 #include "smartblocks.h"
+#include "mathsymbols.h"
+#include "recognitionrecorder.h"
+#include "formulagrowth.h"
 #include "compactassignment.h"
 #include "mathocrengine.h"
 #include "tesseractengine.h"
@@ -455,9 +458,145 @@ QVector<Row> rowsIn(const QImage &gray, QRect area, const QVector<OcrWord> &word
     if (top >= 0 && !stop.stop_requested()) finish();
     return rows;
 }
+
+struct SymbolEvidence {
+    QSet<QRect> crops;
+    QSet<QRect> nativeSymbols;
+    QHash<QRect,MathSymbol> isolated;
+};
+
+void routeMathSymbols(QVector<Row> &rows, const QImage &gray, QRect area, const QString &mode,
+    const QVector<OcrWord> &words, const QVector<core::ImageRegion> &regions, bool fullPage,
+    SymbolEvidence &evidence, std::stop_token stop)
+{
+    const auto symbols = findMathSymbols(gray,area,words,mode == "math",stop);
+    if (symbols.isEmpty()) return;
+    QSet<QRect> anchors;
+    for (const auto &symbol : symbols) anchors.insert(symbol.bounds);
+    QVector<QRect> protectedBoxes;
+    const auto owner = std::ranges::find_if(regions,[&](const auto &r) {
+        return r.bounds.intersected(gray.rect()) == area;
+    });
+    for (const auto &region : regions) {
+        if (owner != regions.end() && &region == &*owner) continue;
+        const bool neighboringText = fullPage && mode == "mixed" && owner != regions.end() &&
+            !region.notText && region.content == "text" && region.language == owner->language;
+        if (!neighboringText) protectedBoxes.append(region.bounds);
+    }
+    for (const auto &word : words) {
+        if (anchors.contains(word.bounds) || (mode == "math" && area.contains(word.bounds))) continue;
+        if (word.reviewed || word.geometryInferred || word.layoutBlock || proseWord(word.text) ||
+            QStringLiteral(".,;:!?").contains(word.text)) protectedBoxes.append(word.bounds);
+    }
+
+    // Existing equation spans and visually anchored crops describe the same
+    // ink. Coalesce them before dispatch so a limit or operand is read once.
+    QVector<QRect> formulas, display;
+    for (const auto &row : rows) for (const auto &word : row.words) {
+        if (!word.layoutBlock) continue;
+        formulas.append(word.bounds);
+        if (row.content == "math") display.append(word.bounds);
+    }
+    QVector<QRect> proposals;
+    for (const auto &symbol : symbols) {
+        if (stop.stop_requested()) return;
+        auto box = growSymbolCrop(gray,symbol.bounds,fullPage ? gray.rect() : area,
+                                  protectedBoxes,symbol.largeOperator,stop);
+        bool changed;
+        do {
+            const QRect before = box;
+            for (const auto &other : formulas) if (box.intersects(other)) box |= other;
+            for (const auto &other : proposals) if (box.intersects(other)) box |= other;
+            changed = box != before;
+        } while (changed);
+        if (std::ranges::any_of(protectedBoxes,[&](QRect b){return b.intersects(box);})) continue;
+        // Partial native words could be swallowed during replacement by center.
+        if (std::ranges::any_of(words,[&](const auto &w) {
+                return w.bounds.intersects(box) && !box.contains(w.bounds);
+            })) continue;
+        proposals.removeIf([&](QRect b){return box.contains(b);});
+        proposals.append(box);
+        evidence.nativeSymbols.insert(symbol.bounds);
+        if (box == symbol.bounds && !symbol.latex.isEmpty()) evidence.isolated.insert(box,symbol);
+    }
+    if (proposals.isEmpty()) return;
+    for (auto &row : rows) {
+        const bool hadWords = !row.words.isEmpty();
+        row.words.removeIf([&](const auto &word) {
+            return std::ranges::any_of(proposals,[&](QRect box){return box.contains(word.bounds);});
+        });
+        if (row.words.isEmpty() && (hadWords || std::ranges::any_of(proposals,
+                [&](QRect box){return box.contains(row.box);}))) row.box = {};
+    }
+    rows.removeIf([](const auto &row){return row.box.isEmpty();});
+    for (const auto &box : proposals) {
+        OcrWord formula;
+        formula.bounds = box;
+        formula.layoutBlock = true;
+        const bool besideProse = std::ranges::any_of(words,[&](const OcrWord &w) {
+            const auto center = w.bounds.center();
+            const int gap = std::max(w.bounds.left()-box.right(), box.left()-w.bounds.right());
+            return gap >= 0 && gap <= 4*w.bounds.height() && area.contains(center) &&
+                center.y() >= box.top() && center.y() <= box.bottom() && proseWord(w.text);
+        });
+        const bool displayMath = mode == "math" || (!besideProse && std::ranges::any_of(display,
+            [&](QRect previous){return box.contains(previous);}));
+        const auto line = std::ranges::find_if(rows,[&](const Row &row) {
+            return !displayMath && !row.words.isEmpty() && row.box.intersects(box) &&
+                std::ranges::any_of(row.words,[](const auto &w){return !w.layoutBlock;});
+        });
+        if (line == rows.end()) rows.append({box,displayMath ? "math" : "mixed",{formula}});
+        else {
+            line->content = "mixed";
+            line->box |= box;
+            line->words.append(formula);
+            std::ranges::stable_sort(line->words,{},[](const auto &w){return w.bounds.left();});
+        }
+        evidence.crops.insert(box);
+    }
+}
 }
 
-std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image, const OcrOptions &options,
+static void readIsolatedSymbol(OcrWord &word, const SymbolEvidence &evidence,
+    const QImage &image, const OcrOptions &options, bool inlineMath, core::RecognitionHistory &history)
+{
+    const auto symbol = evidence.isolated.constFind(word.bounds);
+    if (symbol == evidence.isolated.cend() || !evidence.crops.contains(word.bounds)) return;
+    const QString text = inlineMath ? QStringLiteral("\\(%1\\)").arg(symbol->latex) : symbol->latex;
+    if (word.text == text) return;
+    const auto previous = word.text;
+    const auto provider = word.readingEngine;
+    word.originalText = word.text = text;
+    QStringList historyIds;
+    const auto pageCrop = word.bounds.translated(options.historyOffset);
+    for (const auto &run : history.runs) {
+        if (run.engine != provider || run.status != "succeeded") continue;
+        if (run.processedCrop == pageCrop) historyIds.append(run.id);
+        else for (const auto &v : run.output["requested_crops"].toArray()) {
+            const auto rect = v.toArray();
+            if (rect.size() != 4) continue;
+            const QRect crop(rect[0].toInt(),rect[1].toInt(),rect[2].toInt(),rect[3].toInt());
+            if (crop.translated(run.processedCrop.topLeft()) == pageCrop) {
+                historyIds.append(run.id);
+                break;
+            }
+        }
+    }
+    word.alternative = {provider,previous,{text},true,historyIds};
+    word.readingEngine = QStringLiteral("math-glyph-matcher");
+    if (options.history) {
+        auto settings = croppedOcrOptions(options,word.bounds);
+        settings.historyRole = "formula";
+        settings.formula = true;
+        auto run = options.history->begin(word.readingEngine,"font-templates",image.copy(word.bounds),settings);
+        history.runs.append(options.history->finish(std::move(run),symbol->elapsedMs,"succeeded",{},
+            {{"model_version","1"},{"latex",symbol->latex},{"error_fraction",symbol->error},
+             {"match_margin",symbol->margin},{"model_sha256",symbol->bankHash},
+             {"formula_engine",provider},{"formula_reading",previous}}));
+    }
+}
+
+static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &image, const OcrOptions &options,
     const QVector<core::ImageRegion> &regions, bool splitOnly, std::stop_token stop, bool includeUnmarked,
     const core::OcrPage *initialReading, QStringList *warnings, IOcrEngine *textProvider, IOcrEngine *formulaProvider,
     bool readBaseline, bool parallelFormulas)
@@ -491,7 +630,12 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
     const bool localText = !textProvider || textProvider->id() == "tesseract";
     page.language = localText ? TesseractEngine::modelLanguage(options.language) : options.language;
     page.imageRegions = regions;
+    const bool explicitMath = std::ranges::any_of(regions,[](const auto &r) {
+        return !r.notText && !r.autoDetected && r.content == "math";
+    });
+    const int formulaBudget = explicitMath ? 300000 : 30000;
     QVector<Row> rows;
+    SymbolEvidence symbolEvidence;
     std::map<QString, core::OcrPage> baselines;
     if (initialReading) baselines.emplace(page.language, *initialReading);
     TesseractEngine tesseract;
@@ -547,6 +691,13 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
         }
         auto found = rowsIn(analysis, area, local, mode, height, stop, excluded);
         found += hinted;
+        if (!splitOnly && mode != "text") {
+            // Use the page reading for prose guards just beyond a block's edge.
+            // Formula prefetch can start before text OCR has supplied any words.
+            const auto native = baselines.find(language.isEmpty() ? page.language : language);
+            const auto &context = native == baselines.end() ? local : native->second.words;
+            routeMathSymbols(found,pixels,area,mode,context,regions,includeUnmarked,symbolEvidence,stop);
+        }
         std::ranges::stable_sort(found, {}, [](const Row &row) { return std::pair(row.box.top(), row.box.left()); });
         if (!splitOnly) for (auto &row : found) {
             if (!row.words.isEmpty()) continue;
@@ -588,8 +739,7 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
                 if (word.layoutBlock && !boxes.contains(word.bounds)) boxes.append(word.bounds);
             earlyRows.emplace(i, std::move(*found));
         }
-        const bool forced = std::ranges::any_of(regions, [](const auto &r) { return !r.autoDetected && r.content == "math"; });
-        formulaReadings.start(formulaProvider, image, settings, boxes, forced ? 300000 : 30000);
+        formulaReadings.start(formulaProvider, image, settings, boxes, formulaBudget);
     }
     std::optional<core::OcrPage> baseline;
     if (readBaseline && !initialReading) {
@@ -611,8 +761,16 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
         }
         rows += *found;
     }
+    auto occupied = regions;
+    if (includeUnmarked && !symbolEvidence.crops.isEmpty()) {
+        QPainter mask(&uncovered);
+        for (const auto &box : symbolEvidence.crops) {
+            mask.fillRect(box,Qt::white);
+            occupied.append({{},box});
+        }
+    }
     const QRect remaining = includeUnmarked ? inkBox(uncovered, uncovered.rect()) : QRect{};
-    auto detected = analyze(uncovered, remaining, {}, page.language, regions);
+    auto detected = analyze(uncovered, remaining, {}, page.language, occupied);
     if (!detected) return std::unexpected(detected.error());
     int lastText = -1;
     for (const auto &row : *detected) {
@@ -642,6 +800,14 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
     };
     if (stop.stop_requested()) return std::unexpected(OcrError{{}, true});
     rows += *detected;
+    // Another block may have produced a native row for a borrowed limit.
+    // Keep that baseline available for fallback; emit the ink only once.
+    if (baselines.size() != 1 && !symbolEvidence.crops.isEmpty()) {
+        for (auto &row : rows) row.words.removeIf([&](const OcrWord &w) {
+            return !w.layoutBlock && std::ranges::any_of(symbolEvidence.crops,
+                [&](QRect box){return box.contains(w.bounds);});
+        });
+    }
     // A normal prose page keeps Tesseract's paragraphs, columns, IDs and reading order.
     const auto withDetectedBlocks = [&] {
         auto original = *initialReading;
@@ -713,7 +879,7 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
                 if (!proposal.bounds.contains(word.bounds.center())) continue;
                 span.append(i);
                 tokens += word.text;
-                if (claimed.contains(i) || (!forced && !assignments.contains(i) && proseWord(word.text))) unsafe = true;
+                if (claimed.contains(i) || (!forced && !assignments.contains(i) && !symbolEvidence.nativeSymbols.contains(word.bounds) && proseWord(word.text))) unsafe = true;
             }
             if (!forced) {
                 static const QRegularExpression operand(QStringLiteral("[\\p{L}\\p{N}]"));
@@ -721,14 +887,16 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
                 if (span.isEmpty()) {
                     // A few strokes cut from a skipped glyph are not a formula.
                     // Unread display fractions still have a complete, wide crop.
-                    if (!fraction || proposal.bounds.width()*5 < proposal.bounds.height()*3) unsafe = true;
-                } else if (!tokens.contains(operand) && !fraction) unsafe = true;
+                    if (!symbolEvidence.crops.contains(proposal.bounds) &&
+                        (!fraction || proposal.bounds.width()*5 < proposal.bounds.height()*3)) unsafe = true;
+                } else if (!tokens.contains(operand) && !fraction && !symbolEvidence.crops.contains(proposal.bounds)) unsafe = true;
             }
             // Heuristic crops cannot cross unrelated native reading spans.
             // An explicit/model Formula block has stronger geometry: replace
             // only its covered words even when Tesseract interleaves another
             // row's tokens. Words outside the accepted block stay in place.
-            if (!forced && !span.isEmpty() && span.last()-span.first()+1 != span.size()) unsafe = true;
+            if (!forced && !symbolEvidence.crops.contains(proposal.bounds) && !span.isEmpty() &&
+                span.last()-span.first()+1 != span.size()) unsafe = true;
             if (unsafe) continue;
             boxes.append(proposal.bounds);
             inlineMath.append(row.content == "mixed");
@@ -738,8 +906,7 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
         QStringList failures;
         core::OcrPage formulas;
         if (!boxes.isEmpty()) {
-            const bool forced=std::ranges::any_of(regions,[](const auto &r){return !r.autoDetected && r.content=="math";});
-            auto result = formulaReadings.recognize(formulaProvider, image, settings, stop, boxes, &failures,forced ? 300000 : 30000);
+            auto result = formulaReadings.recognize(formulaProvider, image, settings, stop, boxes, &failures,formulaBudget);
             if (!result) {
                 if (result.error().cancelled || stop.stop_requested()) return std::unexpected(result.error());
                 failures.append(result.error().message);
@@ -753,6 +920,7 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
             if (crop < 0) continue;
             if (inlineMath[crop]) formula.text = "\\(" + formula.text + "\\)";
             formula.originalText = formula.text;
+            readIsolatedSymbol(formula,symbolEvidence,image,settings,inlineMath[crop],formulas.recognitionHistory);
             formula.id = original.id + "/math-" + QUuid::createUuid().toString(QUuid::WithoutBraces);
             formula.sourceWordIds.clear();
             const auto &span = covered[crop];
@@ -837,7 +1005,7 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
         }
     }
     if (!boxes.isEmpty()) {
-        auto formulas = formulaReadings.recognize(formulaProvider, image, settings, stop, boxes,nullptr,30000);
+        auto formulas = formulaReadings.recognize(formulaProvider, image, settings, stop, boxes,nullptr,formulaBudget);
         if (formulas && formulas->words.size() != boxes.size())
             formulas = std::unexpected(OcrError{QStringLiteral("Local math OCR returned an incomplete set of crops.")});
         if (!formulas) {
@@ -851,6 +1019,7 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
             if (types[word.block-1] == "mixed") word.text = "\\(" + word.text + "\\)";
             word.originalText = word.text;
             word.readingEngine = formulas->words[i].readingEngine;
+            readIsolatedSymbol(word,symbolEvidence,image,settings,types[word.block-1] == "mixed",formulas->recognitionHistory);
         }
         appendRecognitionEvidence(page, *formulas);
     }
@@ -858,5 +1027,45 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
     for (int i = 0; i < types.size(); ++i)
         page.regions[i].type = types[i] == "math" ? QStringLiteral("equation") : QStringLiteral("text");
     return page;
+}
+
+std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image, const OcrOptions &options,
+    const QVector<core::ImageRegion> &regions, bool splitOnly, std::stop_token stop, bool includeUnmarked,
+    const core::OcrPage *initialReading, QStringList *warnings, IOcrEngine *textProvider, IOcrEngine *formulaProvider,
+    bool readBaseline, bool parallelFormulas)
+{
+    // Page OCR may borrow ink from adjacent text or unmarked margins. Selected
+    // block OCR has a fixed output coordinate frame and stays within that block.
+    auto crops = regions;
+    bool adjusted = false;
+    if (includeUnmarked && !splitOnly && std::ranges::any_of(regions,[](const auto &r) {
+            return !r.notText && r.content == "math" && (!r.autoDetected || !r.detectedLabel.isEmpty());
+        })) {
+        crops = growFormulaBlocks(image,regions,stop);
+        adjusted = crops.size() != regions.size();
+        // The refinement command marks edited blocks as manual. During OCR
+        // these are temporary input bounds; retain each original classification.
+        for (auto &crop : crops) {
+            const auto original = std::ranges::find(regions,crop.id,&core::ImageRegion::id);
+            if (original == regions.end()) continue;
+            const auto bounds = crop.bounds;
+            adjusted |= bounds != original->bounds;
+            crop = *original;
+            crop.bounds = bounds;
+        }
+    }
+    auto result = recognizeBlocks(image,options,crops,splitOnly,stop,includeUnmarked,initialReading,
+                                  warnings,textProvider,formulaProvider,readBaseline,parallelFormulas);
+    if (result && adjusted) {
+        auto outlines = regions;
+        for (const auto &r : result->imageRegions) {
+            auto saved = std::ranges::find(outlines,r.id,&core::ImageRegion::id);
+            if (saved != outlines.end()) saved->content = r.content;
+            else if (outlines.size() < 1000 && !std::ranges::any_of(regions,[&](const auto &old){return old.bounds.intersects(r.bounds);}))
+                outlines.append(r);
+        }
+        result->imageRegions = std::move(outlines);
+    }
+    return result;
 }
 }

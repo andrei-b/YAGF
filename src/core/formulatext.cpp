@@ -41,18 +41,21 @@ QString script(const QString &text,bool upper)
 }
 QString styled(const QString &text,const QString &style)
 {
+    static const QHash<QChar,uint> fraktur{{'C',0x212d},{'H',0x210c},{'I',0x2111},{'R',0x211c},{'Z',0x2128}};
     static const QHash<QChar,uint> doubleStruck{{'C',0x2102},{'H',0x210d},{'N',0x2115},{'P',0x2119},{'Q',0x211a},{'R',0x211d},{'Z',0x2124}};
     static const QHash<QChar,uint> calligraphic{{'B',0x212c},{'E',0x2130},{'F',0x2131},{'H',0x210b},{'I',0x2110},{'L',0x2112},{'M',0x2133},{'R',0x211b},{'e',0x212f},{'g',0x210a},{'o',0x2134}};
     QString out;
     for (const QChar c:text) {
         char32_t code=c.unicode();
         if (c>='A' && c<='Z') {
-            if (style=="mathbb") code=doubleStruck.value(c,0x1d538+c.unicode()-'A');
+            if (style=="mathfrak") code=fraktur.value(c,0x1d504+c.unicode()-'A');
+            else if (style=="mathbb") code=doubleStruck.value(c,0x1d538+c.unicode()-'A');
             else if (style=="mathcal") code=calligraphic.value(c,0x1d49c+c.unicode()-'A');
             else if (style=="mathbf" || style=="boldsymbol") code=0x1d400+c.unicode()-'A';
             else if (style=="mathit") code=0x1d434+c.unicode()-'A';
         } else if (c>='a' && c<='z') {
-            if (style=="mathbb") code=0x1d552+c.unicode()-'a';
+            if (style=="mathfrak") code=0x1d51e + c.unicode()-'a';
+            else if (style=="mathbb") code=0x1d552+c.unicode()-'a';
             else if (style=="mathcal") code=calligraphic.value(c,0x1d4b6+c.unicode()-'a');
             else if (style=="mathbf" || style=="boldsymbol") code=0x1d41a+c.unicode()-'a';
             else if (style=="mathit") code=c=='h'?0x210e:0x1d44e + c.unicode()-'a';
@@ -197,7 +200,7 @@ private:
         }
         if (name=="text" || name=="textrm" || name=="textnormal" || name=="textbf" || name=="textit" || name=="operatorname") return literal();
         if (name=="mathrm" || name=="mathsf" || name=="mathtt" || name=="mathop") return argument();
-        if (name=="mathbb" || name=="mathcal" || name=="mathbf" || name=="boldsymbol" || name=="mathit") return styled(argument(),name);
+        if (name=="mathfrak" || name=="mathbb" || name=="mathcal" || name=="mathbf" || name=="boldsymbol" || name=="mathit") return styled(argument(),name);
         if (name=="pmod") return " (mod "+argument()+')';
         if (name=="not") {
             const auto target=argument();
@@ -259,10 +262,10 @@ QString latexForUnicode(char32_t symbol)
             const auto points=script(QString(c),false).toUcs4();
             if (points.size()==1) map.insert(points[0],QStringLiteral("{}_{")+c+'}');
         }
-        for (const auto &style:QStringList{"mathbb","mathcal","mathbf","mathit"})
+        for (const auto &style:QStringList{"mathbb","mathcal","mathbf","mathit","mathfrak"})
             for (const auto c:QStringLiteral("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")) {
                 const auto points=styled(QString(c),style).toUcs4();
-                if (points.size()==1 && points[0]!=c.unicode()) map.insert(points[0],"\\"+style+'{'+c+'}');
+                if (points.size()==1 && points[0]!=c.unicode() && (style!="mathfrak" || !map.contains(points[0]))) map.insert(points[0],"\\"+style+'{'+c+'}');
             }
         return map;
     }();

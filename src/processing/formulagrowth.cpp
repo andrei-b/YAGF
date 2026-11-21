@@ -119,7 +119,7 @@ QRect trimDonor(const QImage &gray, const QRect &donor, const QRect &grown, int 
     return best;
 }
 
-void growOne(const QImage &gray, QVector<ImageRegion> &blocks, int index, std::stop_token stop)
+void growOne(const QImage &gray, QVector<ImageRegion> &blocks, int index, std::stop_token stop, bool largeOperator = false)
 {
     const QRect original = blocks[index].bounds;
     if (!gray.rect().contains(original) || original.isEmpty()) return;
@@ -178,9 +178,12 @@ void growOne(const QImage &gray, QVector<ImageRegion> &blocks, int index, std::s
         const auto &g = glyphs[i];
         if (original.contains(g.box) || !search.contains(g.box) ||
             g.box.height() > 1.35*scale || g.box.width() > 1.6*scale) continue;
+        const bool limit = largeOperator && g.box.height() <= 0.65 * original.height() &&
+            (g.box.center().y() < original.top() || g.box.center().y() > original.bottom()) &&
+            gap(g.box.left(),g.box.right(),original.left(),original.right()) <= 0.35 * original.height();
         if (std::ranges::any_of(blocks, [&](const auto &b) {
                 return &b != &blocks.at(index) && !canDonate(b) && b.bounds.intersects(g.box);
-            }) || belongsToLine(g.box, glyphs, original, scale, fractionBars)) continue;
+            }) || (!limit && belongsToLine(g.box, glyphs, original, scale, fractionBars))) continue;
         for (int j : competitors) rivalDistance[i] = std::min(rivalDistance[i],distance(glyphs[j].box,g.box)/scale);
         allowed[i] = true;
     }
@@ -265,6 +268,19 @@ void growOne(const QImage &gray, QVector<ImageRegion> &blocks, int index, std::s
     }
 }
 } // namespace
+
+QRect growSymbolCrop(const QImage &gray, QRect seed, QRect window,
+    const QVector<QRect> &protectedBoxes, bool largeOperator, std::stop_token stop)
+{
+    const int halo = std::clamp(seed.height()*2,16,240);
+    const QRect roi = seed.adjusted(-halo,-halo,halo,halo).intersected(window).intersected(gray.rect());
+    if (!roi.contains(seed)) return seed;
+    QVector<ImageRegion> boxes{{"seed",seed.translated(-roi.topLeft()),{},false,"math"}};
+    for (const auto &box : protectedBoxes) if (box.intersects(roi))
+        boxes.append({{},box.translated(-roi.topLeft()),{},true,"picture"});
+    growOne(gray.copy(roi),boxes,0,stop,largeOperator);
+    return boxes[0].bounds.translated(roi.topLeft());
+}
 
 QVector<core::ImageRegion> growFormulaBlocks(const QImage &image,
     const QVector<core::ImageRegion> &blocks, std::stop_token stop)

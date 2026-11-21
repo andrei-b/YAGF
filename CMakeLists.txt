@@ -45,6 +45,7 @@ target_include_directories(yagf_core PUBLIC src/core)
 
 # Image/source operations have no OCR, network, or job-controller dependency.
 add_library(yagf_imaging STATIC
+    src/processing/mathsymbols.cpp src/processing/mathsymbols.h
     src/processing/formulagrowth.cpp src/processing/formulagrowth.h
     src/processing/pagerestoration.cpp src/processing/pagerestoration.h
     src/processing/pagesource.cpp src/processing/pagesource.h
@@ -80,7 +81,7 @@ add_library(yagf_ocr STATIC
     src/processing/remoteocrengine.cpp src/processing/remoteocrengine.h)
 qt_add_resources(yagf_ocr "local_math" PREFIX "/math" BASE tools FILES tools/math_ocr.py)
 qt_add_resources(yagf_ocr "optional_models" PREFIX "/ocr" BASE service FILES service/optional-models.example.json)
-target_link_libraries(yagf_ocr PUBLIC yagf_core Qt6::Gui PRIVATE Qt6::Network)
+target_link_libraries(yagf_ocr PUBLIC yagf_core Qt6::Gui PRIVATE yagf_imaging Qt6::Network)
 target_include_directories(yagf_ocr PUBLIC src/processing)
 
 add_library(yagf_processing STATIC

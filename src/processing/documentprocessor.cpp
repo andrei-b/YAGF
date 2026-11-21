@@ -602,10 +602,16 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
                 lastBlock = maximumBlock;
             }
             result.outcome = std::move(merged);
-        } else if (!rawOutput && engine->id()=="rapid-latex-ocr" && formulaRecognizer) {
-            result.outcome = recognizeSmartBlocks(input, options,
-                {{"math-only", input.rect(), {}, false, "math", false}}, false, token, false,
+        } else if (!rawOutput && engine->id()=="rapid-latex-ocr") {
+            QVector<core::ImageRegion> scopes = selected;
+            if (scopes.isEmpty()) scopes.append({"math-only",input.rect(),{},false,"math"});
+            for (auto &scope : scopes) scope.content = "math";
+            result.outcome = recognizeSmartBlocks(input, options, scopes, false, token, false,
                 nullptr, &result.warnings, nullptr, formulaRecognizer.get());
+            if (result.outcome) {
+                result.outcome->imageRegions = blocks;
+                for (auto &block : result.outcome->imageRegions) block.bounds.translate(-result.offset);
+            }
         } else {
             result.outcome = engine->recognize(input, options, token);
         }
