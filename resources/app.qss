@@ -175,3 +175,65 @@ QSplitter#textEditorSplitter::handle {
 }
 QSplitter#navigationSplitter::handle:hover,
 QSplitter#textEditorSplitter::handle:hover { background: #9dbde2; }
+
+QDialog#ocrServicesDialog, QWidget#recognitionPage {
+    background: #f4f7fb;
+    color: #263a50;
+}
+#ocrServicesDialog QLabel, #ocrServicesDialog QCheckBox { color: #334962; }
+#ocrServicesDialog QLabel#recognitionSettingsTitle {
+    font-size: 16pt; font-weight: 700; color: #20354e;
+}
+#recognitionSettingsTabs::pane {
+    border: 1px solid #d5dfea; border-radius: 8px; padding: 1px; background: #f8fafd;
+}
+#recognitionSettingsTabs QTabBar::tab {
+    background: transparent; border: 0; border-bottom: 3px solid transparent;
+    padding: 8px 15px; color: #52677e; font-weight: 600;
+}
+#recognitionSettingsTabs QTabBar::tab:selected { color: #185ea9; border-bottom-color: #216ec1; }
+#recognitionSettingsTabs QTabBar::tab:hover { background: #eaf1f9; }
+#recognitionSettingsTabs QTabBar::tab:focus { border-top: 1px solid #6aa5e8; }
+#ocrServicesDialog QFrame#recognitionModelPanel, #ocrServicesDialog QFrame#layoutServicePanel {
+    background: #ffffff; border: 1px solid #d5dfea; border-radius: 9px;
+}
+#ocrServicesDialog QLabel#settingsPanelTitle { font-size: 12pt; font-weight: 700; color: #223950; }
+#ocrServicesDialog QLabel#textMark {
+    color: #1c5d9f; background: #e9f2fe; border-radius: 7px; font-size: 12pt; font-weight: 700;
+}
+#ocrServicesDialog QLabel#formulaMark {
+    color: #38675c; background: #e7f3ee; border-radius: 7px; font-size: 17pt;
+}
+#ocrServicesDialog QLabel#settingsHint, #ocrServicesDialog QLabel#ocrDiscoveryStatus,
+#ocrServicesDialog QLabel#comparisonSummary { color: #536980; }
+#ocrServicesDialog QLabel#modelState {
+    color: #465b70; background: #edf1f5; border-radius: 4px; padding: 3px 7px; font-weight: 600;
+}
+#ocrServicesDialog QLabel#modelState[availability="ready"] { color: #246342; background: #e6f4eb; }
+#ocrServicesDialog QLabel#modelState[availability="offline"] { color: #8a4917; background: #fff0df; }
+#ocrServicesDialog QLabel#formulaOutput { font-weight: 600; padding: 6px 0; }
+#ocrServicesDialog QToolButton {
+    color: #185ea9; background: transparent; border: 1px solid transparent; border-radius: 4px; padding: 3px;
+}
+#ocrServicesDialog QToolButton:hover { background: #edf4fc; }
+#ocrServicesDialog QToolButton:focus { border-color: #6aa5e8; }
+#ocrServicesDialog QLabel#comparisonWarning { color: #894510; }
+#ocrServicesDialog QLineEdit:disabled, #ocrServicesDialog QComboBox:disabled {
+    color: #708093; background: #f5f7fa;
+}
+#ocrServicesDialog QPushButton#primaryButton {
+    background: #216ec1; color: white; border-color: #216ec1; font-weight: 700; padding: 7px 17px;
+}
+#ocrServicesDialog QPushButton#primaryButton:hover { background: #145fae; }
+#ocrServicesDialog QPushButton#primaryButton:disabled {
+    background: #e7edf4; color: #78899c; border-color: #d9e2ec;
+}
+#ocrServicesDialog QTableWidget {
+    background: #ffffff; alternate-background-color: #f3f6fa;
+    color: #334962; border: 1px solid #d5dfea; border-radius: 5px;
+    selection-background-color: #daebfd; selection-color: #174d83;
+}
+#ocrServicesDialog QHeaderView::section {
+    background: #eaf0f6; color: #435b72; font-weight: 600;
+    padding: 7px 4px; border: 0; border-bottom: 1px solid #d5dfea;
+}

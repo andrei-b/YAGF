@@ -4,6 +4,7 @@
 #include <QFutureWatcher>
 #include <optional>
 class QTableWidget;
+class QBoxLayout;
 class QLineEdit;
 class QLabel;
 class QPushButton;
@@ -11,6 +12,7 @@ class QComboBox;
 class QDoubleSpinBox;
 class QCheckBox;
 namespace yagf::ui {
+class RecognitionModelPanel;
 class OcrServicesDialog final:public QDialog {
     Q_OBJECT
 public:
@@ -25,6 +27,7 @@ public:
     double pageLayoutThreshold() const;
     bool automaticPageLayout() const;
 protected:
+    void resizeEvent(QResizeEvent *) override;
     void showEvent(QShowEvent *) override;
     void reject() override;
 private:
@@ -45,7 +48,9 @@ private:
     QString layoutAuth;
     QTableWidget *table;
     QLineEdit *hosts,*token;
-    QLabel *status,*summary,*textDetails,*formulaDetails;
+    QLabel *status,*summary,*comparisonWarning;
+    QBoxLayout *modelPanels = nullptr;
+    RecognitionModelPanel *textPanel,*formulaPanel;
     QPushButton *scan,*stopButton,*usePrimary,*useFormula,*useLayout,*remove,*saveButton,*add;
     QFutureWatcher<std::expected<processing::OcrDiscovery,processing::OcrError>> watcher;
     std::stop_source stop;

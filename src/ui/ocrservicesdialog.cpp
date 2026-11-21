@@ -4,7 +4,12 @@
 #include <QDoubleSpinBox>
 #include <QDialogButtonBox>
 #include <QFormLayout>
-#include <QGroupBox>
+#include <QFrame>
+#include <QResizeEvent>
+#include <QScreen>
+#include <QScrollArea>
+#include <QStyle>
+#include <QToolButton>
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
@@ -28,9 +33,10 @@ QString modelLabel(const OcrService &s) {
     return s.model.isEmpty() || s.label.contains(s.model,Qt::CaseInsensitive) ? s.label : s.label+" — "+s.model;
 }
 QString modelChoice(const OcrService &s) {
-    const auto location=localOcrProvider(s.provider) ? OcrServicesDialog::tr("this computer") : s.url.authority();
     auto label=modelLabel(s);
-    if (!localOcrProvider(s.provider) || !label.contains(location,Qt::CaseInsensitive)) label+=" ("+location+")";
+    if (localOcrProvider(s.provider) && label==ocrProviderLabel(s.provider))
+        label=s.provider=="tesseract" ? QStringLiteral("Tesseract") : QStringLiteral("Rapid LaTeX OCR");
+    else if (!localOcrProvider(s.provider)) label+=" ("+s.url.authority()+")";
     if (!s.ready && !s.error.isEmpty()) label+=OcrServicesDialog::tr(" — unavailable");
     return label;
 }
@@ -53,47 +59,196 @@ QString modelDetails(const OcrService &s) {
     return state+" · "+ocrProviderLabel(s.provider)+'\n'+location+'\n'+capabilityDetails(s);
 }
 }
+// Both selectors expose the same model metadata. Keep the extra capabilities
+// behind a disclosure so a long service profile does not bury the controls.
+class RecognitionModelPanel final : public QFrame {
+    QLabel *state, *location, *details;
+public:
+    QComboBox *selector;
+    QLineEdit *language = nullptr;
+
+    explicit RecognitionModelPanel(bool formula, QWidget *parent) : QFrame(parent) {
+        setObjectName("recognitionModelPanel");
+        const QString prefix = formula ? "formulaOcr" : "textOcr";
+        auto *panel = new QVBoxLayout(this);
+        panel->setContentsMargins(20,20,20,16);
+        panel->setSpacing(8);
+        auto *heading = new QHBoxLayout;
+        auto *mark = new QLabel(formula ? QStringLiteral("∑") : QStringLiteral("Aa"),this);
+        mark->setObjectName(formula ? "formulaMark" : "textMark");
+        mark->setAlignment(Qt::AlignCenter);
+        mark->setFixedSize(38,38);
+        heading->addWidget(mark);
+        auto *title = new QLabel(formula ? tr("Formula recognition") : tr("Text recognition"),this);
+        title->setObjectName("settingsPanelTitle");
+        heading->addWidget(title,1);
+        panel->addLayout(heading);
+        panel->addSpacing(6);
+
+        selector = new QComboBox(this);
+        selector->setObjectName(prefix+"Engine");
+        selector->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+        selector->setMinimumContentsLength(12);
+        selector->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Fixed);
+        auto *modelLabel = new QLabel(tr("Model"),this);
+        modelLabel->setBuddy(selector);
+        panel->addWidget(modelLabel);
+        panel->addWidget(selector);
+
+        auto *connection = new QHBoxLayout;
+        state = new QLabel(this);
+        state->setObjectName("modelState");
+        connection->addWidget(state,0,Qt::AlignVCenter);
+        location = new QLabel(this);
+        location->setObjectName("settingsHint");
+        location->setTextFormat(Qt::PlainText);
+        location->setWordWrap(true);
+        location->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Preferred);
+        connection->addWidget(location,1);
+        panel->addLayout(connection);
+        panel->addSpacing(10);
+
+        if (formula) {
+            panel->addWidget(new QLabel(tr("Model output"),this));
+            auto *output = new QLabel(tr("LaTeX"),this);
+            output->setObjectName("formulaOutput");
+            panel->addWidget(output,0,Qt::AlignLeft);
+        } else {
+            language = new QLineEdit(this);
+            language->setObjectName("textOcrLanguage");
+            language->setMaxLength(64);
+            language->setPlaceholderText(tr("Follow document language"));
+            auto *label = new QLabel(tr("Language"),this);
+            label->setBuddy(language);
+            panel->addWidget(label);
+            panel->addWidget(language);
+        }
+        auto *hint = new QLabel(formula ? tr("Reads equations in mixed blocks and in Math only mode. Raw OCR bypasses this model.")
+                                        : tr("For Tesseract, combine language codes with +, for example rus+eng."),this);
+        hint->setObjectName("settingsHint");
+        hint->setWordWrap(true);
+        panel->addWidget(hint);
+        panel->addStretch();
+        auto *toggle = new QToolButton(this);
+        toggle->setObjectName(prefix+"DetailsToggle");
+        toggle->setCheckable(true);
+        toggle->setText(tr("Model details"));
+        toggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        toggle->setArrowType(Qt::RightArrow);
+        panel->addWidget(toggle,0,Qt::AlignLeft);
+        details = new QLabel(this);
+        details->setObjectName(prefix+"ModelDetails");
+        details->setTextFormat(Qt::PlainText);
+        details->setWordWrap(true);
+        details->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        details->hide();
+        panel->addWidget(details);
+        connect(toggle,&QToolButton::toggled,this,[this,toggle](bool open) {
+            toggle->setArrowType(open ? Qt::DownArrow : Qt::RightArrow);
+            details->setVisible(open);
+        });
+    }
+
+    void setService(const OcrService &s) {
+        const QString availability = s.ready ? "ready" : s.error.isEmpty() ? "unknown" : "offline";
+        if (state->property("availability").toString() != availability) {
+            state->setProperty("availability",availability);
+            state->style()->unpolish(state);
+            state->style()->polish(state);
+        }
+        state->setText(s.ready ? tr("Ready") : s.error.isEmpty() ? tr("Not checked") : tr("Unavailable"));
+        state->setToolTip(s.error);
+        location->setText(localOcrProvider(s.provider) ? tr("This computer") : s.url.authority());
+        location->setToolTip(s.url.toString());
+        const auto description = modelDetails(s);
+        selector->setToolTip(modelChoice(s)+'\n'+description);
+        details->setText(description);
+    }
+};
 OcrServicesDialog::OcrServicesDialog(QVector<OcrService> services,OcrService active,QWidget *parent,OcrService formulas,QString layoutToken)
     :QDialog(parent),entries(std::move(services)),primary(std::move(active)) {
-    setObjectName("ocrServicesDialog"); setWindowTitle(tr("Recognition settings")); resize(940,620);
-    auto *layout=new QVBoxLayout(this);
-    auto *header=new QHBoxLayout;
-    auto *intro=new QLabel(tr("Choose a model for text and a separate model for formulas."),this); intro->setWordWrap(true); header->addWidget(intro,1);
-    scan=new QPushButton(tr("Refresh models"),this); scan->setObjectName("discoverOcrServices"); header->addWidget(scan);
-    stopButton=new QPushButton(tr("Stop"),this); header->addWidget(stopButton); layout->addLayout(header);
-    auto *tabs=new QTabWidget(this); tabs->setObjectName("recognitionSettingsTabs"); layout->addWidget(tabs,1);
-    auto *recognitionPage=new QWidget(tabs); auto *recognition=new QVBoxLayout(recognitionPage); recognition->setSpacing(18);
-    tabs->addTab(recognitionPage,tr("Recognition"));
-    auto *textGroup=new QGroupBox(tr("Text recognition"),recognitionPage); auto *textForm=new QFormLayout(textGroup);
-    textForm->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
-    textEngine=new QComboBox(textGroup); textEngine->setObjectName("textOcrEngine"); textEngine->setMinimumContentsLength(35); textEngine->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
-    textForm->addRow(tr("Model:"),textEngine);
-    textDetails=new QLabel(textGroup); textDetails->setObjectName("textOcrModelDetails"); textDetails->setTextFormat(Qt::PlainText); textDetails->setWordWrap(true); textForm->addRow(textDetails);
-    textLanguage=new QLineEdit(textGroup); textLanguage->setObjectName("textOcrLanguage"); textLanguage->setMaxLength(64); textLanguage->setPlaceholderText(tr("Follow the current document language")); textForm->addRow(tr("Language:"),textLanguage);
-    auto *textHelp=new QLabel(tr("Used for text blocks and the text in mixed text/formula blocks. Tesseract language examples: rus, eng, rus+eng."),textGroup); textHelp->setWordWrap(true); textForm->addRow(textHelp); recognition->addWidget(textGroup);
-    auto *formulaGroup=new QGroupBox(tr("Formula recognition"),recognitionPage); auto *formulaForm=new QFormLayout(formulaGroup);
-    formulaForm->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
-    formulaEngine=new QComboBox(formulaGroup); formulaEngine->setObjectName("formulaOcrEngine"); formulaEngine->setMinimumContentsLength(35); formulaEngine->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
-    formulaForm->addRow(tr("Model:"),formulaEngine);
-    formulaDetails=new QLabel(formulaGroup); formulaDetails->setObjectName("formulaOcrModelDetails"); formulaDetails->setTextFormat(Qt::PlainText); formulaDetails->setWordWrap(true); formulaForm->addRow(formulaDetails);
-    auto *formulaHelp=new QLabel(tr("Used for Formula blocks, equations in Text + formulas blocks, and Math only recognition. Produces LaTeX. Raw OCR output bypasses this model."),formulaGroup); formulaHelp->setWordWrap(true); formulaForm->addRow(formulaHelp); recognition->addWidget(formulaGroup);
-    auto *manage=new QPushButton(tr("Manage models and services…"),recognitionPage); manage->setObjectName("manageOcrModels"); recognition->addWidget(manage,0,Qt::AlignLeft); recognition->addStretch();
-    auto *layoutPage=new QWidget(tabs); auto *pageLayout=new QVBoxLayout(layoutPage); auto *layoutForm=new QFormLayout;
-    layoutForm->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow); tabs->addTab(layoutPage,tr("Page layout"));
-    auto *layoutHelp=new QLabel(tr("Detect text, formulas and pictures before recognition. Select a discovered layout model in Models & services, or enter its service URL below."),layoutPage); layoutHelp->setWordWrap(true); pageLayout->addWidget(layoutHelp);
-    auto *servicesPage=new QWidget(tabs); auto *serviceLayout=new QVBoxLayout(servicesPage); tabs->addTab(servicesPage,tr("Models & services"));
+    setObjectName("ocrServicesDialog"); setWindowTitle(tr("Recognition settings"));
+    resize(QSize(960,600).boundedTo(screen()->availableGeometry().size()-QSize(32,64)));
+    auto *layout = new QVBoxLayout(this);
+    layout->setContentsMargins(22,18,22,16);
+    layout->setSpacing(12);
+    auto *header = new QHBoxLayout;
+    auto *title = new QLabel(windowTitle(),this);
+    title->setObjectName("recognitionSettingsTitle");
+    header->addWidget(title,1);
+    scan = new QPushButton(tr("Refresh models"),this);
+    scan->setObjectName("discoverOcrServices");
+    scan->setIcon(style()->standardIcon(QStyle::SP_BrowserReload));
+    header->addWidget(scan);
+    stopButton = new QPushButton(tr("Stop"),this);
+    header->addWidget(stopButton);
+    layout->addLayout(header);
+
+    auto *tabs = new QTabWidget(this);
+    tabs->setObjectName("recognitionSettingsTabs");
+    layout->addWidget(tabs,1);
+    auto *scroll = new QScrollArea(tabs);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setWidgetResizable(true);
+    auto *recognitionPage = new QWidget;
+    recognitionPage->setObjectName("recognitionPage");
+    auto *recognition = new QVBoxLayout(recognitionPage);
+    recognition->setContentsMargins(14,16,14,12);
+    recognition->setSpacing(12);
+    modelPanels = new QBoxLayout(QBoxLayout::LeftToRight);
+    modelPanels->setSpacing(12);
+    textPanel = new RecognitionModelPanel(false,recognitionPage);
+    formulaPanel = new RecognitionModelPanel(true,recognitionPage);
+    modelPanels->addWidget(textPanel,1);
+    modelPanels->addWidget(formulaPanel,1);
+    textEngine = textPanel->selector;
+    textLanguage = textPanel->language;
+    formulaEngine = formulaPanel->selector;
+    recognition->addLayout(modelPanels);
+    auto *manage = new QPushButton(tr("Manage models and services…"),recognitionPage);
+    manage->setObjectName("manageOcrModels");
+    recognition->addWidget(manage,0,Qt::AlignLeft);
+    recognition->addStretch();
+    scroll->setWidget(recognitionPage);
+    tabs->addTab(scroll,tr("Recognition"));
+
+    auto *layoutPage = new QWidget(tabs);
+    tabs->addTab(layoutPage,tr("Page layout"));
+    auto *pageLayout = new QVBoxLayout(layoutPage);
+    pageLayout->setContentsMargins(14,16,14,12);
+    auto *layoutCard = new QFrame(layoutPage);
+    layoutCard->setObjectName("layoutServicePanel");
+    auto *layoutForm = new QFormLayout(layoutCard);
+    layoutForm->setContentsMargins(20,18,20,20);
+    layoutForm->setVerticalSpacing(12);
+    layoutForm->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+    auto *layoutTitle = new QLabel(tr("AI page layout"),layoutCard);
+    layoutTitle->setObjectName("settingsPanelTitle");
+    layoutForm->addRow(layoutTitle);
+    auto *layoutHelp = new QLabel(tr("Detect text, formulas and pictures before recognition. Choose a discovered service in Models & services or enter its URL here."),layoutCard);
+    layoutHelp->setWordWrap(true);
+    layoutHelp->setObjectName("settingsHint");
+    layoutForm->addRow(layoutHelp);
+    pageLayout->addWidget(layoutCard);
+
+    auto *servicesPage = new QWidget(tabs);
+    auto *serviceLayout = new QVBoxLayout(servicesPage);
+    serviceLayout->setContentsMargins(14,16,14,12);
+    serviceLayout->setSpacing(10);
+    tabs->addTab(servicesPage,tr("Models && services"));
     connect(manage,&QPushButton::clicked,this,[tabs,servicesPage]{tabs->setCurrentWidget(servicesPage);});
-    auto *serviceHelp=new QLabel(tr("Refresh finds running services on these hosts. Each model appears in the Text and/or Formula selector according to what it recognizes. Optionally select up to three companion text engines for comparison."),servicesPage); serviceHelp->setWordWrap(true); serviceLayout->addWidget(serviceHelp);
     auto *search=new QHBoxLayout;
     hosts=new QLineEdit(QSettings("YAGF","YAGF Revival").value("ocr/discoveryHosts","127.0.0.1").toString(),this); hosts->setObjectName("ocrDiscoveryHosts");
     hosts->setPlaceholderText(tr("127.0.0.1, jetson-host, https://server:8765")); hosts->setToolTip(tr("Host names probe ports 8765–8769, layout on 8771, the gateway on 8772 and PaddleOCR-VL on 8082. A URL or host:port probes that exact service. Existing configured URLs are also checked. Up to 32 endpoints; no document images are sent during discovery."));
-    search->addWidget(new QLabel(tr("Hosts / service URLs:"),this)); search->addWidget(hosts,1);
+    auto *hostsLabel = new QLabel(tr("Discovery hosts"),this); hostsLabel->setBuddy(hosts); search->addWidget(hostsLabel); search->addWidget(hosts,1);
     serviceLayout->addLayout(search);
     table=new QTableWidget(0,7,this); table->setObjectName("ocrServicesTable");
     table->setHorizontalHeaderLabels({tr("Compare"),tr("Name"),tr("Model / engine"),tr("Service URL"),tr("Language"),tr("Status"),tr("Recognizes")});
     table->setSelectionBehavior(QAbstractItemView::SelectRows); table->setSelectionMode(QAbstractItemView::SingleSelection); table->verticalHeader()->hide();
-    table->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive); table->horizontalHeader()->setSectionResizeMode(3,QHeaderView::Stretch);
-    for (const auto &[column,width]:{std::pair{0,95},{1,195},{2,115},{4,90},{5,145}}) table->setColumnWidth(column,width);
+    table->setShowGrid(false); table->setAlternatingRowColors(true); table->setWordWrap(false);
+    table->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive); table->horizontalHeader()->setStretchLastSection(true);
+    table->horizontalHeader()->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    for (const auto &[column,width]:{std::pair{0,78},{1,160},{2,135},{3,172},{4,84},{5,92},{6,105}}) table->setColumnWidth(column,width);
     serviceLayout->addWidget(table,1);
     connect(textEngine,&QComboBox::currentIndexChanged,this,[this](int index) {
         if (filling || index<0) return;
@@ -111,27 +266,43 @@ OcrServicesDialog::OcrServicesDialog(QVector<OcrService> services,OcrService act
     layoutAuth=std::move(layoutToken);
     connect(layoutEndpoint,&QLineEdit::textChanged,this,[this]{if (!filling) layoutAuth.clear();});
     layoutThreshold=new QDoubleSpinBox(this); layoutThreshold->setObjectName("pageLayoutThreshold"); layoutThreshold->setRange(.1,.95); layoutThreshold->setSingleStep(.05); layoutThreshold->setValue(QSettings("YAGF","YAGF Revival").value("layout/threshold",QSettings().value("layout/threshold",.5)).toDouble());
-    layoutForm->addRow(tr("Service URL:"),layoutEndpoint); layoutForm->addRow(tr("Minimum score:"),layoutThreshold);
+    layoutThreshold->setSizePolicy(QSizePolicy::Maximum,QSizePolicy::Fixed);
+    layoutForm->addRow(tr("Service URL"),layoutEndpoint); layoutForm->addRow(tr("Minimum score"),layoutThreshold);
     automaticLayout=new QCheckBox(tr("Use AI page layout before Tesseract page and batch OCR"),this);
     automaticLayout->setObjectName("automaticPageLayout");automaticLayout->setChecked(QSettings("YAGF","YAGF Revival").value("layout/automatic",false).toBool());
     automaticLayout->setToolTip(tr("Refresh automatic blocks with the selected layout service before OCR. Keep manual blocks. Selected-block recognition uses the selected blocks directly."));
-    layoutForm->addRow(automaticLayout); pageLayout->addLayout(layoutForm); pageLayout->addStretch();
+    layoutForm->addRow(automaticLayout); pageLayout->addStretch();
     selectedFormula=formulas.key();
     if (formulas.provider!="rapid-latex-ocr" && std::ranges::none_of(entries,[&](const auto &s){return s.key()==formulas.key();})) entries.append(formulas);
     connect(formulaEngine,&QComboBox::currentIndexChanged,this,[this](int index) {if (!filling && index>=0) {selectedFormula=formulaEngine->itemData(index).toString(); refresh();}});
-    auto *tools=new QHBoxLayout; add=new QPushButton(tr("Add service…"),this); remove=new QPushButton(tr("Remove"),this); usePrimary=new QPushButton(tr("Use selected for text"),this); usePrimary->setObjectName("usePrimaryOcrService");
+    auto *tools=new QHBoxLayout; add=new QPushButton(tr("Add service…"),this); remove=new QPushButton(tr("Remove"),this); usePrimary=new QPushButton(tr("Use for text"),this); usePrimary->setObjectName("usePrimaryOcrService");
     add->setObjectName("addOcrService");
     useFormula=new QPushButton(tr("Use for formulas"),this); useFormula->setObjectName("useFormulaOcrService");
     connect(useFormula,&QPushButton::clicked,this,[this] {const int row=table->currentRow(); if (row>=0 && entries[row].supportsFormulas()) {selectedFormula=entries[row].key(); populate(row);}});
-    useLayout=new QPushButton(tr("Use selected for layout"),this); useLayout->setObjectName("useLayoutService");
+    useLayout=new QPushButton(tr("Use for layout"),this); useLayout->setObjectName("useLayoutService");
     // The page-area dialog currently speaks yagf-layout/1. A layout task on an
     // OCR endpoint describes evidence; it does not change the wire protocol.
     connect(useLayout,&QPushButton::clicked,this,[this] {const int row=table->currentRow();if (row>=0 && entries[row].provider=="layout" && entries[row].supportsPageLayout()) {layoutEndpoint->setText(entries[row].url.toString());layoutAuth=entries[row].token;}});
     tools->addWidget(add); tools->addWidget(remove); tools->addStretch(); tools->addWidget(useLayout); tools->addWidget(useFormula); tools->addWidget(usePrimary); serviceLayout->addLayout(tools);
-    auto *auth=new QHBoxLayout; auth->addWidget(new QLabel(tr("Selected service token:"),this)); token=new QLineEdit(this); token->setObjectName("ocrServiceToken"); token->setEchoMode(QLineEdit::Password); token->setPlaceholderText(tr("Optional bearer token; kept only in memory")); auth->addWidget(token,1); serviceLayout->addLayout(auth);
-    summary=new QLabel(this); summary->setTextFormat(Qt::PlainText); summary->setWordWrap(true); layout->addWidget(summary);
-    status=new QLabel(this); status->setObjectName("ocrDiscoveryStatus"); status->setTextFormat(Qt::PlainText); status->setWordWrap(true); layout->addWidget(status);
-    auto *buttons=new QDialogButtonBox(QDialogButtonBox::Save|QDialogButtonBox::Cancel,this); saveButton=buttons->button(QDialogButtonBox::Save); layout->addWidget(buttons);
+    auto *auth=new QHBoxLayout; auth->addWidget(new QLabel(tr("Service token"),this)); token=new QLineEdit(this); token->setObjectName("ocrServiceToken"); token->setEchoMode(QLineEdit::Password); token->setPlaceholderText(tr("Optional bearer token; kept only in memory")); auth->addWidget(token,1); serviceLayout->addLayout(auth);
+    summary=new QLabel(this); summary->setTextFormat(Qt::PlainText); summary->setWordWrap(true);
+    summary->setObjectName("comparisonSummary");
+    serviceLayout->addWidget(summary);
+    auto *footer=new QHBoxLayout;
+    status=new QLabel(this); status->setObjectName("ocrDiscoveryStatus"); status->setTextFormat(Qt::PlainText);
+    status->setWordWrap(true);
+    footer->addWidget(status,1);
+    comparisonWarning=new QLabel(tr("Select at most three comparison engines in Models & services to save."),this);
+    comparisonWarning->setObjectName("comparisonWarning");
+    comparisonWarning->setWordWrap(true);
+    footer->addWidget(comparisonWarning,1);
+    auto *buttons=new QDialogButtonBox(QDialogButtonBox::Save|QDialogButtonBox::Cancel,this);
+    saveButton=buttons->button(QDialogButtonBox::Save);
+    saveButton->setObjectName("primaryButton");
+    saveButton->style()->unpolish(saveButton);
+    saveButton->style()->polish(saveButton);
+    footer->addWidget(buttons);
+    layout->addLayout(footer);
     if (std::ranges::none_of(entries,[](const auto &s){return s.provider=="tesseract";})) {
         OcrService local; local.provider="tesseract"; local.label=ocrProviderLabel(local.provider); local.ready=!QStandardPaths::findExecutable("tesseract").isEmpty(); entries.prepend(local);
     }
@@ -169,7 +340,7 @@ OcrServicesDialog::OcrServicesDialog(QVector<OcrService> services,OcrService act
                 else {found->ready=discovered.ready; found->error=discovered.error; if (found->language.isEmpty()) found->language=discovered.language; found->tasks=discovered.tasks; found->model=discovered.model;found->profile=discovered.profile;found->protocol=discovered.protocol;}
             }
             const int ready=std::ranges::count_if(result->services,[](const auto &s){return s.ready;});
-            status->setText(tr("%1 remote recognition/layout services ready. Unavailable endpoints can be checked again after starting their service or SSH tunnel.").arg(ready));
+            status->setText(ready ? tr("Discovery complete · %1 remote services ready").arg(ready) : tr("Discovery complete · no remote services ready"));
             status->setToolTip(result->diagnostics.join('\n'));
         }
         populate();
@@ -177,6 +348,11 @@ OcrServicesDialog::OcrServicesDialog(QVector<OcrService> services,OcrService act
     populate();
 }
 OcrServicesDialog::~OcrServicesDialog() {stop.request_stop(); watcher.waitForFinished();}
+void OcrServicesDialog::resizeEvent(QResizeEvent *event) {
+    QDialog::resizeEvent(event);
+    if (modelPanels) modelPanels->setDirection(event->size().width() >= 60*fontMetrics().horizontalAdvance('M')
+        ? QBoxLayout::LeftToRight : QBoxLayout::TopToBottom);
+}
 void OcrServicesDialog::reject() {stop.request_stop(); QDialog::reject();}
 void OcrServicesDialog::showEvent(QShowEvent *event) {QDialog::showEvent(event); if (!opened) {opened=true; QTimer::singleShot(0,this,&OcrServicesDialog::discover);}}
 void OcrServicesDialog::populate(int selected) {
@@ -193,7 +369,7 @@ void OcrServicesDialog::populate(int selected) {
             if (column==4) item->setToolTip(tr("An empty local Tesseract language follows the primary language. Remote services normally report their fixed language or auto."));
             table->setItem(row,column,item);
         }
-        table->setRowHeight(row,42);
+        table->setRowHeight(row,std::max(32,table->fontMetrics().height()+14));
     }
     textEngine->clear();
     for (const auto &s:entries) if (s.supportsText()) {textEngine->addItem(modelChoice(s),s.key()); textEngine->setItemData(textEngine->count()-1,modelDetails(s),Qt::ToolTipRole);}
@@ -211,11 +387,13 @@ void OcrServicesDialog::refresh() {
     const int enabled=std::ranges::count_if(entries,[&](const auto &s){return s.enabled && s.supportsText() && s.key()!=key;});
     const auto text=std::ranges::find_if(entries,[&](const auto &s){return s.key()==key;});
     const auto &textService=text==entries.end() ? primary : *text;
-    textDetails->setText(modelDetails(textService)); formulaDetails->setText(modelDetails(formulaService()));
+    textPanel->setService(textService); formulaPanel->setService(formulaService());
     {const QSignalBlocker block(textLanguage); textLanguage->setText(textService.language);}
     textLanguage->setReadOnly(textService.provider!="tesseract" && textService.provider!="paddleocr");
     textLanguage->setToolTip(textLanguage->isReadOnly() ? tr("Language reported by this model.") : tr("Language used by the selected text model."));
-    summary->setText(enabled>3 ? tr("Select at most three companion text engines before saving.") : tr("%1 companion text engines. Changes take effect when you save.").arg(enabled));
+    summary->setText(enabled>3 ? tr("Select at most three companion text engines before saving.") : tr("Comparison engines selected: %1 of 3").arg(enabled));
+    comparisonWarning->setVisible(enabled>3);
+    status->setVisible(enabled<=3);
     table->setEnabled(!busy); hosts->setEnabled(!busy); scan->setEnabled(!busy); stopButton->setVisible(busy); add->setEnabled(!busy && entries.size()<64);
     remove->setEnabled(!busy && selected && !localOcrProvider(entries[row].provider)); usePrimary->setEnabled(!busy && selected && entries[row].supportsText()); useFormula->setEnabled(!busy && selected && entries[row].supportsFormulas()); formulaEngine->setEnabled(!busy); textEngine->setEnabled(!busy); textLanguage->setEnabled(!busy); layoutEndpoint->setEnabled(!busy); layoutThreshold->setEnabled(!busy); automaticLayout->setEnabled(!busy); useLayout->setEnabled(!busy && selected && entries[row].provider=="layout" && entries[row].supportsPageLayout()); token->setEnabled(!busy && selected && !localOcrProvider(entries[row].provider)); saveButton->setEnabled(!busy && enabled<=3);
 }
