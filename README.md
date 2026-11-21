@@ -1,35 +1,68 @@
 # YAGF 2
 
-A Linux OCR editor for scanned books, documents, and mathematical text. Recognize
-pages, correct text against the original image, and keep formulas, page regions,
-and reviewed corrections together in a project.
+**AI-assisted OCR, mathematical formula recognition, and document review for Linux.**
 
-Built with **Qt 6** and **C++23**. Local text recognition uses **Tesseract**;
-additional OCR, formula, and page-layout models can run on a remote machine.
+Turn scanned books, PDFs, DjVu files, and photographed pages into editable text
+and LaTeX. Combine local Tesseract with neural OCR engines, vision models, and
+AI page-layout detection. Inspect each result against the original scan and
+approve corrections before exporting your document.
+
+## Capabilities
+
+- **AI page understanding.** Detect text, formulas, tables, and pictures with
+  PP-DocLayoutV3. Review detected regions and route text and equations to
+  independently selected recognition models.
+- **AI-assisted correction.** Ask a vision model to inspect an uncertain word or
+  passage using its source crop, nearby text, and document context. Compare its
+  suggested readings and choose which correction to apply.
+- **Multiple OCR engines in one workspace.** Discover available models, choose
+  separate text and formula engines, and run companion engines to compare their
+  readings.
+- **A complete math workflow.** Recognize equations as LaTeX, edit them with a
+  live rendered preview, use supported Unicode formulas, and export LaTeX or
+  typeset formulas in formatted PDFs.
+- **Source-linked editing and review.** Select words or blocks directly on the
+  scan, check spelling, work through a verification queue, and undo edits.
+  Reviewed corrections survive recognition reruns when safely matched.
+- **Page preparation and batch OCR.** Rotate, deskew, improve contrast, restore
+  damaged scans, edit regions, and recognize individual blocks or entire books.
+  Import images, PDFs, DjVu files, scanner pages, and clipboard images.
+- **Learning and evaluation.** Teach recurring symbol errors, adapt native OCR
+  profiles from reviewed examples, and compare pipelines using CER/WER and timing
+  measurements in the experiments window or `yagf2-benchmark` CLI.
+- **Document export.** Produce searchable or formatted PDFs, HTML, plain text,
+  structured JSON, LaTeX documents, and portable projects. Optional host tools
+  provide DjVu conversion and PDF/A export.
+
+## Supported OCR engines and AI integrations
+
+| Engine or model | Recognition / role | Integration |
+| --- | --- | --- |
+| **Tesseract** | Text OCR with installed language models | Local, default engine |
+| **PaddleOCR** | Text OCR | Optional OCR service |
+| **PaddleOCR-VL** | Vision-based text and formula recognition | Direct vision server or YAGF bridge |
+| **docTR** | Text OCR and specialist readings for uncertain text | Optional OCR service |
+| **RapidOCR** | Text-line recognition with ONNX models | Optional OCR service |
+| **Surya** | Text, mathematics, ordered layout blocks, and tables | Optional OCR service |
+| **Kraken** | Text OCR with a selected recognition model | Optional OCR service |
+| **Rapid LaTeX OCR** | Formula images to LaTeX | Optional local Python runtime |
+| **PP-FormulaNet_plus-L** | Dedicated formula recognition | Optional formula-only worker |
+| **PP-DocLayoutV3** | AI page-region detection | Optional layout worker |
+| **Adapted native OCR profiles** | Tesseract, Kraken, and configured PaddleOCR training/inference profiles | Native training worker |
+| **OpenAI-compatible vision models** | AI-assisted word and passage review | User-configured vision service |
+
+Choose text, formula, and layout models in **Tools → Recognition settings…**.
+Services can run on the same computer or a separate inference host, including a
+Jetson. Model weights and optional Python runtimes are installed separately;
+PaddleOCR adaptation requires a configured native training environment. See
+[OCR services](service/README.md), [model discovery](service/OCR_DISCOVERY.md),
+and [native training](service/NATIVE_TRAINING.md) for setup.
+
+Built with **Qt 6** and **C++23**.
 
 ![YAGF workspace with page thumbnails, detected text and formula regions, and the correction editor](docs/screenshots/document-workspace.png)
 
 *A scanned mathematics book with source regions and recognized text shown side by side.*
-
-## What you can do
-
-- **Recognize text and mathematics separately.** Choose independent text and
-  formula models in one settings window. Discover compatible services, including
-  PaddleOCR-VL and the formula-only PP-FormulaNet_plus-L worker.
-- **Correct against the scan.** Select words or blocks, inspect their source
-  pixels, edit text and LaTeX, and undo changes. Reviewed corrections are retained
-  across recognition when they can be matched safely.
-- **Prepare difficult pages.** Rotate, deskew, improve contrast, restore damaged
-  scans, and split pages into text, formula, mixed, picture, or excluded regions.
-  Optional AI layout detection can identify page areas before OCR.
-- **Review a book systematically.** Use the verification queue, spelling checks,
-  alternative OCR readings, and batch recognition. Teach recurring symbol errors
-  or adapt a native OCR model from reviewed examples.
-- **Export your work.** Save text, HTML, structured JSON, searchable or formatted
-  PDFs, LaTeX documents, and portable projects. DjVu conversion and PDF/A export
-  use optional host tools.
-- **Compare engines.** The desktop experiments window and `yagf2-benchmark` CLI
-  measure OCR pipelines against explicitly verified reference pages.
 
 ![YAGF formula editor showing editable LaTeX and a rendered mathematical expression alongside the scanned page](docs/screenshots/formula-editor.png)
 
