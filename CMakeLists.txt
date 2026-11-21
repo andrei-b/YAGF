@@ -10,6 +10,13 @@ find_package(Qt6 6.2 REQUIRED COMPONENTS Core Gui Widgets Concurrent Network)
 qt_standard_project_setup()
 set(CMAKE_AUTORCC ON)
 
+# Keep developer checkout paths out of public binaries and diagnostics.
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    add_compile_options(
+        "-ffile-prefix-map=${PROJECT_SOURCE_DIR}=/usr/src/yagf2"
+        "-ffile-prefix-map=${PROJECT_BINARY_DIR}=/usr/src/yagf2/build")
+endif()
+
 add_library(yagf_core STATIC
     src/core/ocrreadings.cpp src/core/ocrreadings.h
     src/core/blockfont.cpp src/core/blockfont.h
@@ -130,6 +137,26 @@ install(FILES packaging/io.github.andrei_b.YAGF.appdata.xml
         DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo)
 install(FILES COPYING
         DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/io.github.andrei_b.YAGF)
+install(FILES README.md ARCHITECTURE.md AUTHORS COPYING
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/yagf2)
+install(FILES COPYING DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/yagf2 RENAME copyright)
+install(FILES packaging/README.md DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/yagf2/packaging)
+install(DIRECTORY docs/ DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/yagf2/docs
+        FILES_MATCHING PATTERN "*.md" PATTERN "*.png" PATTERN "*.json")
+install(DIRECTORY service/ DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/yagf2/service
+        FILES_MATCHING PATTERN "*.md" PATTERN "*.service" PATTERN "*.example.json" PATTERN "*.txt"
+        PATTERN "tests" EXCLUDE)
+install(DIRECTORY examples/ DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/yagf2/examples
+        FILES_MATCHING PATTERN "*.md" PATTERN "*.json" PATTERN "*.png" PATTERN "*.pdf")
+install(FILES tests/data/math/equations.pdf
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/yagf2/tests/data/math)
+install(FILES tools/jetson_metrics.py
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/yagf2/tools)
+install(DIRECTORY service/
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/yagf2/service
+        FILES_MATCHING PATTERN "*.py" PATTERN "*.txt" PATTERN "*.example.json"
+        PATTERN "*.service" PATTERN "*.md"
+        PATTERN "tests" EXCLUDE PATTERN "__pycache__" EXCLUDE)
 
 include(CTest)
 if(BUILD_TESTING)
@@ -309,6 +336,9 @@ if(BUILD_TESTING)
     add_test(NAME remoteocrengine_tests COMMAND remoteocrengine_tests)
     find_package(Python3 QUIET COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND)
+        add_test(NAME packaging_tests COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_packaging.py)
+        set_tests_properties(packaging_tests PROPERTIES TIMEOUT 30)
+        add_test(NAME public_files_tests COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_public_files.py)
         add_test(NAME benchmark_cli_tests COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_benchmark_cli.py $<TARGET_FILE:yagf2-benchmark>)
         set_tests_properties(benchmark_cli_tests PROPERTIES TIMEOUT 45)
         add_test(NAME jetson_metrics_tests COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_jetson_metrics.py)
@@ -328,4 +358,8 @@ if(BUILD_TESTING)
         add_test(NAME pdfexporter_tests COMMAND pdfexporter_tests)
         set_tests_properties(pdfexporter_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     endif()
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    include(packaging/CPackConfig.cmake)
 endif()

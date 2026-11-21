@@ -61,9 +61,10 @@ not page layout or the mathematical formula model. The existing
 
 ## Worker setup
 
-The current Jetson setup uses `abagx@localhost-0`, loopback port **8772**, and the
-Toshiba disk at `/mnt/toshiba/yagf-native` for environments, models, jobs, cache and
-temporary files. Training uses CPU with two threads, separately from existing
+Choose a worker host and a writable storage root for environments, models, jobs,
+cache and temporary files. Examples below use `/srv/yagf/native`; replace it
+with your own directory. The worker listens on loopback port **8772**.
+Training uses CPU with two threads, separately from other
 GPU/VL and layout services. A job stores its reviewed dataset, profile, log,
 validation readings and immutable candidate. Only one training job runs at once.
 The service unit caps memory at 6 GiB and a command at one hour.
@@ -106,8 +107,8 @@ Create an isolated environment without system site packages. The tested CPU
 versions are in [requirements-native-kraken.txt](requirements-native-kraken.txt):
 
 ```sh
-python3 -m venv /mnt/toshiba/yagf-native/venv
-/mnt/toshiba/yagf-native/venv/bin/pip install -r service/requirements-native-kraken.txt
+python3 -m venv /srv/yagf/native/venv
+/srv/yagf/native/venv/bin/pip install -r service/requirements-native-kraken.txt
 ```
 
 Supply a recognition model suitable for the book; the current profile uses the
@@ -144,8 +145,8 @@ from an HTTP request. Copy `native_training_server.py`, `native_engines.py`,
 For a manual launch:
 
 ```sh
-/mnt/toshiba/yagf-native/venv/bin/python service/native_training_server.py \
-  --config /mnt/toshiba/yagf-native/profiles.json --host 127.0.0.1 --port 8772
+/srv/yagf/native/venv/bin/python service/native_training_server.py \
+  --config /srv/yagf/native/profiles.json --host 127.0.0.1 --port 8772
 ```
 
 Install [yagf-native-training.service](yagf-native-training.service) in
@@ -153,15 +154,15 @@ Install [yagf-native-training.service](yagf-native-training.service) in
 `~/.config/yagf/native-training.env` sets:
 
 ```ini
-YAGF_NATIVE_PYTHON=/mnt/toshiba/yagf-native/venv/bin/python
-YAGF_NATIVE_CONFIG=/mnt/toshiba/yagf-native/profiles.json
-XDG_CACHE_HOME=/mnt/toshiba/yagf-native/cache
-TMPDIR=/mnt/toshiba/yagf-native/tmp
+YAGF_NATIVE_PYTHON=/srv/yagf/native/venv/bin/python
+YAGF_NATIVE_CONFIG=/srv/yagf/native/profiles.json
+XDG_CACHE_HOME=/srv/yagf/native/cache
+TMPDIR=/srv/yagf/native/tmp
 ```
 
 Create those cache/tmp directories first. On the desktop install
 [yagf-native-tunnel.service](yagf-native-tunnel.service). Its environment file
-`~/.config/yagf/native-host.env` sets `YAGF_JETSON_HOST=abagx@localhost-0`.
+`~/.config/yagf/native-host.env` sets `YAGF_JETSON_HOST=user@inference-host.example`.
 It uses a dedicated key at `~/.ssh/yagf_jetson_native`, restricted on the host to:
 
 ```text

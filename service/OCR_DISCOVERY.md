@@ -47,8 +47,8 @@ of the layout and training tunnels. Its environment file is
 `~/.config/yagf/formula-host.env` (`YAGF_JETSON_HOST=user@host`), and its dedicated
 key is `~/.ssh/yagf_jetson_formulas`. Restrict that key on the Jetson to
 `restrict,port-forwarding,permitopen="127.0.0.1:8082",command="/bin/false"`.
-Use an SSH configuration or service override for an Amazon jump host/reverse SSH
-port. The unit forwards an already-running model; it does not load or replace one.
+Configure jump hosts or nonstandard SSH ports in your private SSH configuration
+or a local service override. The unit forwards an already-running model.
 
 ## Jetson catalog and gateway
 
@@ -63,8 +63,8 @@ language, ready, reason}]`. Paths stay on the catalog's origin; the Qt client
 preserves their prefix when appending `/v1/recognize`.
 
 - `/profiles/PROFILE/v1/recognize` uses the administrator-configured base profile
-  without requiring a training run. English/Russian Tesseract and Kraken are
-  configured on the Jetson's Toshiba disk.
+  without requiring a training run. Model locations are supplied by the worker's
+  private profile configuration.
 - `/models/UUID/v1/recognize` uses an eligible trained model. Only reusable models
   appear in the general catalog; a selected book model can be probed directly.
 - `/services/PORT/v1/recognize` forwards to a discovered local YAGF listener on
@@ -72,8 +72,7 @@ preserves their prefix when appending `/v1/recognize`.
   choose arbitrary upstream destinations or ports.
 - A running OpenAI-compatible model on loopback 8082 whose ID contains
   `PaddleOCR-VL` is offered as `/services/8082`, using the existing VL bridge.
-  Discovery never starts or downloads a GPU model. The current host advertises
-  `PaddleOCR-VL-1.6`.
+  Discovery never starts or downloads a GPU model.
 
 Catalog children also provide `GET .../v1/health`. Native model/profile inference
 shares a two-slot semaphore to bound CPU model loads. The existing 6 GiB worker
@@ -92,17 +91,17 @@ It appears in the Formula selector, and is excluded from Text and companions.
 No synthetic recognition confidence is assigned. Crops retain their full bounds.
 The catalog forwards model names and task metadata unchanged.
 
-The current Jetson installation uses `/mnt/toshiba/pp-formulanet-plus-l/venv`
-(PaddlePaddle 3.2.2, PaddleOCR 3.7.0, tokenizers, ftfy and regex) and
-`/mnt/toshiba/pp-formulanet-plus-l/models/PP-FormulaNet_plus-L`. It runs on CPU
-with two inference threads. The standalone `recognize.py` remains usable.
+Install the original model in a writable directory on the inference host.
+A compatible CPU environment uses PaddlePaddle 3.2.2, PaddleOCR 3.7.0,
+tokenizers, ftfy and regex. The examples use `/srv/yagf/formulanet` as a
+replaceable storage root and two CPU inference threads.
 
 To run an already installed model:
 
 ```sh
-/mnt/toshiba/pp-formulanet-plus-l/venv/bin/python service/server.py \
+/srv/yagf/formulanet/venv/bin/python service/server.py \
   --engine pp-formulanet --device cpu --host 127.0.0.1 --port 8769 \
-  --model /mnt/toshiba/pp-formulanet-plus-l/models/PP-FormulaNet_plus-L
+  --model /srv/yagf/formulanet/models/PP-FormulaNet_plus-L
 ```
 
 For a persistent worker, deploy `server.py` as
@@ -110,7 +109,7 @@ For a persistent worker, deploy `server.py` as
 Its environment file `~/.config/yagf/formulanet-worker.env` defines
 `YAGF_FORMULANET_PYTHON`, `YAGF_FORMULANET_MODEL`, `TMPDIR`,
 `PADDLE_PDX_CACHE_HOME`, `XDG_CACHE_HOME` and `HF_HOME`. Keep caches and temporary
-files on the Toshiba disk. The worker requires the existing model directory;
+files in the chosen storage directory. The worker requires the existing model directory;
 it does not download a model. Its HTTP handler serializes inference requests.
 
 The desktop's `yagf-models-tunnel.service` forwards loopback **8769** (formulas)
@@ -118,8 +117,8 @@ and **8772** (model catalog), using `~/.ssh/yagf_jetson_models` and
 `~/.config/yagf/models-host.env` (`YAGF_JETSON_HOST=user@host`). Authorize the
 public key with
 `restrict,port-forwarding,permitopen="127.0.0.1:8769",permitopen="127.0.0.1:8772",command="/bin/false"`.
-Use an SSH configuration or service override for the Amazon jump host/reverse
-port. The current installation uses that route. Existing layout and PaddleOCR-VL
+Configure jump hosts and SSH ports privately on the deployment machine.
+Existing layout and PaddleOCR-VL
 tunnels remain independent. Enable units with `systemctl --user enable --now UNIT`.
 Installing/discovering the worker leaves YAGF's current engine choices unchanged.
 

@@ -1,6 +1,14 @@
 /build-appimage/
+/build-deb/
 /dist/
 __pycache__/
 /build/
 cmake-build-*/
 .idea/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+id_rsa
+id_ed25519

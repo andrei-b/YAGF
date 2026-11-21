@@ -1,29 +1,29 @@
 {
-  "storage": "/mnt/toshiba/yagf-native/jobs",
+  "storage": "/srv/yagf/native/jobs",
   "profiles": [
     {
       "id": "tesseract-rus",
       "engine": "tesseract",
       "label": "Tesseract Russian",
-      "base_model": "/mnt/toshiba/yagf-native/models/tessdata_best/rus.traineddata",
-      "langdata": "/mnt/toshiba/yagf-native/langdata",
+      "base_model": "/srv/yagf/native/models/tessdata_best/rus.traineddata",
+      "langdata": "/srv/yagf/native/langdata",
       "language": "rus"
     },
     {
       "id": "tesseract-eng",
       "engine": "tesseract",
       "label": "Tesseract English",
-      "base_model": "/mnt/toshiba/yagf-native/models/tessdata_best/eng.traineddata",
-      "langdata": "/mnt/toshiba/yagf-native/langdata",
+      "base_model": "/srv/yagf/native/models/tessdata_best/eng.traineddata",
+      "langdata": "/srv/yagf/native/langdata",
       "language": "eng"
     },
     {
       "id": "kraken-print",
       "engine": "kraken",
       "label": "Kraken historical print",
-      "base_model": "/mnt/toshiba/kraken/7.0.2/McCATMuS_nfd_nofix_V1.mlmodel",
-      "python": "/mnt/toshiba/yagf-native/venv/bin/python",
-      "ketos": "/mnt/toshiba/yagf-native/venv/bin/ketos"
+      "base_model": "/srv/yagf/models/kraken/printed-text.mlmodel",
+      "python": "/srv/yagf/native/venv/bin/python",
+      "ketos": "/srv/yagf/native/venv/bin/ketos"
     },
     {
       "id": "paddle-custom",

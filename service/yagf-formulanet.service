@@ -1,6 +1,5 @@
 [Unit]
 Description=YAGF PP-FormulaNet_plus-L formula recognition
-RequiresMountsFor=/mnt/toshiba
 
 [Service]
 EnvironmentFile=%h/.config/yagf/formulanet-worker.env

@@ -70,4 +70,4 @@ For this document, choose 300 DPI, **Improve page… → Detect orientation + sk
 
 `scanneddocument_tests` checks orientation, residual skew, word coverage on both halves of the German spreads, serialization, and identical processed pixels for OCR/export. The fixture is user-provided and not redistributed; the test skips when it is absent or has a different SHA-256. Set `YAGF_SCAN_REGRESSION_PDF` to its location. Its expected SHA-256 is `6ee9337949b87bd6bf81f157e81944979ee31fe3a74b9b0be5ff91700ef7db22`.
 
-The small generated reference project in `tests/data/benchmark` has known text and is suitable for checking the experiment machinery. It is not representative evidence for choosing an engine for photographed scientific books. See `docs/benchmarks` for the actual Jetson smoke-run observations.
+The small generated reference project in `tests/data/benchmark` has known text and is suitable for checking the experiment machinery. It is not representative evidence for choosing an engine for photographed scientific books. See [the anonymized smoke-run example](benchmarks/README.md) for recorded results without deployment or host identity information.

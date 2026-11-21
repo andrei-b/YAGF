@@ -94,7 +94,7 @@ OcrServicesDialog::OcrServicesDialog(QVector<OcrService> services,OcrService act
         populate(table->currentRow());
     });
     layoutEndpoint=new QLineEdit(QSettings("YAGF","YAGF Revival").value("layout/url",QSettings().value("layout/url","http://127.0.0.1:8771")).toString(),this);
-    layoutEndpoint->setObjectName("pageLayoutServiceUrl"); layoutEndpoint->setPlaceholderText(tr("http://localhost-0:8771 or a forwarded local URL"));
+    layoutEndpoint->setObjectName("pageLayoutServiceUrl"); layoutEndpoint->setPlaceholderText(tr("http://layout-host.example:8771 or a local forward"));
     layoutAuth=std::move(layoutToken);
     connect(layoutEndpoint,&QLineEdit::textChanged,this,[this]{if (!filling) layoutAuth.clear();});
     layoutThreshold=new QDoubleSpinBox(this); layoutThreshold->setObjectName("pageLayoutThreshold"); layoutThreshold->setRange(.1,.95); layoutThreshold->setSingleStep(.05); layoutThreshold->setValue(QSettings("YAGF","YAGF Revival").value("layout/threshold",QSettings().value("layout/threshold",.5)).toDouble());

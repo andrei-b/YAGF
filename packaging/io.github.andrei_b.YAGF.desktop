@@ -9,4 +9,5 @@ Terminal=false
 StartupNotify=true
 StartupWMClass=yagf2
 Categories=Office;
+Keywords=OCR;Tesseract;LaTeX;PDF;DjVu;scanning;
 MimeType=application/pdf;image/vnd.djvu;image/vnd.djvu+multipage;image/png;image/jpeg;image/tiff;image/bmp;

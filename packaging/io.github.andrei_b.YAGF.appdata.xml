@@ -12,12 +12,14 @@
   <url type="homepage">https://github.com/andrei-b/YAGF</url>
   <description>
     <p>Open scanned images, PDFs and DjVu documents, recognize text with Tesseract, and correct words against the source page. Edit page regions and reading order, convert DjVu to PDF, then export text, structured data, and searchable PDFs.</p>
+    <p>Choose separate text and formula models, discover optional remote OCR and page-layout services, and preview corrected LaTeX formulas with host-installed TeX tools.</p>
   </description>
   <launchable type="desktop-id">io.github.andrei_b.YAGF.desktop</launchable>
   <releases>
     <release version="2.2.0" date="2026-11-19">
       <description>
         <p>Compare OCR pipelines on verified calibration and held-out pages, inspect saved readings and resource measurements, and run reproducible desktop or Jetson benchmarks. Improve photographed scans with orientation correction and adaptive binarization.</p>
+        <p>Configure text, formula and layout models independently. Discover formula-only PP-FormulaNet services, navigate document pages with Page Up and Page Down, and find commands in grouped Tools submenus.</p>
       </description>
     </release>
     <release version="2.1.0" date="2026-11-19">

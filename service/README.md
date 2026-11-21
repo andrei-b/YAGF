@@ -147,17 +147,17 @@ pinned to revision `46bbdf188bb0a772c08aed74882ce7e51a8f1ea6`, with SHA256
 It uses ONNX Runtime's CPU provider with two threads; the existing GPU OCR services
 can continue running. The 130,502,049-byte model is not included in this repository.
 
-The current installation stores the model, isolated Python environment, download
-cache and temporary files on the Toshiba disk at `/mnt/toshiba/yagf-layout`.
-To reproduce it on another ARM64/Python 3.12 host (choose a writable storage path):
+Choose a writable directory for the model, isolated Python environment, download
+cache and temporary files. The example uses `/srv/yagf/layout`; replace it
+with a directory owned by the worker account. For an ARM64/Python 3.12 host:
 
 ```sh
-mkdir -p /mnt/toshiba/yagf-layout/tmp /mnt/toshiba/yagf-layout/cache /mnt/toshiba/yagf-layout/models
-export TMPDIR=/mnt/toshiba/yagf-layout/tmp PIP_CACHE_DIR=/mnt/toshiba/yagf-layout/cache
-python3 -m venv --system-site-packages /mnt/toshiba/yagf-layout/venv
-/mnt/toshiba/yagf-layout/venv/bin/pip install -r service/requirements-layout.txt
-curl -fL https://huggingface.co/PaddlePaddle/PP-DocLayoutV3_onnx/resolve/46bbdf188bb0a772c08aed74882ce7e51a8f1ea6/inference.onnx -o /mnt/toshiba/yagf-layout/models/inference.onnx
-/mnt/toshiba/yagf-layout/venv/bin/python service/layout_server.py --model /mnt/toshiba/yagf-layout/models/inference.onnx
+mkdir -p /srv/yagf/layout/tmp /srv/yagf/layout/cache /srv/yagf/layout/models
+export TMPDIR=/srv/yagf/layout/tmp PIP_CACHE_DIR=/srv/yagf/layout/cache
+python3 -m venv --system-site-packages /srv/yagf/layout/venv
+/srv/yagf/layout/venv/bin/pip install -r service/requirements-layout.txt
+curl -fL https://huggingface.co/PaddlePaddle/PP-DocLayoutV3_onnx/resolve/46bbdf188bb0a772c08aed74882ce7e51a8f1ea6/inference.onnx -o /srv/yagf/layout/models/inference.onnx
+/srv/yagf/layout/venv/bin/python service/layout_server.py --model /srv/yagf/layout/models/inference.onnx
 ```
 
 The worker verifies the model hash at startup. It listens on Jetson loopback port
