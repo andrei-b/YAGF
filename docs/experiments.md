@@ -1,6 +1,6 @@
 # OCR experiments in YAGF 2.2
 
-Open **Tools → OCR experiments…**. The manager works on its own document snapshot; running OCR or verifying benchmark references does not replace project text, regions, or corrections.
+Open **Tools → Training & experiments → OCR experiments…**. The manager works on its own document snapshot; running OCR or verifying benchmark references does not replace project text, regions, or corrections.
 
 Choose recognized pages with representative layouts and image quality. Every OCR item on a reference page must be explicitly verified, with no pending corrections. **Proofread reference…** displays the processed page beside editable text, with image zoom and panning. **Confirm verified reference** accepts the text as ground truth for this experiment only. Do not confirm an unchecked OCR transcript. Alternatively, use pages already verified in the main editor.
 

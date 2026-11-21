@@ -1,6 +1,6 @@
 # Remote text OCR services for YAGF
 
-This optional Python service can run [PaddleOCR 3.x](https://www.paddleocr.ai/main/en/version3.x/pipeline_usage/OCR.html), [docTR](https://mindee.github.io/doctr/latest/), [RapidOCR](https://rapidai.github.io/RapidOCRDocs/main/en/quickstart/), [Surya](https://github.com/datalab-to/surya), or [Kraken](https://kraken.re/main/user_guide/api.html) on a separate inference computer. YAGF sends a processed page as PNG over HTTP. Choose the matching provider and URL in **Tools → OCR engine…**. Each engine can be installed in its own Python environment; none is required by the desktop application.
+This optional Python service can run [PaddleOCR 3.x](https://www.paddleocr.ai/main/en/version3.x/pipeline_usage/OCR.html), [docTR](https://mindee.github.io/doctr/latest/), [RapidOCR](https://rapidai.github.io/RapidOCRDocs/main/en/quickstart/), [Surya](https://github.com/datalab-to/surya), or [Kraken](https://kraken.re/main/user_guide/api.html) on a separate inference computer. YAGF sends a processed page as PNG over HTTP. Choose the matching provider and URL in **Tools → Recognition → OCR engine…**. Each engine can be installed in its own Python environment; none is required by the desktop application.
 
 ## PaddleOCR on a Jetson
 
@@ -13,7 +13,7 @@ python service/server.py --engine paddleocr-vl --port 8765 \
   --vl-endpoint http://127.0.0.1:8082/v1/chat/completions --vl-model PaddleOCR-VL-1.6
 ```
 
-In YAGF, choose **Tools → OCR engine… → PaddleOCR (remote service)**, set the service URL to `http://127.0.0.1:8765`, and use language `auto`. The endpoint must be reachable, for example through an SSH forward to the inference computer. Set `YAGF_VL_TOKEN` if the upstream vision server requires a bearer token. The bridge needs only Python's standard library; it runs no local inference model.
+In YAGF, choose **Tools → Recognition → OCR engine… → PaddleOCR (remote service)**, set the service URL to `http://127.0.0.1:8765`, and use language `auto`. The endpoint must be reachable, for example through an SSH forward to the inference computer. Set `YAGF_VL_TOKEN` if the upstream vision server requires a bearer token. The bridge needs only Python's standard library; it runs no local inference model.
 
 You can also start the desktop app with the bridge already selected: `yagf2 --paddleocr-vl-url http://127.0.0.1:8765 /path/to/scan.png`.
 
@@ -109,7 +109,7 @@ The service is not bundled into the desktop application or AppImage. The three n
 
 ## AI page-area detection on the Jetson
 
-Choose the magic-wand **Tools → AI page areas…** command, or the arrow beside
+Choose the magic-wand **Tools → Page & layout → AI page areas…** command, or the arrow beside
 **Smart split**. The current page and existing blocks appear immediately, and
 analysis starts automatically. Review the cropped block miniatures on the right;
 click a miniature or an outline to focus that block on the page. Change its type

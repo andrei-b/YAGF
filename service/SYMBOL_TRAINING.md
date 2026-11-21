@@ -16,7 +16,7 @@ Forward that port from the desktop:
 ssh -N -L 127.0.0.1:8770:127.0.0.1:8770 user@jetson-host
 ```
 
-In **Tools → Symbol recognition rules…**, choose **Jetson / remote host** and URL `http://127.0.0.1:8770`. The address and backend preference are remembered when training starts. Any bearer token remains in the dialog session.
+In **Tools → Training & experiments → Symbol recognition rules…**, choose **Jetson / remote host** and URL `http://127.0.0.1:8770`. The address and backend preference are remembered when training starts. Any bearer token remains in the dialog session.
 
 For a persistent user service, copy `symbol_training.py` to `~/.local/lib/yagf/` on the Jetson, install [yagf-symbol-training.service](yagf-symbol-training.service) under `~/.config/systemd/user/`, and run `systemctl --user enable --now yagf-symbol-training.service`. Enable user lingering with `loginctl enable-linger` when the service should survive logout.
 

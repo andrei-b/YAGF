@@ -1,6 +1,6 @@
 # Engine-native OCR training
 
-Choose **Tools → OCR training and adaptation…**. This shares one review,
+Choose **Tools → Training & experiments → OCR training and adaptation…**. This shares one review,
 training and activation workflow across Tesseract, Kraken and PaddleOCR.
 Native training updates OCR weights; the existing **Symbol recognition rules**
 prototype classifier and Tesseract book vocabulary remain available alongside it.
@@ -48,7 +48,7 @@ PaddleOCR TSV labels, a character list and a reimportable JSON dataset to an emp
 folder. This allows external native-tool training too. Import preserves review
 choices. Model weights stay on the host; projects save the model URL, so inference
 needs the host/tunnel. Portable projects do not bundle these weights. Tokens are
-kept only in memory and can be re-entered through **Tools → OCR engine… → Adapted
+kept only in memory and can be re-entered through **Tools → Recognition → OCR engine… → Adapted
 native OCR model**.
 
 Formula/table/picture regions, mixed LaTeX lines, uncertain paragraph alignment,

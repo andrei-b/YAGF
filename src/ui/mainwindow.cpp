@@ -661,25 +661,39 @@ MainWindow::MainWindow()
     auto *fileMenu = menuBar()->addMenu(tr("&File"));
     auto *editMenu = menuBar()->addMenu(tr("&Edit"));
     auto *toolsMenu = menuBar()->addMenu(tr("&Tools"));
-    aiPageAreasAction = toolsMenu->addAction(aiPageAreasIcon(), tr("AI page areas…"), this, &MainWindow::classifyPageAreas);
+    toolsMenu->setObjectName("toolsMenu");
+    ocrServicesAction=toolsMenu->addAction(tr("Recognition settings…"),this,&MainWindow::configureOcrServices);
+    ocrServicesAction->setObjectName("ocrServicesAction");
+    toolsMenu->addSeparator();
+    auto *recognitionToolsMenu = toolsMenu->addMenu(tr("&Recognition"));
+    recognitionToolsMenu->setObjectName("recognitionToolsMenu");
+    auto *pageToolsMenu = toolsMenu->addMenu(tr("&Page && layout"));
+    pageToolsMenu->setObjectName("pageToolsMenu");
+    auto *reviewToolsMenu = toolsMenu->addMenu(tr("Re&view"));
+    reviewToolsMenu->setObjectName("reviewToolsMenu");
+    auto *trainingToolsMenu = toolsMenu->addMenu(tr("&Training && experiments"));
+    trainingToolsMenu->setObjectName("trainingToolsMenu");
+    aiPageAreasAction = pageToolsMenu->addAction(aiPageAreasIcon(), tr("AI page areas…"), this, &MainWindow::classifyPageAreas);
     aiPageAreasAction->setObjectName("aiPageAreasAction");
     aiPageAreasAction->setIconVisibleInMenu(true);
     aiPageAreasAction->setEnabled(false);
     verification = new VerificationController(this, document);
-    auto *queueAction = toolsMenu->addAction(tr("Verification queue"), verification, &VerificationController::show);
+    auto *queueAction = reviewToolsMenu->addAction(tr("Verification queue"), verification, &VerificationController::show);
     queueAction->setObjectName(QStringLiteral("showVerificationQueue"));
-    auto *nextIssue = toolsMenu->addAction(tr("Next verification issue"), this, [this] { verification->navigate(1); });
+    auto *nextIssue = reviewToolsMenu->addAction(tr("Next verification issue"), this, [this] { verification->navigate(1); });
     nextIssue->setShortcut(QKeySequence(Qt::Key_F4));
-    auto *previousIssue = toolsMenu->addAction(tr("Previous verification issue"), this, [this] { verification->navigate(-1); });
+    auto *previousIssue = reviewToolsMenu->addAction(tr("Previous verification issue"), this, [this] { verification->navigate(-1); });
     previousIssue->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_F4));
+    reviewToolsMenu->addSeparator();
     connect(verification, &VerificationController::activateRequested, this, [this](const auto &item) { activateVerification(item); });
     connect(verification, &VerificationController::reviewRequested, this, [this](const auto &item) { activateVerification(item, 1); });
     connect(verification, &VerificationController::verifyRequested, this, [this](const auto &item) { activateVerification(item, 2); });
     connect(verification, &VerificationController::discardRequested, this, [this](const auto &item) { activateVerification(item, 3); });
-    auto *experimentsAction = toolsMenu->addAction(tr("OCR experiments…"),this,&MainWindow::openExperiments);
+    auto *experimentsAction = trainingToolsMenu->addAction(tr("OCR experiments…"),this,&MainWindow::openExperiments);
     experimentsAction->setObjectName(QStringLiteral("ocrExperiments"));
-    renderingAction = toolsMenu->addAction(tr("Rendering resolution…"), this, &MainWindow::configureRendering);
+    renderingAction = pageToolsMenu->addAction(tr("Rendering resolution…"), this, &MainWindow::configureRendering);
     renderingAction->setObjectName(QStringLiteral("renderingResolution"));
+    pageToolsMenu->addSeparator();
 
     undoAction = editMenu->addAction(tr("Undo"), this, [this] {
         if (!processor.isBusy() && !exportBusy && maybeApplyEditor()) undoStack.undo();
@@ -742,21 +756,23 @@ MainWindow::MainWindow()
     addToolbarSeparator(toolbar);
     improveAction = toolbar->addAction(tr("Improve page…"), this, &MainWindow::improveCurrentPage);
     improveAction->setObjectName(QStringLiteral("improvePageAction"));
-    toolsMenu->addAction(improveAction);
-    restoreAction = toolsMenu->addAction(tr("Restore damaged page…"), this, &MainWindow::restoreCurrentPage);
+    pageToolsMenu->addAction(improveAction);
+    restoreAction = pageToolsMenu->addAction(tr("Restore damaged page…"), this, &MainWindow::restoreCurrentPage);
     restoreAction->setObjectName(QStringLiteral("restorePageAction"));
     improveAction->setEnabled(false);
     restoreAction->setEnabled(false);
-    layoutAction = toolsMenu->addAction(tr("Edit layout…"), this, &MainWindow::editLayout);
-    createRegionAction = toolsMenu->addAction(tr("Create region from selection"), this,
+    pageToolsMenu->addSeparator();
+    layoutAction = pageToolsMenu->addAction(tr("Edit layout…"), this, &MainWindow::editLayout);
+    createRegionAction = pageToolsMenu->addAction(tr("Create region from selection"), this,
                                              &MainWindow::createRegionFromSelection);
-    remainingAction = toolsMenu->addAction(tr("Recognize remaining pages"), this, [this] { runBatchOcr(true); });
-    batchAction = toolsMenu->addAction(tr("Recognize all pages"), this, [this] { runBatchOcr(false); });
+    remainingAction = recognitionToolsMenu->addAction(tr("Recognize remaining pages"), this, [this] { runBatchOcr(true); });
+    batchAction = recognitionToolsMenu->addAction(tr("Recognize all pages"), this, [this] { runBatchOcr(false); });
     batchAction->setObjectName(QStringLiteral("recognizeAllAction"));
     batchAction->setIcon(recognizeActionIcon(true));
     batchAction->setIconText(tr("Recognize all"));
     batchAction->setToolTip(tr("Recognize every page in the open document, including pages already recognized."));
-    rawOcrOutputAction = toolsMenu->addAction(tr("Use raw OCR output"));
+    recognitionToolsMenu->addSeparator();
+    rawOcrOutputAction = recognitionToolsMenu->addAction(tr("Use raw OCR output"));
     rawOcrOutputAction->setObjectName(QStringLiteral("rawOcrOutputAction"));
     rawOcrOutputAction->setCheckable(true);
     rawOcrOutputAction->setToolTip(tr("Use Tesseract's raw text and reading order without automatic block-layout correction or formula recognition. "
@@ -765,7 +781,7 @@ MainWindow::MainWindow()
         document.useRawOcrOutput = enabled;
         if (!originalPath.isEmpty()) { externalDirty = true; refreshDirty(); }
     });
-    preserveFormattingAction = toolsMenu->addAction(tr("Preserve formatting"));
+    preserveFormattingAction = recognitionToolsMenu->addAction(tr("Preserve formatting"));
     preserveFormattingAction->setObjectName(QStringLiteral("preserveFormattingAction"));
     preserveFormattingAction->setCheckable(true);
     preserveFormattingAction->setToolTip(tr("Estimate the closest installed font, bold, italic and size during recognition. "
@@ -774,12 +790,12 @@ MainWindow::MainWindow()
         document.preserveFormatting = enabled;
         if (!originalPath.isEmpty()) { externalDirty = true; refreshDirty(); }
     });
-    similarSymbolsAction = toolsMenu->addAction(tr("Match similar symbol images"));
+    similarSymbolsAction = trainingToolsMenu->addAction(tr("Match similar symbol images"));
     similarSymbolsAction->setCheckable(true);
-    symbolRulesAction = toolsMenu->addAction(tr("Symbol recognition rules…"));
+    symbolRulesAction = trainingToolsMenu->addAction(tr("Symbol recognition rules…"));
     symbolRulesAction->setObjectName("symbolRulesAction");
     connect(symbolRulesAction, &QAction::triggered, this, [this] { editSymbolRules(false); });
-    teachSymbolAction = toolsMenu->addAction(tr("Teach selected symbol…"));
+    teachSymbolAction = trainingToolsMenu->addAction(tr("Teach selected symbol…"));
     teachSymbolAction->setObjectName("teachSelectedSymbolAction");
     teachSymbolAction->setEnabled(false);
     connect(teachSymbolAction, &QAction::triggered, this, [this] { editSymbolRules(true); });
@@ -791,20 +807,20 @@ MainWindow::MainWindow()
         correctionMemory.reset();
         refreshReviewLabel();
     });
-    nativeTrainingAction = toolsMenu->addAction(aiPageAreasIcon(), tr("OCR training and adaptation…"), this, &MainWindow::trainNativeOcr);
+    trainingToolsMenu->addSeparator();
+    nativeTrainingAction = trainingToolsMenu->addAction(aiPageAreasIcon(), tr("OCR training and adaptation…"), this, &MainWindow::trainNativeOcr);
     nativeTrainingAction->setObjectName("nativeTrainingAction");
-    toolsMenu->addAction(tr("OCR engine…"), this, &MainWindow::configureOcrEngine);
-    ocrServicesAction=toolsMenu->addAction(tr("Recognition settings…"),this,&MainWindow::configureOcrServices);
-    ocrServicesAction->setObjectName("ocrServicesAction");
-    ocrReadingsAction=toolsMenu->addAction(tr("Review OCR readings…"),this,&MainWindow::reviewOcrReadings);
+    recognitionToolsMenu->addSeparator();
+    recognitionToolsMenu->addAction(tr("OCR engine…"), this, &MainWindow::configureOcrEngine);
+    languagePickerAction = recognitionToolsMenu->addAction(tr("Choose OCR languages…"), this,
+                                                &MainWindow::chooseOcrLanguages);
+    recognitionToolsMenu->addAction(tr("Specialist OCR…"), this, &MainWindow::configureSpecialists);
+    ocrReadingsAction=reviewToolsMenu->addAction(tr("Review OCR readings…"),this,&MainWindow::reviewOcrReadings);
     ocrReadingsAction->setObjectName("ocrReadingsAction");
-    toolsMenu->addAction(tr("Specialist OCR…"), this, &MainWindow::configureSpecialists);
-    documentContextAction = toolsMenu->addAction(tr("Document context…"), this, &MainWindow::configureDocumentContext);
+    documentContextAction = recognitionToolsMenu->addAction(tr("Document context…"), this, &MainWindow::configureDocumentContext);
     documentContextAction->setObjectName(QStringLiteral("documentContextAction"));
     documentContextAction->setEnabled(false);
-    nextSpecialistAction = toolsMenu->addAction(tr("Review next specialist reading…"), this, &MainWindow::reviewNextSpecialist);
-    languagePickerAction = toolsMenu->addAction(tr("Choose OCR languages…"), this,
-                                                &MainWindow::chooseOcrLanguages);
+    nextSpecialistAction = reviewToolsMenu->addAction(tr("Review next specialist reading…"), this, &MainWindow::reviewNextSpecialist);
     layoutAction->setEnabled(false);
     createRegionAction->setEnabled(false);
     batchAction->setEnabled(false);
