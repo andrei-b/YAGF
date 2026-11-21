@@ -13,6 +13,7 @@
 #include "restorationdialog.h"
 #include <QBuffer>
 #include "imageprocessor.h"
+#include "formulagrowth.h"
 #include "layoutdialog.h"
 #include "aipagelayoutdialog.h"
 #include "aipageicons.h"
@@ -681,6 +682,9 @@ MainWindow::MainWindow()
     aiPageAreasAction->setEnabled(false);
     aiSplitBlockAction=pageToolsMenu->addAction(aiPageAreasIcon(),tr("AI split selected block…"),this,&MainWindow::splitSelectedBlockWithAi);
     aiSplitBlockAction->setObjectName("aiSplitBlockAction");aiSplitBlockAction->setEnabled(false);
+    refineFormulaAction = pageToolsMenu->addAction(tr("Refine formula blocks"), this, &MainWindow::refineFormulaBlocks);
+    refineFormulaAction->setObjectName("refineFormulaBlocksAction");
+    refineFormulaAction->setEnabled(false);
     verification = new VerificationController(this, document);
     auto *queueAction = reviewToolsMenu->addAction(tr("Verification queue"), verification, &VerificationController::show);
     queueAction->setObjectName(QStringLiteral("showVerificationQueue"));
@@ -1057,6 +1061,7 @@ MainWindow::MainWindow()
     auto *splitMenu = new QMenu(splitOptions);
     splitMenu->addAction(aiPageAreasAction);
     splitMenu->addAction(aiSplitBlockAction);
+    splitMenu->addAction(refineFormulaAction);
     splitOptions->setMenu(splitMenu);
     splitRow->addWidget(splitOptions);
     blocksLayout->addLayout(splitRow);
@@ -1119,6 +1124,7 @@ MainWindow::MainWindow()
         auto *menu = new QMenu(button);
         menu->addAction(aiPageAreasAction);
         menu->addAction(aiSplitBlockAction);
+        menu->addAction(refineFormulaAction);
         button->setMenu(menu);
         button->setPopupMode(QToolButton::MenuButtonPopup);
     }
@@ -3135,6 +3141,9 @@ void MainWindow::refreshImageToolbar()
     aiPageAreasAction->setEnabled(ready);
     const auto *page = document.page(currentPage);
     aiSplitBlockAction->setEnabled(ready && page && selectedRegionIds.size()==1);
+    refineFormulaAction->setEnabled(ready && page && std::ranges::any_of(page->imageRegions, [](const ImageRegion &r) {
+        return !r.notText && r.content == "math";
+    }));
     imageClearBlocksAction->setEnabled(ready && page && !page->imageRegions.isEmpty());
     for (auto *action : {imageRecognizeBlockAction, imageBlockOptionsAction, imageRemoveBlockAction}) {
         action->setVisible(selected);
@@ -3319,6 +3328,44 @@ void MainWindow::classifyPageAreas()
     status->setText(tr("Page areas updated. Review the blocks, then Recognize to refresh the OCR text."));
 }
 
+void MainWindow::refineFormulaBlocks()
+{
+    if (processor.isBusy() || exportBusy || projectLoading || !maybeApplyEditor()) return;
+    const auto *page = document.page(currentPage);
+    if (!page) return;
+    const QImage image = displayedPageImage();
+    if (image.isNull()) { showError(tr("Could not read the page image for formula refinement.")); return; }
+
+    std::stop_source cancellation;
+    QProgressDialog progress(tr("Looking for symbols near formula blocks…"), tr("Cancel"), 0, 0, this);
+    progress.setWindowModality(Qt::WindowModal);
+    QFutureWatcher<QVector<ImageRegion>> watcher;
+    connect(&watcher, &QFutureWatcherBase::finished, &progress, &QDialog::accept);
+    connect(&progress, &QProgressDialog::canceled, this, [&] { cancellation.request_stop(); });
+    watcher.setFuture(QtConcurrent::run(processing::growFormulaBlocks, image, page->imageRegions, cancellation.get_token()));
+    if (progress.exec() != QDialog::Accepted) cancellation.request_stop();
+    watcher.waitForFinished();
+    if (cancellation.stop_requested()) return;
+
+    auto regions = watcher.result();
+    int changed = 0;
+    for (const auto &r : regions) {
+        if (r.content == "math" && std::ranges::any_of(page->imageRegions, [&](const auto &old) {
+                return old.id == r.id && old.bounds != r.bounds;
+            })) ++changed;
+    }
+    if (!changed) {
+        status->setText(tr("No nearby symbols could be assigned to a formula block."));
+        return;
+    }
+    OcrPage edited = *page;
+    edited.imageRegions = std::move(regions);
+    selectedRegionIds.clear();
+    selectedImageRegion = -1;
+    undoStack.push(new ReplacePageCommand(document, currentPage, std::move(edited), tr("Refine formula blocks")));
+    status->setText(tr("Expanded %1 formula block(s). Review the outlines, then recognize the page.").arg(changed));
+}
+
 void MainWindow::splitSelectedBlockWithAi()
 {
     if(processor.isBusy() || exportBusy || projectLoading || imagePath.isEmpty() || selectedRegionIds.size()!=1 || !maybeApplyEditor())return;
@@ -3438,6 +3485,7 @@ void MainWindow::showBlockContextMenu(int index, const QPoint &globalPosition)
         });
     }
     menu.addAction(aiSplitBlockAction);
+    menu.addAction(refineFormulaAction);
     auto *copy=menu.addAction(QIcon::fromTheme("edit-copy",style()->standardIcon(QStyle::SP_FileIcon)),tr("Copy block as image"));
     copy->setObjectName("copyBlockImageAction");
     copy->setIconVisibleInMenu(true);

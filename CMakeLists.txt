@@ -45,6 +45,7 @@ target_include_directories(yagf_core PUBLIC src/core)
 
 # Image/source operations have no OCR, network, or job-controller dependency.
 add_library(yagf_imaging STATIC
+    src/processing/formulagrowth.cpp src/processing/formulagrowth.h
     src/processing/pagerestoration.cpp src/processing/pagerestoration.h
     src/processing/pagesource.cpp src/processing/pagesource.h
     src/processing/imageprocessor.cpp src/processing/imageprocessor.h src/processing/pagebend.cpp
@@ -228,6 +229,10 @@ if(BUILD_TESTING)
     target_link_libraries(spellingformulas_tests PRIVATE yagf_processing Qt6::Test)
     add_test(NAME spellingformulas_tests COMMAND spellingformulas_tests)
     set_tests_properties(spellingformulas_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    qt_add_executable(formulagrowth_tests tests/formulagrowth_tests.cpp)
+    target_link_libraries(formulagrowth_tests PRIVATE yagf_imaging Qt6::Test)
+    target_compile_definitions(formulagrowth_tests PRIVATE MATH_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data/math")
+    add_test(NAME formulagrowth_tests COMMAND formulagrowth_tests)
     qt_add_executable(smartblocks_tests tests/smartblocks_tests.cpp)
     target_link_libraries(smartblocks_tests PRIVATE yagf_ocr Qt6::Test)
     add_test(NAME smartblocks_tests COMMAND smartblocks_tests)

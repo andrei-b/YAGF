@@ -1808,6 +1808,49 @@ int main(int argc, char **argv)
         redo->trigger();assert(blocks->count()==3);save();
     }
 
+    // Formula growth edits OCR crops as one undoable page edit.
+    {
+        QImage scan(160,100,QImage::Format_RGB32);
+        scan.fill(Qt::white);
+        QPainter ink(&scan);
+        ink.fillRect(58,48,9,23,Qt::black);
+        ink.fillRect(60,36,5,7,Qt::black);
+        ink.fillRect(20,15,7,11,Qt::black);
+        ink.end();
+        const auto scanPath = directory.filePath("limits.png");
+        assert(scan.save(scanPath));
+        yagf::core::OcrDocument book;
+        book.sourcePath = scanPath;
+        yagf::core::OcrPage page;
+        page.width = page.sourceWidth = scan.width();
+        page.height = page.sourceHeight = scan.height();
+        page.imageRegions = {{"upper",{0,0,130,45},"rus",false,"text"},
+                             {"formula",{40,45,64,30},"",false,"math"}};
+        page.words.append({1,1,1,1,{20,15,7,11},"x","x",99,true});
+        page.rebuildHierarchy();
+        book.replacePage(page);
+        const auto project = directory.filePath("limits.yagf.json");
+        assert(yagf::core::ProjectFile::save(project,book,&error));
+        yagf::ui::MainWindow window;
+        window.loadProject(project);
+        auto *refine = window.findChild<QAction *>("refineFormulaBlocksAction");
+        assert(refine);
+        waitUi([&]{return refine->isEnabled();});
+        refine->trigger();
+        auto savedFormula = [&] {
+            for (auto *a : window.findChildren<QAction *>())
+                if (a->text()=="Save project") a->trigger();
+            yagf::core::OcrDocument saved;
+            assert(yagf::core::ProjectFile::load(project,&saved,&error));
+            assert(saved.page(1)->words[0].reviewed);
+            return saved.page(1)->imageRegions[1].bounds;
+        };
+        assert(savedFormula().top()==36);
+        for (auto *a : window.findChildren<QAction *>())
+            if (a->shortcut()==QKeySequence::Undo) a->trigger();
+        assert(savedFormula()==page.imageRegions[1].bounds);
+    }
+
     // Companion readings stay separate until an explicit review choice. The
     // real window applies that choice through Undo and saves its provenance.
     {
