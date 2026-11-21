@@ -145,12 +145,17 @@ private:
     void updatePageControls();
     void runOcr();
     void classifyPageAreas();
+    void refinePageBlocks();
+    void splitSelectedBlockWithAi();
+    QImage displayedPageImage() const;
     void trainNativeOcr();
     void syncNativeOcrModel();
     QString appliedNativeOcrUrl;
     QHash<QString,QString> nativeOcrTokens;
     QAction *nativeTrainingAction = nullptr;
     QAction *aiPageAreasAction = nullptr;
+    QAction *refineBlocksAction = nullptr, *aiSplitBlockAction = nullptr;
+    bool blockRefinementBusy = false;
     void configureOcrEngine();
     void configureOcrServices();
     void updateComparisonEngines();

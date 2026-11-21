@@ -44,6 +44,7 @@ target_include_directories(yagf_core PUBLIC src/core)
 
 # Image/source operations have no OCR, network, or job-controller dependency.
 add_library(yagf_imaging STATIC
+    src/processing/mathblockgravity.cpp src/processing/mathblockgravity.h
     src/processing/pagerestoration.cpp src/processing/pagerestoration.h
     src/processing/pagesource.cpp src/processing/pagesource.h
     src/processing/imageprocessor.cpp src/processing/imageprocessor.h src/processing/pagebend.cpp
@@ -167,6 +168,9 @@ install(DIRECTORY service/
 
 include(CTest)
 if(BUILD_TESTING)
+    qt_add_executable(mathblockgravity_tests tests/mathblockgravity_tests.cpp)
+    target_link_libraries(mathblockgravity_tests PRIVATE yagf_imaging Qt6::Test)
+    add_test(NAME mathblockgravity_tests COMMAND mathblockgravity_tests)
     qt_add_executable(coordinatetransform_tests tests/coordinatetransform_tests.cpp)
     target_link_libraries(coordinatetransform_tests PRIVATE yagf_imaging Qt6::Test)
     add_test(NAME coordinatetransform_tests COMMAND coordinatetransform_tests)

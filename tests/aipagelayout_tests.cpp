@@ -112,6 +112,17 @@ private slots:
         auto cancelled=processing::detectPageAreas(sample(),options,stop.get_token()); QVERIFY(!cancelled && cancelled.error().cancelled);
         options.timeoutMs=50; QVERIFY(!processing::detectPageAreas(sample(),options));
     }
+    void blockSplitRequiresAtLeastTwoReviewedSubdivisions() {
+        Server server;server.areas={area("one","text",QRect(10,10,60,30))};
+        QSettings("YAGF","YAGF Revival").setValue("layout/url",server.url().toString());
+        ui::AiPageLayoutDialog dialog(sample(),{},nullptr,1,{},true);dialog.show();
+        auto *apply=dialog.findChild<QPushButton *>("applyPageAreas");QVERIFY(apply);QCOMPARE(apply->text(),"Apply split");
+        QTRY_VERIFY_WITH_TIMEOUT(dialog.findChild<QPushButton *>("analyzePageAreas")->isEnabled() && server.requests==1,3000);
+        QVERIFY(!apply->isEnabled());QCOMPARE(dialog.regions().size(),1);
+        server.areas.append(area("two","math",QRect(90,70,70,30)));
+        dialog.findChild<QPushButton *>("analyzePageAreas")->click();QTRY_VERIFY_WITH_TIMEOUT(apply->isEnabled(),3000);
+        QCOMPARE(dialog.regions().size(),2);dialog.close();
+    }
     void manualBlocksAndUndo() {
         core::ImageRegion manual{"manual",QRect(0,0,30,30),"rus",false,"text",false};
         core::ImageRegion oldAuto{"old",QRect(0,100,50,50),{},false,"text",true};

@@ -11,7 +11,8 @@ approve corrections before exporting your document.
 
 - **AI page understanding.** Detect text, formulas, tables, and pictures with
   PP-DocLayoutV3. Review detected regions and route text and equations to
-  independently selected recognition models.
+  independently selected recognition models. Resplit a selected block with AI,
+  or refine formula boundaries using nearby symbol distances.
 - **AI-assisted correction.** Ask a vision model to inspect an uncertain word or
   passage using its source crop, nearby text, and document context. Compare its
   suggested readings and choose which correction to apply.

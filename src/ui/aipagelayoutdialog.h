@@ -23,7 +23,7 @@ class AiPageLayoutDialog : public QDialog {
     Q_OBJECT
 public:
     AiPageLayoutDialog(QImage image, QVector<core::ImageRegion> existing, QWidget *parent=nullptr, int pageNumber=0,
-                       QString bearerToken={});
+                       QString bearerToken={}, bool blockScope=false);
     ~AiPageLayoutDialog() override;
     QVector<core::ImageRegion> regions() const;
     QString sessionToken() const;
@@ -73,6 +73,7 @@ private:
     bool busy=false;
     bool opened=false;
     bool hasAnalysis=false;
+    bool blockScope=false;
     std::stop_source stop;
     QFutureWatcher<std::expected<processing::PageLayout,processing::OcrError>> watcher;
 };

@@ -26,6 +26,7 @@ YAGF/
     processing/tesseractengine.{h,cpp}    Tesseract subprocess and TSV adapter
     processing/remoteocrengine.{h,cpp}   HTTP client for PaddleOCR and docTR services
     processing/imageprocessor.{h,cpp}     deskew detection, contrast, denoise, rotation
+    processing/mathblockgravity.{h,cpp}   local symbol-distance refinement of editable image blocks
     export/exporttypes.h            shared export result and progress contract
     export/exportpage.{h,cpp}        oriented/preprocessed source-page loading
     export/pdfexporter.{h,cpp}       PDF lifecycle, PDF/A conversion, atomic output

@@ -81,8 +81,8 @@ QToolButton *thumbnail(const QImage &image,QRect bounds,QWidget *parent)
     return button;
 }
 }
-AiPageLayoutDialog::AiPageLayoutDialog(QImage source,QVector<core::ImageRegion> blocks,QWidget *parent,int pageNumber,QString bearerToken)
-    :QDialog(parent),image(std::move(source)),existing(std::move(blocks))
+AiPageLayoutDialog::AiPageLayoutDialog(QImage source,QVector<core::ImageRegion> blocks,QWidget *parent,int pageNumber,QString bearerToken,bool blockScope)
+    :QDialog(parent),image(std::move(source)),existing(std::move(blocks)),blockScope(blockScope)
 {
     setWindowTitle(tr("AI page areas")); setWindowIcon(aiPageAreasIcon()); setObjectName("aiPageLayoutDialog"); resize(1160,820);
     setStyleSheet(QStringLiteral(R"(
@@ -117,6 +117,10 @@ AiPageLayoutDialog::AiPageLayoutDialog(QImage source,QVector<core::ImageRegion> 
     auto *titles=new QVBoxLayout;
     auto *title=new QLabel(pageNumber>0 ? tr("Page %1 · AI areas").arg(pageNumber) : tr("AI page areas"),this); title->setObjectName("layoutTitle"); titles->addWidget(title);
     auto *intro=new QLabel(tr("Review each block, choose its type, then apply the areas to your page."),this); intro->setObjectName("layoutSubtitle"); intro->setWordWrap(true); titles->addWidget(intro);
+    if(blockScope) {
+        setWindowTitle(tr("AI split selected block"));title->setText(tr("Page %1 · split selected block").arg(pageNumber));
+        intro->setText(tr("Only the selected block is analyzed. Select at least two subdivisions to replace it; the rest of the page stays in place."));
+    }
     header->addLayout(titles,1);
     optionsButton=new QToolButton(this); optionsButton->setText(tr("Options")); optionsButton->setCheckable(true); optionsButton->setArrowType(Qt::DownArrow); optionsButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon); optionsButton->setObjectName("layoutOptionsButton"); header->addWidget(optionsButton); layout->addLayout(header);
     auto *optionsPanel=new QFrame(this); optionsPanel->setObjectName("layoutOptions"); auto *form=new QFormLayout(optionsPanel); form->setContentsMargins(12,10,12,10);
@@ -125,6 +129,7 @@ AiPageLayoutDialog::AiPageLayoutDialog(QImage source,QVector<core::ImageRegion> 
     token=new QLineEdit(std::move(bearerToken),this); token->setEchoMode(QLineEdit::Password); token->setPlaceholderText(tr("Optional; kept only for this session"));
     connect(endpoint,&QLineEdit::textEdited,token,&QLineEdit::clear);
     replaceAutomatic=new QCheckBox(tr("Replace automatically detected blocks; keep manual blocks"),this); replaceAutomatic->setChecked(true);
+    if(blockScope)replaceAutomatic->hide();
     form->addRow(tr("Layout service:"),endpoint); form->addRow(tr("Bearer token:"),token); form->addRow(replaceAutomatic);
     optionsPanel->hide(); layout->addWidget(optionsPanel);
     connect(optionsButton,&QToolButton::toggled,this,[this,optionsPanel](bool visible){optionsPanel->setVisible(visible); optionsButton->setArrowType(visible ? Qt::UpArrow : Qt::DownArrow);});
@@ -162,7 +167,7 @@ AiPageLayoutDialog::AiPageLayoutDialog(QImage source,QVector<core::ImageRegion> 
     auto *footer=new QHBoxLayout;
     analyzeButton=new QPushButton(aiPageAreasIcon(),tr("Analyze again"),this); analyzeButton->setObjectName("analyzePageAreas"); footer->addWidget(analyzeButton); footer->addStretch();
     auto *buttons=new QDialogButtonBox(QDialogButtonBox::Cancel,this);
-    applyButton=buttons->addButton(tr("Apply areas"),QDialogButtonBox::AcceptRole); applyButton->setObjectName("applyPageAreas"); applyButton->setEnabled(false); footer->addWidget(buttons); layout->addLayout(footer);
+    applyButton=buttons->addButton(blockScope?tr("Apply split"):tr("Apply areas"),QDialogButtonBox::AcceptRole); applyButton->setObjectName("applyPageAreas"); applyButton->setEnabled(false); footer->addWidget(buttons); layout->addLayout(footer);
     applyButton->setStyleSheet(QStringLiteral("QPushButton {background: #216ec1; color: white; border: 1px solid #216ec1; padding: 8px 18px; font-weight: 700;} QPushButton:hover {background: #145fae;} QPushButton:disabled {background: #e7edf4; color: #a1acba; border-color: #e1e6ed;}"));
     connect(buttons,&QDialogButtonBox::rejected,this,&AiPageLayoutDialog::reject); connect(applyButton,&QPushButton::clicked,this,&QDialog::accept); connect(analyzeButton,&QPushButton::clicked,this,&AiPageLayoutDialog::analyze);
     connect(replaceAutomatic,&QCheckBox::toggled,this,[this]{populate(false);});
@@ -219,7 +224,7 @@ void AiPageLayoutDialog::analyze()
     QSettings settings("YAGF","YAGF Revival"); settings.setValue("layout/url",options.url.toString()); settings.setValue("layout/threshold",threshold->value()/100.);
     stop=std::stop_source{}; busy=true; areas.clear();allAreas.clear();typeOverrides.clear();selectionOverrides.clear();hasAnalysis=false; populate();
     analyzeButton->setEnabled(false); endpoint->setEnabled(false); token->setEnabled(false); replaceAutomatic->setEnabled(false);
-    progress->show(); message->setText(tr("Finding text, pictures and formulas on the current page…"));
+    progress->show(); message->setText(blockScope?tr("Finding finer areas within the selected block…"):tr("Finding text, pictures and formulas on the current page…"));
     watcher.setFuture(QtConcurrent::run([source=image,options,token=stop.get_token()]{return processing::detectPageAreas(source,options,token);}));
 }
 void AiPageLayoutDialog::filterAreas()
@@ -232,6 +237,7 @@ void AiPageLayoutDialog::filterAreas()
     message->setText(allAreas.isEmpty()?tr("No areas returned by the model. Use Analyze again to retry."):
         areas.isEmpty()?tr("No areas at this score. Lower the slider to show more cached results."):
         tr("Showing cached model results. Move the score slider to update the areas instantly. Manual blocks stay in place."));
+    if(blockScope && !allAreas.isEmpty())message->setText(tr("Select at least two subdivisions. Lower the score to show more proposals, or adjust the parent block and analyze again."));
 }
 void AiPageLayoutDialog::rememberSelection(int index,bool checked)
 {
@@ -334,7 +340,8 @@ void AiPageLayoutDialog::updateSelection(int changed)
         color.setAlpha(checked ? 22 : 5); boxes[i]->setBrush(color); boxes[i]->setToolTip(tr("Block %1 · %2").arg(i+1).arg(typeLabel(areas[i].type))); updateCard(i);
     }
     blockCount->setText(hasAnalysis ? tr("%1 selected / %2 proposed").arg(selected).arg(areas.size()) : tr("%1 existing").arg(existing.size()));
-    applyButton->setEnabled(!busy && hasAnalysis && selected>0 && regions().size()<=1000);
+    applyButton->setEnabled(!busy && hasAnalysis && selected>=(blockScope?2:1) && regions().size()<=1000);
+    if(blockScope)applyButton->setToolTip(tr("Select at least two non-overlapping subdivisions to replace the selected block."));
     updating=false;
 }
 QVector<core::ImageRegion> AiPageLayoutDialog::regions() const

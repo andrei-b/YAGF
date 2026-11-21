@@ -7,6 +7,7 @@
 #include "symbolrulesdialog.h"
 #include "formulatext.h"
 #include "aipagelayoutdialog.h"
+#include "mathgravityfixture.h"
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QJsonDocument>
@@ -1758,6 +1759,77 @@ int main(int argc, char **argv)
         yagf::core::OcrDocument saved; assert(yagf::core::ProjectFile::load(project,&saved,&error));
         assert(saved.page(1)->imageRegions[0].id=="manual" && saved.page(1)->words[0].text=="keep" && saved.page(1)->words[0].reviewed);
         assert(saved.page(1)->imageRegions[2].content=="picture" && saved.page(1)->imageRegions[2].notText && saved.page(1)->imageRegions[2].detectedLabel=="chart");
+    }
+
+    // Explicit formula gravity changes only block geometry and is undoable.
+    {
+        const auto image=yagf::tests::mathGravityImage();const auto raster=directory.filePath("gravity.png");assert(image.save(raster));
+        yagf::core::OcrDocument book;book.sourcePath=raster;book.language="rus";book.engine="tesseract";
+        yagf::core::OcrPage page;page.width=page.sourceWidth=image.width();page.height=page.sourceHeight=image.height();page.language="rus";
+        page.imageRegions=yagf::tests::mathGravityRegions();page.words.append({1,1,1,1,{90,40,9,20},"keep","keep",95,true});page.rebuildHierarchy();book.replacePage(page);
+        const auto project=directory.filePath("gravity.yagf.json");QString error;assert(yagf::core::ProjectFile::save(project,book,&error));
+        yagf::ui::MainWindow gravityWindow;gravityWindow.show();gravityWindow.loadProject(project);
+        auto *action=gravityWindow.findChild<QAction *>("refineBlocksAction");assert(action);waitUi([&]{return action->isEnabled();});
+        auto *options=gravityWindow.findChild<QToolButton *>("smartSplitOptions");assert(options->menu()->actions().contains(action));
+        const auto save=[&]{for(auto *a:gravityWindow.findChildren<QAction *>())if(a->text()=="Save project")a->trigger();};
+        QAction *undo=nullptr,*redo=nullptr;for(auto *a:gravityWindow.findChildren<QAction *>()) {
+            if(a->shortcut()==QKeySequence::Undo)undo=a;if(a->shortcut()==QKeySequence::Redo)redo=a;
+        }
+        assert(undo && redo);action->trigger();save();yagf::core::OcrDocument saved;
+        assert(yagf::core::ProjectFile::load(project,&saved,&error));assert(saved.page(1)->imageRegions[1].bounds==QRect(70,75,100,65));
+        assert(saved.page(1)->words.size()==1 && saved.page(1)->words[0].reviewed && saved.page(1)->words[0].text=="keep");
+        undo->trigger();save();assert(yagf::core::ProjectFile::load(project,&saved,&error));assert(saved.page(1)->imageRegions[1].bounds==page.imageRegions[1].bounds);
+        redo->trigger();save();assert(yagf::core::ProjectFile::load(project,&saved,&error));assert(saved.page(1)->imageRegions[1].bounds==QRect(70,75,100,65));
+        QTimer::singleShot(0,&gravityWindow,[&]{auto *progress=qobject_cast<QProgressDialog *>(QApplication::activeModalWidget());assert(progress);progress->cancel();progress->reject();});
+        action->trigger();save();assert(yagf::core::ProjectFile::load(project,&saved,&error));assert(saved.page(1)->imageRegions[1].bounds==QRect(70,75,100,65));
+    }
+
+    // AI splitting sends only the selected crop, reviews before replacing it,
+    // preserves outside blocks/language/text, and translates crop coordinates.
+    {
+        QTcpServer server;assert(server.listen(QHostAddress::LocalHost));QVector<QSize> sentSizes;
+        QObject::connect(&server,&QTcpServer::newConnection,&server,[&] {
+            auto *socket=server.nextPendingConnection();QObject::connect(socket,&QTcpSocket::disconnected,socket,&QObject::deleteLater);
+            QObject::connect(socket,&QTcpSocket::readyRead,socket,[&,socket,bytes=QByteArray{}]() mutable {
+                bytes+=socket->readAll();const int split=bytes.indexOf("\r\n\r\n");if(split<0 || socket->property("sent").toBool())return;
+                int length=0;for(const auto &line:bytes.left(split).split('\n'))if(line.toLower().startsWith("content-length:"))length=line.mid(15).trimmed().toInt();
+                if(bytes.size()<split+4+length)return;socket->setProperty("sent",true);
+                const auto request=QJsonDocument::fromJson(bytes.mid(split+4,length)).object();QImage crop;
+                crop.loadFromData(QByteArray::fromBase64(request["image_png"].toString().toLatin1()),"PNG");sentSizes.append(crop.size());
+                const QJsonObject result{{"protocol","yagf-layout/1"},{"model","crop-layout"},{"width",crop.width()},{"height",crop.height()},
+                    {"areas",QJsonArray{QJsonObject{{"id","text"},{"label","text"},{"type","text"},{"score",.9},{"box",QJsonArray{5,5,60,20}}},
+                                        QJsonObject{{"id","formula"},{"label","display_formula"},{"type","math"},{"score",.95},{"box",QJsonArray{80,32,50,25}}}}}};
+                const auto data=QJsonDocument(result).toJson(QJsonDocument::Compact);
+                socket->write("HTTP/1.1 200 OK\r\nContent-Length: "+QByteArray::number(data.size())+"\r\nConnection: close\r\n\r\n"+data);socket->disconnectFromHost();
+            });
+        });
+        QSettings("YAGF","YAGF Revival").setValue("layout/url",QString("http://127.0.0.1:%1").arg(server.serverPort()));
+        yagf::core::OcrDocument book;book.sourcePath=sourcePath;book.language="eng";book.engine="tesseract";
+        yagf::core::OcrPage page;page.width=page.sourceWidth=200;page.height=page.sourceHeight=100;page.language="eng";
+        page.imageRegions={{"outside",{0,0,30,15},"eng",false,"text",false},{"parent",{40,20,140,70},"rus",false,"mixed",false}};
+        page.words.append({1,1,1,1,{45,25,40,15},"reviewed","reviewed",95,true});page.rebuildHierarchy();book.replacePage(page);
+        const auto project=directory.filePath("crop-split.yagf.json");QString error;assert(yagf::core::ProjectFile::save(project,book,&error));
+        yagf::ui::MainWindow splitWindow;splitWindow.show();splitWindow.loadProject(project);
+        auto *blocks=splitWindow.findChild<QListWidget *>("imageRegions");auto *action=splitWindow.findChild<QAction *>("aiSplitBlockAction");assert(action);
+        waitUi([&]{return blocks->count()==2 && splitWindow.findChild<QAction *>("aiPageAreasAction")->isEnabled();});assert(!action->isEnabled());
+        blocks->setCurrentRow(1);assert(action->isEnabled());
+        const auto review=[&](bool apply) {
+            QTimer::singleShot(0,&splitWindow,[&,apply] {
+                auto *dialog=qobject_cast<yagf::ui::AiPageLayoutDialog *>(QApplication::activeModalWidget());assert(dialog && dialog->windowTitle()=="AI split selected block");
+                dialog->findChild<QPushButton *>("analyzePageAreas")->click();auto *accept=dialog->findChild<QPushButton *>("applyPageAreas");waitUi([&]{return accept->isEnabled();});
+                assert(blocks->count()==2);if(apply)accept->click();else dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Cancel)->click();
+            });action->trigger();
+        };
+        review(false);assert(blocks->count()==2 && action->isEnabled());review(true);assert(blocks->count()==3);
+        assert(sentSizes.size()==2);for(const auto &size:sentSizes)assert(size==QSize(140,70));
+        const auto save=[&]{for(auto *a:splitWindow.findChildren<QAction *>())if(a->text()=="Save project")a->trigger();};
+        save();yagf::core::OcrDocument saved;assert(yagf::core::ProjectFile::load(project,&saved,&error));
+        const auto *edited=saved.page(1);assert(edited->imageRegions[0].id=="outside" && edited->imageRegions[0].bounds==page.imageRegions[0].bounds);
+        assert(edited->imageRegions[1].bounds==QRect(45,25,60,20) && edited->imageRegions[2].bounds==QRect(120,52,50,25));
+        assert(edited->imageRegions[1].language=="rus" && edited->imageRegions[2].language=="rus");assert(edited->words[0].text=="reviewed" && edited->words[0].reviewed);
+        QAction *undo=nullptr,*redo=nullptr;for(auto *a:splitWindow.findChildren<QAction *>()) {if(a->shortcut()==QKeySequence::Undo)undo=a;if(a->shortcut()==QKeySequence::Redo)redo=a;}
+        assert(undo && redo);undo->trigger();assert(blocks->count()==2);save();assert(yagf::core::ProjectFile::load(project,&saved,&error));assert(saved.page(1)->imageRegions[1].id=="parent");
+        redo->trigger();assert(blocks->count()==3);save();
     }
 
     // Companion readings stay separate until an explicit review choice. The
