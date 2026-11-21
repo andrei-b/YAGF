@@ -4,6 +4,7 @@
 #include "documentcontext.h"
 #include "rendersettings.h"
 #include "symbolrules.h"
+#include "recognitionresult.h"
 
 #include <QJsonArray>
 #include <QJsonObject>
@@ -45,6 +46,7 @@ struct OcrWord {
     QString fontFamily; // Closest installed face; empty keeps the editor/export default.
     int sourceFontSizePx = 0;
     QString latexText; // Canonical formula-bearing text retained for Unicode output.
+    bool geometryInferred = false; // Editor input extent, not model-localized geometry.
     [[nodiscard]] QString fontFamilyCss() const;
 };
 
@@ -88,6 +90,7 @@ struct OcrReadingItem {
     QString text;
     int block = 0, paragraph = 0, line = 0;
     bool layoutBlock = false;
+    bool geometryInferred = false;
 };
 
 // Independent engine output. It never replaces the primary text automatically.
@@ -95,6 +98,7 @@ struct OcrReading {
     QString source, engine, label, language, error;
     QRect area;
     QVector<OcrReadingItem> items;
+    QVector<RecognitionResult> recognitionEvidence;
 };
 
 struct OcrPage {
@@ -114,6 +118,7 @@ struct OcrPage {
     QVector<OcrWord> deletedWords; // Source-linked deletions survive a recognition rerun.
     QVector<OcrWord> pendingCorrections; // Ambiguous retention is reviewed explicitly.
     QVector<OcrReading> ocrReadings;
+    QVector<RecognitionResult> recognitionEvidence; // Immutable model output, separate from edits.
     [[nodiscard]] QVector<int> specialistSpan(int start) const;
     void rebuildHierarchy();
     bool moveRegion(int index, int direction);

@@ -74,8 +74,10 @@ std::expected<core::OcrPage, OcrError> recognizeFormulaBoxes(
         core::OcrWord word;
         word.page = page.number; word.block = page.words.size()+1; word.line = word.paragraph = 1;
         word.bounds = box; word.layoutBlock = true; word.text = word.originalText = text;
+        word.geometryInferred = true; // The selected crop is an editing extent, not a formula-model word box.
         word.readingEngine = provider->id(); word.confidence = -1;
         page.words.append(std::move(word));
+        appendRecognitionEvidence(page, *reading, box.topLeft());
     }
     page.rebuildHierarchy();
     for (auto &region : page.regions) region.type = "equation";
@@ -89,10 +91,15 @@ QString MathOcrEngine::pythonPath()
         QStringLiteral("yagf2/math-ocr/venv/bin/python"));
 }
 
-std::expected<core::OcrPage, OcrError> MathOcrEngine::recognize(
+std::expected<RecognitionResult, OcrError> MathOcrEngine::recognizeResult(
     const QImage &image, const OcrOptions &options, std::stop_token stop)
 {
-    return recognizeBoxes(image, options, stop, {});
+    auto page = recognizeBoxes(image, options, stop, {});
+    if (!page) return std::unexpected(page.error());
+    auto result = recognitionFromPage(*page);
+    result.provenance.model = "Rapid LaTeX OCR";
+    result.provenance.task = "formula";
+    return result;
 }
 
 std::expected<core::OcrPage, OcrError> MathOcrEngine::recognizeBoxes(
@@ -205,6 +212,9 @@ std::expected<core::OcrPage, OcrError> MathOcrEngine::recognizeBoxes(
     }
     page.rebuildHierarchy();
     for (auto &region : page.regions) region.type = QStringLiteral("equation");
+    auto evidence = recognitionFromPage(page);
+    evidence.provenance.model = "Rapid LaTeX OCR"; evidence.provenance.task = "formula";
+    page.recognitionEvidence.append(std::move(evidence));
     return page;
 }
 

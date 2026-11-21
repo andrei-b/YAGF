@@ -115,6 +115,7 @@ std::expected<QStringList, OcrError> collectSpellingFormulaReadings(
         warnings.append(result.error().message + QStringLiteral(" Kept native OCR for suspicious words."));
         return warnings;
     }
+    appendRecognitionEvidence(page, *result);
     for (const auto &reading : result->words) {
         if (!mathematicalReading(reading.text)) continue;
         const int index = boxes.indexOf(reading.bounds);
@@ -169,6 +170,7 @@ std::expected<QStringList, OcrError> collectFormulaTextReadings(
             failedLanguages.insert(selected);
             continue;
         }
+        appendRecognitionEvidence(page, *reading, bounds.topLeft()-QPoint(8, 8));
         if (!dictionaryText(*reading, checker)) continue;
         core::OcrDocument excerpt;
         excerpt.pages.append(std::move(*reading));

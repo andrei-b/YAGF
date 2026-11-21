@@ -1429,6 +1429,11 @@ MainWindow::MainWindow()
             if (!region.isEmpty()) { word.id.clear(); word.sourceWordIds.clear(); }
         }
         core::translateOcrReadings(newPage.ocrReadings,offset);
+        for (auto &result : newPage.recognitionEvidence) {
+            auto &area = result.provenance.inputArea;
+            if (area.isEmpty()) area = QRect(QPoint(), result.provenance.imageSize);
+            area.translate(offset);
+        }
         if (region.isEmpty()) {
             if (oldPage) newPage.words.removeIf([&](const OcrWord &word) {
                 return std::ranges::any_of(oldPage->imageRegions, [&](const ImageRegion &block) {
@@ -1475,6 +1480,7 @@ MainWindow::MainWindow()
             merged.pendingCorrections += newPage.pendingCorrections;
             merged.engineId = newPage.engineId;
             merged.language = newPage.language;
+            processing::appendRecognitionEvidence(merged, newPage);
             core::mergeOcrReadings(merged.ocrReadings,std::move(newPage.ocrReadings),region);
             int maxBlock = 0;
             for (const OcrWord &old : merged.words) maxBlock = qMax(maxBlock, old.block);

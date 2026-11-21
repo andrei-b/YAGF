@@ -169,6 +169,8 @@ int main(int argc, char **argv)
     assert(vlPage->words[0].layoutBlock && vlPage->words[0].confidence == -1);
     assert(vlPage->words[0].text == "First line\nSecond line");
     assert(vlPage->words[0].bounds == image.rect());
+    assert(vlPage->words[0].geometryInferred && vlPage->words[0].sourceBoxes.isEmpty());
+    assert(!vlPage->recognitionEvidence[0].text[0].bounds);
     auto unmarkedUnknown = engine.recognize(image, {.language = QStringLiteral("en")}, {});
     assert(!unmarkedUnknown && unmarkedUnknown.error().message.contains("confidence"));
     auto badFlag = engine.recognize(image, {.language = QStringLiteral("en")}, {});

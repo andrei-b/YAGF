@@ -51,7 +51,7 @@ class FixtureEngine final : public processing::IOcrEngine {
 public:
     QString id() const override { return "fixture"; }
     processing::EngineCapabilities capabilities() const override { return {.supportsWordBoxes = true}; }
-    std::expected<core::OcrPage, processing::OcrError> recognize(const QImage &image,
+    std::expected<yagf::core::RecognitionResult, processing::OcrError> recognizeResult(const QImage &image,
         const processing::OcrOptions &options, std::stop_token) override
     {
         core::OcrPage page;
@@ -61,7 +61,7 @@ public:
         page.language = options.language;
         const QString text = options.pageNumber == 1 ? "FirstFix" : "SecondFix";
         page.words.append({options.pageNumber, 1, 1, 1, QRect(10, 10, 110, 25), text, text, 97});
-        return page;
+        return yagf::processing::recognitionFromPage(page);
     }
 };
 

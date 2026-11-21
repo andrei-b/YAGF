@@ -50,6 +50,7 @@ QStringList collectSpecialistReadings(core::OcrPage &page, const QImage &image,
             if (engine == prose) prose = nullptr;
             continue;
         }
+        appendRecognitionEvidence(page, *result, crop.topLeft());
         core::OcrDocument excerpt;
         excerpt.pages.append(std::move(*result));
         if (const QString reading = excerpt.plainText().trimmed(); !reading.isEmpty() && reading.size() <= 16384 && reading != baseline)

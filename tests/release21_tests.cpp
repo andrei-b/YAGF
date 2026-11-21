@@ -39,11 +39,11 @@ class ResolutionEngine final : public IOcrEngine {
 public:
     QString id() const override { return "resolution-fixture"; }
     EngineCapabilities capabilities() const override { return {.supportsWordBoxes = true}; }
-    std::expected<OcrPage, OcrError> recognize(const QImage &image, const OcrOptions &options, std::stop_token) override {
+    std::expected<yagf::core::RecognitionResult, OcrError> recognizeResult(const QImage &image, const OcrOptions &options, std::stop_token) override {
         OcrPage p; p.number = options.pageNumber;
         p.width = p.sourceWidth = image.width(); p.height = p.sourceHeight = image.height();
         p.words = {word("recognized", {10,10,60,12})}; p.words[0].page = options.pageNumber;
-        return p;
+        return yagf::processing::recognitionFromPage(p);
     }
 };
 class Release21Tests : public QObject {

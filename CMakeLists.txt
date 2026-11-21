@@ -18,6 +18,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 add_library(yagf_core STATIC
+    src/core/recognitionresult.cpp src/core/recognitionresult.h
     src/core/ocrreadings.cpp src/core/ocrreadings.h
     src/core/blockfont.cpp src/core/blockfont.h
     src/core/formulatext.cpp src/core/formulatext.h
@@ -55,6 +56,7 @@ target_include_directories(yagf_symbols PUBLIC src/processing)
 
 # Providers and recognition analysis can be used without the async document controller.
 add_library(yagf_ocr STATIC
+    src/processing/recognitionadapter.cpp src/processing/recognitionadapter.h
     src/processing/ocrservices.cpp src/processing/ocrservices.h
     src/processing/parallelocr.cpp src/processing/parallelocr.h
     src/processing/nativetraining.cpp src/processing/nativetraining.h
@@ -160,6 +162,9 @@ install(DIRECTORY service/
 
 include(CTest)
 if(BUILD_TESTING)
+    qt_add_executable(recognitionresult_tests tests/recognitionresult_tests.cpp)
+    target_link_libraries(recognitionresult_tests PRIVATE yagf_ocr Qt6::Network Qt6::Test)
+    add_test(NAME recognitionresult_tests COMMAND recognitionresult_tests)
     find_package(Qt6 6.2 REQUIRED COMPONENTS Test)
     qt_add_executable(recognitionliveness_tests tests/recognitionliveness_tests.cpp)
     target_link_libraries(recognitionliveness_tests PRIVATE yagf_processing Qt6::Test)

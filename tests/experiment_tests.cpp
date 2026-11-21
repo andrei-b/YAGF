@@ -20,11 +20,11 @@ public:
     QString id()const override{return "fixture";}
     processing::EngineCapabilities capabilities()const override{return {.supportsWordBoxes=true};}
     QJsonObject lastRunDetails()const override{return {{"peak_rss_bytes",123456},{"peak_rss_scope","fixture"}};}
-    std::expected<core::OcrPage,processing::OcrError> recognize(const QImage &image,const processing::OcrOptions &options,std::stop_token)override {
+    std::expected<yagf::core::RecognitionResult,processing::OcrError> recognizeResult(const QImage &image,const processing::OcrOptions &options,std::stop_token)override {
         Q_ASSERT(options.userWords.isEmpty() && !options.preserveFormatting && options.collectBenchmarkMetrics);
         calls->append({name,options.pageNumber});if(action)action();
         if(name=="fail")return std::unexpected(processing::OcrError{"Fixture failure"});
-        auto page=reference(options.pageNumber,options.pageNumber==1?"alpha beta":"gamma delta");page.width=page.sourceWidth=image.width();page.height=page.sourceHeight=image.height();for(auto &word:page.words){word.reviewed=false;if(name=="bad")word.text="wrong reading";}return page;
+        auto page=reference(options.pageNumber,options.pageNumber==1?"alpha beta":"gamma delta");page.width=page.sourceWidth=image.width();page.height=page.sourceHeight=image.height();for(auto &word:page.words){word.reviewed=false;if(name=="bad")word.text="wrong reading";}return yagf::processing::recognitionFromPage(page);
     }
 private:QString name;std::shared_ptr<QVector<Calls>> calls;std::function<void()> action;
 };

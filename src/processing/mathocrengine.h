@@ -15,7 +15,7 @@ public:
     std::expected<core::OcrPage, OcrError> recognizeBoxes(
         const QImage &image, const OcrOptions &options, std::stop_token stop, const QList<QRect> &boxes,
         QStringList *warnings = nullptr, int timeBudgetMs = 300000);
-    std::expected<core::OcrPage, OcrError> recognize(
+    std::expected<RecognitionResult, OcrError> recognizeResult(
         const QImage &image, const OcrOptions &options, std::stop_token stop) override;
 };
 

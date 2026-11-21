@@ -28,7 +28,7 @@ public:
     [[nodiscard]] QString id() const override { return QStringLiteral("fake"); }
     [[nodiscard]] EngineCapabilities capabilities() const override
     { return {.supportsRegions = true, .supportsWordBoxes = true}; }
-    std::expected<yagf::core::OcrPage, OcrError> recognize(
+    std::expected<yagf::core::RecognitionResult, OcrError> recognizeResult(
         const QImage &image, const OcrOptions &options, std::stop_token stop) override
     {
         if (waitForCancel) {
@@ -46,7 +46,7 @@ public:
                            invalid ? QRect(image.width() - 1, 1, 10, 10) : QRect(1, 1, 10, 10),
                            QStringLiteral("source"), QStringLiteral("source"), 90});
         page.rebuildHierarchy();
-        return page;
+        return yagf::processing::recognitionFromPage(page);
     }
     bool waitForCancel;
     bool invalid;
@@ -97,6 +97,10 @@ int main(int argc, char **argv)
     qputenv("TEST_MODEL_LANGUAGE", "eng");
     auto recognized = engine.recognize(image, {.language = QStringLiteral("eng")}, {});
     assert(recognized && recognized->words.size() == 2);
+    const auto evidence = engine.recognizeResult(image, {.language = QStringLiteral("eng")}, {});
+    assert(evidence && evidence->text.size() == 2);
+    assert(evidence->text[0].granularity == yagf::core::TextGranularity::Word);
+    assert(evidence->text[0].bounds == QRect(10,20,30,12));
     for (const QString &language : {QString{}, QStringLiteral("auto"), QStringLiteral("en")}) {
         auto english = engine.recognize(image, {.language = language}, {});
         assert(english && english->language == "eng");
@@ -162,7 +166,7 @@ int main(int argc, char **argv)
     processor.recognize(imagePath, QStringLiteral("eng"), 1);
     QTimer::singleShot(3000, &loop, &QEventLoop::quit);
     loop.exec();
-    assert(failure.contains(QStringLiteral("invalid word geometry")));
+    assert(failure.contains(QStringLiteral("Invalid recognition evidence")));
     assert(!processor.isBusy());
 
     // Corrected layout remains the default; raw mode skips generated outlines.

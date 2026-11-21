@@ -2,6 +2,7 @@
 #include "wordeditor.h"
 #include "formulatext.h"
 #include <QSet>
+#include <QJsonDocument>
 #include <algorithm>
 #include <cmath>
 
@@ -30,8 +31,13 @@ QJsonArray ocrReadingsJson(const QVector<OcrReading> &readings) {
     QJsonArray result;
     for (const auto &r:readings) {
         QJsonArray items;
-        for (const auto &i:r.items) items.append(QJsonObject{{"box",box(i.bounds)},{"text",i.text},{"block",i.block},{"paragraph",i.paragraph},{"line",i.line},{"layout_block",i.layoutBlock}});
-        result.append(QJsonObject{{"source",r.source},{"engine",r.engine},{"label",r.label},{"language",r.language},{"error",r.error},{"area",box(r.area)},{"items",items}});
+        for (const auto &i:r.items) items.append(QJsonObject{{"box",box(i.bounds)},{"text",i.text},{"block",i.block},{"paragraph",i.paragraph},{"line",i.line},{"layout_block",i.layoutBlock},{"geometry_inferred",i.geometryInferred}});
+        QJsonObject value{{"source",r.source},{"engine",r.engine},{"label",r.label},{"language",r.language},{"error",r.error},{"area",box(r.area)},{"items",items}};
+        if (!r.recognitionEvidence.isEmpty()) {
+            QJsonArray evidence; for (const auto &e : r.recognitionEvidence) evidence.append(recognitionResultJson(e));
+            value["recognition_evidence"] = evidence;
+        }
+        result.append(value);
     }
     return result;
 }
@@ -47,6 +53,16 @@ std::expected<QVector<OcrReading>,QString> readOcrReadings(const QJsonValue &jso
         r.source=o["source"].toString(); r.engine=o["engine"].toString(); r.label=o["label"].toString();
         r.language=o["language"].toString(); r.error=o["error"].toString();
         if (sources.contains(r.source)) return fail(); sources.insert(r.source);
+        if (o.contains("recognition_evidence")) {
+            const auto evidence = o["recognition_evidence"];
+            if (!evidence.isArray() || evidence.toArray().size()>10000 ||
+                QJsonDocument(evidence.toArray()).toJson(QJsonDocument::Compact).size()>16*1024*1024) return fail();
+            for (const auto &entry : evidence.toArray()) {
+                if (!entry.isObject()) return fail();
+                auto result = readRecognitionResult(entry.toObject()); if (!result) return fail();
+                r.recognitionEvidence.append(std::move(*result));
+            }
+        }
         for (const auto &entry:o["items"].toArray()) {
             const auto item=entry.toObject(); OcrReadingItem i;
             if (!entry.isObject() || !string(item,"text",65536) || item["text"].toString().isEmpty() ||
@@ -56,6 +72,8 @@ std::expected<QVector<OcrReading>,QString> readOcrReadings(const QJsonValue &jso
                 if (!item[key].isDouble() || !std::isfinite(n) || n<0 || n>1000000 || n!=std::floor(n)) return fail();
             }
             i.text=item["text"].toString(); i.block=item["block"].toInt(); i.paragraph=item["paragraph"].toInt(); i.line=item["line"].toInt(); i.layoutBlock=item["layout_block"].toBool();
+            if (item.contains("geometry_inferred") && !item["geometry_inferred"].isBool()) return fail();
+            i.geometryInferred=item["geometry_inferred"].toBool();
             characters+=i.text.size(); if (characters>8*1024*1024) return fail(); r.items.append(std::move(i));
         }
         result.append(std::move(r));
@@ -101,7 +119,13 @@ std::expected<OcrPage,QString> acceptOcrReading(const OcrPage &page,const QVecto
     return result;
 }
 void translateOcrReadings(QVector<OcrReading> &readings,QPoint offset) {
-    for (auto &reading:readings) {reading.area.translate(offset); for (auto &item:reading.items) item.bounds.translate(offset);}
+    for (auto &reading:readings) {
+        reading.area.translate(offset); for (auto &item:reading.items) item.bounds.translate(offset);
+        for (auto &e : reading.recognitionEvidence) {
+            if (e.provenance.inputArea.isEmpty()) e.provenance.inputArea=QRect(QPoint(),e.provenance.imageSize);
+            e.provenance.inputArea.translate(offset);
+        }
+    }
 }
 QVector<OcrReading> cropOcrReadings(const QVector<OcrReading> &readings,QRect area) {
     QVector<OcrReading> result;
@@ -109,6 +133,10 @@ QVector<OcrReading> cropOcrReadings(const QVector<OcrReading> &readings,QRect ar
         reading.area=reading.area.intersected(area); if (reading.area.isEmpty()) continue;
         reading.items.removeIf([&](const auto &i){return !area.contains(i.bounds);});
         reading.area.translate(-area.topLeft()); for (auto &i:reading.items) i.bounds.translate(-area.topLeft());
+        for (auto &e : reading.recognitionEvidence) {
+            if (e.provenance.inputArea.isEmpty()) e.provenance.inputArea=QRect(QPoint(),e.provenance.imageSize);
+            e.provenance.inputArea.translate(-area.topLeft());
+        }
         result.append(std::move(reading));
     }
     return result;
@@ -118,7 +146,7 @@ void mergeOcrReadings(QVector<OcrReading> &target,QVector<OcrReading> incoming,Q
     for (auto &r:incoming) {
         auto found=std::ranges::find(target,r.source,&OcrReading::source);
         if (found==target.end()) target.append(std::move(r));
-        else {found->items+=r.items; found->area|=r.area; found->error=r.error; found->language=r.language; found->label=r.label;}
+        else {found->items+=r.items; found->recognitionEvidence+=r.recognitionEvidence; found->area|=r.area; found->error=r.error; found->language=r.language; found->label=r.label;}
     }
     while (target.size()>8) target.removeFirst();
     target.removeIf([](const auto &r){return r.items.isEmpty() && r.error.isEmpty();});

@@ -11,7 +11,8 @@ public:
     [[nodiscard]] EngineCapabilities capabilities() const override
     { return {.supportsRegions = true, .supportsWordBoxes = true,
               .supportsConfidence = true, .supportsLayout = true}; }
-    std::expected<core::OcrPage, OcrError> recognize(
+    using IOcrEngine::recognize;
+    std::expected<RecognitionResult, OcrError> recognizeResult(
         const QImage &image, const OcrOptions &options, std::stop_token stop) override;
     std::expected<core::OcrPage, OcrError> recognize(
         const QImage &image, const OcrOptions &options, std::stop_token stop,

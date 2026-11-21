@@ -18,6 +18,9 @@ approve corrections before exporting your document.
 - **Multiple OCR engines in one workspace.** Discover available models, choose
   separate text and formula engines, and run companion engines to compare their
   readings.
+- **Native AI results.** Keep Markdown, table structures, formulas, figures,
+  layout relationships, and model provenance alongside editable text. Models
+  without word coordinates remain editable as blocks.
 - **A complete math workflow.** Recognize equations as LaTeX, edit them with a
   live rendered preview, use supported Unicode formulas, and export LaTeX or
   typeset formulas in formatted PDFs.

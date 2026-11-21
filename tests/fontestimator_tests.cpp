@@ -65,11 +65,11 @@ public:
     explicit FixtureEngine(core::OcrPage page) : page(std::move(page)) {}
     QString id() const override { return QStringLiteral("fixture-remote"); }
     processing::EngineCapabilities capabilities() const override { return {.supportsRegions = true}; }
-    std::expected<core::OcrPage, processing::OcrError> recognize(
+    std::expected<yagf::core::RecognitionResult, processing::OcrError> recognizeResult(
         const QImage &, const processing::OcrOptions &options, std::stop_token) override
     {
         assert(options.preserveFormatting == enabled);
-        return page;
+        return yagf::processing::recognitionFromPage(page);
     }
     bool enabled = false;
     core::OcrPage page;

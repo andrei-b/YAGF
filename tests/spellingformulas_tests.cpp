@@ -22,8 +22,8 @@ public:
         : output(std::move(output)), name(std::move(name)), boxes(boxes) {}
     QString id() const override { return name; }
     processing::EngineCapabilities capabilities() const override { return {.supportsRegions = true, .supportsWordBoxes = boxes}; }
-    std::expected<core::OcrPage, processing::OcrError> recognize(
-        const QImage &, const processing::OcrOptions &, std::stop_token) override { return output; }
+    std::expected<yagf::core::RecognitionResult, processing::OcrError> recognizeResult(
+        const QImage &, const processing::OcrOptions &, std::stop_token) override { return yagf::processing::recognitionFromPage(output); }
 private:
     core::OcrPage output;
     QString name;

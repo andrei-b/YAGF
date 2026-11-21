@@ -29,10 +29,15 @@ QString TesseractEngine::modelLanguage(const QString &language)
     return languages.join('+');
 }
 
-std::expected<core::OcrPage, OcrError> TesseractEngine::recognize(
+std::expected<RecognitionResult, OcrError> TesseractEngine::recognizeResult(
     const QImage &image, const OcrOptions &options, std::stop_token stop)
 {
-    return recognize(image, options, stop, nullptr);
+    auto page = recognize(image, options, stop, nullptr);
+    if (!page) return std::unexpected(page.error());
+    auto result = recognitionFromPage(*page);
+    result.provenance.model = page->language;
+    result.provenance.task = "ocr";
+    return result;
 }
 
 std::expected<core::OcrPage, OcrError> TesseractEngine::recognize(

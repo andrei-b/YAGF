@@ -2,6 +2,7 @@
 #include "ocrreadings.h"
 
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QHash>
 #include <QSet>
 #include <QUrl>
@@ -76,6 +77,7 @@ QJsonObject wordJson(const OcrWord &word)
     }
     if (!word.symbolShape.isEmpty()) result.insert("symbol_shape", QString::fromLatin1(word.symbolShape.toHex()));
     if (word.layoutBlock) result.insert("layout_block", true);
+    if (word.geometryInferred) result.insert("geometry_inferred", true);
     return result;
 }
 
@@ -109,6 +111,8 @@ bool parseWord(const QJsonObject &json, int pageNumber, int width, int height, O
     }
     if (json.contains("layout_block") && !json.value("layout_block").isBool()) return false;
     word->layoutBlock = json.value("layout_block").toBool();
+    if (json.contains("geometry_inferred") && !json["geometry_inferred"].isBool()) return false;
+    word->geometryInferred = json["geometry_inferred"].toBool();
     if (json.contains("symbol_shape")) {
         const QByteArray hex = json.value("symbol_shape").toString().toLatin1();
         if (hex.size() != 64) return false;
@@ -137,7 +141,7 @@ bool parseWord(const QJsonObject &json, int pageNumber, int width, int height, O
                 !word->bounds.contains(box)) return false;
             word->sourceBoxes.append(box);
         }
-    } else if (!word->originalText.isEmpty()) word->sourceBoxes.append(word->bounds);
+    } else if (!word->originalText.isEmpty() && !word->geometryInferred) word->sourceBoxes.append(word->bounds);
     const QJsonObject style = json.value(QStringLiteral("style")).toObject();
     word->bold = style.value(QStringLiteral("bold")).toBool();
     word->italic = style.value(QStringLiteral("italic")).toBool();
@@ -225,7 +229,7 @@ void OcrPage::rebuildHierarchy()
             word.id = QStringLiteral("%1/word-%2").arg(lineId(number, word.block, word.paragraph, word.line)).arg(i + 1);
         if (word.sourceWordIds.isEmpty() && !word.originalText.isEmpty())
             word.sourceWordIds.append(word.id);
-        if (word.sourceBoxes.isEmpty() && !word.originalText.isEmpty())
+        if (word.sourceBoxes.isEmpty() && !word.originalText.isEmpty() && !word.geometryInferred)
             word.sourceBoxes.append(word.bounds);
         if (regions.isEmpty() || word.block != previousBlock) {
             OcrRegion region;
@@ -475,6 +479,11 @@ QJsonObject OcrDocument::toJson(bool includeRestoredPixels) const
                                      {"words", wordItems},
                                      {"reading_order", readingOrder}};
         if (!page.ocrReadings.isEmpty()) item.insert("ocr_readings",ocrReadingsJson(page.ocrReadings));
+        if (!page.recognitionEvidence.isEmpty()) {
+            QJsonArray evidence;
+            for (const auto &result : page.recognitionEvidence) evidence.append(recognitionResultJson(result));
+            item.insert("recognition_evidence", evidence);
+        }
         if (includeRestoredPixels && !page.preprocessing.restoredPng.isEmpty())
             item.insert("restored_page_png", QString::fromLatin1(page.preprocessing.restoredPng.toBase64()));
         pageItems.append(item);
@@ -644,6 +653,20 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
         }
         page.engineId = object.value(QStringLiteral("engine")).toString(parsed.engine);
         page.language = object.value(QStringLiteral("language")).toString(parsed.language);
+        if (object.contains("recognition_evidence")) {
+            const auto evidence = object["recognition_evidence"];
+            if (!evidence.isArray() || evidence.toArray().size() > 10000)
+                return fail(QStringLiteral("Invalid saved recognition evidence."));
+            qint64 bytes = 0;
+            for (const auto &entry : evidence.toArray()) {
+                if (!entry.isObject()) return fail(QStringLiteral("Invalid saved recognition evidence."));
+                bytes += QJsonDocument(entry.toObject()).toJson(QJsonDocument::Compact).size();
+                if (bytes > 16*1024*1024) return fail(QStringLiteral("Saved recognition evidence is too large."));
+                auto result = readRecognitionResult(entry.toObject());
+                if (!result) return fail(result.error());
+                page.recognitionEvidence.append(std::move(*result));
+            }
+        }
         if (object.contains("ocr_readings")) {
             auto readings=readOcrReadings(object["ocr_readings"],QSize(page.width,page.height));
             if (!readings) return fail(readings.error()); page.ocrReadings=std::move(*readings);

@@ -317,7 +317,7 @@ class PaddleVlBackend:
         if not text.strip():
             return []
         return [{"text": text.strip(), "confidence": None, "box": [0, 0, width, height],
-                 "layout_block": True}]
+                 "layout_block": True, "geometry_source": "input_extent"}]
 
 
 class PaddleOcrBackend:
@@ -481,7 +481,7 @@ class FormulaNetBackend:
         if len(text) > 65536:
             raise ValueError("Formula recognition output is too large")
         return [{"text": text, "confidence": None, "box": [0, 0, width, height],
-                 "layout_block": True}] if text else []
+                 "layout_block": True, "geometry_source": "input_extent"}] if text else []
 
 
 def benchmark_details(backend):

@@ -17,13 +17,13 @@ public:
     QUrl serviceUrl() const { return server; }
     QString sessionToken() const { return bearerToken; }
     QString modelName() const { return model; }
-    std::expected<core::OcrPage, OcrError> recognize(
+    std::expected<RecognitionResult, OcrError> recognizeResult(
         const QImage &image, const OcrOptions &options, std::stop_token stop) override;
 
     QJsonObject lastRunDetails() const override { return runDetails; }
 private:
     QJsonObject runDetails;
-    std::expected<core::OcrPage, OcrError> recognizeSection(
+    std::expected<RecognitionResult, OcrError> recognizeSection(
         const QImage &image, const OcrOptions &options, std::stop_token stop, int depth);
     QUrl server;
     QString bearerToken;

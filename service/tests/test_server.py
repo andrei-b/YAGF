@@ -30,7 +30,7 @@ class PaddleVlTests(unittest.TestCase):
         with patch("server.urllib.request.urlopen", return_value=self.response()) as send:
             result = backend.recognize(b"image", 200, 100, "auto")
         self.assertEqual(result, [{"text": "First line\nSecond line", "confidence": None,
-                                  "box": [0, 0, 200, 100], "layout_block": True}])
+                                  "box": [0, 0, 200, 100], "layout_block": True, "geometry_source": "input_extent"}])
         payload = json.loads(send.call_args.args[0].data)
         self.assertEqual(payload["model"], "PaddleOCR-VL-1.6")
         self.assertEqual(payload["messages"][0]["content"][1]["text"], "OCR:")
@@ -80,7 +80,7 @@ class FormulaNetTests(unittest.TestCase):
             self.assertEqual(calls[0]["model_name"], "PP-FormulaNet_plus-L")
             self.assertEqual(backend.recognize(b"image", 20, 10, "rus"),
                              [{"text": r"\frac{333}{106}", "confidence": None,
-                               "box": [0, 0, 20, 10], "layout_block": True}])
+                               "box": [0, 0, 20, 10], "layout_block": True, "geometry_source": "input_extent"}])
             predictor.predict = lambda **kwargs: [{"rec_formula": None}]
             with self.assertRaises(ValueError): backend.recognize(b"image", 20, 10, "auto")
         with self.assertRaises(ValueError): FormulaNetBackend("/missing/model")

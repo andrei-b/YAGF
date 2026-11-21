@@ -27,12 +27,17 @@ ParallelOcrRun::ParallelOcrRun(std::vector<ComparisonEngine> &engines,const QIma
                     if (!result) {reading.error=result.error().cancelled ? QStringLiteral("Cancelled") : result.error().message.left(2048); reading.items.clear(); break;}
                     if (result->number!=options.pageNumber || result->width!=area.width() || result->height!=area.height()) throw std::runtime_error("Companion OCR returned inconsistent page dimensions");
                     reading.language=result->language;
+                    for (auto evidence : result->recognitionEvidence) {
+                        auto &areaInPage = evidence.provenance.inputArea;
+                        if (areaInPage.isEmpty()) areaInPage = QRect(QPoint(), evidence.provenance.imageSize);
+                        areaInPage.translate(area.topLeft()); reading.recognitionEvidence.append(std::move(evidence));
+                    }
                     QHash<int,int> blocks;
                     for (const auto &w:result->words) {
                         if (!QRect(QPoint{},area.size()).contains(w.bounds) || w.bounds.isEmpty() || w.text.isEmpty() || w.text.size()>65536 || w.block<0 || w.paragraph<0 || w.line<0 || w.paragraph>1000000 || w.line>1000000) throw std::runtime_error("Companion OCR returned invalid text or geometry");
                         characters+=w.text.size(); if (characters>1024*1024 || reading.items.size()>=10000) throw std::runtime_error("Companion OCR output exceeds the limit");
                         if (!blocks.contains(w.block)) blocks.insert(w.block,nextBlock++);
-                        reading.items.append({w.bounds.translated(area.topLeft()),w.text,blocks[w.block],w.paragraph,w.line,w.layoutBlock});
+                        reading.items.append({w.bounds.translated(area.topLeft()),w.text,blocks[w.block],w.paragraph,w.line,w.layoutBlock,w.geometryInferred});
                     }
                 }
             } catch (const std::exception &error) {reading.error=QString::fromUtf8(error.what()).left(2048); reading.items.clear();}

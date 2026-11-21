@@ -6,6 +6,7 @@
 #include <QEventLoop>
 #include <QTemporaryDir>
 #include <QTimer>
+#include <algorithm>
 
 #ifdef NDEBUG
 #undef NDEBUG
@@ -21,7 +22,7 @@ public:
     FixtureEngine(QString name, core::OcrPage output) : name(std::move(name)), output(std::move(output)) {}
     [[nodiscard]] QString id() const override { return name; }
     [[nodiscard]] processing::EngineCapabilities capabilities() const override { return {.supportsRegions = true}; }
-    std::expected<core::OcrPage, processing::OcrError> recognize(const QImage &image,
+    std::expected<yagf::core::RecognitionResult, processing::OcrError> recognizeResult(const QImage &image,
         const processing::OcrOptions &options, std::stop_token) override
     {
         images.append(image.size());
@@ -30,7 +31,12 @@ public:
         page.width = page.sourceWidth = image.width();
         page.height = page.sourceHeight = image.height();
         page.number = options.pageNumber;
-        return page;
+        // Specialist fixture words use coordinates relative to each submitted crop.
+        for (auto &word : page.words) {
+            word.bounds.moveLeft(std::min(word.bounds.x(), std::max(0, image.width()-word.bounds.width())));
+            word.bounds.moveTop(std::min(word.bounds.y(), std::max(0, image.height()-word.bounds.height())));
+        }
+        return yagf::processing::recognitionFromPage(page);
     }
     QString name;
     core::OcrPage output;

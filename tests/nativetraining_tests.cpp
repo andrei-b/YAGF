@@ -60,8 +60,8 @@ public:
     explicit FakeEngine(QString name):name(name){}
     QString id()const override{return name;}
     processing::EngineCapabilities capabilities()const override{return {.supportsRegions=true,.supportsWordBoxes=true};}
-    std::expected<core::OcrPage,processing::OcrError> recognize(const QImage &image,const processing::OcrOptions &,std::stop_token)override {
-        ++calls; core::OcrPage p; p.width=p.sourceWidth=image.width(); p.height=p.sourceHeight=image.height(); p.words.append({1,1,1,1,{5,5,60,18},"Native","Native",95}); p.rebuildHierarchy(); return p;
+    std::expected<yagf::core::RecognitionResult,processing::OcrError> recognizeResult(const QImage &image,const processing::OcrOptions &,std::stop_token)override {
+        ++calls; core::OcrPage p; p.width=p.sourceWidth=image.width(); p.height=p.sourceHeight=image.height(); p.words.append({1,1,1,1,{5,5,60,18},"Native","Native",95}); p.rebuildHierarchy(); return yagf::processing::recognitionFromPage(p);
     }
 };
 }
@@ -107,6 +107,9 @@ private slots:
         ui::NativeTrainingDialog dialog(book,1); dialog.show();
         auto *samples=dialog.findChild<QListWidget *>("nativeTrainingSamples"); auto *train=dialog.findChild<QPushButton *>("trainNativeModel"); auto *use=dialog.findChild<QPushButton *>("useNativeModel"); QVERIFY(samples && train && use);
         QTRY_COMPARE_WITH_TIMEOUT(samples->count(),3,4000); QVERIFY(!train->isEnabled()); QVERIFY(!use->isEnabled());
+        // Loading the samples starts an asynchronous model-library refresh.
+        // Wait until review controls are available before sending clicks.
+        QTRY_VERIFY_WITH_TIMEOUT(dialog.findChild<QPushButton *>("approveNativeExample")->isEnabled(),3000);
         const auto reviewed=dialog.findChildren<QPushButton *>();
         for (auto *button:reviewed) if(button->text()=="Approve already-reviewed lines") button->click();
         samples->setCurrentRow(2); dialog.findChild<QPushButton *>("approveNativeExample")->click(); QTRY_VERIFY_WITH_TIMEOUT(train->isEnabled(),3000);
@@ -135,6 +138,7 @@ private slots:
         auto *train=dialog.findChild<QPushButton *>("trainNativeModel");
         QTRY_COMPARE_WITH_TIMEOUT(samples->count(),3,4000);
         auto *approve=dialog.findChild<QPushButton *>("approveNativeExample");
+        QTRY_VERIFY_WITH_TIMEOUT(approve->isEnabled(),3000);
         for (int i=0;i<3;++i) {samples->setCurrentRow(i); approve->click();}
         QTRY_VERIFY_WITH_TIMEOUT(train->isEnabled(),3000); train->click();
         QTRY_VERIFY_WITH_TIMEOUT(server.pollInFlight,4000);

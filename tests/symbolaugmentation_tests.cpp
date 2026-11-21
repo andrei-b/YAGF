@@ -18,7 +18,7 @@ public:
     QString name="fixture";
     QString id() const override { return name; }
     yagf::processing::EngineCapabilities capabilities() const override { return {.supportsWordBoxes=true}; }
-    std::expected<yagf::core::OcrPage,yagf::processing::OcrError> recognize(const QImage &,const yagf::processing::OcrOptions &,std::stop_token) override { return page; }
+    std::expected<yagf::core::RecognitionResult,yagf::processing::OcrError> recognizeResult(const QImage &,const yagf::processing::OcrOptions &,std::stop_token) override { return yagf::processing::recognitionFromPage(page); }
 };
 
 int main(int argc,char **argv)

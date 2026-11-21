@@ -7,13 +7,76 @@
 #include <QRegularExpression>
 #include <QUuid>
 #include <algorithm>
+#include <future>
 #include <limits>
 #include <map>
+#include <mutex>
 #include <set>
 
 namespace yagf::processing {
 namespace {
 using core::OcrWord;
+
+// Own the early formula work until it has been consumed or cancelled. In
+// particular, a failed text read must not leave an inference running behind it.
+class FormulaPrefetch {
+    struct Result {
+        std::expected<core::OcrPage, OcrError> reading;
+        QStringList warnings;
+    };
+    std::stop_source stop;
+    std::stop_callback<std::function<void()>> parentStop;
+    std::future<Result> pending;
+    QList<QRect> prefetched;
+    std::optional<Result> cached;
+public:
+    explicit FormulaPrefetch(std::stop_token parent)
+        : parentStop(parent, [this] { stop.request_stop(); }) {}
+    ~FormulaPrefetch() {
+        stop.request_stop();
+        if (pending.valid()) pending.wait();
+    }
+    void start(IOcrEngine *provider, const QImage &image, const OcrOptions &options,
+               const QList<QRect> &boxes, int budget) {
+        if (boxes.isEmpty()) return;
+        prefetched = boxes;
+        pending = std::async(std::launch::async, [=, token=stop.get_token()] {
+            Result result;
+            result.reading = recognizeFormulaBoxes(provider, image, options, token, boxes, &result.warnings, budget);
+            return result;
+        });
+    }
+    std::expected<core::OcrPage, OcrError> recognize(IOcrEngine *provider, const QImage &image,
+        const OcrOptions &options, std::stop_token token, const QList<QRect> &boxes,
+        QStringList *warnings, int budget) {
+        if (!pending.valid() && !cached)
+            return recognizeFormulaBoxes(provider, image, options, token, boxes, warnings, budget);
+        if (pending.valid()) cached = pending.get();
+        if (token.stop_requested()) return std::unexpected(OcrError{{}, true});
+        if (!cached->reading) return std::unexpected(cached->reading.error());
+        if (!cached->warnings.isEmpty()) {
+            if (!warnings) return std::unexpected(OcrError{cached->warnings.join('\n')});
+            *warnings += cached->warnings;
+        }
+        auto result = *cached->reading;
+        QList<QRect> remaining;
+        for (const auto &box : boxes) if (!prefetched.contains(box)) remaining.append(box);
+        if (!remaining.isEmpty()) {
+            auto later = recognizeFormulaBoxes(provider, image, options, token, remaining, warnings, budget);
+            if (!later) return std::unexpected(later.error());
+            result.words += later->words;
+            appendRecognitionEvidence(result, *later);
+        }
+        // Preserve crop order even when early and text-dependent crops interleave.
+        const auto words = std::move(result.words);
+        result.words.clear();
+        for (const auto &box : boxes) for (const auto &word : words)
+            if (word.bounds == box) { result.words.append(word); break; }
+        result.regions.clear();
+        result.rebuildHierarchy();
+        return result;
+    }
+};
 
 struct Row {
     QRect box;
@@ -396,8 +459,18 @@ QVector<Row> rowsIn(const QImage &gray, QRect area, const QVector<OcrWord> &word
 
 std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image, const OcrOptions &options,
     const QVector<core::ImageRegion> &regions, bool splitOnly, std::stop_token stop, bool includeUnmarked,
-    const core::OcrPage *initialReading, QStringList *warnings, IOcrEngine *textProvider, IOcrEngine *formulaProvider)
+    const core::OcrPage *initialReading, QStringList *warnings, IOcrEngine *textProvider, IOcrEngine *formulaProvider,
+    bool readBaseline, bool parallelFormulas)
 {
+    // Existing callbacks need not be thread safe. Deliver progress from the two
+    // engines one callback at a time, without sharing mutable OCR results.
+    auto settings = options;
+    std::mutex progressMutex;
+    if (options.progress) settings.progress = [&](const QString &stage, int done, int total) {
+        std::lock_guard lock(progressMutex);
+        options.progress(stage, done, total);
+    };
+    FormulaPrefetch formulaReadings(stop);
     QImage gray(image.size(), QImage::Format_Grayscale8);
     gray.fill(Qt::white);
     {
@@ -415,7 +488,8 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
     page.width = page.sourceWidth = gray.width();
     page.height = page.sourceHeight = gray.height();
     page.engineId = QStringLiteral("local-mixed");
-    page.language = textProvider ? options.language : TesseractEngine::modelLanguage(options.language);
+    const bool localText = !textProvider || textProvider->id() == "tesseract";
+    page.language = localText ? TesseractEngine::modelLanguage(options.language) : options.language;
     page.imageRegions = regions;
     QVector<Row> rows;
     std::map<QString, core::OcrPage> baselines;
@@ -430,12 +504,13 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
         QVector<OcrWord> local;
         QVector<int> heights;
         if (mode != "math") {
-            language = textProvider ? (language.isEmpty() ? page.language : language) : TesseractEngine::modelLanguage(language.isEmpty() ? page.language : language);
+            language = language.isEmpty() ? page.language : language;
+            if (localText) language = TesseractEngine::modelLanguage(language);
             if (!baselines.contains(language)) {
                 if (initialReading && inkBox(pixels, area).isEmpty()) return QVector<Row>{};
-                auto settings = options;
-                settings.language = language;
-                auto result = prose.recognize(image, settings, stop);
+                auto textSettings = settings;
+                textSettings.language = language;
+                auto result = prose.recognize(image, textSettings, stop);
                 if (!result) return std::unexpected(result.error());
                 baselines.emplace(language, std::move(*result));
             }
@@ -484,10 +559,10 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
                 QPainter painter(&line);
                 painter.drawImage(QPoint(pad, pad), pixels, row.box);
             }
-            auto settings = options;
-            settings.language = language;
-            settings.singleTextLine = true;
-            auto retry = prose.recognize(line, settings, stop);
+            auto textSettings = settings;
+            textSettings.language = language;
+            textSettings.singleTextLine = true;
+            auto retry = prose.recognize(line, textSettings, stop);
             if (!retry) return std::unexpected(retry.error());
             for (auto word : retry->words) {
                 word.bounds.translate(row.box.topLeft()-QPoint(pad, pad));
@@ -501,9 +576,34 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
         }
         return found;
     };
-    for (auto &region : page.imageRegions) {
+    std::map<int, QVector<Row>> earlyRows;
+    if (!splitOnly && parallelFormulas && formulaProvider != &prose) {
+        QList<QRect> boxes;
+        for (int i = 0; i < page.imageRegions.size(); ++i) {
+            const auto &region = page.imageRegions[i];
+            if (region.notText || region.content != "math") continue;
+            auto found = analyze(gray, region.bounds.intersected(gray.rect()), "math", region.language, {});
+            if (!found) return std::unexpected(found.error());
+            for (const auto &row : *found) for (const auto &word : row.words)
+                if (word.layoutBlock && !boxes.contains(word.bounds)) boxes.append(word.bounds);
+            earlyRows.emplace(i, std::move(*found));
+        }
+        const bool forced = std::ranges::any_of(regions, [](const auto &r) { return !r.autoDetected && r.content == "math"; });
+        formulaReadings.start(formulaProvider, image, settings, boxes, forced ? 300000 : 30000);
+    }
+    std::optional<core::OcrPage> baseline;
+    if (readBaseline && !initialReading) {
+        auto reading = prose.recognize(image, settings, stop);
+        if (!reading) return std::unexpected(reading.error());
+        baseline = std::move(*reading);
+        initialReading = &*baseline;
+        baselines.emplace(page.language, *baseline);
+    }
+    for (int i = 0; i < page.imageRegions.size(); ++i) {
+        auto &region = page.imageRegions[i];
         if (region.notText) continue;
-        auto found = analyze(gray, region.bounds.intersected(gray.rect()), region.content, region.language, {});
+        std::expected<QVector<Row>, OcrError> found = earlyRows.contains(i) ? std::move(earlyRows.at(i)) :
+            analyze(gray, region.bounds.intersected(gray.rect()), region.content, region.language, {});
         if (!found) return std::unexpected(found.error());
         if (region.content.isEmpty() && !found->isEmpty()) {
             region.content = found->first().content;
@@ -639,7 +739,7 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
         core::OcrPage formulas;
         if (!boxes.isEmpty()) {
             const bool forced=std::ranges::any_of(regions,[](const auto &r){return !r.autoDetected && r.content=="math";});
-            auto result = recognizeFormulaBoxes(formulaProvider, image, options, stop, boxes, &failures,forced ? 300000 : 30000);
+            auto result = formulaReadings.recognize(formulaProvider, image, settings, stop, boxes, &failures,forced ? 300000 : 30000);
             if (!result) {
                 if (result.error().cancelled || stop.stop_requested()) return std::unexpected(result.error());
                 failures.append(result.error().message);
@@ -715,9 +815,11 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
             return std::unexpected(OcrError{QStringLiteral("More than 1000 blocks detected. Select a smaller area.")});
         if (warnings && !failures.isEmpty())
             warnings->append(failures.join('\n') + QStringLiteral(" Kept native OCR for failed equation crops."));
+        appendRecognitionEvidence(original, formulas);
         return original;
     }
     std::ranges::stable_sort(rows, {}, [](const Row &row) { return std::pair(row.box.top(), row.box.left()); });
+    for (const auto &[language, baseline] : baselines) appendRecognitionEvidence(page, baseline);
     QList<QRect> boxes;
     QList<int> indices;
     QStringList types;
@@ -735,7 +837,7 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
         }
     }
     if (!boxes.isEmpty()) {
-        auto formulas = recognizeFormulaBoxes(formulaProvider, image, options, stop, boxes,nullptr,30000);
+        auto formulas = formulaReadings.recognize(formulaProvider, image, settings, stop, boxes,nullptr,30000);
         if (formulas && formulas->words.size() != boxes.size())
             formulas = std::unexpected(OcrError{QStringLiteral("Local math OCR returned an incomplete set of crops.")});
         if (!formulas) {
@@ -750,6 +852,7 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
             word.originalText = word.text;
             word.readingEngine = formulas->words[i].readingEngine;
         }
+        appendRecognitionEvidence(page, *formulas);
     }
     page.rebuildHierarchy();
     for (int i = 0; i < types.size(); ++i)

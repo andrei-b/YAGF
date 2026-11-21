@@ -43,6 +43,7 @@ public:
     QString prompt;
     QStringList prompts;
     QVector<QSize> crops;
+    std::shared_ptr<std::atomic_bool> formulaRequested = std::make_shared<std::atomic_bool>(false);
     VisionServer() {
         if (!listen(QHostAddress::LocalHost)) qFatal("listen failed");
         connect(this,&QTcpServer::newConnection,this,[this] {
@@ -62,6 +63,7 @@ public:
                     const auto content=body["messages"].toArray().first().toObject()["content"].toArray();
                     prompt=content[1].toObject()["text"].toString();
                     prompts.append(prompt);
+                    if (prompt == "Formula Recognition:") formulaRequested->store(true);
                     const auto data=content[0].toObject()["image_url"].toObject()["url"].toString().section(',',1).toLatin1();
                     QImage image; image.loadFromData(QByteArray::fromBase64(data),"PNG"); crops.append(image.size());
                     if (stall) return;
@@ -82,16 +84,23 @@ public:
 
 class TextWithFormula:public processing::IOcrEngine {
     int delay;
+    std::shared_ptr<std::atomic_bool> formulaRequested;
 public:
-    explicit TextWithFormula(int delay=0):delay(delay){}
+    explicit TextWithFormula(int delay=0, std::shared_ptr<std::atomic_bool> formulaRequested={})
+        :delay(delay),formulaRequested(std::move(formulaRequested)){}
     QString id()const override{return "tesseract";}
     processing::EngineCapabilities capabilities()const override{return {.supportsRegions=true,.supportsWordBoxes=true};}
-    std::expected<core::OcrPage,processing::OcrError> recognize(const QImage &image,const processing::OcrOptions &options,std::stop_token)override {
+    std::expected<yagf::core::RecognitionResult,processing::OcrError> recognizeResult(const QImage &image,const processing::OcrOptions &options,std::stop_token stop)override {
+        const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(2);
+        while (formulaRequested && !formulaRequested->load() && !stop.stop_requested() && std::chrono::steady_clock::now()<deadline)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        if (formulaRequested && !formulaRequested->load())
+            return std::unexpected(processing::OcrError{"Formula service did not start alongside text OCR"});
         if (delay) QThread::msleep(delay);
         core::OcrPage page;page.number=options.pageNumber;page.width=page.sourceWidth=image.width();page.height=page.sourceHeight=image.height();page.language="eng";
         page.words={{options.pageNumber,1,1,1,{5,5,40,12},"Primary","Primary",95},
                     {options.pageNumber,2,1,1,{110,80,40,18},"ро","ро",95}};
-        page.rebuildHierarchy();return page;
+        page.rebuildHierarchy();return yagf::processing::recognitionFromPage(page);
     }
 };
 
@@ -137,7 +146,7 @@ public:
     Engine(std::shared_ptr<State> state,QString text,bool companion=false):state(std::move(state)),label(std::move(text)),companion(companion){}
     QString id()const override{return companion ? "test-companion" : "test-primary";}
     processing::EngineCapabilities capabilities()const override{return {};}
-    std::expected<core::OcrPage,processing::OcrError> recognize(const QImage &image,const processing::OcrOptions &options,std::stop_token stop)override {
+    std::expected<yagf::core::RecognitionResult,processing::OcrError> recognizeResult(const QImage &image,const processing::OcrOptions &options,std::stop_token stop)override {
         ++state->started; {std::lock_guard lock(state->mutex);state->images.append(image.size());}
         const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(2);
         while(state->started<state->required && !stop.stop_requested() && std::chrono::steady_clock::now()<until)std::this_thread::sleep_for(std::chrono::milliseconds(2));
@@ -147,7 +156,7 @@ public:
         if(stop.stop_requested())return std::unexpected(processing::OcrError{{},true});
         if(companion && state->failed)return std::unexpected(processing::OcrError{"Offline test service"});
         core::OcrPage page; page.number=options.pageNumber;page.width=page.sourceWidth=image.width();page.height=page.sourceHeight=image.height();page.language="eng";
-        page.words.append({options.pageNumber,1,1,1,{5,5,40,12},label,label,95});page.rebuildHierarchy(); return page;
+        page.words.append({options.pageNumber,1,1,1,{5,5,40,12},label,label,95});page.rebuildHierarchy(); return yagf::processing::recognitionFromPage(page);
     }
 };
 processing::OcrService service(const QString &label,const QString &path) {
@@ -249,12 +258,26 @@ private slots:
         QCOMPARE(server.prompt,"Formula Recognition:");QCOMPARE(server.crops,QVector<QSize>{box.size()});
         QCOMPARE(page->words.first().bounds,box);QCOMPARE(page->number,7);QCOMPARE(page->words.first().text,"\\frac{333}{106}=3,141509\\ldots");
         QCOMPARE(page->words.first().readingEngine,"paddleocr-vl-remote");QCOMPARE(page->regions.first().type,"equation");
+        QVERIFY(page->words.first().geometryInferred);QVERIFY(page->words.first().sourceBoxes.isEmpty());
+        QCOMPARE(page->recognitionEvidence.size(),1);QCOMPARE(page->recognitionEvidence[0].formulas.size(),1);
+        QVERIFY(!page->recognitionEvidence[0].formulas[0].bounds);
+        QCOMPARE(page->recognitionEvidence[0].provenance.imageSize,box.size());
+        QCOMPARE(page->recognitionEvidence[0].provenance.inputArea,box);
         server.invalid=true;QStringList warnings;
         page=processing::recognizeFormulaBoxes(engine->get(),image,{}, {},{box},&warnings);
         QVERIFY(page);QVERIFY(page->words.isEmpty());QVERIFY(!warnings.isEmpty());
         server.invalid=false;server.stall=true;std::stop_source stop;QTimer::singleShot(80,this,[&]{stop.request_stop();});
         page=processing::recognizeFormulaBoxes(engine->get(),image,{},stop.get_token(),{box});
         QVERIFY(!page);QVERIFY(page.error().cancelled);
+    }
+    void visionTextRetainsMarkdownWithoutClaimingWordCoordinates() {
+        VisionServer server; auto engine=processing::makeOcrServiceEngine(server.service());QVERIFY(engine);
+        const auto result=(*engine)->recognizeResult(image,{.language="auto"},{});QVERIFY(result);
+        QCOMPARE(result->text.size(),1);QVERIFY(!result->text[0].bounds);
+        QCOMPARE(result->text[0].granularity,core::TextGranularity::Page);QVERIFY(!result->markdown.isEmpty());
+        QVERIFY(result->structuredOutput.contains("choices"));QCOMPARE(result->provenance.model,"PaddleOCR-VL-1.6");
+        const auto page=processing::recognitionToPage(*result);QVERIFY(page);QCOMPARE(page->words.size(),1);
+        QVERIFY(page->words[0].geometryInferred);QVERIFY(page->words[0].sourceBoxes.isEmpty());
     }
     void formulaSelectionIsIndependentFromPrimaryAndCompanions() {
         VisionServer server;auto remote=server.service();remote.token="session-only";
@@ -347,7 +370,7 @@ private slots:
         stored.imageRegions={{"old-text",image.rect(),"eng",false,"text",true}};book.replacePage(stored);
         QImage pixels=image;{QPainter p(&pixels);p.fillRect(QRect(110,80,40,18),Qt::black);}
         const auto path=temporary.filePath("auto-layout.png");QVERIFY(pixels.save(path));
-        processing::DocumentProcessor processor(nullptr,&book);processor.setEngine(std::make_unique<TextWithFormula>(80));
+        processing::DocumentProcessor processor(nullptr,&book);processor.setEngine(std::make_unique<TextWithFormula>(80,vision.formulaRequested));
         QVERIFY(processor.setFormulaOcrService(vision.service()));QVERIFY(processor.setPageLayoutService({layout.url()},true));
         auto companion=processing::makeOcrServiceEngine(vision.service());QVERIFY(companion);
         std::vector<processing::ComparisonEngine> companions;companions.push_back({vision.service(),std::move(*companion)});
@@ -360,6 +383,38 @@ private slots:
         QCOMPARE(vision.prompts,(QStringList{"Formula Recognition:","OCR:"}));QCOMPARE(page.ocrReadings.size(),1);
         QVERIFY(page.ocrReadings[0].error.isEmpty());QVERIFY(layout.posts>0);
         QVERIFY(std::ranges::any_of(page.imageRegions,[](const auto &r){return r.detectedLabel=="display_formula";}));
+    }
+    void sharedTextAndFormulaEndpointStaysSerialized_data() {
+        QTest::addColumn<bool>("differentModel");
+        QTest::addColumn<bool>("versionedUrl");
+        QTest::newRow("same-model") << false << false;
+        QTest::newRow("different-model-same-endpoint") << true << false;
+        QTest::newRow("equivalent-versioned-url") << false << true;
+    }
+    void sharedTextAndFormulaEndpointStaysSerialized() {
+        QFETCH(bool, differentModel);
+        QFETCH(bool, versionedUrl);
+        VisionServer vision;
+        core::OcrDocument book; book.sourcePath=scan;
+        core::OcrPage stored; stored.number=1; stored.width=stored.sourceWidth=200; stored.height=stored.sourceHeight=140;
+        stored.imageRegions={{"text",{0,0,80,40},"auto",false,"text",false},
+                             {"formula",{90,65,90,55},"auto",false,"math",false}};
+        book.replacePage(stored);
+        QImage pixels=image; {QPainter painter(&pixels);painter.fillRect(QRect(110,80,40,18),Qt::black);}
+        const auto path=temporary.filePath("shared-service.png"); QVERIFY(pixels.save(path));
+        auto primary=vision.service();
+        if (differentModel) primary.model="PaddleOCR-VL-1.5";
+        if (versionedUrl) primary.url.setPath(primary.url.path()+"/v1/");
+        auto text=processing::makeOcrServiceEngine(primary); QVERIFY(text);
+        processing::DocumentProcessor processor(nullptr,&book); processor.setEngine(std::move(*text));
+        QVERIFY(processor.setFormulaOcrService(vision.service()));
+        QSignalSpy done(&processor,&processing::DocumentProcessor::recognized),failed(&processor,&processing::DocumentProcessor::failed);
+        processor.recognize(path,"auto",1);
+        QTRY_VERIFY_WITH_TIMEOUT(!done.isEmpty()||!failed.isEmpty(),5000);
+        QVERIFY2(failed.isEmpty(),failed.isEmpty()?"":qPrintable(failed.first().first().toString()));
+        QVERIFY(vision.prompts.contains("Formula Recognition:"));
+        QCOMPARE(vision.prompts.first(),"OCR:");
+        QCOMPARE(vision.prompts.last(),"Formula Recognition:");
     }
     void discoveryIdentifiesCatalogChildrenWithoutSendingImages() {
         Server server;auto result=processing::discoverOcrServices({server.url()},{},{});QVERIFY(result);QCOMPARE(result->services.size(),2);QCOMPARE(server.posts,0);
@@ -386,6 +441,9 @@ private slots:
         const auto page=done.first().first().value<core::OcrPage>();QCOMPARE(page.words[0].text,"Primary");QCOMPARE(page.ocrReadings.size(),2);QCOMPARE(state->started.load(),3);
         QCOMPARE(core::matchedOcrReading(page,{0},page.ocrReadings[0]),"Alternative A");book.replacePage(page);
         core::OcrDocument restored;QString error;QVERIFY2(core::OcrDocument::fromJson(book.toJson(),&restored,&error),qPrintable(error));QCOMPARE(restored.pages[0].ocrReadings.size(),2);
+        QVERIFY(!restored.pages[0].ocrReadings[0].recognitionEvidence.isEmpty());
+        QCOMPARE(core::recognitionResultJson(restored.pages[0].ocrReadings[0].recognitionEvidence[0]),
+                 core::recognitionResultJson(page.ocrReadings[0].recognitionEvidence[0]));
         auto edited=core::acceptOcrReading(page,{0},page.ocrReadings[0],"Alternative A");QVERIFY(edited);QCOMPARE(edited->words[0].originalText,"Primary");
         QUndoStack undo;undo.push(new ui::ReplacePageCommand(book,1,*edited,"Use OCR reading"));QVERIFY(book.plainText().contains("Alternative A"));undo.undo();QVERIFY(book.plainText().contains("Primary"));undo.redo();
         auto malformed=book.toJson();auto pages=malformed["pages"].toArray();auto entry=pages[0].toObject();auto readings=entry["ocr_readings"].toArray();auto r=readings[0].toObject();r["area"]=QJsonArray{0,0,10000,10000};readings[0]=r;entry["ocr_readings"]=readings;pages[0]=entry;malformed["pages"]=pages;QVERIFY(!core::OcrDocument::fromJson(malformed,&restored,&error));

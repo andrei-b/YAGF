@@ -430,6 +430,18 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
     const auto layoutService=pageLayoutService;
     const bool automaticLayout=layoutService && localText && !rawOutput && !splitOnly && selected.isEmpty() && region.isEmpty();
     const QString deferredCompanion=formulaRecognizer ? selectedFormulaService.key() : QString();
+    const auto textService = primaryOcrService();
+    const auto formulaService = formulaOcrService();
+    const auto endpoint = [](const OcrService &service) {
+        auto url = service.url.adjusted(QUrl::NormalizePathSegments | QUrl::StripTrailingSlash);
+        // Both base URL forms address the same OpenAI-compatible worker.
+        if (service.provider == "paddleocr-vl" && url.path().endsWith("/v1"))
+            url.setPath(url.path().chopped(3));
+        return url;
+    };
+    const bool sharedEndpoint = !textService.url.isEmpty() &&
+        endpoint(textService) == endpoint(formulaService);
+    const bool parallelFormulas = textService.key() != formulaService.key() && !sharedEndpoint;
     QVector<core::ImageRegion> blocks = selected;
     if (blocks.isEmpty() && savedPage) {
         const bool newLanguage = localText && region.isEmpty() && !savedPage->language.isEmpty() &&
@@ -455,7 +467,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
     ocrStop = std::stop_source{};
     const std::stop_token token = ocrStop.get_token();
     if (!wasBusy) emit busyChanged(true);
-    ocrWatcher.setFuture(QtConcurrent::run([this, path, image, options, region, token, formulaRegions, pagedSource, jobDpi, savedImageSize, savedDpi, batch, blocks, smart, automatic, localText, splitOnly, selected, rawOutput, symbolRules, unicodeFormulas, layoutService, automaticLayout, deferredCompanion] {
+    ocrWatcher.setFuture(QtConcurrent::run([this, path, image, options, region, token, formulaRegions, pagedSource, jobDpi, savedImageSize, savedDpi, batch, blocks, smart, automatic, localText, splitOnly, selected, rawOutput, symbolRules, unicodeFormulas, layoutService, automaticLayout, deferredCompanion, parallelFormulas] {
         OcrJobResult result;
         result.selected = selected;
         QImage input = image;
@@ -513,18 +525,10 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
                     result.warnings.append(QStringLiteral("AI page layout failed: %1 Used the existing blocks and local detection.").arg(layout.error().message));
                 } else local=mergePageAreas(local,layout->areas,true);
             }
-            std::optional<core::OcrPage> baseline;
-            if (automatic) {
-                auto reading = engine->recognize(input, options, token);
-                if (!reading) {
-                    result.outcome = std::unexpected(reading.error());
-                    return result;
-                }
-                baseline = std::move(*reading);
-            }
             result.outcome = recognizeSmartBlocks(input, options, local, splitOnly, token,
-                selected.isEmpty(), baseline ? &*baseline : nullptr, &result.warnings,
-                !localText && engine->id()!="rapid-latex-ocr" ? engine.get() : nullptr, formulaRecognizer.get());
+                selected.isEmpty(), nullptr, &result.warnings,
+                (automatic || !localText) && engine->id()!="rapid-latex-ocr" ? engine.get() : nullptr,
+                formulaRecognizer.get(), automatic, parallelFormulas);
         } else if (rawOutput && !selected.isEmpty()) {
             core::OcrPage merged;
             merged.id = QStringLiteral("page-%1").arg(options.pageNumber);
@@ -545,6 +549,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
                 if (!block.language.isEmpty()) settings.language = TesseractEngine::modelLanguage(block.language);
                 auto reading = engine->recognize(input.copy(crop), settings, token);
                 if (!reading) { result.outcome = std::unexpected(reading.error()); return result; }
+                appendRecognitionEvidence(merged, *reading, crop.topLeft());
                 int maximumBlock = lastBlock;
                 for (auto word : reading->words) {
                     word.bounds.translate(crop.topLeft());
@@ -596,7 +601,8 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
                     result.outcome = std::unexpected(OcrError{{}, true});
                     return result;
                 }
-                if (engine->capabilities().supportsWordBoxes && core::isSingleSymbol(word.originalText))
+                if (engine->capabilities().supportsWordBoxes && !word.layoutBlock && !word.geometryInferred &&
+                    core::isSingleSymbol(word.originalText))
                     word.symbolShape = symbolShape(input, word.bounds);
                 ids.insert(word.id);
             }

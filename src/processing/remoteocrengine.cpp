@@ -66,7 +66,7 @@ QString providerName(RemoteOcrEngine::Provider provider)
     return {};
 }
 
-std::expected<core::OcrPage, OcrError> parseResponse(
+std::expected<RecognitionResult, OcrError> parseResponse(
     const QByteArray &bytes, const QSize &imageSize, const OcrOptions &options,
     RemoteOcrEngine::Provider provider)
 {
@@ -84,85 +84,103 @@ std::expected<core::OcrPage, OcrError> parseResponse(
     if (root.value(QStringLiteral("protocol")).toString() != QLatin1String(protocol) ||
         root.value(QStringLiteral("engine_id")).toString() != providerName(provider) ||
         root.value(QStringLiteral("width")).toInt(-1) != imageSize.width() ||
-        root.value(QStringLiteral("height")).toInt(-1) != imageSize.height() ||
-        !root.value(itemKey).isArray())
+        root.value(QStringLiteral("height")).toInt(-1) != imageSize.height())
         return std::unexpected(OcrError{QStringLiteral("The OCR server response has an incompatible schema or image size.")});
+    if (root.contains("recognition")) {
+        if (!root["recognition"].isObject()) return std::unexpected(OcrError{"Invalid native recognition result."});
+        auto result = core::readRecognitionResult(root["recognition"].toObject());
+        if (!result || result->provenance.imageSize != imageSize)
+            return std::unexpected(OcrError{result ? QStringLiteral("Incompatible recognition image size.") : result.error()});
+        result->engineId = providerName(provider)+"-remote";
+        result->provenance.pageNumber = options.pageNumber;
+        return *result;
+    }
+    if (!root.value(itemKey).isArray()) {
+        if (!root["markdown"].isString() || root["markdown"].toString().trimmed().isEmpty())
+            return std::unexpected(OcrError{"The OCR server response has an incompatible schema."});
+        RecognitionResult result; result.engineId = providerName(provider)+"-remote";
+        result.modelVersion = root.value("model_version").toString();
+        result.provenance = {.model=root.value("model").toString(), .task=options.formula ? "formula" : "ocr",
+            .language=root.value("language").toString(options.language), .pageNumber=options.pageNumber, .imageSize=imageSize};
+        result.markdown = root["markdown"].toString(); result.structuredOutput = root;
+        return result;
+    }
     const QJsonArray items = root.value(itemKey).toArray();
     if (items.size() > 10000)
         return std::unexpected(OcrError{QStringLiteral("The OCR server returned too many text items.")});
-    core::OcrPage page;
-    page.id = QStringLiteral("page-%1").arg(options.pageNumber);
-    page.number = options.pageNumber;
-    page.width = page.sourceWidth = imageSize.width();
-    page.height = page.sourceHeight = imageSize.height();
-    page.engineId = providerName(provider) + QStringLiteral("-remote");
-    page.language = root.value(QStringLiteral("language")).toString(options.language);
-    int previousBlock = 0;
-    int previousLine = 0;
-    for (const auto &value : items) {
-        if (!value.isObject())
-            return std::unexpected(OcrError{QStringLiteral("The OCR server returned an invalid text item.")});
-        const QJsonObject line = value.toObject();
-        const QJsonArray box = line.value(QStringLiteral("box")).toArray();
-        const QString rawText = line.value(QStringLiteral("text")).toString();
-        const QString text = provider == RemoteOcrEngine::Provider::Surya &&
-            line.value("type").toString() == "table" ? rawText : rawText.trimmed();
-        const QJsonValue score = line.value(QStringLiteral("confidence"));
-        if (line.contains(QStringLiteral("layout_block")) && !line.value(QStringLiteral("layout_block")).isBool())
+    RecognitionResult result;
+    result.engineId = providerName(provider) + QStringLiteral("-remote");
+    result.modelVersion = root.value("model_version").toString();
+    result.provenance = {.model=root.value("model").toString(), .task=options.formula ? "formula" : "ocr",
+        .language=root.value("language").toString(options.language), .pageNumber=options.pageNumber, .imageSize=imageSize};
+    result.markdown = root.value("markdown").toString();
+    result.structuredOutput = root;
+    int previousBlock = 0, previousLine = 0;
+    for (int index = 0; index < items.size(); ++index) {
+        const auto value = items[index];
+        if (!value.isObject()) return std::unexpected(OcrError{QStringLiteral("The OCR server returned an invalid text item.")});
+        const auto item = value.toObject();
+        const auto box = item.value("box").toArray();
+        const QString rawText = item.value("text").toString();
+        const QString type = provider == RemoteOcrEngine::Provider::Surya ? item.value("type").toString() : QStringLiteral("text");
+        const QString text = type == "table" ? rawText : rawText.trimmed();
+        const auto score = item.value("confidence");
+        if (item.contains("layout_block") && !item.value("layout_block").isBool())
             return std::unexpected(OcrError{QStringLiteral("The OCR server returned an invalid layout block flag.")});
-        const bool paddleBlock = provider == RemoteOcrEngine::Provider::PaddleOcr &&
-                                 line.value(QStringLiteral("layout_block")).toBool();
-        const bool unknownScore = (provider == RemoteOcrEngine::Provider::Surya || paddleBlock) && score.isNull();
-        if (box.size() != 4 || text.isEmpty() || (!unknownScore && (!score.isDouble() ||
+        const bool layoutBlock = provider == RemoteOcrEngine::Provider::Surya || item.value("layout_block").toBool();
+        const bool unknownScore = (provider == RemoteOcrEngine::Provider::Surya ||
+            (provider == RemoteOcrEngine::Provider::PaddleOcr && layoutBlock)) && score.isNull();
+        if (box.size() != 4 || text.isEmpty() || type.isEmpty() || (!unknownScore && (!score.isDouble() ||
             !std::isfinite(score.toDouble()) || score.toDouble() < 0 || score.toDouble() > 1)))
             return std::unexpected(OcrError{QStringLiteral("The OCR server returned invalid text or confidence.")});
         int geometry[4];
         for (int i = 0; i < 4; ++i) {
-            if (!box.at(i).isDouble() || !std::isfinite(box.at(i).toDouble()) ||
-                box.at(i).toDouble() != std::floor(box.at(i).toDouble()) ||
-                box.at(i).toDouble() < 0 || box.at(i).toDouble() > INT_MAX)
+            if (!box[i].isDouble() || !std::isfinite(box[i].toDouble()) || box[i].toDouble() != std::floor(box[i].toDouble()) ||
+                box[i].toDouble() < 0 || box[i].toDouble() > INT_MAX)
                 return std::unexpected(OcrError{QStringLiteral("The OCR server returned invalid text geometry.")});
-            geometry[i] = box.at(i).toInt();
+            geometry[i] = box[i].toInt();
         }
-        const QRect bounds(geometry[0], geometry[1], geometry[2], geometry[3]);
-        if (bounds.isEmpty() || !QRect(QPoint(0, 0), imageSize).contains(bounds))
+        // Check sums before constructing QRect to avoid overflowing its edges.
+        if (qint64(geometry[0])+geometry[2] > imageSize.width() || qint64(geometry[1])+geometry[3] > imageSize.height() ||
+            geometry[2] < 1 || geometry[3] < 1)
             return std::unexpected(OcrError{QStringLiteral("The OCR server returned out-of-bounds text geometry.")});
-        core::OcrWord word;
-        word.page = options.pageNumber;
-        word.block = structured ? line.value(QStringLiteral("block")).toInt(-1) : 1;
-        word.paragraph = 1;
-        word.line = structured ? line.value(QStringLiteral("line")).toInt(-1) : static_cast<int>(page.words.size()) + 1;
-        if (word.block < 1 || word.line < 1 ||
-            (structured && (word.block < previousBlock ||
-                            (word.block == previousBlock && word.line < previousLine))))
+        const QRect bounds(geometry[0], geometry[1], geometry[2], geometry[3]);
+        const int block = structured ? item.value("block").toInt(-1) : 1;
+        const int line = structured ? item.value("line").toInt(-1) : index+1;
+        if (block < 1 || line < 1 || (structured && (block < previousBlock ||
+            (block == previousBlock && (line < previousLine || provider == RemoteOcrEngine::Provider::Surya)))))
             return std::unexpected(OcrError{QStringLiteral("The OCR server returned invalid reading order.")});
-        previousBlock = word.block;
-        previousLine = word.line;
-        word.layoutBlock = provider == RemoteOcrEngine::Provider::Surya || paddleBlock ||
-                           (provider == RemoteOcrEngine::Provider::Native && line.value("layout_block").toBool());
-        word.bounds = bounds;
-        word.originalText = word.text = text;
-        word.confidence = unknownScore ? -1 : score.toDouble() * 100.0;
-        page.words.append(std::move(word));
-    }
-    page.rebuildHierarchy();
-    if (provider == RemoteOcrEngine::Provider::Surya) {
-        if (page.regions.size() != items.size())
-            return std::unexpected(OcrError{QStringLiteral("Surya returned inconsistent layout blocks.")});
-        for (int i = 0; i < items.size(); ++i) {
-            const QString type = items.at(i).toObject().value(QStringLiteral("type")).toString();
-            if (type.isEmpty())
-                return std::unexpected(OcrError{QStringLiteral("Surya returned an invalid region type.")});
-            page.regions[i].type = type;
-            const auto layout = items.at(i).toObject().value("table_layout");
-            if (!layout.isUndefined()) {
-                if (type != "table" || !core::OcrRegion::validTableLayout(layout))
-                    return std::unexpected(OcrError{QStringLiteral("Surya returned an invalid table layout.")});
-                page.regions[i].tableLayout = layout.toArray();
-            }
+        previousBlock = block; previousLine = line;
+        core::RecognitionRegion base; base.bounds = bounds; base.order = index; base.confidence = unknownScore ? -1 : score.toDouble()*100;
+        if (item.contains("geometry_source") && item["geometry_source"] != "input_extent" && item["geometry_source"] != "model")
+            return std::unexpected(OcrError{"Invalid OCR geometry source."});
+        // Older VL bridges already identified page-wide, unknown-confidence
+        // blocks but did not label the input extent explicitly.
+        if (item["geometry_source"] == "input_extent" || (!item.contains("geometry_source") &&
+            provider == RemoteOcrEngine::Provider::PaddleOcr && layoutBlock && unknownScore && bounds == QRect(QPoint(), imageSize)))
+            { base.bounds.reset(); base.inputArea = bounds; }
+        const auto layout = item.value("table_layout");
+        if (!layout.isUndefined() && (type != "table" || !core::OcrRegion::validTableLayout(layout)))
+            return std::unexpected(OcrError{QStringLiteral("The OCR server returned an invalid table layout.")});
+        if (type == "table") {
+            core::TableRegion table; static_cast<core::RecognitionRegion &>(table) = base; table.text = text;
+            if (!layout.isUndefined()) table.structure["table_layout"] = layout;
+            result.tables.append(table);
+        } else if (options.formula || type == "equation" || type == "formula") {
+            core::FormulaRegion formula; static_cast<core::RecognitionRegion &>(formula) = base; formula.latex = text;
+            result.formulas.append(formula);
+        } else if (type == "figure" || type == "picture") {
+            core::FigureRegion figure; static_cast<core::RecognitionRegion &>(figure) = base;
+            figure.caption = text; figure.type = type; result.figures.append(figure);
+        } else {
+            core::TextRegion region; static_cast<core::RecognitionRegion &>(region) = base;
+            region.text = text; region.type = type; region.block = block; region.paragraph = 1; region.line = line;
+            region.granularity = layoutBlock ? core::TextGranularity::Block :
+                orderedWords ? core::TextGranularity::Word : core::TextGranularity::Line;
+            result.text.append(region);
         }
     }
-    return page;
+    return result;
 }
 }
 
@@ -193,15 +211,19 @@ EngineCapabilities RemoteOcrEngine::capabilities() const
     return {};
 }
 
-std::expected<core::OcrPage, OcrError> RemoteOcrEngine::recognize(
+std::expected<RecognitionResult, OcrError> RemoteOcrEngine::recognizeResult(
     const QImage &image, const OcrOptions &options, std::stop_token stop)
 {
     runDetails = {};
     if(options.collectBenchmarkMetrics)runDetails["inference_ms_scope"]="Successful responses only; client latency includes retries and failures";
-    return recognizeSection(image, options, stop, 0);
+    auto result = recognizeSection(image, options, stop, 0);
+    if (!result) return result;
+    if (auto valid = core::validateRecognitionResult(*result); !valid)
+        return std::unexpected(OcrError{valid.error()});
+    return result;
 }
 
-std::expected<core::OcrPage, OcrError> RemoteOcrEngine::recognizeSection(
+std::expected<RecognitionResult, OcrError> RemoteOcrEngine::recognizeSection(
     const QImage &image, const OcrOptions &options, std::stop_token stop, int depth)
 {
     if (stop.stop_requested()) return std::unexpected(OcrError{{}, true});
@@ -279,32 +301,45 @@ std::expected<core::OcrPage, OcrError> RemoteOcrEngine::recognizeSection(
             const QVector<QRect> sections = vertical
                 ? QVector<QRect>{{0,0,cut,image.height()}, {cut,0,image.width()-cut,image.height()}}
                 : QVector<QRect>{{0,0,image.width(),cut}, {0,cut,image.width(),image.height()-cut}};
-            core::OcrPage page;
-            page.id = QStringLiteral("page-%1").arg(options.pageNumber); page.number = options.pageNumber;
-            page.engineId = id(); page.language = options.language;
-            page.width = page.sourceWidth = image.width(); page.height = page.sourceHeight = image.height();
-            int nextBlock = 1;
-            for (const auto &section : sections) {
+            RecognitionResult result;
+            result.engineId = id();
+            result.provenance = {.model=model, .task="ocr", .language=options.language,
+                .pageNumber=options.pageNumber, .imageSize=image.size()};
+            QJsonArray nativeSections;
+            int nextOrder = 0, blockOffset = 0;
+            for (int sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex) {
+                const auto &section = sections[sectionIndex];
                 auto part = recognizeSection(image.copy(section), options, stop, depth + 1);
                 if (!part) return std::unexpected(part.error()); // Never publish only half a page.
-                QHash<int,int> blocks;
-                QHash<QString,QString> regions;
-                for (auto word : part->words) {
-                    if (!blocks.contains(word.block)) blocks.insert(word.block, nextBlock++);
-                    regions.insert(QStringLiteral("page-%1/region-%2").arg(options.pageNumber).arg(word.block),
-                                   QStringLiteral("page-%1/region-%2").arg(options.pageNumber).arg(blocks[word.block]));
-                    word.block = blocks[word.block]; word.id.clear(); word.sourceWordIds.clear();
-                    word.bounds.translate(section.topLeft());
-                    for (auto &box : word.sourceBoxes) box.translate(section.topLeft());
-                    page.words.append(word);
+                nativeSections.append(core::recognitionResultJson(*part));
+                const auto relocate = [&](auto &regions) {
+                    for (auto &region : regions) {
+                        const auto prefix = QStringLiteral("tile-%1/").arg(sectionIndex);
+                        if (!region.id.isEmpty()) region.id.prepend(prefix);
+                        if (!region.parentId.isEmpty()) region.parentId.prepend(prefix);
+                        if (region.bounds) region.bounds->translate(section.topLeft());
+                        if (region.inputArea) region.inputArea->translate(section.topLeft());
+                        else if (!region.bounds) region.inputArea = section;
+                        region.order = region.order < 0 ? nextOrder++ : nextOrder + region.order;
+                    }
+                };
+                relocate(part->text); relocate(part->formulas); relocate(part->tables); relocate(part->figures);
+                int maximumBlock = blockOffset;
+                for (auto &region : part->text) {
+                    if (region.block > 0) region.block += blockOffset;
+                    maximumBlock = std::max(maximumBlock, region.block);
                 }
-                for (auto region : part->regions) {
-                    region.id = regions.value(region.id); region.bounds.translate(section.topLeft());
-                    if (!region.id.isEmpty()) page.regions.append(region);
+                blockOffset = maximumBlock;
+                result.text += part->text; result.formulas += part->formulas;
+                result.tables += part->tables; result.figures += part->figures;
+                if (!part->markdown.isEmpty()) {
+                    if (!result.markdown.isEmpty()) result.markdown += '\n';
+                    result.markdown += part->markdown;
                 }
+                nextOrder = result.text.size()+result.formulas.size()+result.tables.size()+result.figures.size();
             }
-            page.rebuildHierarchy();
-            return page;
+            result.structuredOutput = {{"tiles", nativeSections}};
+            return result;
         }
         return std::unexpected(OcrError{message.isEmpty()
             ? QStringLiteral("Remote OCR failed: %1").arg(reply->errorString()) : message});
@@ -315,17 +350,22 @@ std::expected<core::OcrPage, OcrError> RemoteOcrEngine::recognizeSection(
         const QString text = choice.value("message").toObject().value("content").toString().trimmed();
         if (response.size() > maxResponseBytes || choice.value("finish_reason") != "stop" || text.isEmpty() || text.size() > 65536)
             return std::unexpected(OcrError{QStringLiteral("The formula/OCR server returned an empty, truncated or invalid transcription.")});
-        core::OcrPage page;
-        page.id = QStringLiteral("page-%1").arg(options.pageNumber); page.number = options.pageNumber;
-        page.width = page.sourceWidth = image.width(); page.height = page.sourceHeight = image.height();
-        page.engineId = id(); page.language = "auto";
-        core::OcrWord word;
-        word.page = page.number; word.block = word.paragraph = word.line = 1;
-        word.bounds = image.rect(); word.text = word.originalText = text;
-        word.layoutBlock = true; word.confidence = -1; word.readingEngine = id();
-        page.words.append(std::move(word)); page.rebuildHierarchy();
-        if (options.formula) page.regions.first().type = "equation";
-        return page;
+        const auto root = QJsonDocument::fromJson(response).object();
+        RecognitionResult result;
+        result.engineId = id(); result.modelVersion = root.value("model_version").toString();
+        result.provenance = {.model=root.value("model").toString(model), .task=options.formula ? "formula" : "ocr",
+            .language="auto", .pageNumber=options.pageNumber, .imageSize=image.size()};
+        result.structuredOutput = root;
+        if (options.formula) {
+            core::FormulaRegion formula; formula.latex = text; formula.order = 0;
+            result.formulas.append(formula);
+        } else {
+            result.markdown = text;
+            core::TextRegion region; region.text = text; region.order = 0;
+            region.granularity = core::TextGranularity::Page;
+            result.text.append(region);
+        }
+        return result;
     }
     auto parsed=parseResponse(response, image.size(), options, provider);
     if(parsed && options.collectBenchmarkMetrics) {

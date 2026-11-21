@@ -41,6 +41,14 @@ compatible YAGF worker/gateway receives `task: "formula"` on `/v1/recognize`.
 Formula recognition uses complete crops with their original page offsets, retains
 prose and source IDs, and reports failures without replacing them with partial output.
 
+Different text and formula engines run concurrently once manual or AI layout
+blocks identify the formula crops. This applies to page, selected-block and batch
+recognition without another setting. Formula candidates that depend on text OCR
+are processed after the text reading. Selecting the same engine or service URL
+for both roles keeps its requests serial, including different model names on one
+endpoint. Cancelling recognition stops both engines; failed formula crops retain
+their native text reading.
+
 For a persistent direct vision-server connection, `yagf-formula-tunnel.service`
 forwards desktop loopback **8082** to the Jetson's loopback **8082**, independently
 of the layout and training tunnels. Its environment file is

@@ -5,8 +5,54 @@
 #include <QPainter>
 #include <QTemporaryDir>
 #include <QtTest>
+#include <atomic>
+#include <chrono>
+#include <future>
+#include <thread>
 
 using namespace yagf;
+
+namespace {
+struct ConcurrentState {
+    std::atomic_int started = 0, active = 0, peak = 0, formulaCalls = 0;
+    bool overlap = true, failText = false, failFormula = false, stallFormula = false, stallText = false;
+};
+class ConcurrentEngine : public processing::IOcrEngine {
+    ConcurrentState &state;
+    core::OcrPage raw;
+    bool formula;
+public:
+    ConcurrentEngine(ConcurrentState &state, core::OcrPage raw, bool formula)
+        : state(state), raw(std::move(raw)), formula(formula) {}
+    QString id() const override { return formula ? "test-formulas" : "test-text"; }
+    processing::EngineCapabilities capabilities() const override { return {}; }
+    std::expected<yagf::core::RecognitionResult, processing::OcrError> recognizeResult(
+        const QImage &image, const processing::OcrOptions &, std::stop_token stop) override {
+        const int active = ++state.active;
+        int peak = state.peak.load();
+        while (peak < active && !state.peak.compare_exchange_weak(peak, active)) {}
+        struct Finish { std::atomic_int &active; ~Finish() { --active; } } finish{state.active};
+        if (formula) ++state.formulaCalls;
+        ++state.started;
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (state.overlap && state.started < 2 && !stop.stop_requested() && std::chrono::steady_clock::now() < deadline)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        if (state.overlap && state.started < 2 && !stop.stop_requested())
+            return std::unexpected(processing::OcrError{"Engines did not overlap"});
+        while ((formula ? state.stallFormula : state.stallText) && !stop.stop_requested())
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        if (stop.stop_requested()) return std::unexpected(processing::OcrError{{}, true});
+        if ((formula && state.failFormula) || (!formula && state.failText))
+            return std::unexpected(processing::OcrError{"Test recognition failure"});
+        if (!formula) return yagf::processing::recognitionFromPage(raw);
+        core::OcrPage result;
+        result.width = image.width(); result.height = image.height();
+        result.words.append({1, 1, 1, 1, image.rect(), "x=1", "x=1", 95});
+        result.rebuildHierarchy();
+        return yagf::processing::recognitionFromPage(result);
+    }
+};
+}
 
 class SmartBlocksTests : public QObject {
     Q_OBJECT
@@ -72,6 +118,82 @@ class SmartBlocksTests : public QObject {
     }
 
 private slots:
+    void textAndFormulaScheduling_data() {
+        QTest::addColumn<bool>("eager");
+        QTest::addColumn<bool>("parallel");
+        QTest::addColumn<bool>("formulaFails");
+        QTest::newRow("automatic-page") << true << true << false;
+        QTest::newRow("typed-blocks") << false << true << false;
+        QTest::newRow("formula-failure-keeps-text") << true << true << true;
+        QTest::newRow("shared-engine-serialized") << true << false << false;
+    }
+    void textAndFormulaScheduling() {
+        QFETCH(bool, eager); QFETCH(bool, parallel); QFETCH(bool, formulaFails);
+        const auto raw = reading({word(1, 1, {10, 10, 55, 12}, "Before"),
+            word(2, 1, {10, 50, 55, 14}, "x=0")}, {120, 90});
+        const QVector<core::ImageRegion> regions = {
+            {"text", {0, 0, 100, 35}, "rus", false, "text", false},
+            {"formula", {0, 40, 100, 40}, "rus", false, "math", false}};
+        ConcurrentState state; state.overlap = parallel; state.failFormula = formulaFails;
+        ConcurrentEngine textEngine(state, raw, false), formulaEngine(state, raw, true);
+        QStringList warnings;
+        auto result = processing::recognizeSmartBlocks(scan(raw), {.language="rus"}, regions, false, {},
+            true, nullptr, &warnings, &textEngine, &formulaEngine, eager, parallel);
+        QVERIFY2(result, qPrintable(result ? QString() : result.error().message));
+        QCOMPARE(state.peak.load(), parallel ? 2 : 1);
+        QCOMPARE(state.formulaCalls.load(), 1);
+        QCOMPARE(text(*result), (QStringList{"Before", formulaFails ? "x=0" : "x=1"}));
+        QCOMPARE(result->words[0].id, raw.words[0].id);
+        QCOMPARE(warnings.isEmpty(), !formulaFails);
+    }
+    void textFailureStopsInFlightFormulaWork() {
+        const auto raw = reading({word(1, 1, {10, 50, 55, 14}, "x=0")}, {120, 90});
+        ConcurrentState state; state.failText = true; state.stallFormula = true;
+        ConcurrentEngine textEngine(state, raw, false), formulaEngine(state, raw, true);
+        auto result = processing::recognizeSmartBlocks(scan(raw), {.language="rus"},
+            {{"formula", {0, 40, 100, 40}, "rus", false, "math", false}}, false, {},
+            true, nullptr, nullptr, &textEngine, &formulaEngine, true, true);
+        QVERIFY(!result); QCOMPARE(result.error().message, "Test recognition failure");
+        QCOMPARE(state.peak.load(), 2); QCOMPARE(state.active.load(), 0);
+    }
+    void earlyAndTextDependentFormulasKeepTheirOrder() {
+        const auto raw = reading({word(1, 1, {10, 10, 55, 12}, "Before"),
+            word(2, 1, {10, 50, 55, 14}, "x=0"), word(3, 1, {10, 100, 55, 14}, "y=2"),
+            word(4, 1, {10, 150, 55, 14}, "z=3")}, {120, 190});
+        const QVector<core::ImageRegion> regions = {
+            {"first", {0, 40, 100, 40}, "rus", false, "math", false},
+            {"last", {0, 140, 100, 40}, "rus", false, "math", false}};
+        ConcurrentState state;
+        ConcurrentEngine textEngine(state, raw, false), formulaEngine(state, raw, true);
+        auto result = processing::recognizeSmartBlocks(scan(raw), {.language="rus"}, regions, false, {},
+            true, nullptr, nullptr, &textEngine, &formulaEngine, true, true);
+        QVERIFY2(result, qPrintable(result ? QString() : result.error().message));
+        QCOMPARE(text(*result), (QStringList{"Before", "x=1", "x=1", "x=1"}));
+        QCOMPARE(state.formulaCalls.load(), 3);
+        for (int i = 1; i < 4; ++i) {
+            QCOMPARE(result->words[i].bounds, raw.words[i].bounds);
+            QCOMPARE(result->words[i].sourceWordIds, raw.words[i].sourceWordIds);
+        }
+    }
+    void cancellationStopsBothEngines() {
+        const auto raw = reading({word(1, 1, {10, 50, 55, 14}, "x=0")}, {120, 90});
+        ConcurrentState state; state.stallFormula = state.stallText = true;
+        ConcurrentEngine textEngine(state, raw, false), formulaEngine(state, raw, true);
+        std::stop_source stop;
+        auto pending = std::async(std::launch::async, [&] {
+            return processing::recognizeSmartBlocks(scan(raw), {.language="rus"},
+                {{"formula", {0, 40, 100, 40}, "rus", false, "math", false}}, false, stop.get_token(),
+                true, nullptr, nullptr, &textEngine, &formulaEngine, true, true);
+        });
+        QElapsedTimer timer; timer.start();
+        while (state.started < 2 && timer.elapsed() < 3000) QTest::qWait(1);
+        const bool bothStarted = state.started == 2;
+        stop.request_stop();
+        QVERIFY(bothStarted);
+        QVERIFY(pending.wait_for(std::chrono::seconds(2)) == std::future_status::ready);
+        const auto result = pending.get();
+        QVERIFY(!result); QVERIFY(result.error().cancelled); QCOMPARE(state.active.load(), 0);
+    }
     void initTestCase()
     {
         QVERIFY(temporary.isValid());
