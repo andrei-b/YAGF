@@ -135,6 +135,19 @@ protected:
     void closeEvent(QCloseEvent *event) override { event->ignore(); }
 };
 
+// The recognition progress dialog keeps one size while stage messages of varying
+// length stream in; text that does not fit is elided, with the full text as tooltip.
+void setFixedProgressText(QProgressDialog *dialog, const QString &text)
+{
+    auto *label = dialog->findChild<QLabel *>(QStringLiteral("recognitionProgressLabel"));
+    if (!label) {
+        dialog->setLabelText(text);
+        return;
+    }
+    label->setToolTip(text);
+    dialog->setLabelText(label->fontMetrics().elidedText(text, Qt::ElideRight, label->width()));
+}
+
 void addToolbarSeparator(QToolBar *toolbar)
 {
     auto *action = toolbar->addSeparator();
@@ -1409,7 +1422,8 @@ MainWindow::MainWindow()
             if (!processor.isRecognizing()) return;
             const QString detail=total>0 ? tr("%1 · %2 / %3").arg(stage).arg(complete).arg(total) : stage;
             status->setText(tr("Page %1: %2").arg(page).arg(detail));
-            if (recognitionProgress && recognitionProgress->isVisible()) recognitionProgress->setLabelText(tr("Page %1: %2").arg(page).arg(detail));
+            if (recognitionProgress && recognitionProgress->isVisible())
+                setFixedProgressText(recognitionProgress, tr("Page %1: %2").arg(page).arg(detail));
         });
     connect(&processor, &DocumentProcessor::failed, this, [this](const QString &message) {
         queuedImageRegions.clear();
@@ -2940,10 +2954,18 @@ void MainWindow::updateRecognitionProgress(qsizetype completed, qsizetype total)
         recognitionProgress->setMinimumDuration(0);
         recognitionProgress->setAutoClose(false);
         recognitionProgress->setAutoReset(false);
+        auto *label = new QLabel(recognitionProgress);
+        label->setObjectName(QStringLiteral("recognitionProgressLabel"));
+        label->setTextFormat(Qt::PlainText);
+        label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        label->setFixedWidth(qMax(420, label->fontMetrics().averageCharWidth() * 56));
+        label->setMinimumHeight(label->fontMetrics().lineSpacing());
+        recognitionProgress->setLabel(label);
+        recognitionProgress->setFixedSize(recognitionProgress->sizeHint());
         connect(recognitionProgress, &QProgressDialog::canceled, &processor, &DocumentProcessor::cancel);
     }
     recognitionProgress->setRange(0, static_cast<int>(total));
-    recognitionProgress->setLabelText(tr("%1 / %2 pages recognized").arg(completed).arg(total));
+    setFixedProgressText(recognitionProgress, tr("%1 / %2 pages recognized").arg(completed).arg(total));
     recognitionProgress->setValue(static_cast<int>(completed));
     recognitionProgress->show();
 }
