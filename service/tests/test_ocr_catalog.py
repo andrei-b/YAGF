@@ -1,4 +1,5 @@
 import base64
+import io
 import json
 from pathlib import Path
 import struct
@@ -15,6 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import native_training_server as worker
 from ocr_catalog import LocalOcrCatalog
+from server import handler_for as ocr_handler
 
 
 def png():
@@ -31,6 +33,7 @@ class Upstream(BaseHTTPRequestHandler):
     def do_POST(self):
         request=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
         type(self).calls+=1
+        self.server.last_authorization = self.headers.get('Authorization')
         self.send(dict(protocol='yagf-ocr/1',engine_id='doctr',width=20,height=12,language=request['language'],words=[dict(text='Example',confidence=.9,box=[1,1,15,8],block=1,line=1)]))
 
 
@@ -123,6 +126,7 @@ class CatalogTests(unittest.TestCase):
                 self.assertEqual(call(path+'/v1/health')['engine_id'],'doctr')
                 result=call(path+'/v1/recognize',dict(protocol='yagf-ocr/1',language='auto',page_number=1,image_png=base64.b64encode(png()).decode()))
                 self.assertEqual(result['words'][0]['text'],'Example'); self.assertGreater(Upstream.calls,0)
+                self.assertIsNone(upstream.last_authorization)
                 with self.assertRaises(urllib.error.HTTPError) as error: call('/services/9999/v1/recognize',dict(protocol='yagf-ocr/1'))
                 self.assertEqual(error.exception.code,400)
                 with patch.object(worker.native_engines,'readiness',return_value=(True,'')),patch.object(worker.native_engines,'recognize',return_value=result['words']):
@@ -131,6 +135,56 @@ class CatalogTests(unittest.TestCase):
             finally:
                 server.shutdown(); server.server_close(); runner.join()
                 upstream.shutdown(); upstream.server_close(); thread.join()
+
+    def test_authenticated_catalog_request_reaches_token_protected_worker(self):
+        class Backend:
+            engine_id = 'doctr'
+            language = 'auto'
+            result_key = 'words'
+
+            def recognize(self, png, width, height, language):
+                return [dict(text='Authorized', confidence=.9, box=[1, 1, 16, 8], block=1, line=1)]
+
+        def serve(handler):
+            server = ThreadingHTTPServer(('127.0.0.1', 0), handler)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            self.addCleanup(thread.join)
+            self.addCleanup(server.server_close)
+            self.addCleanup(server.shutdown)
+            return server.server_port
+
+        root = tempfile.TemporaryDirectory()
+        self.addCleanup(root.cleanup)
+        upstream_port = serve(ocr_handler(Backend(), 'session-token'))
+        host = worker.TrainingHost(root.name, [])
+        host.catalog = LocalOcrCatalog([upstream_port], None)
+        port = serve(worker.handler_for(host, 'session-token'))
+        path = f'http://127.0.0.1:{port}/services/{upstream_port}/v1'
+
+        headers = {'Authorization': 'Bearer session-token', 'Content-Type': 'application/json'}
+        payload = dict(protocol='yagf-ocr/1', page_number=1, image_png=base64.b64encode(png()).decode())
+        with urllib.request.urlopen(urllib.request.Request(path+'/health', headers=headers), timeout=3) as response:
+            self.assertTrue(json.load(response)['requires_token'])
+        request = urllib.request.Request(path+'/recognize', json.dumps(payload).encode(), headers=headers)
+        with urllib.request.urlopen(request, timeout=3) as response:
+            self.assertEqual(json.load(response)['words'][0]['text'], 'Authorized')
+        request.remove_header('Authorization')
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(request, timeout=3)
+        self.assertEqual(error.exception.code, 401)
+
+    def test_catalog_credentials_are_dropped_on_redirects(self):
+        catalog = LocalOcrCatalog([8766], None)
+        health = dict(protocol='yagf-ocr/1', engine_id='doctr', status='ready', requires_token=True)
+        with patch('ocr_catalog.get_json', return_value=health), \
+                patch('ocr_catalog.LOOPBACK_HTTP.open', return_value=io.BytesIO(b'{}')) as send:
+            catalog.recognize('8766', {}, 'Bearer fixture-token')
+        request = send.call_args.args[0]
+        self.assertEqual(request.get_header('Authorization'), 'Bearer fixture-token')
+        redirected = urllib.request.HTTPRedirectHandler().redirect_request(
+            request, None, 302, 'Found', {}, 'http://127.0.0.1:8765/v1/recognize')
+        self.assertIsNone(redirected.get_header('Authorization'))
 
     def test_book_models_are_not_broadcast_as_reusable_models(self):
         with tempfile.TemporaryDirectory() as root:

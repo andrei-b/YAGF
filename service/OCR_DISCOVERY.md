@@ -157,6 +157,9 @@ limit and two-thread CPU settings remain. GPU/VL services retain their own limit
 
 `YAGF_NATIVE_TOKEN` authenticates the gateway when configured. Keep it on loopback
 behind SSH, or put HTTPS in front of a directly reachable authenticated worker.
+The catalog forwards the client's Bearer token to a local OCR worker that
+advertises `requires_token`. To use a protected worker through an authenticated
+gateway, set that worker's `YAGF_OCR_TOKEN` to the gateway's token.
 Configure upstreams requiring separate bearer tokens directly through their own
 service URL in the desktop.
 

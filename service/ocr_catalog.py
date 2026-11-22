@@ -9,6 +9,7 @@ import urllib.error
 import urllib.request
 
 PROVIDERS={'paddleocr','doctr','rapidocr','surya','kraken'}
+LOOPBACK_HTTP = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
 class CatalogError(Exception):
@@ -16,7 +17,7 @@ class CatalogError(Exception):
 
 
 def get_json(url,timeout=1,limit=256*1024):
-    with urllib.request.urlopen(url,timeout=timeout) as response:
+    with LOOPBACK_HTTP.open(url, timeout=timeout) as response:
         data=response.read(limit+1)
     if len(data)>limit: raise ValueError('Service response exceeds the limit')
     value=json.loads(data)
@@ -49,6 +50,7 @@ class LocalOcrCatalog:
                     tasks=health.get('tasks',['ocr','formula'] if provider=='surya' else ['ocr'])
                     tasks=[task for task in tasks[:32] if isinstance(task,str) and len(task)<=64] if isinstance(tasks,list) else ['ocr']
                     entry=dict(port=port,provider=provider,label=str(health.get('model') or provider)[:128],model=str(health.get('model') or '')[:256],language=str(health.get('language') or 'auto')[:64],kind='ocr',tasks=tasks)
+                    entry['requires_token'] = health.get('requires_token') is True
                     if isinstance(profile,dict):
                         entry['profile']=profile
                         entry['model']=str(profile.get('model') or entry['model'])[:256]
@@ -64,7 +66,7 @@ class LocalOcrCatalog:
             self.checked=time.monotonic()
             return list(self.entries.values())
 
-    def recognize(self,service_id,request):
+    def recognize(self,service_id,request,authorization=''):
         self.discover(); entry=self.entries.get(service_id)
         if not entry: raise ValueError('OCR listener is no longer available; discover services again')
         root='http://127.0.0.1:'+str(entry['port'])
@@ -78,8 +80,11 @@ class LocalOcrCatalog:
             return dict(protocol='yagf-ocr/1',engine_id='paddleocr',width=width,height=height,language='auto',lines=lines)
         payload=json.dumps(request,ensure_ascii=False).encode()
         call=urllib.request.Request(root+'/v1/recognize',payload,headers={'Content-Type':'application/json'})
+        if entry.get('requires_token') and authorization.startswith('Bearer '):
+            # Keep the credential on this request if the listener redirects.
+            call.add_unredirected_header('Authorization', authorization)
         try:
-            with urllib.request.urlopen(call,timeout=180) as response: data=response.read(8*1024*1024+1)
+            with LOOPBACK_HTTP.open(call,timeout=180) as response: data=response.read(8*1024*1024+1)
         except urllib.error.HTTPError as error:
             try: body=json.loads(error.read(8192))
             except ValueError: body={'error':'Upstream OCR service failed'}

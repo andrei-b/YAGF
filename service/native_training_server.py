@@ -336,6 +336,7 @@ def handler_for(host,token=''):
                         entry=next((e for e in host.catalog.discover() if str(e['port'])==identity),None)
                         if not entry: raise ValueError('OCR listener is no longer available')
                         health=dict(protocol='yagf-ocr/1',engine_id=entry['provider'],status='ready',language=entry['language'],model=entry.get('model',entry['label']),tasks=entry.get('tasks',['ocr']))
+                        health['requires_token'] = bool(token) or entry.get('requires_token', False)
                         if 'profile' in entry: health['profile']=entry['profile']
                         if 'profiles' in entry:
                             health.pop('model',None)
@@ -378,7 +379,8 @@ def handler_for(host,token=''):
                     self.send(200,host.recognize_profile(self.path.split('/')[2],request))
                 elif re.fullmatch(r'/services/[0-9]{1,5}/v1/recognize',self.path):
                     if request.get('protocol')!='yagf-ocr/1': raise ValueError('Incompatible OCR protocol')
-                    self.send(200,host.catalog.recognize(self.path.split('/')[2],request))
+                    self.send(200,host.catalog.recognize(self.path.split('/')[2],request,
+                                                       self.headers.get('Authorization','')))
                 else: self.send(404,{'error':'Unknown endpoint'})
             except CatalogError as error: self.send(error.status,error.body)
             except (ValueError,KeyError,TypeError,binascii.Error) as error: self.send(400,{'error':str(error)})
