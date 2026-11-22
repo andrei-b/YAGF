@@ -183,4 +183,26 @@ int main()
     assert(QDir().rename(nearby, movedNearby));
     assert(ProjectFile::load(QDir(movedNearby).filePath(QStringLiteral("project.yagf.json")), &loaded, &error));
     assert(loaded.sourcePath == QDir(movedNearby).filePath(QStringLiteral("source.png")));
+
+    // Saving keeps the file's permissions and writes through a symlink instead of replacing it.
+    const QString linked = QDir(movedNearby).filePath(QStringLiteral("linked.yagf.json"));
+    assert(ProjectFile::save(path, original, &error));
+    const auto restricted = QFileDevice::ReadOwner | QFileDevice::WriteOwner;
+    assert(QFile::setPermissions(path, restricted));
+    assert(QFile::link(path, linked));
+    OcrDocument edited = original;
+    edited.sourcePath = QDir(movedNearby).filePath(QStringLiteral("source.png"));
+    edited.page(1)->words[0].text = QStringLiteral("through link");
+    assert(ProjectFile::save(linked, edited, &error));
+    assert(QFileInfo(linked).isSymLink());
+    const auto modeBits = QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner |
+        QFileDevice::ReadGroup | QFileDevice::WriteGroup | QFileDevice::ExeGroup |
+        QFileDevice::ReadOther | QFileDevice::WriteOther | QFileDevice::ExeOther;
+    assert((QFile::permissions(path) & modeBits) == restricted);
+    assert(ProjectFile::load(path, &loaded, &error));
+    assert(loaded.sourcePath == edited.sourcePath);
+    assert(loaded.page(1)->words.at(0).text == QStringLiteral("through link"));
+    assert(ProjectFile::load(linked, &loaded, &error));
+    assert(loaded.sourcePath == edited.sourcePath);
+    assert(QDir(directory.path()).entryList({QStringLiteral("*.tmp")}, QDir::Files).isEmpty());
 }

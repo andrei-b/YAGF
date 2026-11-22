@@ -18,6 +18,15 @@ ExportResult failure(const QString &error)
 
 }
 
+bool hasExportContent(const core::OcrPage &page)
+{
+    return !page.words.isEmpty() ||
+           std::ranges::any_of(page.regions, [](const auto &region) { return region.isFigure(); }) ||
+           std::ranges::any_of(page.imageRegions, [](const auto &block) {
+               return block.content == "picture" && block.notText && !block.bounds.isEmpty();
+           });
+}
+
 QVector<core::OcrRegion> exportRegions(const core::OcrPage &page)
 {
     auto regions = page.regions;

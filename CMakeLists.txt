@@ -17,6 +17,25 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         "-ffile-prefix-map=${PROJECT_BINARY_DIR}=/usr/src/yagf2/build")
 endif()
 
+option(YAGF_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
+option(YAGF_SANITIZE "Build with AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    add_compile_options(-Wall -Wextra -Wpedantic -Wshadow=local -Wnon-virtual-dtor -Wcast-qual
+                        -Woverloaded-virtual -Wimplicit-fallthrough)
+    if(YAGF_WARNINGS_AS_ERRORS)
+        add_compile_options(-Werror)
+    endif()
+    if(YAGF_SANITIZE)
+        add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined)
+        add_link_options(-fsanitize=address,undefined)
+    endif()
+elseif(MSVC)
+    add_compile_options(/W4 /permissive-)
+    if(YAGF_WARNINGS_AS_ERRORS)
+        add_compile_options(/WX)
+    endif()
+endif()
+
 add_library(yagf_core STATIC
     src/core/recognitionhistory.cpp src/core/recognitionhistory.h
     src/core/coordinateframes.cpp src/core/coordinateframes.h
@@ -121,7 +140,7 @@ target_compile_definitions(yagf2-benchmark PRIVATE YAGF_VERSION="${PROJECT_VERSI
 qt_add_executable(yagf2
     src/ui/blockminiaturelist.cpp src/ui/blockminiaturelist.h
     src/ui/verificationcontroller.cpp src/ui/verificationcontroller.h
-    src/ui/mainwindowreview.cpp src/ui/experimentdialog.cpp src/ui/experimentdialog.h
+    src/ui/mainwindowreview.cpp src/ui/mainwindowexport.cpp src/ui/experimentdialog.cpp src/ui/experimentdialog.h
     src/main.cpp src/ui/mainwindow.cpp src/ui/mainwindow.h src/ui/formulaeditor.cpp src/ui/formulaeditor.h
     src/ui/restorationdialog.cpp src/ui/restorationdialog.h
     src/ui/preprocessdialog.cpp src/ui/preprocessdialog.h
@@ -312,7 +331,7 @@ if(BUILD_TESTING)
     qt_add_executable(mainwindow_tests tests/mainwindow_tests.cpp
         src/ui/blockminiaturelist.cpp src/ui/blockminiaturelist.h
         src/ui/verificationcontroller.cpp src/ui/verificationcontroller.h
-        src/ui/mainwindowreview.cpp src/ui/experimentdialog.cpp src/ui/experimentdialog.h
+        src/ui/mainwindowreview.cpp src/ui/mainwindowexport.cpp src/ui/experimentdialog.cpp src/ui/experimentdialog.h
         src/ui/mainwindow.cpp src/ui/mainwindow.h src/ui/formulaeditor.cpp src/ui/formulaeditor.h
         src/ui/restorationdialog.cpp src/ui/restorationdialog.h
         src/ui/preprocessdialog.cpp src/ui/preprocessdialog.h

@@ -2,10 +2,8 @@
 import csv
 import io
 import json
-import os
 from pathlib import Path
 import shutil
-import subprocess
 import unicodedata
 
 TESS_TOOLS = ('tesseract', 'lstmtraining', 'combine_tessdata', 'unicharset_extractor', 'merge_unicharsets', 'combine_lang_model')

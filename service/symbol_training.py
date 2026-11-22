@@ -8,7 +8,6 @@ import base64
 import binascii
 import hmac
 import json
-import math
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 

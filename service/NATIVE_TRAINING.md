@@ -28,8 +28,8 @@ prototype classifier and Tesseract book vocabulary remain available alongside it
    stays selected. **Cancel operation** terminates the native training process.
    Closing the window also requests cancellation of an active job.
 5. Compare original and candidate character error rates (CER) on the same held-out
-   images and inspect their readings. Only a candidate with CER no worse than its
-   base can be selected with **Use model**. This small validation set is evidence
+   images and inspect their readings. **Use model** is available for candidates
+   with a lower CER than their base model. This small validation set is evidence
    for that dataset, not a guarantee for the entire book. Existing recognized text
    changes only when you recognize it again. Model selection is undoable.
 

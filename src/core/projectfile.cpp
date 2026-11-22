@@ -13,6 +13,8 @@
 #include <cerrno>
 #include <cstring>
 #include <cstdio>
+#include <fcntl.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 namespace yagf::core {
@@ -37,6 +39,26 @@ bool fail(QString *error, const QString &message)
     if (error) *error = message;
     return false;
 }
+
+// Relative source paths follow the project file when it is opened via a link.
+QString projectTarget(const QString &path)
+{
+    const QFileInfo info(path);
+    if (!info.isSymLink()) return path;
+    const QString canonical = info.canonicalFilePath();
+    return canonical.isEmpty() ? info.symLinkTarget() : canonical;
+}
+
+// Persist the rename itself. The data is already safe at this point, so a
+// failure here is not reported as a failed save.
+void syncDirectory(const QString &file)
+{
+    const QByteArray directory = QFile::encodeName(QFileInfo(file).absolutePath());
+    const int fd = ::open(directory.constData(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (fd < 0) return;
+    ::fsync(fd);
+    ::close(fd);
+}
 }
 
 bool ProjectFile::save(const QString &path, const OcrDocument &document, QString *error)
@@ -45,16 +67,26 @@ bool ProjectFile::save(const QString &path, const OcrDocument &document, QString
         auto valid=validateRecognitionHistory(page.recognitionHistory);
         if(!valid) { if(error)*error=valid.error(); return false; }
     }
-    const QString temporaryPath = path + QLatin1Char('.') +
+    const QString target = projectTarget(path);
+    const QByteArray targetName = QFile::encodeName(target);
+    struct stat existing {};
+    const bool replacing = ::stat(targetName.constData(), &existing) == 0;
+    const QString temporaryPath = target + QLatin1Char('.') +
         QUuid::createUuid().toString(QUuid::WithoutBraces) + QStringLiteral(".tmp");
     QFile file(temporaryPath);
     if (!file.open(QIODevice::WriteOnly | QIODevice::NewOnly)) {
         if (error) *error = file.errorString();
         return false;
     }
+    if (replacing && ::fchmod(file.handle(), existing.st_mode & 07777) != 0) {
+        if (error) *error = QString::fromLocal8Bit(std::strerror(errno));
+        file.close();
+        QFile::remove(temporaryPath);
+        return false;
+    }
     OcrDocument stored = document;
     if (QDir::isAbsolutePath(stored.sourcePath)) {
-        const QString relative = QDir(QFileInfo(path).absolutePath()).relativeFilePath(stored.sourcePath);
+        const QString relative = QDir(QFileInfo(target).absolutePath()).relativeFilePath(stored.sourcePath);
         if (!relative.startsWith(QStringLiteral("../")) && relative != QStringLiteral("..") &&
             !QDir::isAbsolutePath(relative)) stored.sourcePath = relative;
     }
@@ -75,13 +107,13 @@ bool ProjectFile::save(const QString &path, const OcrDocument &document, QString
         return false;
     }
     const QByteArray temporaryName = QFile::encodeName(temporaryPath);
-    const QByteArray targetName = QFile::encodeName(path);
     file.close();
     if (::rename(temporaryName.constData(), targetName.constData()) != 0) {
         if (error) *error = QString::fromLocal8Bit(std::strerror(errno));
         QFile::remove(temporaryPath);
         return false;
     }
+    syncDirectory(target);
     return true;
 }
 
@@ -110,7 +142,7 @@ bool ProjectFile::load(const QString &path, OcrDocument *document, QString *erro
     if (!OcrDocument::fromJson(root.value(QStringLiteral("document")).toObject(), &parsed, error))
         return false;
     if (QDir::isRelativePath(parsed.sourcePath))
-        parsed.sourcePath = QDir(QFileInfo(path).absolutePath()).absoluteFilePath(parsed.sourcePath);
+        parsed.sourcePath = QDir(QFileInfo(projectTarget(path)).absolutePath()).absoluteFilePath(parsed.sourcePath);
     if (!document) return fail(error, QStringLiteral("No output document."));
     *document = std::move(parsed);
     return true;

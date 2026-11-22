@@ -13,6 +13,9 @@ namespace yagf::processing {
 // represent them. Include them when exporting the logical document.
 QVector<core::OcrRegion> exportRegions(const core::OcrPage &page);
 
+// True when a page has anything an export would write: words, figures or picture blocks.
+bool hasExportContent(const core::OcrPage &page);
+
 // Recreate the editor's oriented, preprocessed page at OCR resolution.
 std::expected<QImage, ExportResult> readExportPage(const core::OcrDocument &document, int number,
                                                    const QTemporaryDir &temporary,

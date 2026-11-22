@@ -299,6 +299,7 @@ std::expected<RecognitionResult, OcrError> RemoteOcrEngine::recognizeSection(
     reply->setReadBufferSize(maxResponseBytes + 1);
     QEventLoop loop;
     bool timedOut = false;
+    bool oversized = false;
     QTimer poll;
     poll.setInterval(50);
     QObject::connect(&poll, &QTimer::timeout, &loop, [&] {
@@ -312,7 +313,10 @@ std::expected<RecognitionResult, OcrError> RemoteOcrEngine::recognizeSection(
     });
     QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
     QObject::connect(reply, &QNetworkReply::readyRead, &loop, [&] {
-        if (reply->bytesAvailable() > maxResponseBytes) reply->abort();
+        if (reply->bytesAvailable() > maxResponseBytes) {
+            oversized = true;
+            reply->abort();
+        }
     });
     poll.start();
     deadline.start(std::clamp(options.timeoutMs, 1, 180000));
@@ -334,6 +338,9 @@ std::expected<RecognitionResult, OcrError> RemoteOcrEngine::recognizeSection(
     }
     if (stop.stop_requested()) return std::unexpected(OcrError{{}, true});
     if (timedOut) return std::unexpected(OcrError{QStringLiteral("Remote OCR timed out.")});
+    if (oversized)
+        return std::unexpected(OcrError{QStringLiteral("Remote OCR response exceeded the %1 MiB limit.")
+                                            .arg(qlonglong(maxResponseBytes / (1024 * 1024)))});
     if (reply->error() != QNetworkReply::NoError || status != 200) {
         const QJsonObject error = QJsonDocument::fromJson(response).object();
         const QString message = error.value(QStringLiteral("error")).toString();

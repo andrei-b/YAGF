@@ -205,7 +205,8 @@ void NativeTrainingDialog::showModel(const QJsonObject &model)
     const auto before=shown["baseline"].toObject(),after=shown["candidate"].toObject();
     QString text=tr("Original validation CER: %1%\nTrained validation CER: %2%\n%3\n")
         .arg(before["cer"].toDouble()*100,0,'f',2).arg(after["cer"].toDouble()*100,0,'f',2)
-        .arg(shown["eligible"].toBool() ? tr("Candidate is no worse on the held-out examples. Use model enables it explicitly.") : tr("Candidate worsened validation. The original model remains active."));
+        .arg(shown["eligible"].toBool() ? tr("Candidate passed validation. Select Use model to activate it.")
+                                       : tr("The original model matched or outperformed the candidate on the held-out examples."));
     for (const auto &entry:after["predictions"].toArray()) {const auto p=entry.toObject(); text+=tr("\nExpected: %1\nRecognized: %2\n").arg(p["truth"].toString(),p["prediction"].toString());}
     comparison->setPlainText(text);
 }

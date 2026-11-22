@@ -286,7 +286,7 @@ class TrainingHost:
             candidate=self.evaluate(profile,model,directory,samples,run)
             if event.is_set(): raise InterruptedError('Cancelled')
             self.update(jid,status='complete',message='Training and validation complete',candidate=candidate,
-                        model_path=str(model),eligible=candidate['cer']<=baseline['cer'],
+                        model_path=str(model),eligible=candidate['cer']<baseline['cer'],
                         model_url='/models/'+jid)
         except InterruptedError: self.update(jid,status='cancelled',message='Training cancelled; the active OCR model was not changed')
         except Exception as error: self.update(jid,status='failed',message=str(error)[-6000:])
