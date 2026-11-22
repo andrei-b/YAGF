@@ -39,6 +39,7 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QProcess>
 #include <QProgressBar>
 #include <QProgressDialog>
 #include <QRubberBand>
@@ -164,7 +165,7 @@ int main(int argc, char **argv)
         assert(exports && exports->title() == "Export");
         QStringList groups;
         for (auto *entry : exports->actions()) groups.append(entry->text());
-        assert((groups == QStringList{"Scans", "PDF", "Text and HTML", "OCR data"}));
+        assert((groups == QStringList{"Scans", "PDF", "Word document (.docx)…", "Text and HTML", "OCR data"}));
         const QString stem = directory.filePath("scan");
         const QString destination = stem + "." + suffixes[i];
         QTimer::singleShot(0, &window, [&] {
@@ -1293,6 +1294,39 @@ int main(int argc, char **argv)
     resolutionQueue->navigate(1);
     waitUi([&] { return resolutionView->scene()->sceneRect().width() == 1200; });
     assert(inheritedLanguage->text() == "eng");
+    auto *pageExport = resolutionWindow.findChild<QAction *>("exportCurrentPageAction");
+    assert(pageExport && pageExport->isEnabled());
+    const auto pageStem = directory.filePath("exported-page");
+    QTimer::singleShot(0, &resolutionWindow, [&] {
+        auto *dialog = qobject_cast<QFileDialog *>(QApplication::activeModalWidget());
+        assert(dialog && dialog->selectedNameFilter().contains("*.docx"));
+        assert(QFileInfo(dialog->selectedFiles().first()).baseName().endsWith("-page-2"));
+        dialog->selectNameFilter("Layout HTML (*.html)");
+        dialog->selectFile(pageStem);
+        QMetaObject::invokeMethod(dialog, "accept", Qt::DirectConnection);
+    });
+    pageExport->trigger();
+    QFile singlePage(pageStem + ".html");
+    waitUi([&] { return pageExport->isEnabled() && singlePage.exists(); });
+    assert(singlePage.open(QIODevice::ReadOnly));
+    const auto pageHtml = singlePage.readAll();
+    assert(pageHtml.contains("Page 2") && !pageHtml.contains("Page 1") && pageHtml.contains("modern"));
+    if (!QStandardPaths::findExecutable("pandoc").isEmpty() && !QStandardPaths::findExecutable("unzip").isEmpty()) {
+        const auto pageDocx = pageStem + ".docx";
+        QTimer::singleShot(0, &resolutionWindow, [&] {
+            auto *dialog = qobject_cast<QFileDialog *>(QApplication::activeModalWidget());
+            assert(dialog && dialog->selectedNameFilter().contains("*.docx"));
+            dialog->selectFile(pageDocx);
+            QMetaObject::invokeMethod(dialog, "accept", Qt::DirectConnection);
+        });
+        pageExport->trigger();
+        waitUi([&] { return pageExport->isEnabled() && QFileInfo::exists(pageDocx); });
+        QProcess unzip;
+        unzip.start("unzip", {"-p", pageDocx, "word/document.xml"});
+        assert(unzip.waitForFinished() && unzip.exitCode() == 0);
+        const auto xml = unzip.readAllStandardOutput();
+        assert(xml.count("modern") == 1 && !xml.contains("w:type=\"page\""));
+    }
     auto *resolutionWords = resolutionWindow.findChild<QListWidget *>("recognizedWords");
     assert(resolutionWords->selectedItems().size() == 1);
     for (auto *button : resolutionWindow.findChildren<QPushButton *>())

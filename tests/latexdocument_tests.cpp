@@ -1,4 +1,5 @@
 #include "latexdocumentexporter.h"
+#include "docxexporter.h"
 #include "formulatext.h"
 #include "detail/pdfformulas.h"
 #include <QCoreApplication>
@@ -52,6 +53,39 @@ int main(int argc,char **argv)
     assert(processing::LatexDocumentExporter::write(unsafe,destination,cancelled).status==processing::ExportResult::Status::Error);
     assert(file.open(QIODevice::ReadOnly) && file.readAll()==data); file.close();
     assert(QDir(directory.path()).entryList({"yagf-assets-*"},QDir::Dirs)==assetsBefore);
+    const auto wordPath = directory.filePath("document.docx");
+    QFile wordFile(wordPath);
+    assert(wordFile.open(QIODevice::WriteOnly) && wordFile.write("previous") == 8);
+    wordFile.close();
+    if (!QStandardPaths::findExecutable("pandoc").isEmpty()) {
+        const auto converted = processing::DocxExporter::write(book, wordPath, cancelled);
+        if (converted.status != processing::ExportResult::Status::Success) qFatal("%s", qPrintable(converted.error));
+        assert(wordFile.open(QIODevice::ReadOnly) && wordFile.read(4) == QByteArray("PK\003\004", 4));
+        wordFile.close();
+        if (!QStandardPaths::findExecutable("unzip").isEmpty()) {
+            QProcess unzip;
+            unzip.start("unzip", {"-p", wordPath, "word/document.xml"});
+            assert(unzip.waitForFinished() && unzip.exitCode() == 0);
+            const auto xml = unzip.readAllStandardOutput();
+            assert(xml.contains("Заголовок") && xml.contains("Second page"));
+            assert(xml.count("w:type=\"page\"") == 1);
+            assert(xml.contains("<m:f>") && xml.contains("<w:tbl>") && xml.contains("<w:drawing>"));
+        }
+        assert(QDir(directory.path()).entryList({"yagf-assets-*"}, QDir::Dirs) == assetsBefore);
+    }
+    assert(wordFile.open(QIODevice::ReadOnly));
+    const auto beforeFailure = wordFile.readAll();
+    wordFile.close();
+    const auto path = qgetenv("PATH");
+    qputenv("PATH", QFile::encodeName(directory.path()));
+    auto missing = processing::DocxExporter::write(book, wordPath, cancelled);
+    assert(missing.status == processing::ExportResult::Status::Error && missing.error.contains("Pandoc"));
+    qputenv("PATH", path);
+    cancelled = true;
+    assert(processing::DocxExporter::write(book, wordPath, cancelled).status == processing::ExportResult::Status::Cancelled);
+    cancelled = false;
+    assert(wordFile.open(QIODevice::ReadOnly) && wordFile.readAll() == beforeFailure);
+    wordFile.close();
     if (!QStandardPaths::findExecutable("pdflatex").isEmpty()) {
         QProcess compiler; compiler.setWorkingDirectory(directory.path()); compiler.start("pdflatex",{"-no-shell-escape","-interaction=nonstopmode","-halt-on-error","document.tex"});
         assert(compiler.waitForFinished(90000));

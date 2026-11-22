@@ -79,6 +79,7 @@ even when a different version of the file exists in the working tree.
 | Spelling suggestions | `libenchant-2-2` and dictionaries such as `hunspell-en-us`, `hunspell-ru` |
 | Scanner import | `sane-utils`; network AirScan discovery also uses `sane-airscan` |
 | DjVu import and conversion | `djvulibre-bin` |
+| Editable Word document (.docx) export | `pandoc` |
 | Archival PDF/A export | `ocrmypdf` |
 
 For local OCR and PDF processing on Ubuntu:

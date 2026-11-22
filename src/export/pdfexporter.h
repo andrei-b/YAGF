@@ -4,6 +4,7 @@
 #include "ocrdocument.h"
 
 #include <atomic>
+#include <optional>
 
 namespace yagf::processing {
 
@@ -22,7 +23,8 @@ public:
                                                const std::atomic_bool &cancelled,
                                                const Progress &progress = {},
                                                Mode mode = Mode::SearchableScan,
-                                               FormulaStyle formulas = FormulaStyle::Scanned);
+                                               FormulaStyle formulas = FormulaStyle::Scanned,
+                                               std::optional<int> onlyPage = {});
 };
 
 } // namespace yagf::processing

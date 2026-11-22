@@ -214,14 +214,15 @@ private:
     void exportText();
     void exportHtml();
     void exportJson();
-    void exportLatex();
-    enum class ExportFormat : quint8 { Pdf, FormattedPdf, ArchivalPdf, Samples, ScientificBook, LatexDocument, ScanImage, ScanPdf };
+    enum class ExportFormat : quint8 { Pdf, FormattedPdf, ArchivalPdf, Samples, ScientificBook, LatexDocument, Docx, PlainText, LayoutHtml, Json, ScanImage, ScanPdf };
+    void exportDocument(ExportFormat format);
+    void exportCurrentPage();
     void exportPdf(bool archive, bool formatted = false);
     void convertDjVuToPdf();
     void exportVerifiedSamples();
     void exportScientificBook();
     void chooseExportPath(const QString &title, const QString &filter, const QString &suffix, ExportFormat format);
-    void startExport(const QString &path, ExportFormat format, bool typesetFormulas);
+    void startExport(const QString &path, ExportFormat format, bool typesetFormulas, std::optional<int> onlyPage = {});
     void setBusy(bool busy);
     void showError(const QString &message);
 
@@ -267,6 +268,8 @@ private:
     QAction *layoutAction = nullptr;
     QAction *editFormulaAction = nullptr;
     QAction *createRegionAction = nullptr;
+    QAction *currentPageExportAction = nullptr;
+    QAction *docxExportAction = nullptr;
     QAction *scanExportAction = nullptr;
     QAction *pdfAction = nullptr;
     QAction *formattedPdfAction = nullptr;

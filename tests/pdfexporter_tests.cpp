@@ -372,6 +372,15 @@ int main(int argc, char **argv)
         const QByteArray multiText = extract.readAllStandardOutput();
         assert(multiText.contains("FirstFix"));
         assert(multiText.contains("SecondFix"));
+        const QString currentPdf = directory.filePath("page-two.pdf");
+        const auto pageProgress = [](qsizetype done, qsizetype total) { assert(done == 1 && total == 1); };
+        assert(PdfExporter::write(pages, currentPdf, false, cancelled, pageProgress,
+                   PdfExporter::Mode::SearchableScan, PdfExporter::FormulaStyle::Scanned, 2).status ==
+               PdfExportResult::Status::Success);
+        extract.start("pdftotext", {currentPdf, "-"});
+        assert(extract.waitForFinished(10000) && extract.exitCode() == 0);
+        const auto pageText = extract.readAllStandardOutput();
+        assert(pageText.count('\f') == 1 && pageText.contains("SecondFix") && !pageText.contains("FirstFix"));
         const QString scanPdf = directory.filePath("scan-multi.pdf");
         assert(PdfExporter::write(pages, scanPdf, false, cancelled, {}, PdfExporter::Mode::ImageOnly).status ==
                PdfExportResult::Status::Success);

@@ -41,10 +41,14 @@ bool PdfExporter::hasPdfLatex()
 PdfExportResult PdfExporter::write(const core::OcrDocument &document,
                                    const QString &destination, bool archive,
                                    const std::atomic_bool &cancelled, const Progress &progress, Mode mode,
-                                   FormulaStyle formulas)
+                                   FormulaStyle formulas, std::optional<int> onlyPage)
 {
     if (document.sourcePath.isEmpty() || document.totalPages < 1 || destination.isEmpty())
         return failure(QStringLiteral("A source document and destination are required."));
+    if (onlyPage && (*onlyPage < 1 || *onlyPage > document.totalPages))
+        return failure(QStringLiteral("The selected page is outside the source document."));
+    const int firstPage = onlyPage.value_or(1);
+    const int lastPage = onlyPage.value_or(document.totalPages);
     if (archive && QStandardPaths::findExecutable(QStringLiteral("ocrmypdf")).isEmpty())
         return failure(QStringLiteral("OCRmyPDF is required for PDF/A export."));
     if (mode == Mode::FormattedText && formulas == FormulaStyle::Typeset && !hasPdfLatex())
@@ -72,7 +76,7 @@ PdfExportResult PdfExporter::write(const core::OcrDocument &document,
         writer.setTitle(mode == Mode::ImageOnly ? QStringLiteral("Scanned document") : QStringLiteral("YAGF searchable document"));
         writer.setCreator(QStringLiteral("YAGF 2"));
         QPainter painter;
-        for (int number = 1; number <= document.totalPages; ++number) {
+        for (int number = firstPage; number <= lastPage; ++number) {
             if (cancelled.load()) return {.status = PdfExportResult::Status::Cancelled};
             auto processed = readExportPage(document, number, temporary, cancelled, mode == Mode::ImageOnly);
             if (!processed) return processed.error();
@@ -81,7 +85,7 @@ PdfExportResult PdfExporter::write(const core::OcrDocument &document,
             const int horizontal = qRound(processed->dotsPerMeterX() * 0.0254);
             const int dpiX = horizontal > 0 ? horizontal : dpiY;
             const auto *page = document.page(number);
-            if (number == 1) {
+            if (number == firstPage) {
                 writer.setPageSize(pageSizeFor(*processed, dpiX, dpiY));
                 if (!painter.begin(&writer)) return failure(QStringLiteral("Could not start PDF output."));
             } else {
@@ -139,7 +143,7 @@ PdfExportResult PdfExporter::write(const core::OcrDocument &document,
                 painter.restore();
             }
             painter.restore();
-            if (progress) progress(number, document.totalPages);
+            if (progress) progress(number - firstPage + 1, lastPage - firstPage + 1);
         }
         painter.end();
     }

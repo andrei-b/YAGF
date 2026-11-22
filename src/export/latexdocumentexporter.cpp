@@ -128,7 +128,7 @@ ExportResult LatexDocumentExporter::write(const core::OcrDocument &document,cons
     for (int n=0;n<document.pages.size();++n) {
         if (cancelled.load()) return {.status=ExportResult::Status::Cancelled};
         const auto &page=document.pages[n];
-        if (n) out<<"\\clearpage\n";
+        if (n) out<<"\n\\clearpage\n\n";
         out<<"% Source page "<<page.number<<'\n';
         QHash<QString,const core::OcrWord *> words;
         for (const auto &word:page.words) words.insert(word.id,&word);

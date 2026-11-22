@@ -4,6 +4,7 @@
 #include "exportpage.h"
 #include "scientificbookexporter.h"
 #include "latexdocumentexporter.h"
+#include "docxexporter.h"
 #include "verifiedsampleexporter.h"
 #include "mainwindow.h"
 #include <QScopeGuard>
@@ -137,8 +138,18 @@ class ExportSaveDialog : public QFileDialog {
 public:
     using QFileDialog::QFileDialog;
     bool imageExport = false;
+    QHash<QString, QStringList> pageExtensions;
     void accept() override
     {
+        if (!pageExtensions.isEmpty()) {
+            const auto extensions = pageExtensions.value(selectedNameFilter());
+            setDefaultSuffix(extensions.first());
+            const QFileInfo file(selectedFiles().value(0));
+            if (!file.isDir() && !extensions.contains(file.suffix().toLower())) {
+                QMessageBox::information(this, windowTitle(), tr("Choose a filename ending in .%1 for this format.").arg(extensions.first()));
+                return;
+            }
+        }
         if (imageExport) {
             const bool jpeg = selectedNameFilter() == nameFilters().last();
             setDefaultSuffix(jpeg ? "jpg" : "png");
@@ -154,6 +165,15 @@ public:
         QFileDialog::accept();
     }
 };
+
+bool hasExportContent(const OcrPage &page)
+{
+    return !page.words.isEmpty() ||
+           std::ranges::any_of(page.regions, [](const auto &region) { return region.isFigure(); }) ||
+           std::ranges::any_of(page.imageRegions, [](const auto &block) {
+               return block.content == "picture" && block.notText && !block.bounds.isEmpty();
+           });
+}
 
 void addToolbarSeparator(QToolBar *toolbar)
 {
@@ -974,6 +994,9 @@ MainWindow::MainWindow()
     updateLanguageButton();
     fileMenu->addSeparator();
     auto *exportMenu = fileMenu->addMenu(tr("Export"));
+    currentPageExportAction = fileMenu->addAction(tr("Export current page…"), this, &MainWindow::exportCurrentPage);
+    currentPageExportAction->setObjectName("exportCurrentPageAction");
+    currentPageExportAction->setEnabled(false);
     auto *scanMenu = exportMenu->addMenu(tr("Scans"));
     scanExportAction = scanMenu->menuAction();
     scanExportAction->setEnabled(false);
@@ -996,11 +1019,14 @@ MainWindow::MainWindow()
     pdfAction->setEnabled(false);
     pdfaAction->setEnabled(false);
 
+    docxExportAction = exportMenu->addAction(tr("Word document (.docx)…"), this, [this] { exportDocument(ExportFormat::Docx); });
+    docxExportAction->setObjectName("exportDocxAction");
+    docxExportAction->setEnabled(false);
     auto *textMenu = exportMenu->addMenu(tr("Text and HTML"));
     textMenu->addAction(tr("Plain text…"), this, &MainWindow::exportText);
     textMenu->addAction(tr("Layout HTML…"), this, &MainWindow::exportHtml);
     textMenu->addAction(tr("Scientific book as HTML…"), this, &MainWindow::exportScientificBook);
-    auto *latexExport=textMenu->addAction(tr("Document as LaTeX…"),this,&MainWindow::exportLatex);
+    auto *latexExport=textMenu->addAction(tr("Document as LaTeX…"),this,[this] { exportDocument(ExportFormat::LatexDocument); });
     latexExport->setObjectName("exportLatexDocumentAction");
     auto *dataMenu = exportMenu->addMenu(tr("OCR data"));
     dataMenu->addAction(tr("Structured OCR as JSON…"), this, &MainWindow::exportJson);
@@ -1740,6 +1766,8 @@ void MainWindow::updatePageControls()
     if (renderingAction) renderingAction->setEnabled(available && processing::isPagedSource(originalPath));
     if (preserveFormattingAction) preserveFormattingAction->setEnabled(available);
     if (rawOcrOutputAction) rawOcrOutputAction->setEnabled(available);
+    if (currentPageExportAction) currentPageExportAction->setEnabled(available && !imagePath.isEmpty());
+    if (docxExportAction) docxExportAction->setEnabled(available && std::ranges::any_of(document.pages, hasExportContent));
     if (scanExportAction) scanExportAction->setEnabled(available && !imagePath.isEmpty());
     if (formattedPdfAction) formattedPdfAction->setEnabled(available && document.wordCount() > 0);
     if (convertDjVuAction) convertDjVuAction->setEnabled(available && !imagePath.isEmpty() &&
@@ -3859,40 +3887,68 @@ void MainWindow::exportText()
 {
     if (!maybeApplyEditor()) return;
     if (document.wordCount() == 0) return;
-    const QString path = QFileDialog::getSaveFileName(this, tr("Export text"), {}, tr("Text (*.txt)"));
-    if (path.isEmpty()) return;
-    QFile file(path);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) { showError(file.errorString()); return; }
-    file.write(document.plainText().toUtf8());
+    chooseExportPath(tr("Export text"), tr("Text (*.txt)"), "txt", ExportFormat::PlainText);
 }
 
 void MainWindow::exportHtml()
 {
     if (!maybeApplyEditor() || document.wordCount() == 0) return;
-    const QString path = QFileDialog::getSaveFileName(this, tr("Export layout HTML"), {}, tr("HTML (*.html)"));
-    if (path.isEmpty()) return;
-    QFile file(path);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) { showError(file.errorString()); return; }
-    file.write(document.layoutHtml().toUtf8());
+    chooseExportPath(tr("Export layout HTML"), tr("HTML (*.html)"), "html", ExportFormat::LayoutHtml);
 }
 
 void MainWindow::exportJson()
 {
-    if (!maybeApplyEditor()) return;
-    if (document.wordCount() == 0) return;
-    const QString path = QFileDialog::getSaveFileName(this, tr("Export structured OCR"), {}, tr("JSON (*.json)"));
-    if (path.isEmpty()) return;
-    QFile file(path);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) { showError(file.errorString()); return; }
-    file.write(QJsonDocument(document.toJson(false)).toJson(QJsonDocument::Indented));
+    if (!maybeApplyEditor() || document.wordCount() == 0) return;
+    chooseExportPath(tr("Export structured OCR"), tr("JSON (*.json)"), "json", ExportFormat::Json);
 }
 
-void MainWindow::exportLatex()
+void MainWindow::exportDocument(ExportFormat format)
 {
     if (processor.isBusy() || exportBusy || projectLoading || document.pages.isEmpty() || !maybeApplyEditor()) return;
-    if (document.pages.size()<pageCount && QMessageBox::question(this,tr("Unrecognized pages"),
-        tr("Export only the recognized pages?"),QMessageBox::Yes|QMessageBox::Cancel,QMessageBox::Cancel)!=QMessageBox::Yes) return;
-    chooseExportPath(tr("Export LaTeX document"),tr("LaTeX document (*.tex)"),"tex",ExportFormat::LatexDocument);
+    const auto count = format == ExportFormat::Docx
+        ? std::ranges::count_if(document.pages, hasExportContent) : document.pages.size();
+    if (count < pageCount && QMessageBox::question(this, tr("Unrecognized pages"),
+        tr("Export only the recognized pages?"), QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Yes) return;
+    if (format == ExportFormat::Docx)
+        chooseExportPath(tr("Export Word document"), tr("Word document (*.docx)"), "docx", format);
+    else
+        chooseExportPath(tr("Export LaTeX document"), tr("LaTeX document (*.tex)"), "tex", format);
+}
+
+void MainWindow::exportCurrentPage()
+{
+    if (processor.isBusy() || exportBusy || projectLoading || imagePath.isEmpty() || !maybeApplyEditor()) return;
+    const int number = currentPage;
+    ExportSaveDialog dialog(this, tr("Export current page"));
+    dialog.setOption(QFileDialog::DontUseNativeDialog);
+    dialog.setAcceptMode(QFileDialog::AcceptSave);
+    QStringList filters;
+    QHash<QString, ExportFormat> formats;
+    const auto add = [&](ExportFormat format, const QString &filter, QStringList extensions) {
+        filters.append(filter);
+        formats.insert(filter, format);
+        dialog.pageExtensions.insert(filter, std::move(extensions));
+    };
+    const auto *page = document.page(number);
+    if (page && hasExportContent(*page)) {
+        add(ExportFormat::Docx, tr("Word document (*.docx)"), {"docx"});
+        add(ExportFormat::PlainText, tr("Plain text (*.txt)"), {"txt"});
+        add(ExportFormat::LayoutHtml, tr("Layout HTML (*.html)"), {"html"});
+        add(ExportFormat::ScientificBook, tr("Scientific book HTML (*.html)"), {"html"});
+        add(ExportFormat::LatexDocument, tr("LaTeX document (*.tex)"), {"tex"});
+        add(ExportFormat::Json, tr("Structured OCR (*.json)"), {"json"});
+    }
+    add(ExportFormat::Pdf, tr("Page as PDF (*.pdf)"), {"pdf"});
+    add(ExportFormat::ScanImage, tr("PNG image (*.png)"), {"png"});
+    add(ExportFormat::ScanImage, tr("JPEG image (*.jpg *.jpeg)"), {"jpg", "jpeg"});
+    dialog.setNameFilters(filters);
+    dialog.setDefaultSuffix(dialog.pageExtensions.value(filters.first()).first());
+    connect(&dialog, &QFileDialog::filterSelected, &dialog, [&](const QString &filter) {
+        dialog.setDefaultSuffix(dialog.pageExtensions.value(filter).first());
+    });
+    dialog.selectFile(tr("%1-page-%2.%3").arg(QFileInfo(originalPath).completeBaseName()).arg(number).arg(dialog.defaultSuffix()));
+    if (dialog.exec() == QDialog::Accepted)
+        startExport(dialog.selectedFiles().value(0), formats.value(dialog.selectedNameFilter()), false, number);
 }
 
 void MainWindow::convertDjVuToPdf()
@@ -3965,25 +4021,35 @@ void MainWindow::chooseExportPath(const QString &title, const QString &filter, c
     if (dialog.exec() != QDialog::Accepted) return;
     const QString path = dialog.selectedFiles().value(0);
     if (path.isEmpty()) return;
-    if (QFileInfo(path) == QFileInfo(originalPath) || (!projectPath.isEmpty() && QFileInfo(path) == QFileInfo(projectPath))) {
-        showError(tr("Choose a destination separate from the source and project files."));
-        return;
-    }
     const bool typesetFormulas = typeset && typeset->isChecked();
     if (typeset && typeset->isEnabled()) settings.setValue(typesetKey, typesetFormulas);
     startExport(path, format, typesetFormulas);
 }
 
-void MainWindow::startExport(const QString &path, ExportFormat format, bool typesetFormulas)
+void MainWindow::startExport(const QString &path, ExportFormat format, bool typesetFormulas, std::optional<int> onlyPage)
 {
+    if (path.isEmpty() || exportBusy || processor.isBusy() || projectLoading) return;
+    if (QFileInfo(path) == QFileInfo(originalPath) || (!projectPath.isEmpty() && QFileInfo(path) == QFileInfo(projectPath))) {
+        showError(tr("Choose a destination separate from the source and project files."));
+        return;
+    }
     exportPath = path;
     exportCancel = std::make_shared<std::atomic_bool>(false);
     exportBusy = true;
     setBusy(true);
     status->setText(tr("Preparing export…"));
-    const OcrDocument snapshot = document;
+    OcrDocument snapshot = document;
+    if (onlyPage) {
+        // Keep the original page number for PDF renders, figure crops, and source-linked OCR.
+        const auto *page = document.page(*onlyPage);
+        snapshot.pages = page ? QVector<OcrPage>{*page} : QVector<OcrPage>{};
+        // Book-level training rules can contain image crops from other pages.
+        snapshot.symbolRules.clear();
+    } else if (format == ExportFormat::Docx) {
+        snapshot.pages.removeIf([](const auto &page) { return !hasExportContent(page); });
+    }
     const auto cancel = exportCancel;
-    exportWatcher.setFuture(QtConcurrent::run([this, snapshot, path, format, typesetFormulas, cancel, pageNumber = currentPage] {
+    exportWatcher.setFuture(QtConcurrent::run([this, snapshot, path, format, typesetFormulas, cancel, onlyPage, pageNumber = onlyPage.value_or(currentPage)] {
         const auto progress = [this](qsizetype completed, qsizetype total) {
             emit exportProgress(completed, total);
         };
@@ -3997,12 +4063,27 @@ void MainWindow::startExport(const QString &path, ExportFormat format, bool type
             return processing::ScientificBookExporter::write(snapshot, path, *cancel, progress);
         if (format == ExportFormat::LatexDocument)
             return processing::LatexDocumentExporter::write(snapshot,path,*cancel,progress);
+        if (format == ExportFormat::Docx)
+            return processing::DocxExporter::write(snapshot, path, *cancel, progress);
+        if (format == ExportFormat::PlainText || format == ExportFormat::LayoutHtml || format == ExportFormat::Json) {
+            QByteArray data;
+            if (format == ExportFormat::PlainText) data = snapshot.plainText().toUtf8();
+            else if (format == ExportFormat::LayoutHtml) data = snapshot.layoutHtml().toUtf8();
+            else data = QJsonDocument(snapshot.toJson(false)).toJson(QJsonDocument::Indented);
+            QSaveFile output(path);
+            if (cancel->load()) return processing::ExportResult{.status = processing::ExportResult::Status::Cancelled};
+            if (!output.open(QIODevice::WriteOnly) || output.write(data) != data.size())
+                return processing::ExportResult{.error = output.errorString()};
+            if (cancel->load()) return processing::ExportResult{.status = processing::ExportResult::Status::Cancelled};
+            if (!output.commit()) return processing::ExportResult{.error = output.errorString()};
+            return processing::ExportResult{.status = processing::ExportResult::Status::Success};
+        }
         if (format == ExportFormat::Samples)
             return processing::VerifiedSampleExporter::write(snapshot, path, *cancel, progress);
         return processing::PdfExporter::write(snapshot, path, format == ExportFormat::ArchivalPdf, *cancel, progress,
             format == ExportFormat::FormattedPdf ? processing::PdfExporter::Mode::FormattedText :
                                                   processing::PdfExporter::Mode::SearchableScan,
-            typesetFormulas ? processing::PdfExporter::FormulaStyle::Typeset : processing::PdfExporter::FormulaStyle::Scanned);
+            typesetFormulas ? processing::PdfExporter::FormulaStyle::Typeset : processing::PdfExporter::FormulaStyle::Scanned, onlyPage);
     }));
 }
 

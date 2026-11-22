@@ -34,7 +34,8 @@ approve corrections before exporting your document.
 - **Learning and evaluation.** Teach recurring symbol errors, adapt native OCR
   profiles from reviewed examples, and compare pipelines using CER/WER and timing
   measurements in the experiments window or `yagf2-benchmark` CLI.
-- **Document export.** Produce searchable or formatted PDFs, HTML, plain text,
+- **Document export.** Export the current page or a whole document. Produce editable Word
+  documents (.docx) with Pandoc, searchable or formatted PDFs, HTML, plain text,
   structured JSON, LaTeX documents, and portable projects. Optional host tools
   provide DjVu conversion and PDF/A export.
 

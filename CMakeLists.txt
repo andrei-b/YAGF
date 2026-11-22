@@ -93,6 +93,7 @@ target_include_directories(yagf_processing PUBLIC src/processing)
 # Export consumes snapshots and OCR support, never the DocumentProcessor or UI.
 add_library(yagf_export STATIC
     src/export/ocrtrainingdataset.cpp src/export/ocrtrainingdataset.h
+    src/export/docxexporter.cpp src/export/docxexporter.h
     src/export/latexdocumentexporter.cpp src/export/latexdocumentexporter.h
     src/export/exporttypes.h
     src/export/exportpage.cpp src/export/exportpage.h
@@ -104,6 +105,7 @@ add_library(yagf_export STATIC
     src/export/detail/pdfpagelayout.cpp src/export/detail/pdfpagelayout.h
     src/export/detail/pdfformulas.cpp src/export/detail/pdfformulas.h
     src/export/detail/pdfpagepainter.cpp src/export/detail/pdfpagepainter.h)
+qt_add_resources(yagf_export docx_resources PREFIX "/export" BASE src/export FILES src/export/docx.lua)
 target_link_libraries(yagf_export PUBLIC yagf_core Qt6::Gui PRIVATE yagf_imaging yagf_ocr)
 target_include_directories(yagf_export PUBLIC src/export)
 
