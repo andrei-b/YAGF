@@ -62,6 +62,42 @@ private slots:
         }
     }
 
+    void refinesInlineFractionBetweenProseFragments()
+    {
+        QImage image(240,125,QImage::Format_Grayscale8);
+        image.fill(Qt::white);
+        QPainter ink(&image);
+        for (int y : {18,55,87})
+            for (int x = 20; x < 205; x += 8)
+                if (y != 55 || x < 75 || x > 147) ink.fillRect(x,y,6,11,Qt::black);
+        ink.fillRect(101,44,8,9,Qt::black);
+        ink.fillRect(96,56,20,2,Qt::black);
+        ink.fillRect(102,61,7,12,Qt::black);
+        ink.end();
+        const auto parent = block("paragraph",{14,10,200,95},"text");
+        const auto other = block("illustration",{0,106,230,15},"picture");
+        const auto result = yagf::processing::refineFormulaRegions(image,{parent,other});
+        QCOMPARE(result.size(),6);
+        QCOMPARE(result[2].content,"math");
+        QVERIFY(result[2].bounds.contains(QRect(96,44,20,29)));
+        QVERIFY(result[1].bounds.right() < result[2].bounds.left());
+        QVERIFY(result[3].bounds.left() > result[2].bounds.right());
+        QCOMPARE(result.last().id,other.id);
+        for (int i = 0; i < 5; ++i) {
+            QCOMPARE(result[i].language,parent.language);
+            QVERIFY(parent.bounds.contains(result[i].bounds));
+            for (int j = 0; j < i; ++j) QVERIFY(!result[i].bounds.intersects(result[j].bounds));
+        }
+        for (int y = 0; y < image.height(); ++y)
+            for (int x = 0; x < image.width(); ++x)
+                if (image.constScanLine(y)[x] < 175)
+                    QVERIFY(std::ranges::any_of(result,[&](const auto &r){return r.bounds.contains(x,y);}));
+        QPainter clear(&image);
+        clear.fillRect(90,40,32,36,Qt::white);
+        clear.end();
+        QCOMPARE(yagf::processing::refineFormulaRegions(image,{parent}).first().id,parent.id);
+    }
+
     void followsShortChainBeyondSeedReach()
     {
         QImage image(120,90,QImage::Format_Grayscale8);

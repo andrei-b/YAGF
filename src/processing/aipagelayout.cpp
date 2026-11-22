@@ -1,4 +1,5 @@
 #include "aipagelayout.h"
+#include "formulagrowth.h"
 #include <QBuffer>
 #include <QElapsedTimer>
 #include <QEventLoop>
@@ -140,6 +141,78 @@ void consolidateInlineAreas(QVector<PageArea> &areas)
         }
     }
     for (int i=areas.size()-1;i>=0;--i) if (remove.contains(i)) areas.removeAt(i);
+}
+void subdivideInlineAreas(QVector<PageArea> &areas, const QImage &gray, const QVector<QRect> &localHints)
+{
+    if (areas.isEmpty()) return;
+    const auto inlineLabel = [](const PageArea &area) { return area.label == "inline_formula"; };
+    QVector<int> parents;
+    for (int i = 0; i < areas.size(); ++i)
+        if (!inlineLabel(areas[i]) && (areas[i].type == "text" || areas[i].type == "mixed")) parents.append(i);
+    // Some layout workers return just the inline detections on a tightly cropped paragraph.
+    const bool implicitParent = std::ranges::all_of(areas,inlineLabel);
+    if (implicitParent) {
+        parents.append(areas.size());
+        areas.append({"selected_block","text",gray.rect(),-1,{},"text","selected-block"});
+    }
+    std::stable_sort(parents.begin(),parents.end(),[&](int a,int b){return areas[a].score > areas[b].score;});
+    QSet<int> replaced;
+    QHash<int,QVector<PageArea>> subdivisions;
+    for (int index : parents) {
+        if (replaced.contains(index)) continue;
+        const auto &parent = areas[index];
+        QVector<QRect> hints;
+        QVector<int> sources;
+        for (int j = 0; j < areas.size(); ++j) {
+            if (j != index && !replaced.contains(j) && (inlineLabel(areas[j]) || areas[j].type == "math") &&
+                parent.bounds.contains(areas[j].bounds)) {
+                hints.append(areas[j].bounds);
+                sources.append(j);
+            }
+        }
+        for (const auto &hint : localHints)
+            if (parent.bounds.contains(hint)) { hints.append(hint); sources.append(-1); }
+        const auto parts = partitionInlineFormulas(gray,parent.bounds,hints);
+        if (parts.isEmpty()) continue;
+        // Preserve other independent model proposals (in particular figures).
+        if (std::ranges::any_of(areas,[&](const PageArea &area) {
+                return area.type == "picture" && parent.bounds.intersects(area.bounds);
+            })) continue;
+        QSet<int> usedHints;
+        for (const auto &part : parts) if (part.formula >= 0) usedHints.insert(part.formula);
+        QVector<PageArea> children;
+        for (const auto &part : parts) {
+            const int source = part.formula < 0 ? -1 : sources[part.formula];
+            PageArea child = source < 0 ? parent : areas[source];
+            child.type = child.detectedType = part.formula < 0 ? "text" : "math";
+            child.bounds = part.bounds;
+            child.alternatives.clear();
+            if (source < 0) {
+                child.label = part.formula < 0 ? "text_fragment" : "inline_formula_geometry";
+                if (part.formula < 0) {
+                    // An expression in a denser line may have no safe gutter.
+                    // Keep mixed OCR for that fragment when another line splits.
+                    for (int k = 0; k < hints.size(); ++k)
+                        if (!usedHints.contains(k) && part.bounds.intersects(hints[k]))
+                            child.type = child.detectedType = "mixed";
+                }
+                child.id = QString("split/%1/%2/%3/%4/%5").arg(parent.id).arg(part.bounds.x()).arg(part.bounds.y())
+                    .arg(part.bounds.width()).arg(part.bounds.height());
+                child.score = -1; // Raster geometry has no independent model confidence.
+            }
+            children.append(std::move(child));
+        }
+        for (int j = 0; j < areas.size(); ++j)
+            if (parent.bounds.contains(areas[j].bounds)) replaced.insert(j);
+        subdivisions.insert(index,std::move(children));
+    }
+    QVector<PageArea> result;
+    for (int i = 0; i < areas.size(); ++i) {
+        if (subdivisions.contains(i)) result += subdivisions.value(i);
+        else if (!replaced.contains(i) && !(implicitParent && i == areas.size()-1)) result.append(areas[i]);
+    }
+    if (result.size() <= 1000) areas = std::move(result);
+    else if (implicitParent) areas.removeLast();
 }
 QVector<core::ImageRegion> mergePageAreas(const QVector<core::ImageRegion> &existing, const QVector<PageArea> &accepted, bool replaceAutomatic)
 {

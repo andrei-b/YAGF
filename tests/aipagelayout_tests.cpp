@@ -9,6 +9,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QPainter>
 #include <QSettings>
 #include <QListWidget>
 #include <QCheckBox>
@@ -238,6 +239,37 @@ private slots:
         QCOMPARE(dialog.regions().size(),1);QCOMPARE(dialog.regions()[0].content,"text");
         slider->setValue(30);QCOMPARE(dialog.regions().size(),1);QCOMPARE(dialog.regions()[0].content,"mixed");
         slider->setValue(31);QCOMPARE(dialog.regions()[0].content,"text");QCOMPARE(server.requests,1);
+    }
+    void selectedBlockSplitsTwoInlineExpressionsOnOneLine()
+    {
+        Server server;
+        QImage image(200,70,QImage::Format_RGB32);
+        image.fill(Qt::white);
+        const QRect a(44,23,14,22), b(123,22,19,22);
+        QPainter ink(&image);
+        for (const QRect box : {QRect(2,4,190,8),QRect(3,28,35,9),a,QRect(66,28,48,9),
+                                b,QRect(154,28,38,9),QRect(3,55,180,9)}) ink.fillRect(box,Qt::black);
+        ink.end();
+        server.areas={area("paragraph","text",image.rect(),.95),area("first","mixed",a,.85,"inline_formula"),
+                      area("second","mixed",b,.8,"inline_formula")};
+        QSettings settings("YAGF","YAGF Revival");
+        settings.setValue("layout/url",server.url().toString());
+        settings.setValue("layout/threshold",.5);
+        ui::AiPageLayoutDialog dialog(image,{},nullptr,1,{},true);
+        dialog.show();
+        QTRY_VERIFY(dialog.findChild<QPushButton *>("applyPageAreas")->isEnabled());
+        const auto parts=dialog.regions();
+        QCOMPARE(parts.size(),7);
+        QCOMPARE(parts[2].content,"math"); QCOMPARE(parts[4].content,"math");
+        QVERIFY(parts[2].bounds.contains(a)); QVERIFY(parts[4].bounds.contains(b));
+        for (int i=1; i<=5; ++i) {
+            QVERIFY(parts[i].bounds.contains(parts[i].bounds.center().x(),32));
+            if (i>1) QVERIFY(parts[i-1].bounds.right()<parts[i].bounds.left());
+        }
+        auto *slider=dialog.findChild<QSlider *>("layoutThreshold");
+        slider->setValue(90); QCOMPARE(dialog.regions().size(),1);
+        slider->setValue(50); QCOMPARE(dialog.regions().size(),7);
+        QCOMPARE(server.requests,1);
     }
     void picturesSurviveHierarchyAndExports() {
         core::OcrDocument book; book.sourcePath=directory.filePath("scan.png"); QVERIFY(sample().save(book.sourcePath));

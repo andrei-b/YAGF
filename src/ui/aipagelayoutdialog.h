@@ -49,7 +49,8 @@ private:
     void fitPreview();
     void filterAreas();
     void rememberSelection(int index,bool checked);
-    QImage image;
+    QImage image, splitGray;
+    QVector<QRect> localInlineHints;
     QVector<core::ImageRegion> existing;
     QVector<processing::PageArea> areas;
     QVector<processing::PageArea> allAreas;

@@ -229,6 +229,24 @@ private slots:
         QCOMPARE(across->imageRegions[1].bounds,sideBySide[1].bounds);
     }
 
+    void acceptedInlineCropReadsOnceInProseOrder()
+    {
+        auto raw=reading({word(1,1,{82,8,8,6},"n"),word(1,2,{10,20,42,10},"Before"),
+                          word(1,2,{75,22,25,3},"-"),word(1,2,{130,20,45,10},"after"),
+                          word(1,3,{82,32,8,8},"2")},{200,58});
+        auto image=scan(raw);
+        const QRect crop(70,7,34,34);
+        QVector<core::ImageRegion> regions{{"left",{0,16,62,20},{},false,"text"},
+            {"expression",crop,{},false,"math",false,"inline_formula"},
+            {"right",{120,16,72,20},{},false,"text"}};
+        mathBackend();
+        auto result=processing::recognizeSmartBlocks(image,{.language="eng"},regions,false,{},false,&raw);
+        QVERIFY(result);
+        QCOMPARE(text(*result),(QStringList{"Before","\\(x=1\\)","after"}));
+        QCOMPARE(result->words[1].bounds,crop);
+        QCOMPARE(result->words[1].line,result->words[0].line);
+    }
+
     void textAndFormulaScheduling_data() {
         QTest::addColumn<bool>("eager");
         QTest::addColumn<bool>("parallel");

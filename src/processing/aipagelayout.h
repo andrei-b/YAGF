@@ -22,6 +22,7 @@ struct PageLayout {
     QVector<PageArea> areas;
     QJsonObject rawOutput;
     QVector<PageArea> rawAreas; // Unconsolidated evidence for reapplying score thresholds.
+    QVector<QRect> localInlineHints; // Geometry fallback for explicit crop subdivision.
 };
 struct PageLayoutOptions {
     QUrl url = QUrl(QStringLiteral("http://127.0.0.1:8771"));
@@ -34,6 +35,9 @@ std::expected<PageLayout, OcrError> detectPageAreas(const QImage &image, const P
 // Inline formulas belong to their containing text block. Keep the paragraph intact
 // and route it through mixed OCR rather than proposing overlapping tiny blocks.
 void consolidateInlineAreas(QVector<PageArea> &areas);
+// Selected-block review can keep detected inline expressions as individual
+// math crops and partition their containing paragraph around them.
+void subdivideInlineAreas(QVector<PageArea> &areas, const QImage &gray, const QVector<QRect> &localHints);
 QVector<core::ImageRegion> mergePageAreas(const QVector<core::ImageRegion> &existing,
                                          const QVector<PageArea> &accepted, bool replaceAutomatic);
 }

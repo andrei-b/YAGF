@@ -1,4 +1,5 @@
 #include "aipagelayoutdialog.h"
+#include "formulagrowth.h"
 #include "recognitionrecorder.h"
 #include <QElapsedTimer>
 #include <QJsonDocument>
@@ -121,6 +122,7 @@ AiPageLayoutDialog::AiPageLayoutDialog(QImage source,QVector<core::ImageRegion> 
     auto *title=new QLabel(pageNumber>0 ? tr("Page %1 · AI areas").arg(pageNumber) : tr("AI page areas"),this); title->setObjectName("layoutTitle"); titles->addWidget(title);
     auto *intro=new QLabel(tr("Review each block, choose its type, then apply the areas to your page."),this); intro->setObjectName("layoutSubtitle"); intro->setWordWrap(true); titles->addWidget(intro);
     if(blockScope) {
+        splitGray=image.convertToFormat(QImage::Format_Grayscale8);
         setWindowTitle(tr("AI split selected block"));title->setText(tr("Page %1 · split selected block").arg(pageNumber));
         intro->setText(tr("Only the selected block is analyzed. Select at least two subdivisions to replace it; the rest of the page stays in place."));
     }
@@ -192,6 +194,7 @@ AiPageLayoutDialog::AiPageLayoutDialog(QImage source,QVector<core::ImageRegion> 
             message->setText(result.error().cancelled ? tr("Analysis cancelled.") : result.error().message);
             emptyHint->setText(tr("Analysis unavailable.\nYour current page is unchanged.")); updateSelection(); return;
         }
+        localInlineHints=std::move(result->localInlineHints);
         allAreas=std::move(result->rawAreas);hasAnalysis=true;filterAreas();
     });
     populate();
@@ -236,7 +239,7 @@ void AiPageLayoutDialog::analyze()
     stop=std::stop_source{}; busy=true; areas.clear();allAreas.clear();typeOverrides.clear();selectionOverrides.clear();hasAnalysis=false; populate();
     analyzeButton->setEnabled(false); endpoint->setEnabled(false); token->setEnabled(false); replaceAutomatic->setEnabled(false);
     progress->show(); message->setText(blockScope?tr("Finding finer areas within the selected block…"):tr("Finding text, pictures and formulas on the current page…"));
-    watcher.setFuture(QtConcurrent::run([source=image,options,context=historyContext,path=historySourcePath,token=stop.get_token()] {
+    watcher.setFuture(QtConcurrent::run([source=image,gray=splitGray,options,context=historyContext,path=historySourcePath,token=stop.get_token()] {
         core::RecognitionRun run;
         if(context.history) {
             run=context.history->begin("ai-page-layout","auto",source,context);
@@ -250,6 +253,10 @@ void AiPageLayoutDialog::analyze()
             context.history->finish(std::move(run),timer.elapsed(),result?"succeeded":result.error().cancelled?"cancelled":"failed",
                 result?QString():result.error().message,output);
         }
+        if (result && !gray.isNull() && std::ranges::none_of(result->rawAreas,[](const auto &area) {
+                return area.label=="inline_formula" || area.type=="math";
+            }))
+            result->localInlineHints=processing::findInlineFormulaHints(gray,gray.rect(),token);
         return result;
     }));
 }
@@ -257,7 +264,8 @@ void AiPageLayoutDialog::filterAreas()
 {
     areas.clear();
     for(const auto &area:allAreas)if(area.score+1e-9>=threshold->value()/100.)areas.append(area);
-    processing::consolidateInlineAreas(areas);
+    if (blockScope) processing::subdivideInlineAreas(areas,splitGray,localInlineHints);
+    else processing::consolidateInlineAreas(areas);
     for(auto &area:areas)if(typeOverrides.contains(area.id))area.type=typeOverrides.value(area.id);
     populate();
     message->setText(allAreas.isEmpty()?tr("No areas returned by the model. Use Analyze again to retry."):
@@ -268,7 +276,7 @@ void AiPageLayoutDialog::filterAreas()
 void AiPageLayoutDialog::rememberSelection(int index,bool checked)
 {
     selectionOverrides[areas[index].id]=checked;
-    if(checked)for(const auto &area:allAreas)
+    if(checked)for(const auto &area:(blockScope ? areas : allAreas))
         if(area.id!=areas[index].id && area.bounds.intersects(areas[index].bounds))selectionOverrides[area.id]=false;
 }
 void AiPageLayoutDialog::populate(bool resetSelection)
@@ -335,7 +343,7 @@ void AiPageLayoutDialog::updateCard(int index)
     const auto &area=areas[index]; const auto &card=cards[index];
     QVector<processing::PageAreaAlternative> candidates{{area.label,area.detectedType,area.score}}; candidates+=area.alternatives;
     const auto chosen=std::ranges::find(candidates,area.type,&processing::PageAreaAlternative::type);
-    const QString caption=chosen==candidates.end() ? tr("Manual type · model: %1").arg(typeLabel(area.detectedType)) : tr("Model score %1% · %2").arg(chosen->score*100,0,'f',1).arg(QString(chosen->label).replace('_',' '));
+    const QString caption=chosen==candidates.end() ? tr("Manual type · model: %1").arg(typeLabel(area.detectedType)) : area.score < 0 ? tr("Split from surrounding text") : tr("Model score %1% · %2").arg(chosen->score*100,0,'f',1).arg(QString(chosen->label).replace('_',' '));
     card.score->setText(caption); card.score->setToolTip(caption);
     const auto other=std::ranges::find_if(candidates,[&](const auto &candidate){return candidate.type!=area.type;});
     const bool hasAlternative=!area.alternatives.isEmpty() && other!=candidates.end();

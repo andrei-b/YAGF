@@ -1,6 +1,9 @@
 #include "formulagrowth.h"
+#include "compactassignment.h"
+#include "formulatext.h"
 
 #include <QRegion>
+#include <QUuid>
 #include <opencv2/imgproc.hpp>
 #include <algorithm>
 #include <cmath>
@@ -293,5 +296,203 @@ QVector<core::ImageRegion> growFormulaBlocks(const QImage &image,
     for (qsizetype i = result.size(); i-- > 0;)
         if (result[i].bounds.isEmpty() && !blocks[i].bounds.isEmpty()) result.removeAt(i);
     return result;
+}
+// Estimate expression extents from fraction stacks and paired equals strokes.
+// Tight groups of letters on either side are prose boundaries. Short,
+// separated groups can be variables, signs, powers or a second fraction.
+QVector<QRect> findInlineFormulaHints(const QImage &gray, QRect parent, std::stop_token stop)
+{
+    if (gray.format() != QImage::Format_Grayscale8 || !gray.rect().contains(parent) ||
+        parent.isEmpty() || qint64(parent.width())*parent.height() > 8000000) return {};
+    const auto data = components(gray, parent);
+    QVector<int> heights;
+    for (const auto &g : data.glyphs)
+        if (g.box.height() >= 4 && g.box.width() <= g.box.height()*3) heights.append(g.box.height());
+    if (heights.size() < 4) return {};
+    auto middle = heights.begin()+heights.size()/2;
+    std::nth_element(heights.begin(), middle, heights.end());
+    const int em = *middle;
+    QVector<QRect> hints;
+    for (const auto &g : data.glyphs) {
+        if (stop.stop_requested()) return {};
+        QRect bar = g.box;
+        if (bar.width() < std::max(6, em) || bar.width() > 12*em ||
+            bar.height()*4 > bar.width() || bar.height() > std::max(2, em/3) ||
+            g.ink < .55*bar.width()*bar.height()) continue;
+        QRect above, below, equals;
+        for (const auto &other : data.glyphs) {
+            const QRect b = other.box;
+            if (b == bar || b.left() < bar.left()-1 || b.right() > bar.right()+1) continue;
+            const int dy = gap(bar.top(),bar.bottom(),b.top(),b.bottom());
+            if (dy > .65*em || b.intersects(bar)) continue;
+            if (b.top() > bar.bottom() && dy <= em/2 && std::abs(b.width()-bar.width()) <= bar.width()/6 &&
+                b.height() <= bar.height()+1 && b.height()*4 <= b.width()) equals = b;
+            if (b.height() < .45*em || b.height() > 1.8*em) continue;
+            if (b.bottom() < bar.top()) above |= b;
+            else below |= b;
+        }
+        QRect seed;
+        if (!above.isEmpty() && !below.isEmpty()) seed = bar | above | below;
+        else if (!equals.isEmpty()) seed = bar | equals;
+        else continue;
+
+        // Group glyphs by horizontal gaps at the operator's baseline. Joined
+        // numerator/denominator projections are already part of the seed.
+        QVector<QRect> glyphs;
+        const int mid = bar.center().y();
+        for (const auto &other : data.glyphs) {
+            const auto b = other.box;
+            if (b.bottom() < mid-em/2 || b.top() > mid+em/2 ||
+                gap(b.left(),b.right(),bar.left(),bar.right()) > 10*em) continue;
+            glyphs.append(b);
+        }
+        std::ranges::sort(glyphs, {}, &QRect::left);
+        QVector<QRect> groups;
+        for (const auto &b : glyphs) {
+            if (groups.isEmpty() || b.left()-groups.last().right()-1 > std::max(1, em/4)) groups.append(b);
+            else groups.last() |= b;
+        }
+        const auto extend = [&](const QRect &group) {
+            if ((group.width() < .55*em && group.height() < .45*em) ||
+                gap(seed.left(),seed.right(),group.left(),group.right()) > em ||
+                (group.width() > 1.65*em && !group.intersects(bar))) return false;
+            seed |= group;
+            return true;
+        };
+        for (auto it = groups.crbegin(); it != groups.crend(); ++it)
+            if (it->left() <= bar.right() && !extend(*it)) break;
+        for (const auto &group : groups)
+            if (group.right() >= bar.left() && !extend(group)) break;
+        // Equals without an operand could be two short parallel rules.
+        if (above.isEmpty() && seed.width() <= bar.width()+2) continue;
+        for (qsizetype i = hints.size(); i-- > 0;)
+            if (hints[i].intersects(seed)) seed |= hints.takeAt(i);
+        hints.append(seed);
+    }
+    return hints;
+}
+
+QVector<InlinePart> partitionInlineFormulas(const QImage &gray, QRect parent, const QVector<QRect> &hints)
+{
+    if (gray.format() != QImage::Format_Grayscale8 || !gray.rect().contains(parent) ||
+        parent.isEmpty() || hints.isEmpty()) return {};
+    const auto inkBounds = [&](QRect rect) {
+        int left = rect.right()+1, right = rect.left()-1, top = rect.bottom()+1, bottom = rect.top()-1;
+        for (int y = rect.top(); y <= rect.bottom(); ++y) {
+            const auto *pixels = gray.constScanLine(y);
+            for (int x = rect.left(); x <= rect.right(); ++x) if (pixels[x] < 175) {
+                left = std::min(left,x); right = std::max(right,x);
+                top = std::min(top,y); bottom = y;
+            }
+        }
+        return right < left ? QRect{} : QRect(QPoint(left,top),QPoint(right,bottom));
+    };
+    const auto rowHasInk = [&](int y) {
+        const auto *row = gray.constScanLine(y);
+        return std::any_of(row+parent.left(),row+parent.right()+1,[](uchar v){return v < 175;});
+    };
+    QVector<InlinePart> cuts;
+    for (int i = 0; i < hints.size(); ++i) {
+        if (!parent.contains(hints[i])) continue;
+        QRect cut = inkBounds(hints[i]);
+        if (cut.isEmpty()) continue;
+        const QRect seed = cut;
+        // Extend to clear gutters on the same line. If nearby lines touch
+        // throughout the crop, leave the paragraph intact instead of slicing ink.
+        while (cut.top() > parent.top() && rowHasInk(cut.top()-1) &&
+               seed.top()-cut.top() <= seed.height()+3) cut.adjust(0,-1,0,0);
+        while (cut.bottom() < parent.bottom() && rowHasInk(cut.bottom()+1) &&
+               cut.bottom()-seed.bottom() <= seed.height()+3) cut.adjust(0,0,0,1);
+        if ((cut.top() > parent.top() && rowHasInk(cut.top()-1)) ||
+            (cut.bottom() < parent.bottom() && rowHasInk(cut.bottom()+1))) continue;
+        const auto columnHasInk = [&](int x) {
+            for (int y = cut.top(); y <= cut.bottom(); ++y)
+                if (gray.constScanLine(y)[x] < 175) return true;
+            return false;
+        };
+        while (cut.left() > parent.left() && columnHasInk(cut.left()-1)) cut.adjust(-1,0,0,0);
+        while (cut.right() < parent.right() && columnHasInk(cut.right()+1)) cut.adjust(0,0,1,0);
+        if (seed.left()-cut.left() > seed.height() || cut.right()-seed.right() > seed.height()) continue;
+        const bool conflict = std::ranges::any_of(cuts,[&](const InlinePart &p) {
+            const bool sameBand = p.bounds.top() == cut.top() && p.bounds.bottom() == cut.bottom();
+            return sameBand ? p.bounds.intersects(cut)
+                            : p.bounds.top() <= cut.bottom() && cut.top() <= p.bounds.bottom();
+        });
+        if (conflict) continue;
+        cuts.append({cut,i});
+    }
+    if (cuts.isEmpty()) return {};
+    std::ranges::sort(cuts, {}, [](const InlinePart &p){return std::pair(p.bounds.top(),p.bounds.left());});
+    QVector<InlinePart> result;
+    const auto append = [&](QRect cell, int formula = -1) {
+        if (cell.isEmpty()) return;
+        const auto ink = inkBounds(cell);
+        if (!ink.isEmpty()) result.append({ink.adjusted(-1,-1,1,1).intersected(cell),formula});
+    };
+    int top = parent.top();
+    bool besideText = false;
+    for (int i = 0; i < cuts.size();) {
+        const QRect band = cuts[i].bounds;
+        append({parent.left(),top,parent.width(),band.top()-top});
+        int left = parent.left();
+        const auto appendBeside = [&](int end) {
+            const auto before = result.size();
+            append({left,band.top(),end-left,band.height()});
+            besideText |= result.size() != before;
+        };
+        do {
+            const auto &piece = cuts[i++];
+            appendBeside(piece.bounds.left());
+            append(piece.bounds,piece.formula);
+            left = piece.bounds.right()+1;
+        } while (i < cuts.size() && cuts[i].bounds.top()==band.top());
+        appendBeside(parent.right()+1);
+        top = band.bottom()+1;
+    }
+    if (!besideText) return {};
+    append({parent.left(),top,parent.width(),parent.bottom()-top+1});
+    return result;
+}
+
+QVector<core::ImageRegion> refineFormulaRegions(const QImage &image,
+    const QVector<core::ImageRegion> &regions, const QVector<core::OcrWord> &words, std::stop_token stop)
+{
+    QVector<QRect> wordHints;
+    for (const auto &word : words) {
+        if (word.geometryInferred || word.bounds.isEmpty()) continue;
+        const auto text = core::formulaSourceText(word).trimmed();
+        const auto spans = core::mathTextSpans(text);
+        if ((spans.size() == 1 && spans[0].length == text.size()) || compactAssignment(text))
+            wordHints.append(word.bounds);
+    }
+    auto grown = growFormulaBlocks(image,regions,stop);
+    const auto gray = image.convertToFormat(QImage::Format_Grayscale8);
+    QVector<core::ImageRegion> result;
+    for (int i = 0; i < grown.size(); ++i) {
+        if (stop.stop_requested()) return regions;
+        const auto &parent = grown[i];
+        QVector<InlinePart> parts;
+        if (!parent.notText && (parent.content.isEmpty() || parent.content=="text" || parent.content=="mixed")) {
+            auto hints = findInlineFormulaHints(gray,parent.bounds,stop);
+            for (const auto &box : wordHints)
+                if (parent.bounds.contains(box) && std::ranges::none_of(hints,[&](QRect hint){return hint.contains(box);}))
+                    hints.append(box);
+            parts = partitionInlineFormulas(gray,parent.bounds,hints);
+        }
+        if (parts.isEmpty() || result.size()+parts.size()+grown.size()-i-1 > 1000) {
+            result.append(parent);
+            continue;
+        }
+        for (const auto &part : parts) {
+            core::ImageRegion child;
+            child.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+            child.bounds = part.bounds;
+            child.content = part.formula < 0 ? "text" : "math";
+            if (part.formula >= 0) child.detectedLabel = "inline_formula_geometry";
+            child.language = parent.language;
+            result.append(std::move(child));
+        }
+    }
+    return stop.stop_requested() ? regions : result;
 }
 } // namespace yagf::processing

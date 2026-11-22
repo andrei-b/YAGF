@@ -3020,9 +3020,11 @@ void MainWindow::showDocument()
         item->setTextAlignment(Qt::AlignHCenter);
         item->setToolTip(tr("Block %1 · %2\nRight-click to change its content type or language.")
             .arg(i + 1).arg(language));
-        if (!region.detectedLabel.isEmpty())
-            item->setToolTip(item->toolTip() + tr("\nDetected: %1 · model score %2%")
-                .arg(region.detectedLabel).arg(region.detectionScore * 100, 0, 'f', 1));
+        if (!region.detectedLabel.isEmpty()) {
+            const auto detail = region.detectionScore < 0 ? tr("\nDetected: %1").arg(region.detectedLabel)
+                : tr("\nDetected: %1 · model score %2%").arg(region.detectedLabel).arg(region.detectionScore * 100, 0, 'f', 1);
+            item->setToolTip(item->toolTip() + detail);
+        }
         if (region.notText) item->setForeground(QColor(110, 110, 110));
     }
     recognizeAction->setText(mathMode->isChecked() ? tr("Recognize math") : tr("Recognize"));
@@ -3144,7 +3146,7 @@ void MainWindow::refreshImageToolbar()
     const auto *page = document.page(currentPage);
     aiSplitBlockAction->setEnabled(ready && page && selectedRegionIds.size()==1);
     refineFormulaAction->setEnabled(ready && page && std::ranges::any_of(page->imageRegions, [](const ImageRegion &r) {
-        return !r.notText && r.content == "math";
+        return !r.notText && r.content != "picture";
     }));
     imageClearBlocksAction->setEnabled(ready && page && !page->imageRegions.isEmpty());
     for (auto *action : {imageRecognizeBlockAction, imageBlockOptionsAction, imageRemoveBlockAction}) {
@@ -3339,25 +3341,21 @@ void MainWindow::refineFormulaBlocks()
     if (image.isNull()) { showError(tr("Could not read the page image for formula refinement.")); return; }
 
     std::stop_source cancellation;
-    QProgressDialog progress(tr("Looking for symbols near formula blocks…"), tr("Cancel"), 0, 0, this);
+    QProgressDialog progress(tr("Finding inline formulas and checking formula boundaries…"), tr("Cancel"), 0, 0, this);
     progress.setWindowModality(Qt::WindowModal);
     QFutureWatcher<QVector<ImageRegion>> watcher;
     connect(&watcher, &QFutureWatcherBase::finished, &progress, &QDialog::accept);
     connect(&progress, &QProgressDialog::canceled, this, [&] { cancellation.request_stop(); });
-    watcher.setFuture(QtConcurrent::run(processing::growFormulaBlocks, image, page->imageRegions, cancellation.get_token()));
+    watcher.setFuture(QtConcurrent::run(processing::refineFormulaRegions, image, page->imageRegions, page->words, cancellation.get_token()));
     if (progress.exec() != QDialog::Accepted) cancellation.request_stop();
     watcher.waitForFinished();
     if (cancellation.stop_requested()) return;
 
     auto regions = watcher.result();
-    int changed = 0;
-    for (const auto &r : regions) {
-        if (r.content == "math" && std::ranges::any_of(page->imageRegions, [&](const auto &old) {
-                return old.id == r.id && old.bounds != r.bounds;
-            })) ++changed;
-    }
+    const bool changed = regions.size() != page->imageRegions.size() ||
+        !std::ranges::equal(regions, page->imageRegions, {}, &ImageRegion::bounds, &ImageRegion::bounds);
     if (!changed) {
-        status->setText(tr("No nearby symbols could be assigned to a formula block."));
+        status->setText(tr("No inline formula splits or boundary changes found."));
         return;
     }
     OcrPage edited = *page;
@@ -3365,7 +3363,7 @@ void MainWindow::refineFormulaBlocks()
     selectedRegionIds.clear();
     selectedImageRegion = -1;
     undoStack.push(new ReplacePageCommand(document, currentPage, std::move(edited), tr("Refine formula blocks")));
-    status->setText(tr("Expanded %1 formula block(s). Review the outlines, then recognize the page.").arg(changed));
+    status->setText(tr("Formula blocks refined. Review the outlines, then recognize the page."));
 }
 
 void MainWindow::splitSelectedBlockWithAi()
@@ -3401,6 +3399,7 @@ void MainWindow::splitSelectedBlockWithAi()
     const int index=found-page->imageRegions.begin();edited.imageRegions.removeAt(index);
     for(int i=0;i<subdivisions.size();++i) {
         auto &region=subdivisions[i];region.bounds.translate(original.bounds.topLeft());
+        region.autoDetected=false; // Keep the explicitly accepted split during automatic layout.
         if(!original.bounds.contains(region.bounds))return;
         if(region.language.isEmpty())region.language=original.language;
         if(std::ranges::any_of(edited.imageRegions,[&](const auto &r){return r.bounds.intersects(region.bounds);}))return;

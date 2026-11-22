@@ -727,13 +727,28 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
         }
         return found;
     };
+    QSet<QRect> inlineCrops;
+    const auto analyzeRegion = [&](const core::ImageRegion &region) -> std::expected<QVector<Row>, OcrError> {
+        const QRect box = region.bounds.intersected(gray.rect());
+        if (!box.isEmpty() && region.content == "math" &&
+            (region.detectedLabel == "inline_formula" || region.detectedLabel == "inline_formula_geometry")) {
+            // The accepted crop is one expression, even if native OCR gives
+            // the numerator and denominator different lines.
+            inlineCrops.insert(box);
+            OcrWord formula;
+            formula.bounds = box;
+            formula.layoutBlock = true;
+            return QVector<Row>{{box,"mixed",{formula}}};
+        }
+        return analyze(gray, box, region.content, region.language, {});
+    };
     std::map<int, QVector<Row>> earlyRows;
     if (!splitOnly && parallelFormulas && formulaProvider != &prose) {
         QList<QRect> boxes;
         for (int i = 0; i < page.imageRegions.size(); ++i) {
             const auto &region = page.imageRegions[i];
             if (region.notText || region.content != "math") continue;
-            auto found = analyze(gray, region.bounds.intersected(gray.rect()), "math", region.language, {});
+            auto found = analyzeRegion(region);
             if (!found) return std::unexpected(found.error());
             for (const auto &row : *found) for (const auto &word : row.words)
                 if (word.layoutBlock && !boxes.contains(word.bounds)) boxes.append(word.bounds);
@@ -753,7 +768,7 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
         auto &region = page.imageRegions[i];
         if (region.notText) continue;
         std::expected<QVector<Row>, OcrError> found = earlyRows.contains(i) ? std::move(earlyRows.at(i)) :
-            analyze(gray, region.bounds.intersected(gray.rect()), region.content, region.language, {});
+            analyzeRegion(region);
         if (!found) return std::unexpected(found.error());
         if (region.content.isEmpty() && !found->isEmpty()) {
             region.content = found->first().content;
@@ -936,7 +951,9 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
                 formula.sourceWordIds += original.words[i].sourceWordIds;
                 removed.insert(i);
             }
-            replacements.insert(span.first(), std::move(formula));
+            if (inlineCrops.contains(formula.bounds))
+                insertions.append({formula.bounds,"mixed",{formula},true});
+            else replacements.insert(span.first(), std::move(formula));
         }
         QVector<OcrWord> words;
         for (int i = 0; i < original.words.size(); ++i) {
