@@ -11,6 +11,7 @@
 #include <QScopeGuard>
 #include "blockminiaturelist.h"
 #include "projectfile.h"
+#include "sessionrecovery.h"
 #include "preprocessdialog.h"
 #include "restorationdialog.h"
 #include <QBuffer>
@@ -1417,6 +1418,10 @@ MainWindow::MainWindow()
     statusBar()->addPermanentWidget(status);
 
     connect(&processor, &DocumentProcessor::busyChanged, this, &MainWindow::setBusy);
+    recoveryTimer = new QTimer(this);
+    recoveryTimer->setSingleShot(true);
+    recoveryTimer->setInterval(1500);
+    connect(recoveryTimer, &QTimer::timeout, this, &MainWindow::writeRecoverySnapshot);
     connect(&processor, &DocumentProcessor::recognitionStage, this,
         [this](int page,const QString &stage,int complete,int total) {
             if (!processor.isRecognizing()) return;
@@ -1426,6 +1431,7 @@ MainWindow::MainWindow()
                 setFixedProgressText(recognitionProgress, tr("Page %1: %2").arg(page).arg(detail));
         });
     connect(&processor, &DocumentProcessor::failed, this, [this](const QString &message) {
+        recognitionInterrupted = false;
         queuedImageRegions.clear();
         verificationTarget.reset();
         refreshRenderedPageIfNeeded();
@@ -1436,9 +1442,12 @@ MainWindow::MainWindow()
         verificationTarget.reset();
         status->setText(tr("Cancelled"));
         refreshRenderedPageIfNeeded();
+        if (std::exchange(recognitionInterrupted, false))
+            // Leave the processor's signal before a save dialog can open.
+            QTimer::singleShot(0, this, &MainWindow::finishInterruptedRecognition);
     });
     connect(&processor, &DocumentProcessor::documentOpened, this, [this](int count) {
-        if (!projectPath.isEmpty() && document.totalPages != count) {
+        if (!document.pages.isEmpty() && document.totalPages != count) {
             // Version 1 projects described only the first rendered page.
             if (document.totalPages == 1 && document.pages.size() == 1 && document.pages.first().number == 1)
                 markDirty();
@@ -1666,6 +1675,7 @@ MainWindow::MainWindow()
         const QString engineId = page.engineId;
         core::normalizeBlockFontSizes(page);
         undoStack.push(new ReplacePageCommand(document, number, std::move(page), tr("Recognize page")));
+        ++recognizedThisRun;
         document.engine = engineId;
         document.language = language;
         document.totalPages = pageCount;
@@ -1676,6 +1686,7 @@ MainWindow::MainWindow()
         updateRecognitionProgress(completed, total);
     });
     connect(&processor, &DocumentProcessor::batchFinished, this, [this] {
+        recognitionInterrupted = false;
         status->setText(tr("Batch OCR complete"));
         refreshRenderedPageIfNeeded();
     });
@@ -1946,6 +1957,7 @@ void MainWindow::loadSource(const QString &path)
         return;
     }
     if (!maybeSave()) return;
+    discardRecoverySnapshot();
     processor.resetSource();
     verificationTarget.reset();
     originalPath = QFileInfo(path).absoluteFilePath();
@@ -2015,8 +2027,40 @@ void MainWindow::openPortableProject()
 
 void MainWindow::loadProject(const QString &path)
 {
-    if (processor.isBusy() || exportBusy || projectLoading || path.isEmpty()) return;
-    if (!maybeSave()) return;
+    loadProjectFile(path, false);
+}
+
+bool MainWindow::recoverUnsavedProject()
+{
+    const auto snapshot = core::SessionRecovery::orphanedSnapshot();
+    if (!snapshot) return false;
+    // Reattach to the project file only while it is no newer than the recovery copy;
+    // if it was saved again later (or is gone), restore as Untitled so nothing is overwritten.
+    const QFileInfo original(snapshot->originalProject);
+    const bool reattach = !snapshot->originalProject.isEmpty() && original.exists() &&
+                          original.lastModified() <= QFileInfo(snapshot->path).lastModified();
+    if (!loadProjectFile(snapshot->path, true, reattach ? snapshot->originalProject : QString())) return false;
+    // Take the restored work over into this session's own recovery copy before
+    // dropping the old one, so a second crash cannot lose it.
+    writeRecoverySnapshot();
+    if (recovery && QFileInfo::exists(recovery->snapshotPath())) core::SessionRecovery::removeSnapshot(snapshot->path);
+    if (reattach)
+        statusBar()->showMessage(tr("Restored unsaved changes to %1 from a session that ended unexpectedly. "
+                                    "Save to keep them.").arg(original.fileName()), 30000);
+    else if (!snapshot->originalProject.isEmpty())
+        statusBar()->showMessage(tr("Restored unsaved changes to %1 as an Untitled project, because that file "
+                                    "is missing or was saved again later.").arg(snapshot->originalProject), 30000);
+    else
+        statusBar()->showMessage(tr("Restored an unsaved project from a session that ended unexpectedly. "
+                                    "Save it to keep it."), 30000);
+    return true;
+}
+
+bool MainWindow::loadProjectFile(const QString &path, bool recovered, const QString &originalProject)
+{
+    if (processor.isBusy() || exportBusy || projectLoading || path.isEmpty()) return false;
+    if (!maybeSave()) return false;
+    discardRecoverySnapshot();
     projectLoading = true;
     if (!projectLoadingProgress) {
         projectLoadingProgress = new ProjectLoadingDialog(this);
@@ -2044,17 +2088,19 @@ void MainWindow::loadProject(const QString &path)
     }));
     loadingEvents.exec();
     auto result = loading.result();
-    if (!result.opened) { showError(result.error); return; }
+    const QString keptCopy = recovered ? tr("\n\nThe unsaved work is kept in %1.").arg(path) : QString();
+    if (!result.opened) { showError(result.error + keptCopy); return false; }
     OcrDocument loaded = std::move(result.document);
     if (!QFileInfo::exists(loaded.sourcePath)) {
-        showError(tr("Source document is missing: %1").arg(loaded.sourcePath));
-        return;
+        showError(tr("Source document is missing: %1").arg(loaded.sourcePath) + keptCopy);
+        return false;
     }
     processor.resetSource();
     undoStack.clear();
     originalPath = loaded.sourcePath;
-    projectPath = path;
-    rememberProject();
+    // A recovered copy saves back to the project it came from, or stays Untitled.
+    projectPath = recovered ? originalProject : path;
+    if (!projectPath.isEmpty()) rememberProject();
     verificationTarget.reset();
     document = std::move(loaded);
     verification->invalidate(1);
@@ -2068,7 +2114,8 @@ void MainWindow::loadProject(const QString &path)
         rawOcrOutputAction->setChecked(document.useRawOcrOutput);
     }
     correctionMemory.reset();
-    externalDirty = false;
+    // Recovered work is not in any project file yet: keep it marked as modified.
+    externalDirty = recovered;
     mathMode->setChecked(document.mathOcr);
     { const QSignalBlocker blocker(unicodeFormulasAction); unicodeFormulasAction->setChecked(document.unicodeFormulas); }
     if (const auto *first = document.page(1); first && !mathMode->isChecked() &&
@@ -2078,7 +2125,7 @@ void MainWindow::loadProject(const QString &path)
     else if (!mathMode->isChecked() && (document.engine == processor.engineId() || document.engine == "local-mixed") && !document.language.isEmpty())
         languageEdit->setText(document.engine == "tesseract"
             ? processing::TesseractEngine::modelLanguage(document.language) : document.language);
-    dirty = false;
+    dirty = recovered;
     updateTitle();
     wordList->clear();
     displayedWords.clear();
@@ -2113,6 +2160,7 @@ void MainWindow::loadProject(const QString &path)
     } else {
         loadImage(originalPath);
     }
+    return true;
 }
 
 void MainWindow::finishProjectLoading()
@@ -2174,6 +2222,7 @@ bool MainWindow::saveProject()
     externalDirty = false;
     undoStack.setClean();
     dirty = false;
+    discardRecoverySnapshot();
     updateTitle();
     statusBar()->showMessage(tr("Project saved: %1").arg(projectPath));
     return true;
@@ -2198,6 +2247,7 @@ bool MainWindow::saveProjectAs()
     externalDirty = false;
     undoStack.setClean();
     dirty = false;
+    discardRecoverySnapshot();
     updateTitle();
     statusBar()->showMessage(tr("Project saved: %1").arg(projectPath));
     return true;
@@ -2221,6 +2271,7 @@ bool MainWindow::savePortableProject()
     externalDirty = false;
     undoStack.setClean();
     dirty = false;
+    discardRecoverySnapshot();
     updateTitle();
     statusBar()->showMessage(tr("Portable project saved: %1").arg(directory));
     return true;
@@ -2248,6 +2299,51 @@ void MainWindow::refreshDirty()
 {
     dirty = externalDirty || !undoStack.isClean();
     updateTitle();
+    scheduleRecoverySnapshot();
+}
+
+void MainWindow::scheduleRecoverySnapshot()
+{
+    // Keep a recovery copy whenever there are changes not yet in a project file.
+    if (dirty && !document.pages.isEmpty() && !document.sourcePath.isEmpty()) {
+        // Do not restart a pending write, so a stream of changes still gets saved.
+        if (recoveryTimer && !recoveryTimer->isActive()) recoveryTimer->start();
+    } else {
+        discardRecoverySnapshot();
+    }
+}
+
+void MainWindow::writeRecoverySnapshot()
+{
+    if (recoveryTimer) recoveryTimer->stop();
+    if (!dirty || document.pages.isEmpty() || document.sourcePath.isEmpty()) return;
+    if (!recovery) recovery = std::make_unique<core::SessionRecovery>();
+    QString error;
+    if (!recovery->save(document, projectPath, &error))
+        statusBar()->showMessage(tr("Could not write the recovery copy: %1").arg(error), 15000);
+}
+
+void MainWindow::discardRecoverySnapshot()
+{
+    if (recoveryTimer) recoveryTimer->stop();
+    if (recovery) recovery->discard();
+}
+
+void MainWindow::finishInterruptedRecognition()
+{
+    if (recognizedThisRun == 0) {
+        status->setText(tr("Recognition interrupted before any page was finished."));
+        return;
+    }
+    status->setText(tr("Recognition interrupted: %1 of %2 pages recognized.")
+                        .arg(recognizedThisRun).arg(recognitionTotal));
+    // Secure the finished pages at once, whatever happens with the save below.
+    writeRecoverySnapshot();
+    if (!projectPath.isEmpty()) {
+        saveProject();
+    } else if (!saveProjectAs()) {
+        statusBar()->showMessage(tr("The recognized pages are kept in a recovery copy until you save the project."), 30000);
+    }
 }
 
 void MainWindow::updateTitle()
@@ -2950,7 +3046,8 @@ void MainWindow::updateRecognitionProgress(qsizetype completed, qsizetype total)
         recognitionProgress = new QProgressDialog(this);
         recognitionProgress->setObjectName(QStringLiteral("recognitionProgressDialog"));
         recognitionProgress->setWindowTitle(tr("Recognizing pages"));
-        recognitionProgress->setCancelButtonText(tr("Cancel"));
+        // Size the fixed dialog for the longer of the two button labels.
+        recognitionProgress->setCancelButtonText(tr("Interrupt"));
         recognitionProgress->setMinimumDuration(0);
         recognitionProgress->setAutoClose(false);
         recognitionProgress->setAutoReset(false);
@@ -2962,8 +3059,15 @@ void MainWindow::updateRecognitionProgress(qsizetype completed, qsizetype total)
         label->setMinimumHeight(label->fontMetrics().lineSpacing());
         recognitionProgress->setLabel(label);
         recognitionProgress->setFixedSize(recognitionProgress->sizeHint());
-        connect(recognitionProgress, &QProgressDialog::canceled, &processor, &DocumentProcessor::cancel);
+        connect(recognitionProgress, &QProgressDialog::canceled, this, [this] {
+            // Multipage runs stop but keep every finished page; a single page is simply cancelled.
+            recognitionInterrupted = recognitionTotal > 1;
+            processor.cancel();
+        });
     }
+    if (completed == 0) recognizedThisRun = 0;
+    recognitionTotal = total;
+    recognitionProgress->setCancelButtonText(total > 1 ? tr("Interrupt") : tr("Cancel"));
     recognitionProgress->setRange(0, static_cast<int>(total));
     setFixedProgressText(recognitionProgress, tr("%1 / %2 pages recognized").arg(completed).arg(total));
     recognitionProgress->setValue(static_cast<int>(completed));

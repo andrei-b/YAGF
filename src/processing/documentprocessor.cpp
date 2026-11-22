@@ -99,13 +99,17 @@ DocumentProcessor::DocumentProcessor(QObject *parent, const core::OcrDocument *s
         OcrJobResult result = ocrWatcher.result();
         const bool batch = job == Job::BatchOcr;
         const bool split = job == Job::SplitBlocks;
-        if((cancellationRequested || !result.outcome) && !result.historyPage.recognitionHistory.runs.isEmpty())
+        if((!result.outcome || (cancellationRequested && !batch)) && !result.historyPage.recognitionHistory.runs.isEmpty())
             emit recognitionHistoryReady(result.historyPage);
         if (cancellationRequested || (!result.outcome && result.outcome.error().cancelled)) {
+            // A batch page that completed while the stop request was in flight is
+            // finished work: deliver it before reporting the interruption.
+            const bool keepPage = batch && result.outcome.has_value();
             cancellationRequested = false;
             batchPages.clear();
             job = Job::None;
             emit busyChanged(false);
+            if (keepPage) emit batchPageRecognized(std::move(*result.outcome), batchSourceSize);
             emit cancelled();
             return;
         }

@@ -52,6 +52,8 @@ class QProgressDialog;
 class QToolBar;
 class QTimer;
 
+namespace yagf::core { class SessionRecovery; }
+
 namespace yagf::ui {
 
 class SpellHighlighter;
@@ -119,6 +121,8 @@ public:
     ~MainWindow() override;
     void loadSource(const QString &path);
     void loadProject(const QString &path);
+    // Restore the newest unsaved work left by a session that ended unexpectedly.
+    bool recoverUnsavedProject();
     bool usePaddleVlService(const QUrl &url);
 signals:
     void exportProgress(qsizetype completed, qsizetype total);
@@ -210,6 +214,11 @@ private:
     bool maybeApplyEditor();
     void runBatchOcr(bool remainingOnly);
     void updateRecognitionProgress(qsizetype completed, qsizetype total);
+    void finishInterruptedRecognition();
+    bool loadProjectFile(const QString &path, bool recovered, const QString &originalProject = {});
+    void scheduleRecoverySnapshot();
+    void writeRecoverySnapshot();
+    void discardRecoverySnapshot();
     void editLayout();
     void createRegionFromSelection();
     void improveCurrentPage();
@@ -265,6 +274,9 @@ private:
     QAction *cancelRecognitionAction = nullptr;
     QAction *cancelExportAction = nullptr;
     QProgressDialog *recognitionProgress = nullptr;
+    bool recognitionInterrupted = false;
+    qsizetype recognitionTotal = 0;
+    qsizetype recognizedThisRun = 0;
     QPushButton *previousButton;
     QPushButton *nextButton;
     QAction *scanAction;
@@ -312,6 +324,9 @@ private:
     QString projectPath;
     bool dirty = false;
     bool externalDirty = false;
+    // Crash-recovery copy of changes that are not in a project file yet.
+    std::unique_ptr<core::SessionRecovery> recovery;
+    QTimer *recoveryTimer = nullptr;
     QUndoStack undoStack;
     bool editorPending = false;
     bool exportBusy = false;

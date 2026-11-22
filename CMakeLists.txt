@@ -58,6 +58,7 @@ add_library(yagf_core STATIC
     src/core/symbolmatcher.cpp src/core/symbolmatcher.h
     src/core/correctionmemory.cpp src/core/correctionmemory.h
     src/core/projectfile.cpp src/core/projectfile.h
+    src/core/sessionrecovery.cpp src/core/sessionrecovery.h
     src/core/wordeditor.cpp src/core/wordeditor.h)
 target_link_libraries(yagf_core PUBLIC Qt6::Core Qt6::Gui)
 target_include_directories(yagf_core PUBLIC src/core)
@@ -357,6 +358,9 @@ if(BUILD_TESTING)
     qt_add_executable(projectfile_tests tests/projectfile_tests.cpp)
     target_link_libraries(projectfile_tests PRIVATE yagf_core)
     add_test(NAME projectfile_tests COMMAND projectfile_tests)
+    qt_add_executable(sessionrecovery_tests tests/sessionrecovery_tests.cpp)
+    target_link_libraries(sessionrecovery_tests PRIVATE yagf_core)
+    add_test(NAME sessionrecovery_tests COMMAND sessionrecovery_tests)
     qt_add_executable(pagerestoration_tests tests/pagerestoration_tests.cpp)
     target_link_libraries(pagerestoration_tests PRIVATE yagf_export yagf_imaging)
     add_test(NAME pagerestoration_tests COMMAND pagerestoration_tests)

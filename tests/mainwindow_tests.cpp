@@ -1489,7 +1489,7 @@ int main(int argc, char **argv)
     assert(yagf::core::ProjectFile::load(batchResolutionProject, &batchLoaded, &error));
     assert(batchLoaded.pages.size() == 2 && batchLoaded.page(1)->renderDpi == 200 && batchLoaded.page(2)->renderDpi == 200);
 
-    // The dialog cancels the same queue as the toolbar and can be reused.
+    // The multipage dialog interrupts the same queue as the toolbar and can be reused.
     yagf::ui::MainWindow cancelBatchWindow;
     cancelBatchWindow.show(); cancelBatchWindow.loadSource(resolutionPdf);
     auto *cancelRecognizeAll = cancelBatchWindow.findChild<QAction *>("recognizeAllAction");
@@ -1498,7 +1498,7 @@ int main(int argc, char **argv)
     auto *cancelProgress = cancelBatchWindow.findChild<QProgressDialog *>("recognitionProgressDialog");
     assert(cancelProgress && cancelProgress->isVisible());
     auto *cancelProgressButton = cancelProgress->findChild<QPushButton *>();
-    assert(cancelProgressButton && cancelProgressButton->text() == "Cancel");
+    assert(cancelProgressButton && cancelProgressButton->text() == "Interrupt");
     cancelProgressButton->click();
     waitUi([&] { return cancelRecognizeAll->isEnabled(); });
     assert(!cancelProgress->isVisible());
