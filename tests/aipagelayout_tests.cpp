@@ -250,8 +250,12 @@ private slots:
         for (const QRect box : {QRect(2,4,190,8),QRect(3,28,35,9),a,QRect(66,28,48,9),
                                 b,QRect(154,28,38,9),QRect(3,55,180,9)}) ink.fillRect(box,Qt::black);
         ink.end();
-        server.areas={area("paragraph","text",image.rect(),.95),area("first","mixed",a,.85,"inline_formula"),
-                      area("second","mixed",b,.8,"inline_formula")};
+        // A broad alternative overlaps the better paragraph. The weaker duplicate
+        // formula comes first in wire order and snaps to the same ink as "first".
+        server.areas={area("fallback","text",image.rect(),.89),
+                      area("paragraph","text",image.rect().adjusted(1,1,-1,-1),.95),
+                      area("partial","mixed",a.adjusted(2,0,-2,0),.71,"inline_formula"),
+                      area("first","mixed",a,.85,"inline_formula"),area("second","mixed",b,.8,"inline_formula")};
         QSettings settings("YAGF","YAGF Revival");
         settings.setValue("layout/url",server.url().toString());
         settings.setValue("layout/threshold",.5);
@@ -261,6 +265,8 @@ private slots:
         const auto parts=dialog.regions();
         QCOMPARE(parts.size(),7);
         QCOMPARE(parts[2].content,"math"); QCOMPARE(parts[4].content,"math");
+        QCOMPARE(parts[2].detectionScore,.85); QCOMPARE(parts[4].detectionScore,.8);
+        QCOMPARE(parts[1].detectionScore,-1.);
         QVERIFY(parts[2].bounds.contains(a)); QVERIFY(parts[4].bounds.contains(b));
         for (int i=1; i<=5; ++i) {
             QVERIFY(parts[i].bounds.contains(parts[i].bounds.center().x(),32));

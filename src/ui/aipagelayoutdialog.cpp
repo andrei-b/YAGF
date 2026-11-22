@@ -325,7 +325,8 @@ void AiPageLayoutDialog::populate(bool resetSelection)
     QVector<int> order(areas.size()); std::iota(order.begin(),order.end(),0);
     std::stable_sort(order.begin(),order.end(),[&](int a,int b){
         const bool explicitA=selectionOverrides.value(areas[a].id,false),explicitB=selectionOverrides.value(areas[b].id,false);
-        return explicitA!=explicitB?explicitA:areas[a].score>areas[b].score;
+        if (explicitA != explicitB) return explicitA;
+        return std::max(areas[a].score,areas[a].splitParentScore) > std::max(areas[b].score,areas[b].splitParentScore);
     });
     for (int i:order) {
         const bool overlap=std::ranges::any_of(occupied,[&](const auto &box){return box.intersects(areas[i].bounds);});

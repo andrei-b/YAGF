@@ -11,11 +11,19 @@ namespace yagf::processing {
 QVector<core::ImageRegion> growFormulaBlocks(const QImage &image,
     const QVector<core::ImageRegion> &blocks, std::stop_token stop = {});
 
+// Bounding box of dark ink in a grayscale image, clipped to the image frame.
+QRect inkBox(const QImage &gray, QRect area);
+
 // A negative formula index identifies prose. The index otherwise refers to the
 // input hint, so a caller can retain the model's classification and score.
 struct InlinePart {
     QRect bounds;
     int formula = -1;
+    bool containsUnsplitFormula = false;
+    QString content() const {
+        if (formula >= 0) return QStringLiteral("math");
+        return containsUnsplitFormula ? QStringLiteral("mixed") : QStringLiteral("text");
+    }
 };
 QVector<InlinePart> partitionInlineFormulas(const QImage &gray, QRect parent,
                                           const QVector<QRect> &hints);

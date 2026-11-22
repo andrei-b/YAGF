@@ -16,6 +16,7 @@ struct PageArea {
     QVector<PageAreaAlternative> alternatives;
     QString detectedType; // Retains the model's first choice when the user changes type.
     QString id; // Stable within one model response, including live score filtering.
+    double splitParentScore = -1; // Used to rank proposals in the review dialog only.
 };
 struct PageLayout {
     QString model;

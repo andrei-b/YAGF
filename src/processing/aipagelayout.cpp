@@ -142,77 +142,94 @@ void consolidateInlineAreas(QVector<PageArea> &areas)
     }
     for (int i=areas.size()-1;i>=0;--i) if (remove.contains(i)) areas.removeAt(i);
 }
+namespace {
+QVector<PageArea> splitParagraph(const PageArea &parent, const QImage &gray, const QVector<PageArea> &areas,
+                                 const QVector<int> &formulaCandidates, const QVector<QRect> &localHints)
+{
+    QVector<QRect> hints;
+    QVector<int> modelSources;
+    for (int index : formulaCandidates) {
+        if (parent.bounds.contains(areas[index].bounds)) {
+            hints.append(areas[index].bounds);
+            modelSources.append(index);
+        }
+    }
+    for (const QRect &hint : localHints)
+        if (parent.bounds.contains(hint)) hints.append(hint);
+
+    QVector<PageArea> children;
+    for (const auto &part : partitionInlineFormulas(gray, parent.bounds, hints)) {
+        PageArea child;
+        if (part.formula >= 0 && part.formula < modelSources.size()) {
+            child = areas[modelSources[part.formula]];
+            child.alternatives.clear();
+        } else {
+            child.label = part.formula < 0 ? "text_fragment" : "inline_formula_geometry";
+            child.id = QString("split/%1/%2/%3/%4/%5").arg(parent.id).arg(part.bounds.x()).arg(part.bounds.y())
+                .arg(part.bounds.width()).arg(part.bounds.height());
+            child.score = -1; // Raster geometry has no independent model confidence.
+        }
+        child.type = child.detectedType = part.content();
+        child.bounds = part.bounds;
+        child.splitParentScore = parent.score;
+        children.append(std::move(child));
+    }
+    return children;
+}
+} // namespace
+
 void subdivideInlineAreas(QVector<PageArea> &areas, const QImage &gray, const QVector<QRect> &localHints)
 {
     if (areas.isEmpty()) return;
-    const auto inlineLabel = [](const PageArea &area) { return area.label == "inline_formula"; };
-    QVector<int> parents;
-    for (int i = 0; i < areas.size(); ++i)
-        if (!inlineLabel(areas[i]) && (areas[i].type == "text" || areas[i].type == "mixed")) parents.append(i);
-    // Some layout workers return just the inline detections on a tightly cropped paragraph.
-    const bool implicitParent = std::ranges::all_of(areas,inlineLabel);
-    if (implicitParent) {
-        parents.append(areas.size());
-        areas.append({"selected_block","text",gray.rect(),-1,{},"text","selected-block"});
+    QVector<int> parents, formulas;
+    QVector<QRect> pictures;
+    bool onlyInline = true;
+    for (int i = 0; i < areas.size(); ++i) {
+        const auto &area = areas[i];
+        const bool isInline = area.label == "inline_formula";
+        onlyInline &= isInline;
+        if (isInline || area.type == "math") formulas.append(i);
+        else if (area.type == "text" || area.type == "mixed") parents.append(i);
+        else if (area.type == "picture") pictures.append(area.bounds);
     }
-    std::stable_sort(parents.begin(),parents.end(),[&](int a,int b){return areas[a].score > areas[b].score;});
+    // Partitioning accepts the first geometrically compatible hint. Prefer the
+    // stronger detection even if the worker serialized a weaker duplicate first.
+    const auto byScore = [&](int a, int b) { return areas[a].score > areas[b].score; };
+    std::stable_sort(formulas.begin(), formulas.end(), byScore);
+    if (onlyInline) {
+        const PageArea crop{"selected_block","text",gray.rect(),-1,{},"text","selected-block"};
+        auto parts = splitParagraph(crop, gray, areas, formulas, localHints);
+        if (!parts.isEmpty() && parts.size() <= 1000) areas = std::move(parts);
+        return;
+    }
+
+    std::stable_sort(parents.begin(), parents.end(), byScore);
     QSet<int> replaced;
+    auto remainingLocalHints = localHints;
     QHash<int,QVector<PageArea>> subdivisions;
     for (int index : parents) {
-        if (replaced.contains(index)) continue;
         const auto &parent = areas[index];
-        QVector<QRect> hints;
-        QVector<int> sources;
-        for (int j = 0; j < areas.size(); ++j) {
-            if (j != index && !replaced.contains(j) && (inlineLabel(areas[j]) || areas[j].type == "math") &&
-                parent.bounds.contains(areas[j].bounds)) {
-                hints.append(areas[j].bounds);
-                sources.append(j);
-            }
-        }
-        for (const auto &hint : localHints)
-            if (parent.bounds.contains(hint)) { hints.append(hint); sources.append(-1); }
-        const auto parts = partitionInlineFormulas(gray,parent.bounds,hints);
-        if (parts.isEmpty()) continue;
-        // Preserve other independent model proposals (in particular figures).
-        if (std::ranges::any_of(areas,[&](const PageArea &area) {
-                return area.type == "picture" && parent.bounds.intersects(area.bounds);
-            })) continue;
-        QSet<int> usedHints;
-        for (const auto &part : parts) if (part.formula >= 0) usedHints.insert(part.formula);
-        QVector<PageArea> children;
-        for (const auto &part : parts) {
-            const int source = part.formula < 0 ? -1 : sources[part.formula];
-            PageArea child = source < 0 ? parent : areas[source];
-            child.type = child.detectedType = part.formula < 0 ? "text" : "math";
-            child.bounds = part.bounds;
-            child.alternatives.clear();
-            if (source < 0) {
-                child.label = part.formula < 0 ? "text_fragment" : "inline_formula_geometry";
-                if (part.formula < 0) {
-                    // An expression in a denser line may have no safe gutter.
-                    // Keep mixed OCR for that fragment when another line splits.
-                    for (int k = 0; k < hints.size(); ++k)
-                        if (!usedHints.contains(k) && part.bounds.intersects(hints[k]))
-                            child.type = child.detectedType = "mixed";
-                }
-                child.id = QString("split/%1/%2/%3/%4/%5").arg(parent.id).arg(part.bounds.x()).arg(part.bounds.y())
-                    .arg(part.bounds.width()).arg(part.bounds.height());
-                child.score = -1; // Raster geometry has no independent model confidence.
-            }
-            children.append(std::move(child));
-        }
+        if (replaced.contains(index) ||
+            std::ranges::any_of(pictures, [&](QRect box){return box.intersects(parent.bounds);})) continue;
+        auto children = splitParagraph(parent, gray, areas, formulas, remainingLocalHints);
+        if (children.isEmpty()) continue;
         for (int j = 0; j < areas.size(); ++j)
             if (parent.bounds.contains(areas[j].bounds)) replaced.insert(j);
-        subdivisions.insert(index,std::move(children));
+        // Overlapping paragraph proposals can share whitespace yet contain
+        // different formulas. Consume only hints covered by this split.
+        formulas.removeIf([&](int i){return replaced.contains(i);});
+        remainingLocalHints.removeIf([&](QRect box){return parent.bounds.contains(box);});
+        subdivisions.insert(index, std::move(children));
     }
+    if (subdivisions.isEmpty()) return;
     QVector<PageArea> result;
     for (int i = 0; i < areas.size(); ++i) {
-        if (subdivisions.contains(i)) result += subdivisions.value(i);
-        else if (!replaced.contains(i) && !(implicitParent && i == areas.size()-1)) result.append(areas[i]);
+        const auto split = subdivisions.constFind(i);
+        if (split != subdivisions.cend()) result += split.value();
+        else if (!replaced.contains(i)) result.append(areas[i]);
+        if (result.size() > 1000) return;
     }
-    if (result.size() <= 1000) areas = std::move(result);
-    else if (implicitParent) areas.removeLast();
+    areas = std::move(result);
 }
 QVector<core::ImageRegion> mergePageAreas(const QVector<core::ImageRegion> &existing, const QVector<PageArea> &accepted, bool replaceAutomatic)
 {

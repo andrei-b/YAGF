@@ -178,20 +178,6 @@ QVector<core::ImageRegion> textBlocksFromReading(const core::OcrPage &page,
     return result;
 }
 
-// Bound the actual ink, including accents and scripts outside a Tesseract word box.
-QRect inkBox(const QImage &gray, QRect area)
-{
-    int left = area.right() + 1, top = area.bottom() + 1, right = -1, bottom = -1;
-    for (int y = area.top(); y <= area.bottom(); ++y) {
-        const auto *line = gray.constScanLine(y);
-        for (int x = area.left(); x <= area.right(); ++x) if (line[x] < 175) {
-            left = std::min(x, left); right = std::max(x, right);
-            top = std::min(y, top); bottom = y;
-        }
-    }
-    return right < left ? QRect{} : QRect(QPoint(left, top), QPoint(right, bottom));
-}
-
 bool hasMathOperator(const QString &text)
 {
     // Index page ranges and footnote markers are ordinary text. In particular,

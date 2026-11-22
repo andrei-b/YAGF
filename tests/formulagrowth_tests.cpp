@@ -98,6 +98,32 @@ private slots:
         QCOMPARE(yagf::processing::refineFormulaRegions(image,{parent}).first().id,parent.id);
     }
 
+    void unsplittableInlineExpressionKeepsMixedOcr()
+    {
+        QImage image(180,70,QImage::Format_Grayscale8);
+        image.fill(Qt::white);
+        const QRect touching(71,10,15,10), isolated(70,40,30,14);
+        QPainter ink(&image);
+        for (QRect box : {QRect(6,10,165,10),QRect(6,42,49,9),isolated,QRect(116,42,55,9)})
+            ink.fillRect(box,Qt::black);
+        ink.end();
+
+        QVector<yagf::core::OcrWord> words;
+        for (QRect box : {touching,isolated}) {
+            yagf::core::OcrWord word;
+            word.bounds = box;
+            word.text = "x=1";
+            words.append(word);
+        }
+        const auto parts = yagf::processing::refineFormulaRegions(image,{block("para",image.rect(),"mixed")},words);
+        QCOMPARE(parts.size(),4);
+        QVERIFY(parts[0].bounds.contains(touching));
+        QCOMPARE(parts[0].content,"mixed");
+        QCOMPARE(parts[1].content,"text");
+        QCOMPARE(parts[2].content,"math");
+        QCOMPARE(parts[3].content,"text");
+    }
+
     void followsShortChainBeyondSeedReach()
     {
         QImage image(120,90,QImage::Format_Grayscale8);
