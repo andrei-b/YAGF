@@ -9,6 +9,9 @@ class QListView;
 class QComboBox;
 class QCheckBox;
 class QLabel;
+class QLineEdit;
+class QPushButton;
+class QButtonGroup;
 class QMainWindow;
 namespace yagf::ui {
 class VerificationListModel;
@@ -18,6 +21,7 @@ class VerificationController final : public QObject {
 public:
     VerificationController(QMainWindow *window, const core::OcrDocument &document);
     void invalidate(int currentPage);
+    void setPage(int currentPage);
     void setBusy(bool busy);
     void show();
     void navigate(int direction);
@@ -28,7 +32,8 @@ signals:
     void discardRequested(const core::VerificationItem &item);
 private:
     void refresh();
-    void filter();
+    void filter(bool preserveSelection = true);
+    void updateActions();
     std::optional<core::VerificationItem> selected() const;
     const core::OcrDocument &document;
     core::SpellChecker spelling;
@@ -38,10 +43,14 @@ private:
     VerificationListModel *model;
     QComboBox *reason;
     QCheckBox *pageOnly;
+    QLineEdit *search;
+    QButtonGroup *categories;
+    QLabel *empty;
     QLabel *counts;
+    QPushButton *previous, *next, *review, *verify, *discard;
     QTimer timer;
     int currentPage = 1;
-    int resumeRow = 0;
+    std::optional<int> resumeRow;
     bool dirty = true;
     bool busy = false;
 };

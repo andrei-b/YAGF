@@ -4,6 +4,7 @@
 #include "correctionretention.h"
 #include "documentcommands.h"
 #include "imageprocessor.h"
+#include "formulatext.h"
 #include "pagesource.h"
 #include "symbolrulesdialog.h"
 #include <algorithm>
@@ -14,6 +15,7 @@
 #include <QGraphicsScene>
 #include <QImageReader>
 #include <QLabel>
+#include <QListWidget>
 #include <QMessageBox>
 #include <QTextEdit>
 #include <QTimer>
@@ -124,11 +126,62 @@ void MainWindow::finishVerification()
     const int action = verificationAction;
     verificationTarget.reset();
     const auto *page = document.page(currentPage);
-    if (!page || item.wordId.isEmpty()) return;
+    if (!page) return;
+    const auto focus = [this](QRect bounds) {
+        const QRectF area=QRectF(bounds).intersected(view->sceneRect());
+        if (area.isEmpty()) return;
+        const auto scale=view->transform().m11();
+        const auto readable=std::min({26.0/area.height(), (view->viewport()->width()-32)/area.width(), 8.0});
+        if (readable>scale && scale>0) view->zoomBy(readable/scale);
+        view->centerOn(area.center());
+    };
+    if (item.target==core::NavigationTarget::ImageBlock) {
+        const auto block=std::ranges::find(page->imageRegions,item.blockId,&core::ImageRegion::id);
+        if (block==page->imageRegions.end()) return;
+        activateImageRegion(int(block-page->imageRegions.begin()));
+        focus(block->bounds);
+        return;
+    }
+    if (item.target==core::NavigationTarget::OcrBlock) {
+        const auto block=std::ranges::find(page->regions,item.blockId,&core::OcrRegion::id);
+        if (block==page->regions.end()) return;
+        QStringList ids;
+        for (const auto &p:block->paragraphs) for (const auto &line:p.lines) ids+=line.wordIds;
+        selectedRegionIds.clear(); selectedImageRegion=-1;
+        refreshImageRegionSelection(false);
+        updateSelection(indicesForIds(ids));
+        focus(block->bounds);
+        return;
+    }
+    if (item.wordId.isEmpty()) return;
     if (!item.pending) {
         const auto indices = indicesForIds({item.wordId});
         if (indices.isEmpty()) return;
-        selectWord(indices.first());
+        const int index=indices.first();
+        selectWord(index);
+        focus(page->words[index].bounds);
+        wordList->scrollToItem(wordList->item(index));
+        if (item.formulaStart>=0) {
+            const auto &word=page->words[index];
+            const auto source=core::formulaSourceText(word);
+            if (source.mid(item.formulaStart,item.formulaLength)!=item.text) return;
+            auto start=item.formulaStart, length=item.formulaLength;
+            if (source!=word.text) {
+                start=0; length=word.text.size();
+                for (const auto &span:core::mathTextSpans(source)) {
+                    const auto delimiter=(span.length-span.source.size())/2;
+                    if (span.start+delimiter!=item.formulaStart) continue;
+                    start=core::unicodeFormulaText(source.left(span.start)).text.size();
+                    if (const auto converted=core::unicodeMath(span.source)) length=converted->size();
+                    else {start+=delimiter; length=span.source.size();}
+                    break;
+                }
+            }
+            QTextCursor cursor(selectionEditor->document());
+            cursor.setPosition(start); cursor.setPosition(start+length,QTextCursor::KeepAnchor);
+            selectionEditor->setTextCursor(cursor);
+            if (action==1) { editFormulaAt(index,item.formulaStart,item.formulaLength,item.displayFormula); return; }
+        }
         if (action == 1) reviewSelectedWord();
         else if (action == 2) {
             auto edited = *page;
@@ -142,7 +195,7 @@ void MainWindow::finishVerification()
     if (saved == page->pendingCorrections.end()) return;
     const auto correction = *saved;
     updateSelection({});
-    view->centerOn(correction.bounds.center());
+    focus(correction.bounds);
     status->setText(tr("Saved correction: %1 · Review to restore, or discard explicitly.").arg(item.text.left(120)));
     if (!action) return;
     if (action == 3) {

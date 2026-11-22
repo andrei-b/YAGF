@@ -1365,6 +1365,46 @@ int main(int argc, char **argv)
     assert(yagf::core::ProjectFile::load(resolutionProject, &resolutionLoaded, &error));
     assert(resolutionLoaded.page(2)->renderDpi == 300 && !resolutionLoaded.page(2)->words[0].reviewed);
 
+    {
+        auto book=resolutionBook;
+        book.pages[0].imageRegions={{"empty-math",{12,90,120,40},{},false,"math"}};
+        auto &word=book.pages[1].words[0];
+        word.text=word.originalText="Compare $x$ with $y+1$.";
+        const auto project=directory.filePath("navigator.yagf.json");
+        assert(yagf::core::ProjectFile::save(project,book,&error));
+        yagf::ui::MainWindow w; w.show(); w.loadProject(project);
+        auto *view=w.findChild<yagf::ui::PageView *>();
+        waitUi([&]{return view->scene()->sceneRect().width()==600;});
+        auto *navigator=w.findChild<yagf::ui::VerificationController *>();
+        navigator->show();
+        w.findChild<QPushButton *>("navigatorCategory1")->click();
+        navigator->navigate(1);
+        auto *blocks=w.findChild<QListWidget *>("imageRegions");
+        assert(blocks->selectedItems().size()==1 && blocks->selectedItems()[0]->data(Qt::UserRole)=="empty-math");
+        navigator->navigate(1);
+        auto *editor=w.findChild<QTextEdit *>("recognizedTextEditor");
+        waitUi([&]{return view->scene()->sceneRect().width()==1200 && editor->textCursor().selectedText()=="x";});
+        navigator->navigate(1);
+        assert(editor->textCursor().selectedText()=="y+1");
+        bool opened=false;
+        QTimer::singleShot(0,&w,[&]{
+            auto *dialog=qobject_cast<QDialog *>(QApplication::activeModalWidget());
+            assert(dialog && dialog->objectName()=="formulaEditor");
+            auto *source=dialog->findChild<QPlainTextEdit *>("formulaSource");
+            assert(source && source->toPlainText()=="y+1");
+            opened=true; dialog->reject();
+        });
+        for (auto *button:w.findChildren<QPushButton *>())
+            if (button->text()=="Edit formula…") button->click();
+        assert(opened);
+        w.findChild<QPushButton *>("navigatorCategory2")->click();
+        navigator->navigate(1);
+        assert(editor->toPlainText()==word.text);
+        navigator->navigate(1);
+        waitUi([&]{return view->scene()->sceneRect().width()==600 && blocks->selectedItems().size()==1;});
+        assert(blocks->selectedItems()[0]->data(Qt::UserRole)=="empty-math");
+    }
+
     auto retained = resolutionLoaded.page(2)->words[0];
     retained.id = "retained-edit"; retained.text = "restored"; retained.reviewed = true;
     resolutionLoaded.page(2)->pendingCorrections = {retained};

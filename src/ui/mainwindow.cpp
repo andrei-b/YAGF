@@ -757,11 +757,15 @@ MainWindow::MainWindow()
     refineFormulaAction->setStatusTip(tr("Fit neighboring line boundaries around tall characters and formula limits."));
     refineFormulaAction->setEnabled(false);
     verification = new VerificationController(this, document);
-    auto *queueAction = reviewToolsMenu->addAction(tr("Verification queue"), verification, &VerificationController::show);
+    auto *queueAction = reviewToolsMenu->addAction(tr("Document navigator"), verification, &VerificationController::show);
+    queueAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+J")));
+    queueAction->setIcon(style()->standardIcon(QStyle::SP_FileDialogContentsView));
+    queueAction->setIconText(tr("Navigate"));
+    queueAction->setToolTip(tr("Navigate to formulas, problem blocks and uncertain words"));
     queueAction->setObjectName(QStringLiteral("showVerificationQueue"));
-    auto *nextIssue = reviewToolsMenu->addAction(tr("Next verification issue"), this, [this] { verification->navigate(1); });
+    auto *nextIssue = reviewToolsMenu->addAction(tr("Next navigator result"), this, [this] { verification->navigate(1); });
     nextIssue->setShortcut(QKeySequence(Qt::Key_F4));
-    auto *previousIssue = reviewToolsMenu->addAction(tr("Previous verification issue"), this, [this] { verification->navigate(-1); });
+    auto *previousIssue = reviewToolsMenu->addAction(tr("Previous navigator result"), this, [this] { verification->navigate(-1); });
     previousIssue->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_F4));
     reviewToolsMenu->addSeparator();
     connect(verification, &VerificationController::activateRequested, this, [this](const auto &item) { activateVerification(item); });
@@ -828,6 +832,7 @@ MainWindow::MainWindow()
     toolbar->addWidget(previousButton);
     toolbar->addWidget(pageSpin);
     toolbar->addWidget(nextButton);
+    toolbar->addAction(queueAction);
     connect(previousButton, &QPushButton::clicked, this, [this] { showPage(currentPage - 1); });
     connect(nextButton, &QPushButton::clicked, this, [this] { showPage(currentPage + 1); });
     connect(pageSpin, &QSpinBox::valueChanged, this, &MainWindow::showPage);
@@ -1471,6 +1476,7 @@ MainWindow::MainWindow()
         }
         pageCount = count;
         document.totalPages = count;
+        verification->invalidate(1);
         processor.startThumbnails(count);
         showPage(1);
     });
@@ -1715,6 +1721,7 @@ MainWindow::MainWindow()
         else showError(result.error);
     });
     connect(&undoStack, &QUndoStack::indexChanged, this, [this] {
+        verification->invalidate(currentPage);
         syncNativeOcrModel();
         { const QSignalBlocker blocker(unicodeFormulasAction); unicodeFormulasAction->setChecked(document.unicodeFormulas); }
         correctionMemory.reset();
@@ -1971,6 +1978,7 @@ void MainWindow::loadSource(const QString &path)
     originalPath = QFileInfo(path).absoluteFilePath();
     projectPath.clear();
     document = {};
+    verification->invalidate(1);
     syncNativeOcrModel();
     document.preserveFormatting = preserveFormattingAction->isChecked();
     document.useRawOcrOutput = rawOcrOutputAction->isChecked();
@@ -2076,6 +2084,7 @@ void MainWindow::loadProject(const QString &path)
     rememberProject();
     verificationTarget.reset();
     document = std::move(loaded);
+    verification->invalidate(1);
     syncNativeOcrModel();
     {
         const QSignalBlocker blocker(preserveFormattingAction);
@@ -2313,6 +2322,7 @@ void MainWindow::loadImage(const QString &path)
         if(!scaled){showError(scaled.error());return;}
         scaled->sourceWidth=source.width();scaled->sourceHeight=source.height();scaled->renderDpi=dpi;
         document.replacePage(std::move(*scaled));
+        verification->invalidate(currentPage);
         page = document.page(currentPage);
         externalDirty = true; refreshDirty();
     }
@@ -3035,7 +3045,7 @@ void MainWindow::createRegionFromSelection()
 
 void MainWindow::showDocument()
 {
-    if (verification) verification->invalidate(currentPage);
+    if (verification) verification->setPage(currentPage);
     const QSignalBlocker blockListSignals(wordList);
     const QSignalBlocker blockRegionSignals(regionList);
     wordList->clear();
@@ -3788,20 +3798,29 @@ void MainWindow::editSelectedFormula()
         if (!accepted) return;
         span = spans.at(choices.indexOf(chosen));
     }
-    const auto source = core::formulaSourceText(page->words[span.word]).mid(span.start, span.length);
-    const auto replacement = editFormulaSource(this, source, span.display);
+    editFormulaAt(span.word,span.start,span.length,span.display);
+}
+
+void MainWindow::editFormulaAt(int index, qsizetype start, qsizetype length, bool display)
+{
+    const auto *page=document.page(currentPage);
+    if (!page || index<0 || index>=page->words.size()) return;
+    const auto original=core::formulaSourceText(page->words[index]);
+    if (start<0 || length<=0 || start>original.size()-length) return;
+    const auto source = original.mid(start,length);
+    const auto replacement = editFormulaSource(this, source, display);
     if (!replacement || *replacement == source) return;
     auto edited = *page;
-    auto &word = edited.words[span.word];
-    word.text=core::formulaSourceText(word);
+    auto &word = edited.words[index];
+    word.text=original;
     word.latexText.clear();
-    word.text.replace(span.start, span.length, *replacement);
+    word.text.replace(start,length,*replacement);
     word.reviewed = true;
     word.readingEngine.clear();
     word.alternative = {};
     core::setFormulaOutput(edited,document.unicodeFormulas);
     undoStack.push(new ReplaceTextCommand(document, currentPage, std::move(edited)));
-    updateSelection({span.word});
+    updateSelection({index});
 }
 
 bool MainWindow::canReviewSelection() const

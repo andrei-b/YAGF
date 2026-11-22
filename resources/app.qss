@@ -237,3 +237,22 @@ QDialog#ocrServicesDialog, QWidget#recognitionPage {
     background: #eaf0f6; color: #435b72; font-weight: 600;
     padding: 7px 4px; border: 0; border-bottom: 1px solid #d5dfea;
 }
+
+QDockWidget#verificationQueue { color: #203b56; font-weight: 600; }
+QDockWidget#verificationQueue::title {
+    background: #e6eff8; border-bottom: 1px solid #c5d6e7;
+    padding: 9px 12px; text-align: left;
+}
+QWidget#navigatorBody { background: #f7f9fc; }
+QWidget#navigatorBody QPushButton[navigationCategory="true"] {
+    background: #fff; color: #42576d; text-align: left;
+    border: 1px solid #d4dfe9; border-radius: 6px; padding: 7px 10px;
+}
+QWidget#navigatorBody QPushButton[navigationCategory="true"]:hover { background: #eef4fa; }
+QWidget#navigatorBody QPushButton[navigationCategory="true"]:checked {
+    color: #124e86; background: #dfedfb; border-color: #86b2dd; font-weight: 600;
+}
+QWidget#navigatorBody QPushButton:focus { border: 1px solid #216ec1; }
+QLabel#navigatorCount { color: #36516e; font-weight: 600; }
+QLabel#navigatorEmpty { color: #52657a; background: #fff; border: 1px solid #dce4ee; border-radius: 6px; padding: 14px; }
+QListView#verificationItems { background: #fff; border: 1px solid #dce4ee; border-radius: 6px; padding: 3px; color: #24354b; }

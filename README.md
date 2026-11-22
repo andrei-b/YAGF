@@ -149,11 +149,11 @@ for AirScan discovery, `sane-airscan`; DjVu uses `djvulibre-bin`; PDF/A uses
 4. Click **Recognize** for the page or selected blocks. Its dropdown includes
    whole-document recognition and **Math only** mode.
 5. Select text or a source block to correct it. Use **Edit formula…** for LaTeX
-   and **Tools → Review → Verification queue** to work through detected issues.
+   and **Navigate** to jump between formulas, problem blocks, and uncertain words across pages.
 6. **Save** the project, then use **File → Export** for the desired output.
 
 **PgUp / PgDown** navigate document pages, including while the editor has focus.
-**F4 / Shift+F4** move between verification issues. Use **Edit → Undo/Redo**
+**Ctrl+Shift+J** opens the document navigator. **F4 / Shift+F4** move to the next or previous result in the active view. Use **Edit → Undo/Redo**
 to reverse or restore edits.
 
 Tools are grouped into **Recognition**, **Page & layout**, **Review**, and

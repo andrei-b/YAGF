@@ -202,6 +202,7 @@ private:
     void runNextImageRegion();
     void refreshReviewLabel();
     void editSelectedFormula();
+    void editFormulaAt(int index, qsizetype start, qsizetype length, bool display);
     void refreshSpellLanguage();
     void updateSelection(const QVector<int> &indices);
     QVector<int> indicesForIds(const QStringList &ids) const;
