@@ -1059,6 +1059,9 @@ MainWindow::MainWindow()
     auto *dataMenu = exportMenu->addMenu(tr("OCR data"));
     dataMenu->addAction(tr("Structured OCR as JSON…"), this, &MainWindow::exportJson);
     dataMenu->addAction(tr("Verified corrections…"), this, &MainWindow::exportVerifiedSamples);
+    fileMenu->addSeparator();
+    auto *exitAction = fileMenu->addAction(tr("E&xit"), this, &MainWindow::close);
+    exitAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Q));
 
     auto *splitter = new QSplitter(this);
     splitter->setObjectName(QStringLiteral("workspaceSplitter"));

@@ -102,6 +102,8 @@ QListWidget#recognizedWords {
     outline: none;
     color: #344963;
 }
+QListWidget#pageMiniatures,
+QListWidget#imageRegions { background: #d3dde9; }
 QListWidget#pageMiniatures::item,
 QListWidget#imageRegions::item,
 QListWidget#recognizedWords::item { border-radius: 7px; padding: 4px; }
