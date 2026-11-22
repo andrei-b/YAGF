@@ -19,6 +19,7 @@ using namespace yagf;
 namespace {
 struct ConcurrentState {
     std::atomic_int started = 0, active = 0, peak = 0, formulaCalls = 0;
+    QImage expectedFormula;
     bool overlap = true, failText = false, failFormula = false, stallFormula = false, stallText = false;
 };
 class ConcurrentEngine : public processing::IOcrEngine {
@@ -36,6 +37,9 @@ public:
         int peak = state.peak.load();
         while (peak < active && !state.peak.compare_exchange_weak(peak, active)) {}
         struct Finish { std::atomic_int &active; ~Finish() { --active; } } finish{state.active};
+        if (formula && !state.expectedFormula.isNull() &&
+            image.convertToFormat(QImage::Format_RGB32)!=state.expectedFormula.convertToFormat(QImage::Format_RGB32))
+            return std::unexpected(processing::OcrError{"Incorrect compound formula crop"});
         if (formula) ++state.formulaCalls;
         ++state.started;
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
@@ -247,6 +251,26 @@ private slots:
         QCOMPARE(text(*result),(QStringList{"т.е.","\\(x=1\\)","далее"}));
         QVERIFY(result->words[1].bounds.contains(upper) && result->words[1].bounds.contains(lower));
         QVERIFY(!result->words[1].bounds.intersects(raw.words[1].bounds));
+    }
+
+    void compoundFormulaMasksNeighborDuringSerialAndParallelOcr()
+    {
+        const QRect expression(20,30,130,26), limit(25,9,12,21), neighbor(80,12,22,9);
+        auto raw=reading({word(1,1,neighbor,"prose"),word(1,2,{36,33,56,12},"x=1")},{170,80});
+        auto image=scan(raw,limit);
+        core::ImageRegion formula{"formula",{}, {},false,"math",false,"display_formula"};
+        formula.setShape(QRegion(expression)|limit);
+        for (bool parallel : {false,true}) {
+            ConcurrentState state; state.overlap=false;
+            state.expectedFormula=formula.crop(image);
+            QCOMPARE(state.expectedFormula.pixelColor(neighbor.center()-formula.bounds.topLeft()),QColor(Qt::white));
+            ConcurrentEngine engine(state,raw,true);
+            auto result=processing::recognizeSmartBlocks(image,{.language="rus"},{formula},false,{},true,&raw,nullptr,
+                                                         nullptr,&engine,false,parallel);
+            QVERIFY2(result,qPrintable(result ? QString() : result.error().message));
+            QCOMPARE(state.formulaCalls.load(),1);
+            QVERIFY(std::ranges::any_of(result->words,[](const auto &w){return w.text=="prose";}));
+        }
     }
 
     void acceptedInlineCropReadsOnceInProseOrder()

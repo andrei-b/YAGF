@@ -142,7 +142,7 @@ DocumentProcessor::DocumentProcessor(QObject *parent, const core::OcrDocument *s
                     crop.engineId = page.engineId;
                     crop.language = page.language;
                     crop.renderDpi = page.renderDpi;
-                    crop.ocrReadings = core::cropOcrReadings(page.ocrReadings,block.bounds);
+                    crop.ocrReadings = core::cropOcrReadings(page.ocrReadings,block.bounds,block.shape());
                     crop.recognitionHistory=page.recognitionHistory;
                     crop.recognitionEvidence=page.recognitionEvidence;
                     for(auto &reading:crop.recognitionEvidence) {
@@ -154,12 +154,12 @@ DocumentProcessor::DocumentProcessor(QObject *parent, const core::OcrDocument *s
                     if(crop.coordinates.isDefined())crop.coordinates.appendProjective("selected-block",QTransform::fromTranslate(-block.bounds.x(),-block.bounds.y()),block.bounds.size());
                     crop.width = crop.sourceWidth = block.bounds.width();
                     crop.height = crop.sourceHeight = block.bounds.height();
-                    for (auto word : page.words) if (block.bounds.contains(word.bounds.center())) {
+                    for (auto word : page.words) if (block.shape().contains(word.bounds.center())) {
                         word.bounds.translate(-block.bounds.topLeft());
                         for (auto &fragment : word.sourceBoxes) fragment.translate(-block.bounds.topLeft());
                         crop.words.append(std::move(word));
                     }
-                    for (auto region : page.regions) if (block.bounds.contains(region.bounds.center())) {
+                    for (auto region : page.regions) if (block.shape().contains(region.bounds.center())) {
                         region.bounds.translate(-block.bounds.topLeft());
                         crop.regions.append(std::move(region));
                     }
@@ -561,22 +561,23 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
             result.offset = bounded.topLeft();
             result.region = bounded;
             options=croppedOcrOptions(options,bounded);
-            input = input.copy(bounded);
+            const auto owner = std::ranges::find(blocks,bounded,&core::ImageRegion::bounds);
+            input = owner == blocks.end() ? input.copy(bounded) : owner->crop(input);
         }
         if (pagedSource && options.preserveFormatting) {
             input.setDotsPerMeterX(qRound(dpi / 0.0254));
             input.setDotsPerMeterY(qRound(dpi / 0.0254));
         }
-        QVector<QRect> comparisonAreas;
+        QVector<QRegion> comparisonAreas;
         QImage comparisonImage=input;
         if (selected.isEmpty()) {
             comparisonAreas.append(input.rect());
             for (const auto &block:blocks) if (block.notText) {
                 if (comparisonImage.cacheKey()==input.cacheKey()) comparisonImage=input.copy();
-                QPainter painter(&comparisonImage); painter.fillRect(block.bounds.translated(-result.offset),Qt::white);
+                QPainter painter(&comparisonImage); for (QRect part : block.shape()) painter.fillRect(part.translated(-result.offset),Qt::white);
             }
         } else for (const auto &block:selected) if (!block.notText) {
-            const auto area=block.bounds.translated(-result.offset).intersected(input.rect());
+            const auto area=block.shape().translated(-result.offset).intersected(input.rect());
             if (!area.isEmpty()) comparisonAreas.append(area);
         }
         std::vector<ComparisonEngine> none;
@@ -625,7 +626,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
                 }
                 auto settings = croppedOcrOptions(options,crop);
                 if (!block.language.isEmpty()) settings.language = TesseractEngine::modelLanguage(block.language);
-                auto reading = engine->recognize(input.copy(crop), settings, token);
+                auto reading = engine->recognize(block.crop(input), settings, token);
                 if (!reading) { result.outcome = std::unexpected(reading.error()); return result; }
                 appendRecognitionEvidence(merged, *reading, crop.topLeft());
                 int maximumBlock = lastBlock;
@@ -657,7 +658,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
             core::OcrPage &page = *result.outcome;
             if (rawOutput && selected.isEmpty()) page.words.removeIf([&](const auto &word) {
                 return std::ranges::any_of(blocks, [&](const auto &block) {
-                    return block.notText && block.bounds.contains(word.bounds.center());
+                    return block.notText && block.shape().contains(word.bounds.center());
                 });
             });
             if (!smart) page.engineId = engine->id();

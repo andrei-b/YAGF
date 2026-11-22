@@ -7,6 +7,9 @@
 
 namespace yagf::processing {
 
+// Give crossing strokes to one line while keeping both blocks editable.
+void refineLineShapes(const QImage &gray, QVector<core::ImageRegion> &blocks, std::stop_token stop = {});
+
 // Refine the OCR crop rectangles in displayed-page coordinates.
 QVector<core::ImageRegion> growFormulaBlocks(const QImage &image,
     const QVector<core::ImageRegion> &blocks, std::stop_token stop = {});

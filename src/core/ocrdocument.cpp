@@ -468,6 +468,11 @@ QJsonObject OcrDocument::toJson(bool includeRestoredPixels) const
             QJsonObject item{{"id", region.id}, {"box", boxJson(region.bounds)},
                 {"language", region.language}, {"not_text", region.notText}, {"content", region.content}, {"auto_detected", region.autoDetected}};
             if (!region.detectedLabel.isEmpty()) item.insert("detected_label", region.detectedLabel);
+            if (!region.parts.isEmpty()) {
+                QJsonArray parts;
+                for (QRect part : region.parts) parts.append(boxJson(part));
+                item["parts"] = parts;
+            }
             if (region.detectionScore >= 0) item.insert("detection_score", region.detectionScore);
             imageRegionItems.append(item);
         }
@@ -763,6 +768,16 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
                     !parseBox(item.value(QStringLiteral("box")).toObject(),
                               page.width, page.height, &region.bounds))
                     return fail(QStringLiteral("Invalid image region geometry or ID."));
+                if (item.contains("parts")) {
+                    const auto pieces = item.value("parts");
+                    if (!pieces.isArray() || pieces.toArray().size() > 4096) return fail(QStringLiteral("Invalid block shape."));
+                    for (auto piece : pieces.toArray()) {
+                        QRect rect;
+                        if (!parseBox(piece.toObject(),region.bounds.width(),region.bounds.height(),&rect))
+                            return fail(QStringLiteral("Invalid block part."));
+                        region.parts.append(rect);
+                    }
+                }
                 ids.insert(region.id);
                 page.imageRegions.append(std::move(region));
             }

@@ -1,4 +1,5 @@
 #include "regiongeometry.h"
+#include "ocrdocument.h"
 
 #include <QPainter>
 
@@ -7,6 +8,44 @@
 #include <cmath>
 
 namespace yagf::core {
+
+QRegion ImageRegion::shape() const
+{
+    if (parts.isEmpty()) return bounds;
+    QRegion result;
+    for (const auto &part : parts) result |= part.translated(bounds.topLeft());
+    return result;
+}
+
+void ImageRegion::setShape(const QRegion &pixels)
+{
+    bounds = pixels.boundingRect();
+    parts.clear();
+    if (pixels.rectCount() > 1)
+        for (QRect piece : pixels) parts.append(piece.translated(-bounds.topLeft()));
+}
+
+void ImageRegion::resizeBounds(QRect target)
+{
+    if (parts.isEmpty() || target.size() == bounds.size()) { bounds = target; return; }
+    const auto scale = QTransform::fromScale(double(target.width())/bounds.width(), double(target.height())/bounds.height());
+    QRegion resized;
+    for (const auto &part : parts) resized |= scale.mapRect(part);
+    setShape(resized.translated(target.topLeft()));
+}
+
+QImage ImageRegion::crop(const QImage &page) const
+{
+    if (page.isNull() || bounds.isEmpty()) return {};
+    QImage cropped = page.copy(bounds);
+    if (!parts.isEmpty()) {
+        cropped = cropped.convertToFormat(QImage::Format_RGB32);
+        QPainter paint(&cropped);
+        paint.setClipRegion(QRegion(cropped.rect()).subtracted(shape().translated(-bounds.topLeft())));
+        paint.fillRect(cropped.rect(), Qt::white);
+    }
+    return cropped;
+}
 
 RegionInk::RegionInk(const QImage &page)
 {
@@ -49,6 +88,24 @@ bool RegionInk::conflicts(const QRect &a, const QRect &b) const
     for (int y = shared.top(); y <= shared.bottom(); ++y) {
         const auto *begin = gray.constScanLine(y) + shared.left();
         if (std::any_of(begin, begin + shared.width(), [&](uchar p) { return p < inkThreshold; })) return true;
+    }
+    return false;
+}
+
+bool RegionInk::shapeConflicts(const QRegion &a, const QRegion &b) const
+{
+    if (a.rectCount() == 1 && b.rectCount() == 1) return conflicts(a.boundingRect(),b.boundingRect());
+    const auto shared = a.intersected(b);
+    if (shared.isEmpty()) return false;
+    const auto area = [](const QRegion &region) {
+        qint64 count = 0;
+        for (QRect r : region) count += qint64(r.width()) * r.height();
+        return count;
+    };
+    if (!gray.rect().contains(shared.boundingRect()) || 5*area(shared) > std::min(area(a),area(b))) return true;
+    for (QRect r : shared) for (int y=r.top(); y<=r.bottom(); ++y) {
+        const auto *row = gray.constScanLine(y);
+        if (std::any_of(row+r.left(),row+r.right()+1,[&](uchar value){return value < inkThreshold;})) return true;
     }
     return false;
 }

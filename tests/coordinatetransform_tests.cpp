@@ -76,6 +76,22 @@ private slots:
         old.pendingCorrections.clear();old.deletedWords.clear();
         const auto retained=core::retainCorrections(fresh,old);QCOMPARE(retained.retained,1);QCOMPARE(fresh.words[0].text,"the");QVERIFY(fresh.words[0].reviewed);
     }
+    void deskewPreservesSharedContourAndRestoresItsSourceShape() {
+        auto original=page();
+        auto &blocks=original.imageRegions;
+        blocks.resize(2); blocks[1].id="lower";
+        const QRegion upper=QRegion(10,10,160,35) | QRect(30,45,12,9);
+        const QRegion lower=QRegion(10,45,160,35) - QRect(30,45,12,9);
+        blocks[0].setShape(upper); blocks[1].setShape(lower);
+        auto frame=processing::ImageProcessor::coordinatePipeline({200,120},{.deskewDegrees=4}); QVERIFY(frame);
+        auto mapped=core::remapPageGeometry(original,*frame); QVERIFY(mapped);
+        QVERIFY(!mapped->imageRegions[0].shape().intersects(mapped->imageRegions[1].shape()));
+        core::OcrDocument book,loaded; book.sourcePath="scan.png"; book.replacePage(*mapped);
+        QString error; QVERIFY2(core::OcrDocument::fromJson(book.toJson(),&loaded,&error),qPrintable(error));
+        auto restored=core::remapPageGeometry(*loaded.page(1),original.coordinates); QVERIFY(restored);
+        QCOMPARE(restored->imageRegions[0].shape(),upper);
+        QCOMPARE(restored->imageRegions[1].shape(),lower);
+    }
     void nativeEvidenceKeepsItsFrameWhenThePageChanges() {
         auto original=page();core::RecognitionResult result;result.engineId="native";
         result.provenance={.task="ocr",.pageNumber=1,.imageSize={50,30},.inputArea={20,10,50,30}};

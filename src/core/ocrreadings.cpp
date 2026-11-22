@@ -177,11 +177,12 @@ void translateOcrReadings(QVector<OcrReading> &readings,QPoint offset) {
         }
     }
 }
-QVector<OcrReading> cropOcrReadings(const QVector<OcrReading> &readings,QRect area) {
+QVector<OcrReading> cropOcrReadings(const QVector<OcrReading> &readings,QRect area,const QRegion &shape) {
     QVector<OcrReading> result;
     for (auto reading:readings) {
         reading.area=reading.area.intersected(area); if (reading.area.isEmpty()) continue;
-        reading.items.removeIf([&](const auto &i){return !area.contains(i.bounds);});
+        reading.items.removeIf([&](const auto &i){return !area.contains(i.bounds) ||
+            (!shape.isEmpty() && !shape.contains(i.bounds.center()));});
         reading.area.translate(-area.topLeft()); for (auto &i:reading.items) i.bounds.translate(-area.topLeft());
         for (auto &e : reading.recognitionEvidence) {
             if (e.provenance.inputArea.isEmpty()) e.provenance.inputArea=QRect(QPoint(),e.provenance.imageSize);
@@ -191,8 +192,10 @@ QVector<OcrReading> cropOcrReadings(const QVector<OcrReading> &readings,QRect ar
     }
     return result;
 }
-void mergeOcrReadings(QVector<OcrReading> &target,QVector<OcrReading> incoming,QRect area) {
-    for (auto &r:target) r.items.removeIf([&](const auto &i){return area.intersects(i.bounds);});
+void mergeOcrReadings(QVector<OcrReading> &target,QVector<OcrReading> incoming,const QRegion &area) {
+    for (auto &r:target) r.items.removeIf([&](const auto &i){
+        return area.rectCount()>1 ? area.contains(i.bounds.center()) : area.intersects(i.bounds);
+    });
     for (auto &r:incoming) {
         auto found=std::ranges::find(target,r.source,&OcrReading::source);
         if (found==target.end()) target.append(std::move(r));

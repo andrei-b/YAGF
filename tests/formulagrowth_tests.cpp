@@ -210,6 +210,51 @@ private slots:
         QCOMPARE(r[1].bounds.top(),9);
     }
 
+    void adjacentLineContoursKeepWholeGlyphs()
+    {
+        QImage image(180,100,QImage::Format_Grayscale8);
+        image.fill(Qt::white);
+        QPainter pen(&image);
+        const QRect descender(48,16,5,32), ascender(92,33,6,31);
+        for (QRect ink : {descender,ascender,QRect(15,20,25,9),QRect(16,55,27,9)})
+            pen.fillRect(ink,Qt::black);
+        pen.end();
+        QVector<ImageRegion> lines{block("upper",{10,12,150,36},"text"),
+                                   block("lower",{10,33,150,36},"text")};
+        yagf::processing::refineLineShapes(image,lines);
+        const auto top = lines[0].shape(), bottom = lines[1].shape();
+        QVERIFY(!lines[0].parts.isEmpty() && !lines[1].parts.isEmpty());
+        QVERIFY(top.intersected(bottom).isEmpty());
+        QVERIFY(QRegion(descender).subtracted(top).isEmpty());
+        QVERIFY(QRegion(ascender).subtracted(bottom).isEmpty());
+        QVERIFY(lines[0].bounds.intersects(lines[1].bounds));
+        const auto crop = lines[0].crop(image);
+        QCOMPARE(crop.pixelColor(ascender.topLeft()-lines[0].bounds.topLeft()),QColor(Qt::white));
+        yagf::processing::refineLineShapes(image,lines);
+        QCOMPARE(lines[0].shape(),top); QCOMPARE(lines[1].shape(),bottom);
+        yagf::core::OcrDocument book, roundTrip; book.sourcePath="scan.png";
+        yagf::core::OcrPage page; page.width=page.sourceWidth=image.width(); page.height=page.sourceHeight=image.height();
+        page.imageRegions=lines; book.replacePage(page);
+        QString error;
+        QVERIFY2(yagf::core::OcrDocument::fromJson(book.toJson(),&roundTrip,&error),qPrintable(error));
+        QCOMPARE(roundTrip.page(1)->imageRegions[0].shape(),top);
+        QCOMPARE(roundTrip.page(1)->imageRegions[1].shape(),bottom);
+    }
+
+    void page69LimitProtrudesIntoTheLineAbove()
+    {
+        QImage scan(QStringLiteral(MATH_FIXTURE_DIR "/regressions/context/calculus-bounded-integral.png"));
+        QVERIFY(!scan.isNull());
+        QVector<ImageRegion> lines{block("previous",{2,0,665,45},"text"),
+                                   block("formula-line",{2,38,665,56},"mixed")};
+        yagf::processing::refineLineShapes(scan,lines);
+        const auto shape=lines[1].shape();
+        QVERIFY(QRegion(QRect(222,32,7,9)).subtracted(shape).isEmpty());
+        QVERIFY(QRegion(QRect(216,82,13,12)).subtracted(shape).isEmpty());
+        QVERIFY(!shape.intersects(lines[0].shape()));
+        QVERIFY(lines[0].shape().contains(QPoint(130,25)));
+    }
+
     void typesetSummation()
     {
         if (QStandardPaths::findExecutable("pdftoppm").isEmpty()) QSKIP("Requires pdftoppm");

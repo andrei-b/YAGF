@@ -10,6 +10,8 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QRect>
+#include <QRegion>
+#include <QImage>
 #include <QString>
 #include <QStringList>
 #include <QVector>
@@ -85,6 +87,11 @@ struct ImageRegion {
     bool autoDetected = false;
     QString detectedLabel; // Original layout-model category, retained for inspection.
     double detectionScore = -1;
+    QVector<QRect> parts; // Relative to bounds.topLeft(). Empty denotes the whole rectangle.
+    QRegion shape() const;
+    void setShape(const QRegion &pixels);
+    void resizeBounds(QRect target);
+    QImage crop(const QImage &page) const;
 };
 
 struct OcrReadingItem {

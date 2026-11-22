@@ -179,6 +179,31 @@ private slots:
         page.fill(Qt::white);
         QCOMPARE(processing::mergePageAreas({}, proposals, true, core::RegionInk(page)).size(), 1);
     }
+    void overlappingLineProposalsCanBothBeApplied() {
+        QImage page(180,100,QImage::Format_RGB32); page.fill(Qt::white);
+        QPainter painter(&page);
+        const QRect descender(48,16,5,32), ascender(92,33,6,31);
+        painter.fillRect(descender,Qt::black); painter.fillRect(ascender,Qt::black); painter.end();
+        Server server;
+        server.areas = {area("upper","text",{10,12,150,36},.94),
+                        area("lower","text",{10,33,150,36},.83)};
+        QSettings settings("YAGF","YAGF Revival");
+        settings.setValue("layout/url",server.url().toString());
+        settings.setValue("layout/threshold",.5);
+        ui::AiPageLayoutDialog dialog(page,{}); dialog.show();
+        QTRY_COMPARE_WITH_TIMEOUT(dialog.regions().size(),2,3000);
+        const auto regions=dialog.regions();
+        QVERIFY(regions[0].bounds.intersects(regions[1].bounds));
+        QVERIFY(!regions[0].shape().intersects(regions[1].shape()));
+        QVERIFY(QRegion(descender).subtracted(regions[0].shape()).isEmpty());
+        QVERIFY(QRegion(ascender).subtracted(regions[1].shape()).isEmpty());
+        auto *score=dialog.findChild<QSlider *>(); QVERIFY(score);
+        score->setValue(90); QCOMPARE(dialog.regions().size(),1);
+        QVERIFY(dialog.regions()[0].parts.isEmpty());
+        score->setValue(50); QCOMPARE(dialog.regions().size(),2);
+        QCOMPARE(dialog.regions()[1].shape(),regions[1].shape());
+        QCOMPARE(server.requests,1);
+    }
     void inlineIntegralWithDetachedLimitsSurvivesParagraphConsolidation() {
         QImage gray(210,130,QImage::Format_Grayscale8);
         gray.fill(Qt::white);

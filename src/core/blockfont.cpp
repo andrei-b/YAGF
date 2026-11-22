@@ -34,7 +34,7 @@ bool formulaOnly(const OcrWord &word)
 // slightly overshooting word box. An explicit excluded area wins as well.
 int containing(const QVector<ImageRegion> &blocks,const OcrWord &word)
 {
-    for (int i=0;i<blocks.size();++i) if (blocks[i].bounds.contains(word.bounds.center())) return i;
+    for (int i=0;i<blocks.size();++i) if (blocks[i].shape().contains(word.bounds.center())) return i;
     return -1;
 }
 }

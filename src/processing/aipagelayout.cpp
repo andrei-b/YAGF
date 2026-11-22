@@ -121,7 +121,9 @@ std::expected<PageLayout, OcrError> detectPageAreas(const QImage &image, const P
     }
     result.rawOutput=root;
     result.rawAreas=result.areas;
-    consolidateInlineAreas(result.areas, image.convertToFormat(QImage::Format_Grayscale8));
+    const auto gray=image.convertToFormat(QImage::Format_Grayscale8);
+    consolidateInlineAreas(result.areas,gray);
+    refinePageAreaShapes(result.areas,gray);
     return result;
 }
 namespace {
@@ -275,16 +277,26 @@ void subdivideInlineAreas(QVector<PageArea> &areas, const QImage &gray, const QV
     }
     areas = std::move(result);
 }
+void refinePageAreaShapes(QVector<PageArea> &areas,const QImage &gray)
+{
+    QVector<core::ImageRegion> blocks;
+    for (const auto &area : areas) blocks.append(area.block());
+    refineLineShapes(gray,blocks);
+    for (int i=0; i<areas.size(); ++i) {
+        areas[i].bounds=blocks[i].bounds;
+        areas[i].parts=blocks[i].parts;
+    }
+}
+
 QVector<core::ImageRegion> mergePageAreas(const QVector<core::ImageRegion> &existing, const QVector<PageArea> &accepted, bool replaceAutomatic, const core::RegionInk &ink)
 {
     QVector<core::ImageRegion> result;
     for (const auto &region:existing) if (!replaceAutomatic || !region.autoDetected) result.append(region);
     for (const auto &area:accepted) {
-        if (area.bounds.isEmpty() || std::ranges::any_of(result,[&](const auto &r){ return ink.conflicts(r.bounds, area.bounds); })) continue;
-        core::ImageRegion region;
+        auto region = area.block();
+        const auto shape = region.shape();
+        if (shape.isEmpty() || std::ranges::any_of(result,[&](const auto &r){return ink.shapeConflicts(r.shape(),shape);})) continue;
         region.id=QUuid::createUuid().toString(QUuid::WithoutBraces);
-        region.bounds=area.bounds; region.content=area.type; region.notText=area.type=="picture";
-        region.autoDetected=true; region.detectedLabel=area.label; region.detectionScore=area.score;
         for (const auto &alternative:area.alternatives) if (alternative.type==area.type) {
             region.detectedLabel=alternative.label; region.detectionScore=alternative.score; break;
         }

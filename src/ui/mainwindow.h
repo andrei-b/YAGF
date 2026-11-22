@@ -94,7 +94,7 @@ private:
     void updateRegionDrag(const QPoint &position);
     void positionImageToolbar();
     void updateImageToolbar(const QPoint &position);
-    QVector<QRectF> regionObstacles() const;
+    QRect constrainBlock(const QRectF &from,const QRectF &to) const;
     core::RegionInk ink;
     QRubberBand *rubberBand;
     QPointF regionAnchor;

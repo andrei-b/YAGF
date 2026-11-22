@@ -175,7 +175,11 @@ std::expected<QHash<QString,GeometryAnchor>,QString> readGeometryAnchors(const Q
         points+=anchor.outline.size();
         for(const auto &f:v["fragments"].toArray()){QPolygonF p;if(!readPoints(f,p) || p.size()<4)return fail();points+=p.size();anchor.fragments.append(p);}
         for(const auto &f:v["last_fragments"].toArray()){QRect r;if(!readRect(f,r))return fail();anchor.lastFragments.append(r);}
-        if(points>2000000 || anchor.fragments.size()!=anchor.lastFragments.size())return fail();result.insert(it.key(),std::move(anchor));
+        // Rasterizing a rotated block outline can produce a different number
+        // of horizontal spans than the original source rectangles.
+        if(points>2000000 || (!it.key().startsWith("image/") && anchor.fragments.size()!=anchor.lastFragments.size()) ||
+           anchor.fragments.isEmpty()!=anchor.lastFragments.isEmpty())return fail();
+        result.insert(it.key(),std::move(anchor));
     }return result;
 }
 } // namespace yagf::core

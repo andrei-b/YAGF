@@ -8,7 +8,7 @@
 
 namespace yagf::processing {
 ParallelOcrRun::ParallelOcrRun(std::vector<ComparisonEngine> &engines,const QImage &image,const OcrOptions &options,
-    const QVector<QRect> &areas,std::stop_token parent,const QString &serviceKey,bool includeService):parentStop(parent,[this]{stop.request_stop();}) {
+    const QVector<QRegion> &areas,std::stop_token parent,const QString &serviceKey,bool includeService):parentStop(parent,[this]{stop.request_stop();}) {
     QSet<QString> seen;
     for (auto &entry:engines) {
         if (!serviceKey.isEmpty() && (entry.service.key()==serviceKey)!=includeService) continue;
@@ -21,10 +21,12 @@ ParallelOcrRun::ParallelOcrRun(std::vector<ComparisonEngine> &engines,const QIma
             else settings.language=service.language.isEmpty() ? QStringLiteral("auto") : service.language;
             qsizetype characters=0; int nextBlock=1;
             try {
-                for (const auto &area:areas) {
+                for (const auto &shape:areas) {
                     if (token.stop_requested()) break;
+                    core::ImageRegion block; block.setShape(shape);
+                    const auto area = block.bounds;
                     reading.area|=area;
-                    auto result=engine->recognize(image.copy(area),croppedOcrOptions(settings,area),token);
+                    auto result=engine->recognize(block.crop(image),croppedOcrOptions(settings,area),token);
                     if (!result) {reading.error=result.error().cancelled ? QStringLiteral("Cancelled") : result.error().message.left(2048); reading.items.clear(); break;}
                     if (result->number!=options.pageNumber || result->width!=area.width() || result->height!=area.height()) throw std::runtime_error("Companion OCR returned inconsistent page dimensions");
                     reading.language=result->language;

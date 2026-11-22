@@ -1,7 +1,34 @@
 #include "pagegeometry.h"
+#include <algorithm>
+#include <cmath>
 
 namespace yagf::core {
 namespace {
+// Sample pixel centers with half-open edges. Neighboring blocks can describe
+// one edge with different numbers of vertices, so round only after finding
+// the intersection with the scanline.
+QRegion blockPixels(const QPolygonF &outline, const QRect &canvas) {
+    const QRect bounds = enclosingPixels(outline).intersected(canvas);
+    QRegion result;
+    QVector<double> crossings;
+    for (int y=bounds.top(); y<=bounds.bottom(); ++y) {
+        const double scan=y+0.5;
+        crossings.clear();
+        for (int i=0; i<outline.size(); ++i) {
+            const auto a=outline[i], b=outline[(i+1)%outline.size()];
+            if ((a.y()>scan)==(b.y()>scan)) continue;
+            crossings.append(a.x()+(b.x()-a.x())*(scan-a.y())/(b.y()-a.y()));
+        }
+        std::ranges::sort(crossings);
+        for (int i=1; i<crossings.size(); i+=2) {
+            const auto edge=[](double x){return int(std::ceil(x-0.5-1e-9));};
+            const int left=std::max(bounds.left(),edge(crossings[i-1]));
+            const int end=std::min(bounds.right()+1,edge(crossings[i]));
+            if (end>left) result |= QRect(left,y,end-left,1);
+        }
+    }
+    return result;
+}
 std::expected<core::CoordinatePipeline,QString> coordinates(const core::OcrPage &page) {
     if(page.coordinates.isDefined())return page.coordinates;
     return std::unexpected(QStringLiteral("This page has no source-coordinate pipeline."));
@@ -42,7 +69,8 @@ std::expected<core::OcrPage,QString> remapPageGeometry(const core::OcrPage &sour
     if(*origin==destination)return page;
     const QRect canvas(QPoint(),destination.outputSize().toSize());
     QHash<QString,core::GeometryAnchor> anchors;
-    const auto map=[&](const QString &key,QRect &box,QVector<QRect> *fragments=nullptr)->std::expected<void,QString> {
+    const auto map=[&](const QString &key,QRect &box,QVector<QRect> *fragments=nullptr,
+                       bool mapShape=false)->std::expected<void,QString> {
         if(box.isEmpty())return {};
         auto anchor=source.sourceGeometry.value(key);
         const auto oldFragments=fragments?*fragments:QVector<QRect>{};
@@ -59,11 +87,21 @@ std::expected<core::OcrPage,QString> remapPageGeometry(const core::OcrPage &sour
         if(projected.isEmpty())return std::unexpected(QStringLiteral("A transformed region falls outside the page. The existing page was kept."));
         box=projected;
         if(fragments) {
+            QRegion projectedShape;
             fragments->clear();for(const auto &fragment:anchor.fragments) {
                 auto points=destination.mapOutline(fragment);if(!points)return std::unexpected(points.error());
+                if (mapShape) {
+                    projectedShape |= blockPixels(*points,box);
+                    continue;
+                }
                 auto bounds=core::enclosingPixels(*points).intersected(box);
                 if(bounds.isEmpty())return std::unexpected(QStringLiteral("A source fragment falls outside the transformed page."));
                 fragments->append(bounds);
+            }
+            if (mapShape && !anchor.fragments.isEmpty()) {
+                if (projectedShape.isEmpty() || projectedShape.rectCount()>4096)
+                    return std::unexpected(QStringLiteral("The transformed block outline cannot be preserved."));
+                for (QRect piece : projectedShape) fragments->append(piece);
             }
         }
         anchor.lastBounds=box;anchor.lastFragments=fragments?*fragments:QVector<QRect>{};anchors.insert(key,std::move(anchor));return {};
@@ -84,7 +122,11 @@ std::expected<core::OcrPage,QString> remapPageGeometry(const core::OcrPage &sour
             for(auto &line:paragraph.lines)if(auto r=map("line/"+line.id,line.bounds);!r)return std::unexpected(r.error());
         }
     }
-    for(auto &region:page.imageRegions)if(auto r=map("image/"+region.id,region.bounds);!r)return std::unexpected(r.error());
+    for (auto &region : page.imageRegions) {
+        for (auto &part : region.parts) part.translate(region.bounds.topLeft());
+        if (auto r=map("image/"+region.id,region.bounds,&region.parts,true); !r) return std::unexpected(r.error());
+        for (auto &part : region.parts) part.translate(-region.bounds.topLeft());
+    }
     for(auto &reading:page.ocrReadings) {
         if(auto r=map("reading/"+reading.source,reading.area);!r)return std::unexpected(r.error());
         for(int i=0;i<reading.items.size();++i)

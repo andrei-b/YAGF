@@ -27,7 +27,7 @@ bool mathematicalReading(const QString &text)
 QString languageAt(const core::OcrPage &page, const core::OcrWord &word, const QString &fallback = {})
 {
     for (const auto &region : page.imageRegions)
-        if (!region.language.isEmpty() && region.bounds.contains(word.bounds.center())) return region.language;
+        if (!region.language.isEmpty() && region.shape().contains(word.bounds.center())) return region.language;
     return page.language.isEmpty() || page.language == "auto" ? fallback : page.language;
 }
 

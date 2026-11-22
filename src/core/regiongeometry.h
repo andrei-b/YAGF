@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QRectF>
+#include <QRegion>
 #include <QImage>
 #include <QVector>
 
@@ -13,6 +14,7 @@ public:
     RegionInk() = default;
     explicit RegionInk(const QImage &page);
     bool conflicts(const QRect &a, const QRect &b) const;
+    bool shapeConflicts(const QRegion &a, const QRegion &b) const;
     const QImage &grayscale() const { return gray; }
 private:
     QImage gray;

@@ -9,7 +9,7 @@ struct ComparisonEngine {OcrService service; std::unique_ptr<IOcrEngine> engine;
 class ParallelOcrRun {
 public:
     ParallelOcrRun(std::vector<ComparisonEngine> &engines,const QImage &image,const OcrOptions &options,
-                   const QVector<QRect> &areas,std::stop_token parent,
+                   const QVector<QRegion> &areas,std::stop_token parent,
                    const QString &serviceKey={},bool includeService=true);
     ~ParallelOcrRun();
     QVector<core::OcrReading> finish();

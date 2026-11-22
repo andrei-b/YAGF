@@ -14,6 +14,6 @@ std::expected<OcrPage, QString> acceptOcrReading(const OcrPage &page, const QVec
 void recordReadingDecision(OcrPage &target,const OcrPage &before,const QVector<int> &span,const OcrReading &reading,
                            const QString &text,const QString &decision);
 void translateOcrReadings(QVector<OcrReading> &readings, QPoint offset);
-QVector<OcrReading> cropOcrReadings(const QVector<OcrReading> &readings, QRect area);
-void mergeOcrReadings(QVector<OcrReading> &target, QVector<OcrReading> incoming, QRect area);
+QVector<OcrReading> cropOcrReadings(const QVector<OcrReading> &readings, QRect area, const QRegion &shape = {});
+void mergeOcrReadings(QVector<OcrReading> &target, QVector<OcrReading> incoming, const QRegion &area);
 }

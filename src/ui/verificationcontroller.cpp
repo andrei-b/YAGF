@@ -85,7 +85,7 @@ void VerificationController::refresh()
     if (busy || !dirty || !dock->isVisible()) return;
     queue = core::buildVerificationQueue(document, [this](const core::OcrPage &page, const core::OcrWord &word, const QString &token) {
         QString language = page.language;
-        for (const auto &region : page.imageRegions) if (!region.language.isEmpty() && region.bounds.contains(word.bounds.center())) { language = region.language; break; }
+        for (const auto &region : page.imageRegions) if (!region.language.isEmpty() && region.shape().contains(word.bounds.center())) { language = region.language; break; }
         spelling.setLanguages({language});
         return spelling.isMisspelled(token);
     });

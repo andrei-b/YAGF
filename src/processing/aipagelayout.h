@@ -18,7 +18,12 @@ struct PageArea {
     QString detectedType; // Retains the model's first choice when the user changes type.
     QString id; // Stable within one model response, including live score filtering.
     double splitParentScore = -1; // Used to rank proposals in the review dialog only.
+    QVector<QRect> parts;
+    core::ImageRegion block() const {
+        return {id,bounds,{},type=="picture",type,true,label,score,parts};
+    }
 };
+void refinePageAreaShapes(QVector<PageArea> &areas,const QImage &gray);
 struct PageLayout {
     QString model;
     QVector<PageArea> areas;

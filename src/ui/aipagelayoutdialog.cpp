@@ -1,4 +1,5 @@
 #include "aipagelayoutdialog.h"
+#include "regionoutline.h"
 #include "formulagrowth.h"
 #include "recognitionrecorder.h"
 #include <QElapsedTimer>
@@ -66,9 +67,9 @@ QString typeLabel(const QString &type) {
     return type=="picture" ? QObject::tr("Picture") : type=="math" ? QObject::tr("Formula") :
            type=="mixed" ? QObject::tr("Text + formulas") : QObject::tr("Text");
 }
-class AreaOutline final : public QGraphicsRectItem {
+class AreaOutline final : public RegionOutline {
 public:
-    AreaOutline(QRect bounds,std::function<void()> clicked):QGraphicsRectItem(bounds),clicked(std::move(clicked)) {
+    AreaOutline(const core::ImageRegion &block,std::function<void()> clicked):RegionOutline(block),clicked(std::move(clicked)) {
         setAcceptedMouseButtons(Qt::LeftButton); setCursor(Qt::PointingHandCursor);
     }
 protected:
@@ -76,10 +77,10 @@ protected:
 private:
     std::function<void()> clicked;
 };
-QToolButton *thumbnail(const QImage &image,QRect bounds,QWidget *parent)
+QToolButton *thumbnail(const QImage &image,const core::ImageRegion &block,QWidget *parent)
 {
     auto *button=new QToolButton(parent);
-    button->setIcon(QIcon(QPixmap::fromImage(image.copy(bounds).scaled(144,106,Qt::KeepAspectRatio,Qt::SmoothTransformation))));
+    button->setIcon(QIcon(QPixmap::fromImage(block.crop(image).scaled(144,106,Qt::KeepAspectRatio,Qt::SmoothTransformation))));
     button->setIconSize(QSize(144,106)); button->setFixedSize(152,114);
     button->setObjectName("layoutThumbnail"); button->setToolTip(QObject::tr("Inspect this block on the page"));
     return button;
@@ -158,7 +159,7 @@ AiPageLayoutDialog::AiPageLayoutDialog(QImage source,QVector<core::ImageRegion> 
     connect(in,&QToolButton::clicked,this,[this]{previewTarget={}; preview->scale(1.25,1.25);});
     connect(out,&QToolButton::clicked,this,[this]{previewTarget={}; preview->scale(.8,.8);});
     for (const auto &region:existing) {
-        auto *box=scene->addRect(region.bounds,QPen(QColor(128,138,151),2,Qt::DashLine));
+        auto *box=new RegionOutline(region); scene->addItem(box); box->setPen(QPen(QColor(128,138,151),2,Qt::DashLine));
         box->setToolTip(region.autoDetected ? tr("Existing automatic block") : tr("Preserved manual block")); box->setZValue(1); preservedBoxes.append(box);
     }
     auto *blockPanel=new QWidget(splitter); blockPanel->setMinimumWidth(400); auto *blockLayout=new QVBoxLayout(blockPanel); blockLayout->setContentsMargins(8,0,0,0); blockLayout->setSpacing(8);
@@ -273,6 +274,7 @@ void AiPageLayoutDialog::filterAreas()
     for(const auto &area:allAreas)if(area.score+1e-9>=threshold->value()/100.)areas.append(area);
     if (blockScope) processing::subdivideInlineAreas(areas,ink.grayscale(),localInlineHints);
     else processing::consolidateInlineAreas(areas, ink.grayscale());
+    processing::refinePageAreaShapes(areas, ink.grayscale());
     for(auto &area:areas)if(typeOverrides.contains(area.id))area.type=typeOverrides.value(area.id);
     populate();
     message->setText(allAreas.isEmpty()?tr("No areas returned by the model. Use Analyze again to retry."):
@@ -283,8 +285,17 @@ void AiPageLayoutDialog::filterAreas()
 void AiPageLayoutDialog::rememberSelection(int index,bool checked)
 {
     selectionOverrides[areas[index].id]=checked;
-    if(checked)for(const auto &area:(blockScope ? areas : allAreas))
-        if(area.id!=areas[index].id && ink.conflicts(area.bounds, areas[index].bounds))selectionOverrides[area.id]=false;
+    if (!checked) return;
+    const auto selected = areas[index].block().shape();
+    QSet<QString> visible;
+    for (const auto &area : areas) {
+        visible.insert(area.id);
+        if (area.id!=areas[index].id && ink.shapeConflicts(area.block().shape(),selected))
+            selectionOverrides[area.id]=false;
+    }
+    if (!blockScope) for (const auto &area : allAreas)
+        if (!visible.contains(area.id) && ink.shapeConflicts(area.block().shape(),selected))
+            selectionOverrides[area.id]=false;
 }
 void AiPageLayoutDialog::populate(bool resetSelection)
 {
@@ -305,7 +316,7 @@ void AiPageLayoutDialog::populate(bool resetSelection)
         if (!kept && hasAnalysis) continue;
         auto *item=new QListWidgetItem(miniatures); item->setData(Qt::UserRole,-i-1); item->setSizeHint(QSize(380,144));
         auto *card=new QFrame(miniatures); card->setStyleSheet("QFrame {background: #f0f2f5; border-radius: 8px;}"); auto *row=new QHBoxLayout(card); row->setContentsMargins(10,10,10,10);
-        auto *thumb=thumbnail(image,region.bounds,card); row->addWidget(thumb); auto *details=new QVBoxLayout;
+        auto *thumb=thumbnail(image,region,card); row->addWidget(thumb); auto *details=new QVBoxLayout;
         auto *title=new QLabel(region.autoDetected ? tr("Existing block") : tr("Manual block"),card); title->setObjectName("layoutPanelTitle"); details->addWidget(title);
         auto *type=new QLabel(region.notText && region.content!="picture" ? tr("Excluded from OCR") : typeLabel(region.content),card); details->addWidget(type);
         auto *state=new QLabel(kept ? tr("Kept on the page") : tr("Will be replaced after Apply"),card); state->setWordWrap(true); state->setObjectName("layoutSubtitle"); details->addWidget(state); details->addStretch(); row->addLayout(details,1);
@@ -315,7 +326,7 @@ void AiPageLayoutDialog::populate(bool resetSelection)
         if (areas[i].detectedType.isEmpty()) areas[i].detectedType=areas[i].type;
         auto *item=new QListWidgetItem(miniatures); item->setFlags(Qt::ItemIsEnabled|Qt::ItemIsSelectable|Qt::ItemIsUserCheckable); item->setData(Qt::UserRole,i); item->setCheckState(Qt::Unchecked); item->setSizeHint(QSize(380,158)); areaItems.append(item);
         auto *card=new QFrame(miniatures); card->setObjectName("layoutBlockCard"); auto *row=new QHBoxLayout(card); row->setContentsMargins(10,10,10,10); row->setSpacing(12);
-        auto *thumb=thumbnail(image,areas[i].bounds,card); row->addWidget(thumb);
+        auto *thumb=thumbnail(image,areas[i].block(),card); row->addWidget(thumb);
         auto *details=new QVBoxLayout; details->setSpacing(5); auto *use=new QCheckBox(tr("Block %1").arg(i+1),card); use->setObjectName(QString("layoutUseArea%1").arg(i)); details->addWidget(use);
         auto *type=new AreaTypeCombo(card); type->setObjectName(QString("layoutType%1").arg(i)); type->addItem(tr("Text"),"text"); type->addItem(tr("Picture"),"picture"); type->addItem(tr("Formula"),"math"); type->addItem(tr("Text + formulas"),"mixed"); type->setCurrentIndex(type->findData(areas[i].type)); details->addWidget(type);
         auto *score=new QLabel(card); score->setObjectName("layoutBlockScore"); score->setTextFormat(Qt::PlainText); score->setWordWrap(true); details->addWidget(score);
@@ -325,10 +336,10 @@ void AiPageLayoutDialog::populate(bool resetSelection)
         connect(type,&QComboBox::currentIndexChanged,this,[this,i,type,item]{if(updating)return;areas[i].type=type->currentData().toString();typeOverrides[areas[i].id]=areas[i].type; miniatures->setCurrentItem(item); updateSelection();});
         connect(alternative,&QToolButton::clicked,this,[this,i,alternative]{cards[i].type->setCurrentIndex(cards[i].type->findData(alternative->property("alternativeType").toString()));});
         connect(thumb,&QToolButton::clicked,this,[this,item]{miniatures->setCurrentItem(item); focusBlock(item);});
-        auto *box=new AreaOutline(areas[i].bounds,[this,item]{miniatures->setCurrentItem(item); miniatures->scrollToItem(item); focusBlock(item);}); scene->addItem(box); box->setZValue(2); boxes.append(box);
+        auto *box=new AreaOutline(areas[i].block(),[this,item]{miniatures->setCurrentItem(item); miniatures->scrollToItem(item); focusBlock(item);}); scene->addItem(box); box->setZValue(2); boxes.append(box);
     }
-    QVector<QRect> occupied;
-    for (const auto &block:existing) if (!replaceAutomatic->isChecked() || !block.autoDetected) occupied.append(block.bounds);
+    QVector<QRegion> occupied;
+    for (const auto &block:existing) if (!replaceAutomatic->isChecked() || !block.autoDetected) occupied.append(block.shape());
     QVector<int> order(areas.size()); std::iota(order.begin(),order.end(),0);
     std::stable_sort(order.begin(),order.end(),[&](int a,int b){
         const bool explicitA=selectionOverrides.value(areas[a].id,false),explicitB=selectionOverrides.value(areas[b].id,false);
@@ -336,12 +347,12 @@ void AiPageLayoutDialog::populate(bool resetSelection)
         return std::max(areas[a].score,areas[a].splitParentScore) > std::max(areas[b].score,areas[b].splitParentScore);
     });
     for (int i:order) {
-        const bool overlap=std::ranges::any_of(occupied,[&](const auto &box){return ink.conflicts(box, areas[i].bounds);});
-        const bool preservedOverlap=std::ranges::any_of(existing,[&](const auto &block){return (!replaceAutomatic->isChecked() || !block.autoDetected) && ink.conflicts(block.bounds, areas[i].bounds);});
+        const bool overlap=std::ranges::any_of(occupied,[&](const auto &box){return ink.shapeConflicts(box, areas[i].block().shape());});
+        const bool preservedOverlap=std::ranges::any_of(existing,[&](const auto &block){return (!replaceAutomatic->isChecked() || !block.autoDetected) && ink.shapeConflicts(block.shape(), areas[i].block().shape());});
         if (preservedOverlap) {
             areaItems[i]->setFlags(Qt::ItemIsSelectable|Qt::ItemIsEnabled);
             areaItems[i]->setToolTip(tr("Overlaps a kept block. Adjust that block on the page before analyzing again.")); cards[i].use->setEnabled(false); cards[i].use->setToolTip(areaItems[i]->toolTip());
-        } else if (!overlap && selectionOverrides.value(areas[i].id,resetSelection || previouslySelected.contains(i))) {areaItems[i]->setCheckState(Qt::Checked); occupied.append(areas[i].bounds);}
+        } else if (!overlap && selectionOverrides.value(areas[i].id,resetSelection || previouslySelected.contains(i))) {areaItems[i]->setCheckState(Qt::Checked); occupied.append(areas[i].block().shape());}
     }
     updating=false; updateSelection();
     emptyHint->setVisible(miniatures->count()==0); emptyHint->setText(hasAnalysis ? tr("No areas at this score.\nLower the slider to show more results.") : tr("Finding areas on this page…\nBlock miniatures will appear here."));
@@ -371,7 +382,7 @@ void AiPageLayoutDialog::updateSelection(int changed)
     if (updating) return;
     updating=true;
     if (changed>=0 && areaItems[changed]->checkState()==Qt::Checked) {
-        for (int i=0;i<areas.size();++i) if (i!=changed && ink.conflicts(areas[i].bounds, areas[changed].bounds)) areaItems[i]->setCheckState(Qt::Unchecked);
+        for (int i=0;i<areas.size();++i) if (i!=changed && ink.shapeConflicts(areas[i].block().shape(), areas[changed].block().shape())) areaItems[i]->setCheckState(Qt::Unchecked);
     }
     int selected=0;
     for (int i=0;i<areas.size();++i) {

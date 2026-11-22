@@ -8,6 +8,7 @@
 #include "tesseractengine.h"
 
 #include <QPainter>
+#include <QElapsedTimer>
 #include <QRegularExpression>
 #include <QUuid>
 #include <algorithm>
@@ -33,6 +34,38 @@ class FormulaPrefetch {
     std::future<Result> pending;
     QList<QRect> prefetched;
     std::optional<Result> cached;
+    QHash<QRect,QRegion> masks;
+
+    static std::expected<core::OcrPage,OcrError> read(IOcrEngine *provider,const QImage &image,
+        const OcrOptions &options,std::stop_token stop,const QList<QRect> &boxes,QStringList *warnings,
+        int budget,const QHash<QRect,QRegion> &masks)
+    {
+        if (std::ranges::none_of(boxes,[&](QRect b){return masks.contains(b);}))
+            return recognizeFormulaBoxes(provider,image,options,stop,boxes,warnings,budget);
+        QElapsedTimer timer; timer.start();
+        core::OcrPage result;
+        for (QRect box : boxes) {
+            QImage input = image;
+            if (masks.contains(box)) {
+                input = image.convertToFormat(QImage::Format_RGB32);
+                QPainter painter(&input);
+                painter.setClipRegion(QRegion(box)-masks.value(box));
+                painter.fillRect(box,Qt::white);
+            }
+            auto one = recognizeFormulaBoxes(provider,input,options,stop,{box},warnings,
+                                              std::max(0,budget-int(timer.elapsed())));
+            if (!one) return std::unexpected(one.error());
+            if (masks.contains(box)) {
+                for (auto &word : one->words) {
+                    word.sourceBoxes.clear();
+                    for (QRect part : masks.value(box).intersected(word.bounds)) word.sourceBoxes.append(part);
+                }
+            }
+            result.words += one->words;
+            appendRecognitionEvidence(result,*one);
+        }
+        return result;
+    }
 public:
     explicit FormulaPrefetch(std::stop_token parent)
         : parentStop(parent, [this] { stop.request_stop(); }) {}
@@ -40,13 +73,15 @@ public:
         stop.request_stop();
         if (pending.valid()) pending.wait();
     }
+    void setMask(QRect box,const QRegion &shape) { masks.insert(box,shape); }
+    bool owns(QRect box,QPoint point) const { return !masks.contains(box) || masks.value(box).contains(point); }
     void start(IOcrEngine *provider, const QImage &image, const OcrOptions &options,
                const QList<QRect> &boxes, int budget) {
         if (boxes.isEmpty()) return;
         prefetched = boxes;
-        pending = std::async(std::launch::async, [=, token=stop.get_token()] {
+        pending = std::async(std::launch::async, [=, masks=masks, token=stop.get_token()] {
             Result result;
-            result.reading = recognizeFormulaBoxes(provider, image, options, token, boxes, &result.warnings, budget);
+            result.reading = read(provider, image, options, token, boxes, &result.warnings, budget,masks);
             return result;
         });
     }
@@ -54,7 +89,7 @@ public:
         const OcrOptions &options, std::stop_token token, const QList<QRect> &boxes,
         QStringList *warnings, int budget) {
         if (!pending.valid() && !cached)
-            return recognizeFormulaBoxes(provider, image, options, token, boxes, warnings, budget);
+            return read(provider, image, options, token, boxes, warnings, budget,masks);
         if (pending.valid()) cached = pending.get();
         if (token.stop_requested()) return std::unexpected(OcrError{{}, true});
         if (!cached->reading) return std::unexpected(cached->reading.error());
@@ -66,7 +101,7 @@ public:
         QList<QRect> remaining;
         for (const auto &box : boxes) if (!prefetched.contains(box)) remaining.append(box);
         if (!remaining.isEmpty()) {
-            auto later = recognizeFormulaBoxes(provider, image, options, token, remaining, warnings, budget);
+            auto later = read(provider, image, options, token, remaining, warnings, budget,masks);
             if (!later) return std::unexpected(later.error());
             result.words += later->words;
             appendRecognitionEvidence(result, *later);
@@ -159,7 +194,7 @@ QVector<core::ImageRegion> textBlocksFromReading(const core::OcrPage &page,
     QHash<QString, bool> formulas;
     for (const auto &word : page.words) formulas.insert(word.id, word.layoutBlock);
     for (const auto &region : page.regions) for (const auto &paragraph : region.paragraphs) {
-        if (std::ranges::any_of(explicitRegions, [&](const auto &r) { return ink.conflicts(r.bounds, paragraph.bounds); }))
+        if (std::ranges::any_of(explicitRegions, [&](const auto &r) { return ink.shapeConflicts(r.shape(), paragraph.bounds); }))
             continue;
         paragraphs.append(paragraph.bounds);
         bool math = false, text = false;
@@ -173,7 +208,7 @@ QVector<core::ImageRegion> textBlocksFromReading(const core::OcrPage &page,
     // Keep proposals beside manually drawn blocks where a raw paragraph crosses
     // an explicit boundary. Other prose outlines follow the raw paragraphs.
     for (int i = explicitRegions.size(); i < detected.size(); ++i) {
-        if (!std::ranges::any_of(paragraphs, [&](const auto &box) { return ink.conflicts(box, detected[i].bounds); }))
+        if (!std::ranges::any_of(paragraphs, [&](const auto &box) { return ink.shapeConflicts(box, detected[i].shape()); }))
             result.append(detected[i]);
     }
     return result;
@@ -406,8 +441,10 @@ QVector<Row> rowsIn(const QImage &gray, QRect area, const QVector<OcrWord> &word
         QSet<int> edges;
         for (const auto &region : excluded) {
             if (region.bounds.bottom() < top || region.bounds.top() > bottom) continue;
-            edges.insert(region.bounds.left()-area.left());
-            edges.insert(region.bounds.right()+1-area.left());
+            for (QRect part : region.shape().intersected(QRect(area.left(),top,area.width(),bottom-top+1))) {
+                edges.insert(part.left()-area.left());
+                edges.insert(part.right()+1-area.left());
+            }
         }
         int start = -1, last = -1;
         for (int x = 0; x <= columns.size(); ++x) {
@@ -469,7 +506,7 @@ void routeMathSymbols(QVector<Row> &rows, const QImage &gray, QRect area, const 
         if (owner != regions.end() && &region == &*owner) continue;
         const bool neighboringText = fullPage && mode == "mixed" && owner != regions.end() &&
             !region.notText && region.content == "text" && region.language == owner->language;
-        if (!neighboringText) protectedBoxes.append(region.bounds);
+        if (!neighboringText) for (QRect part : region.shape()) protectedBoxes.append(part);
     }
     for (const auto &word : words) {
         if (anchors.contains(word.bounds) || (mode == "math" && area.contains(word.bounds))) continue;
@@ -608,7 +645,7 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
     QImage uncovered = gray;
     if (includeUnmarked && !regions.isEmpty()) {
         QPainter mask(&uncovered);
-        for (const auto &region : regions) mask.fillRect(region.bounds, Qt::white);
+        for (const auto &region : regions) for (QRect part : region.shape()) mask.fillRect(part, Qt::white);
     }
     core::OcrPage page;
     page.number = options.pageNumber;
@@ -631,7 +668,7 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
     IOcrEngine &prose = textProvider ? *textProvider : tesseract;
     QSet<QRect> inlineCrops;
     const auto analyze = [&](const QImage &pixels, QRect area, const QString &mode, QString language,
-                             const QVector<core::ImageRegion> &excluded)
+                             const QVector<core::ImageRegion> &excluded, const QRegion *owner=nullptr)
             -> std::expected<QVector<Row>, OcrError> {
         if (stop.stop_requested()) return std::unexpected(OcrError{{}, true});
         if (area.isEmpty()) return QVector<Row>{};
@@ -648,9 +685,36 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
                 if (!result) return std::unexpected(result.error());
                 baselines.emplace(language, std::move(*result));
             }
+            if (owner && !splitOnly) {
+                auto cropOptions = croppedOcrOptions(settings,area);
+                cropOptions.language = language;
+                auto reading = prose.recognize(pixels.copy(area),cropOptions,stop);
+                if (!reading) return std::unexpected(reading.error());
+                auto &baseline = baselines.at(language);
+                QVector<Row> lines;
+                std::optional<std::tuple<int,int,int>> previous;
+                for (auto word : reading->words) {
+                    word.bounds.translate(area.topLeft());
+                    for (auto &fragment : word.sourceBoxes) fragment.translate(area.topLeft());
+                    if (!owner->intersects(word.bounds)) continue;
+                    word.id.clear();
+                    word.sourceWordIds.clear();
+                    const auto key = std::tuple(word.block,word.paragraph,word.line);
+                    if (key != previous) lines.append(Row{{},"text",{},true});
+                    previous = key;
+                    lines.last().box |= word.bounds;
+                    lines.last().words.append(std::move(word));
+                }
+                if (!lines.isEmpty()) {
+                    baseline.words.removeIf([&](const auto &w){return owner->contains(w.bounds.center());});
+                    restoreRecoveredText(baseline,lines);
+                }
+                appendRecognitionEvidence(baseline,*reading,area.topLeft());
+                baseline.rebuildHierarchy();
+            }
             for (const auto &word : baselines.at(language).words) {
-                if (!area.contains(word.bounds.center())) continue;
-                if (std::ranges::any_of(excluded, [&](const auto &r) { return r.bounds.contains(word.bounds.center()); }))
+                if (!area.contains(word.bounds.center()) || (owner && !owner->contains(word.bounds.center()))) continue;
+                if (std::ranges::any_of(excluded, [&](const auto &r) { return r.shape().contains(word.bounds.center()); }))
                     continue;
                 local.append(word);
                 heights.append(word.bounds.height());
@@ -667,10 +731,10 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
         if (mode.isEmpty() && baselines.contains(language)) {
             for (const auto &hint : baselines.at(language).imageRegions) {
                 if (!hint.autoDetected || !hint.content.isEmpty() || !area.contains(hint.bounds) ||
-                    std::ranges::any_of(excluded, [&](const auto &r) { return r.bounds.intersects(hint.bounds); }) ||
+                    std::ranges::any_of(excluded, [&](const auto &r) { return r.shape().intersects(hint.bounds); }) ||
                     !mathInk(pixels, hint.bounds)) continue;
                 const QRect box = formulaFromHint(pixels, hint.bounds, area, local, height);
-                if (box.isEmpty() || std::ranges::any_of(excluded, [&](const auto &r) { return r.bounds.intersects(box); }))
+                if (box.isEmpty() || std::ranges::any_of(excluded, [&](const auto &r) { return r.shape().intersects(box); }))
                     continue;
                 Row row{box, {}, {}};
                 classify(row, pixels, "math");
@@ -686,7 +750,7 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
             // Formula prefetch can start before text OCR has supplied any words.
             const auto native = baselines.find(language.isEmpty() ? page.language : language);
             const auto &context = native == baselines.end() ? local : native->second.words;
-            routeMathSymbols(found,pixels,area,mode,context,regions,includeUnmarked,symbolEvidence,stop);
+            routeMathSymbols(found,pixels,area,mode,context,regions,includeUnmarked && !owner,symbolEvidence,stop);
             // Native OCR can read the integral as a brace and each limit as
             // a separate word. Repair its formula proposal before dispatch.
             for (auto &row : found) for (auto &word : row.words) {
@@ -694,10 +758,10 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
                 const QRect before = word.bounds;
                 for (const QRect &sign : boundedIntegralSigns(pixels, before)) {
                     const QRect grown = word.bounds.united(sign);
-                    if (grown == word.bounds || (!includeUnmarked && !area.contains(grown))) continue;
+                    if (grown == word.bounds || ((!includeUnmarked || owner) && !area.contains(grown))) continue;
                     if (std::ranges::any_of(regions, [&](const auto &other) {
                             return other.bounds != area && (other.notText || other.content == "math") &&
-                                   ink.conflicts(grown,other.bounds);
+                                   ink.shapeConflicts(grown,other.shape());
                         })) continue;
                     if (std::ranges::any_of(context, [&](const auto &other) {
                             return grown.contains(other.bounds.center()) && !before.contains(other.bounds.center()) &&
@@ -742,16 +806,28 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
     const auto analyzeRegion = [&](const core::ImageRegion &region) -> std::expected<QVector<Row>, OcrError> {
         const QRect box = region.bounds.intersected(gray.rect());
         const bool inlineFormula = region.detectedLabel == "inline_formula" || region.detectedLabel == "inline_formula_geometry";
-        if (!box.isEmpty() && region.content == "math" && (inlineFormula || region.detectedLabel == "display_formula")) {
+        if (!box.isEmpty() && region.content == "math" && (inlineFormula || region.detectedLabel == "display_formula" || !region.parts.isEmpty())) {
             // The accepted crop is one expression, even if native OCR gives
             // the numerator and denominator different lines.
             if (inlineFormula) inlineCrops.insert(box);
+            if (!region.parts.isEmpty()) formulaReadings.setMask(box,region.shape());
             OcrWord formula;
             formula.bounds = box;
             formula.layoutBlock = true;
             return QVector<Row>{{box, inlineFormula ? "mixed" : "math", {formula}}};
         }
-        return analyze(gray, box, region.content, region.language, {});
+        if (region.parts.isEmpty()) return analyze(gray,box,region.content,region.language,{});
+        const QRegion owner = region.shape();
+        QImage pixels = gray;
+        {
+            QPainter mask(&pixels);
+            mask.setClipRegion(QRegion(box)-owner);
+            mask.fillRect(box,Qt::white);
+        }
+        auto rows = analyze(pixels,box,region.content,region.language,{},&owner);
+        if (rows) for (const auto &row : *rows) for (const auto &word : row.words)
+            if (word.layoutBlock) formulaReadings.setMask(word.bounds,owner);
+        return rows;
     };
     std::map<int, QVector<Row>> earlyRows;
     if (!splitOnly && parallelFormulas && formulaProvider != &prose) {
@@ -802,7 +878,7 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
     for (const auto &row : *detected) {
         // A rectangular proposal can still span an excluded hole in the mask.
         const auto overlaps = [&](const QRect &box) {
-            return std::ranges::any_of(regions, [&](const auto &r) { return ink.conflicts(box, r.bounds); });
+            return std::ranges::any_of(regions, [&](const auto &r) { return ink.shapeConflicts(box,r.shape()); });
         };
         if (overlaps(row.box)) { lastText = -1; continue; }
         if (lastText >= 0 && row.content == "text") {
@@ -840,7 +916,7 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
         original.imageRegions = page.imageRegions;
         original.words.removeIf([&](const auto &word) {
             return std::ranges::any_of(regions, [&](const auto &r) {
-                return r.notText && r.bounds.contains(word.bounds.center());
+                return r.notText && r.shape().contains(word.bounds.center());
             });
         });
         original.rebuildHierarchy();
@@ -849,7 +925,7 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
     if (baselines.size() == 1 && std::ranges::all_of(rows, [](const auto &row) { return row.content == "text"; })) {
         auto original = baselines.begin()->second;
         original.words.removeIf([&](const auto &word) {
-            const auto contains = [&](const auto &r) { return r.bounds.contains(word.bounds.center()); };
+            const auto contains = [&](const auto &r) { return r.shape().contains(word.bounds.center()); };
             return (!includeUnmarked && !std::ranges::any_of(regions, contains)) ||
                 std::ranges::any_of(regions, [&](const auto &r) { return r.notText && contains(r); });
         });
@@ -872,7 +948,7 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
         // propose replacements, but cannot reorder the native reading.
         auto original = baselines.begin()->second;
         original.words.removeIf([&](const auto &word) {
-            const auto contains = [&](const auto &r) { return r.bounds.contains(word.bounds.center()); };
+            const auto contains = [&](const auto &r) { return r.shape().contains(word.bounds.center()); };
             return (!includeUnmarked && !std::ranges::any_of(regions, contains)) ||
                 std::ranges::any_of(regions, [&](const auto &r) { return r.notText && contains(r); });
         });
@@ -894,7 +970,7 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
                 // be refreshed. Honor their Math type even when text OCR reads
                 // formula symbols as Cyrillic prose.
                 return (!r.autoDetected || !r.detectedLabel.isEmpty()) && r.content == "math" &&
-                    r.bounds.contains(proposal.bounds.center());
+                    r.shape().contains(proposal.bounds.center());
             });
             if (!forced && ruledDiagram(gray, proposal.bounds)) continue;
             QVector<int> span;
@@ -902,7 +978,7 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
             bool unsafe = false;
             for (int i = 0; i < original.words.size(); ++i) {
                 const auto &word = original.words[i];
-                if (!proposal.bounds.contains(word.bounds.center())) continue;
+                if (!proposal.bounds.contains(word.bounds.center()) || !formulaReadings.owns(proposal.bounds,word.bounds.center())) continue;
                 span.append(i);
                 tokens += word.text;
                 if (claimed.contains(i) || (!forced && !assignments.contains(i) && !symbolEvidence.nativeSymbols.contains(word.bounds) && proseWord(word.text))) unsafe = true;
@@ -1047,6 +1123,7 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
             if (types[word.block-1] == "mixed") word.text = "\\(" + word.text + "\\)";
             word.originalText = word.text;
             word.readingEngine = formulas->words[i].readingEngine;
+            word.sourceBoxes = formulas->words[i].sourceBoxes;
             readIsolatedSymbol(word,symbolEvidence,image,settings,types[word.block-1] == "mixed",formulas->recognitionHistory);
         }
         appendRecognitionEvidence(page, *formulas);
@@ -1090,11 +1167,12 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
         for (const auto &r : result->imageRegions) {
             auto saved = std::ranges::find(outlines,r.id,&core::ImageRegion::id);
             if (saved != outlines.end()) saved->content = r.content;
-            else if (outlines.size() < 1000 && !std::ranges::any_of(regions,[&](const auto &old){return ink.conflicts(old.bounds, r.bounds);}))
+            else if (outlines.size() < 1000 && !std::ranges::any_of(regions,[&](const auto &old){return ink.shapeConflicts(old.shape(),r.shape());}))
                 outlines.append(r);
         }
         result->imageRegions = std::move(outlines);
     }
+    if (result && splitOnly) refineLineShapes(image,result->imageRegions,stop);
     return result;
 }
 }

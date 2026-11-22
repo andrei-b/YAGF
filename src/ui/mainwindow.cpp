@@ -7,6 +7,7 @@
 #include "docxexporter.h"
 #include "verifiedsampleexporter.h"
 #include "mainwindow.h"
+#include "regionoutline.h"
 #include <QScopeGuard>
 #include "blockminiaturelist.h"
 #include "projectfile.h"
@@ -269,6 +270,19 @@ bool overlapsWord(const OcrWord &word, const QRect &selection)
     return false;
 }
 
+bool overlapsWord(const OcrWord &word, const ImageRegion &block)
+{
+    if (block.parts.isEmpty()) return overlapsWord(word,block.bounds);
+    const auto shape = block.shape();
+    const auto owned = [&](QRect b) {
+        if (shape.contains(b.center())) return true;
+        qint64 pixels = 0;
+        for (QRect part : shape.intersected(b)) pixels += qint64(part.width())*part.height();
+        return pixels*2 > qint64(b.width())*b.height();
+    };
+    return word.sourceBoxes.isEmpty() ? owned(word.bounds) : std::ranges::any_of(word.sourceBoxes,owned);
+}
+
 std::expected<OcrPage, QString> previousInRecognitionFrame(OcrPage page, const OcrPage &result, bool pdf)
 {
     if (page.preprocessing == result.preprocessing) return page;
@@ -508,13 +522,35 @@ void PageView::mousePressEvent(QMouseEvent *event)
     QGraphicsView::mousePressEvent(event);
 }
 
-QVector<QRectF> PageView::regionObstacles() const
+QRect PageView::constrainBlock(const QRectF &from,const QRectF &to) const
 {
-    QVector<QRectF> obstacles;
-    for (auto *candidate : scene()->items())
-        if (auto *box = qgraphicsitem_cast<QGraphicsRectItem *>(candidate);
-            box && box != editingRegionItem && box->data(1).isValid()) obstacles.append(box->rect());
-    return obstacles;
+    auto *moving = dynamic_cast<RegionOutline *>(editingRegionItem);
+    const auto start = from.toRect();
+    const auto startShape = moving ? moving->blockAt(start).shape() : QRegion(start);
+    bool compound = startShape.rectCount()>1;
+    QVector<QRectF> boxes;
+    QVector<QRegion> obstacles;
+    for (auto *item : scene()->items()) {
+        auto *other = dynamic_cast<RegionOutline *>(item);
+        if (!other || other == moving || !from.united(to).intersects(other->rect())) continue;
+        const auto shape = other->blockAt(other->rect().toRect()).shape();
+        compound |= shape.rectCount()>1;
+        boxes.append(other->rect());
+        if (!ink.shapeConflicts(startShape,shape)) obstacles.append(shape);
+    }
+    if (!compound) return core::constrainRegion(from,to,boxes,ink);
+    const int steps = std::max(1,qCeil(std::max({std::abs(from.left()-to.left()),std::abs(from.right()-to.right()),
+                                                 std::abs(from.top()-to.top()),std::abs(from.bottom()-to.bottom())})));
+    QRect allowed = start;
+    for (int i=1;i<=steps;++i) {
+        const auto edge = [&](qreal a,qreal b){return qRound(a+(b-a)*i/steps);};
+        const int x=edge(from.left(),to.left()), y=edge(from.top(),to.top());
+        QRect candidate(x,y,edge(from.right(),to.right())-x,edge(from.bottom(),to.bottom())-y);
+        const auto shape = moving ? moving->blockAt(candidate).shape() : QRegion(candidate);
+        if (std::ranges::any_of(obstacles,[&](const QRegion &other){return ink.shapeConflicts(shape,other);})) break;
+        allowed=candidate;
+    }
+    return allowed;
 }
 
 void PageView::updateRegionDrag(const QPoint &position)
@@ -538,14 +574,14 @@ void PageView::updateRegionDrag(const QPoint &position)
             if (resizeEdges & 8) next.setBottom(qBound(editStartRect.top() + 8.0,
                                                       editStartRect.bottom() + delta.y(), limits.bottom()));
         }
-        editingRegionItem->setRect(core::constrainRegion(editStartRect, next, regionObstacles(), ink));
+        editingRegionItem->setRect(constrainBlock(editStartRect,next));
     } else {
         const auto point = mapToScene(position);
         const auto limits = scene()->sceneRect();
         const QPointF end(qBound(limits.left(), qreal(qRound(point.x())), limits.right()),
                           qBound(limits.top(), qreal(qRound(point.y())), limits.bottom()));
-        drawingRegion = core::constrainRegion(QRectF(regionAnchor, QSizeF(0, 0)),
-            QRectF(regionAnchor, end).normalized(), regionObstacles(), ink);
+        drawingRegion = constrainBlock(QRectF(regionAnchor, QSizeF(0, 0)),
+            QRectF(regionAnchor, end).normalized());
         rubberBand->setGeometry(mapFromScene(QRectF(drawingRegion)).boundingRect());
     }
 }
@@ -718,6 +754,7 @@ MainWindow::MainWindow()
     aiSplitBlockAction->setObjectName("aiSplitBlockAction");aiSplitBlockAction->setEnabled(false);
     refineFormulaAction = pageToolsMenu->addAction(tr("Refine formula blocks"), this, &MainWindow::refineFormulaBlocks);
     refineFormulaAction->setObjectName("refineFormulaBlocksAction");
+    refineFormulaAction->setStatusTip(tr("Fit neighboring line boundaries around tall characters and formula limits."));
     refineFormulaAction->setEnabled(false);
     verification = new VerificationController(this, document);
     auto *queueAction = reviewToolsMenu->addAction(tr("Verification queue"), verification, &VerificationController::show);
@@ -1487,6 +1524,12 @@ MainWindow::MainWindow()
         QImageReader reader(imagePath);
         const QSize size = reader.size();
         const OcrPage *oldPage = document.page(currentPage);
+        ImageRegion selectedArea;
+        selectedArea.bounds = region;
+        if (oldPage && !region.isEmpty()) {
+            const auto match = std::ranges::find(oldPage->imageRegions,region,&ImageRegion::bounds);
+            if (match != oldPage->imageRegions.end()) selectedArea = *match;
+        }
         const bool correctedFrame = region.isEmpty() && newPage.preprocessing != displayedPreprocessing;
         std::optional<OcrPage> previous;
         if (oldPage && correctedFrame) {
@@ -1524,16 +1567,16 @@ MainWindow::MainWindow()
         if (region.isEmpty()) {
             if (oldPage) newPage.words.removeIf([&](const OcrWord &word) {
                 return std::ranges::any_of(oldPage->imageRegions, [&](const ImageRegion &block) {
-                    return block.notText && overlapsWord(word, block.bounds);
+                    return block.notText && overlapsWord(word, block);
                 });
             });
             carryCorrections(newPage, oldPage, document.preserveFormatting,
                 !document.useRawOcrOutput || newPage.engineId != "tesseract");
         } else if (oldPage) {
             auto previous = *oldPage;
-            previous.words.removeIf([&](const auto &word) { return !overlapsWord(word, region); });
-            previous.pendingCorrections.removeIf([&](const auto &word) { return !overlapsWord(word, region); });
-            previous.deletedWords.removeIf([&](const auto &word) { return !overlapsWord(word, region); });
+            previous.words.removeIf([&](const auto &word) { return !overlapsWord(word, selectedArea); });
+            previous.pendingCorrections.removeIf([&](const auto &word) { return !overlapsWord(word, selectedArea); });
+            previous.deletedWords.removeIf([&](const auto &word) { return !overlapsWord(word, selectedArea); });
             newPage.width = size.width(); newPage.height = size.height();
             core::retainCorrections(newPage, previous, document.preserveFormatting);
             core::normalizeBlockFontSizes(newPage, {}, true);
@@ -1563,13 +1606,13 @@ MainWindow::MainWindow()
                 merged.sourceHeight = rawImage.height();
             }
             merged.renderDpi = newPage.renderDpi;
-            merged.pendingCorrections.removeIf([&](const auto &word) { return overlapsWord(word, region); });
+            merged.pendingCorrections.removeIf([&](const auto &word) { return overlapsWord(word, selectedArea); });
             merged.pendingCorrections += newPage.pendingCorrections;
             merged.engineId = newPage.engineId;
             merged.language = newPage.language;
             merged.coordinates=newPage.coordinates;
             processing::appendRecognitionEvidence(merged, newPage);
-            core::mergeOcrReadings(merged.ocrReadings,std::move(newPage.ocrReadings),region);
+            core::mergeOcrReadings(merged.ocrReadings,std::move(newPage.ocrReadings),selectedArea.shape());
             int maxBlock = 0;
             for (const OcrWord &old : merged.words) maxBlock = qMax(maxBlock, old.block);
             QHash<QString, QString> regionIds;
@@ -1587,7 +1630,7 @@ MainWindow::MainWindow()
             QVector<OcrWord> kept;
             qsizetype insertion = -1;
             for (const OcrWord &old : merged.words) {
-                if (overlapsWord(old, region)) {
+                if (overlapsWord(old, selectedArea)) {
                     if (insertion < 0) insertion = kept.size();
                 } else {
                     kept.append(old);
@@ -2495,7 +2538,7 @@ void MainWindow::runOcr()
         }
         const bool hasCorrections = std::ranges::any_of(page->words, [&](const OcrWord &word) {
             return word.reviewed && std::ranges::any_of(targets, [&](const ImageRegion &region) {
-                return overlapsWord(word, region.bounds);
+                return overlapsWord(word, region);
             });
         });
         if (hasCorrections && QMessageBox::question(this, tr("Recognize image regions"),
@@ -3061,8 +3104,10 @@ void MainWindow::showDocument()
     const QImage regionPreview = page->imageRegions.isEmpty() ? QImage() : regionPreviewReader.read();
     for (int i = 0; i < page->imageRegions.size(); ++i) {
         const ImageRegion &region = page->imageRegions.at(i);
-        auto *box = scene->addRect(region.bounds, QPen(QColor(25, 135, 55), 2),
-                                   QBrush(QColor(35, 160, 70, 35)));
+        auto *box = new RegionOutline(region);
+        scene->addItem(box);
+        box->setPen(QPen(QColor(25,135,55),2));
+        box->setBrush(QColor(35,160,70,35));
         box->setData(1, i);
         box->setData(2, region.notText);
         box->setZValue(4);
@@ -3074,7 +3119,7 @@ void MainWindow::showDocument()
             region.language.isEmpty() ? tr("Page language") : region.language;
         if (!region.notText && !region.content.isEmpty())
             language = contentLabel(region.content) + QStringLiteral(" · ") + language;
-        auto *item = new QListWidgetItem(QIcon(QPixmap::fromImage(regionPreview.copy(region.bounds)
+        auto *item = new QListWidgetItem(QIcon(QPixmap::fromImage(region.crop(regionPreview)
             .scaled(regionList->iconSize(), Qt::KeepAspectRatio, Qt::SmoothTransformation))),
             tr("Block %1 · %2\n%3 × %4 px").arg(i + 1).arg(language)
                 .arg(region.bounds.width()).arg(region.bounds.height()), regionList);
@@ -3119,7 +3164,7 @@ void MainWindow::selectRegion(const QRectF &bounds)
     if (area.width() < 8 || area.height() < 8) return;
     OcrPage edited = document.page(currentPage) ? *document.page(currentPage) : OcrPage{};
     for (const auto &region : edited.imageRegions)
-        if (view->pageInk().conflicts(area, region.bounds)) {
+        if (view->pageInk().shapeConflicts(area, region.shape())) {
             statusBar()->showMessage(tr("Blocks may share a small blank margin. Move the edge away from the neighboring content."), 5000);
             return;
         }
@@ -3179,7 +3224,7 @@ void MainWindow::refreshImageRegionSelection(bool updateWords)
     QVector<int> matches;
     for (int i = 0; i < displayedWords.size(); ++i)
         if (rows.isEmpty() || std::ranges::any_of(rows, [&](int row) {
-            return overlapsWord(*displayedWords.at(i), page->imageRegions[row].bounds);
+            return overlapsWord(*displayedWords.at(i), page->imageRegions[row]);
         })) matches.append(i);
     const QString scope = rows.isEmpty() ? tr("Recognize the whole page")
                                          : tr("Recognize selected regions (%1)").arg(rows.size());
@@ -3245,10 +3290,12 @@ void MainWindow::moveImageRegion(int index, const QRectF &bounds)
         exportBusy || !maybeApplyEditor()) return;
     const QRect area = bounds.toAlignedRect().intersected(scene->sceneRect().toAlignedRect());
     if (area.width() < 8 || area.height() < 8 || area == page->imageRegions.at(index).bounds) return;
+    auto moved = page->imageRegions[index];
+    moved.resizeBounds(area);
     for (int i = 0; i < page->imageRegions.size(); ++i)
-        if (i != index && view->pageInk().conflicts(area, page->imageRegions[i].bounds)) { showDocument(); return; }
+        if (i != index && view->pageInk().shapeConflicts(moved.shape(), page->imageRegions[i].shape())) { showDocument(); return; }
     OcrPage edited = *page;
-    edited.imageRegions[index].bounds = area;
+    edited.imageRegions[index] = std::move(moved);
     edited.imageRegions[index].autoDetected = false;
     edited.imageRegions[index].detectedLabel.clear();
     edited.imageRegions[index].detectionScore = -1;
@@ -3414,7 +3461,7 @@ void MainWindow::refineFormulaBlocks()
     if (image.isNull()) { showError(tr("Could not read the page image for formula refinement.")); return; }
 
     std::stop_source cancellation;
-    QProgressDialog progress(tr("Finding inline formulas and checking formula boundaries…"), tr("Cancel"), 0, 0, this);
+    QProgressDialog progress(tr("Finding inline formulas and refining adjacent line boundaries…"), tr("Cancel"), 0, 0, this);
     progress.setWindowModality(Qt::WindowModal);
     QFutureWatcher<QVector<ImageRegion>> watcher;
     connect(&watcher, &QFutureWatcherBase::finished, &progress, &QDialog::accept);
@@ -3426,9 +3473,9 @@ void MainWindow::refineFormulaBlocks()
 
     auto regions = watcher.result();
     const bool changed = regions.size() != page->imageRegions.size() ||
-        !std::ranges::equal(regions, page->imageRegions, {}, &ImageRegion::bounds, &ImageRegion::bounds);
+        !std::ranges::equal(regions, page->imageRegions, [](const auto &a,const auto &b){return a.bounds==b.bounds && a.parts==b.parts;});
     if (!changed) {
-        status->setText(tr("No inline formula splits or boundary changes found."));
+        status->setText(tr("No inline formula splits or line boundary changes found."));
         return;
     }
     OcrPage edited = *page;
@@ -3436,7 +3483,7 @@ void MainWindow::refineFormulaBlocks()
     selectedRegionIds.clear();
     selectedImageRegion = -1;
     undoStack.push(new ReplacePageCommand(document, currentPage, std::move(edited), tr("Refine formula blocks")));
-    status->setText(tr("Formula blocks refined. Review the outlines, then recognize the page."));
+    status->setText(tr("Block boundaries refined. Review the outlines, then recognize the page."));
 }
 
 void MainWindow::splitSelectedBlockWithAi()
@@ -3451,7 +3498,7 @@ void MainWindow::splitSelectedBlockWithAi()
     const int index = parent - edited.imageRegions.begin();
     const ImageRegion original = *parent;
     if (!prepared->image.rect().contains(original.bounds)) { showError(tr("The selected block lies outside the displayed page.")); return; }
-    AiPageLayoutDialog dialog(prepared->image.copy(original.bounds), {}, this, currentPage, layoutSessionToken,
+    AiPageLayoutDialog dialog(original.crop(prepared->image), {}, this, currentPage, layoutSessionToken,
                               true, edited.preprocessing.deskewDegrees - displayedPreprocessing.deskewDegrees);
     processing::OcrOptions context;context.pageNumber=currentPage;context.historyCoordinates=edited.coordinates;
     context=processing::croppedOcrOptions(context,original.bounds);
@@ -3472,9 +3519,11 @@ void MainWindow::splitSelectedBlockWithAi()
     for(int i=0;i<subdivisions.size();++i) {
         auto &region=subdivisions[i];region.bounds.translate(original.bounds.topLeft());
         region.autoDetected=false; // Keep the explicitly accepted split during automatic layout.
-        if(!original.bounds.contains(region.bounds))return;
+        const auto clipped = region.shape().intersected(original.shape());
+        if (clipped.isEmpty()) return;
+        region.setShape(clipped);
         if(region.language.isEmpty())region.language=original.language;
-        if(std::ranges::any_of(edited.imageRegions,[&](const auto &r){return ink.conflicts(r.bounds, region.bounds);}))return;
+        if(std::ranges::any_of(edited.imageRegions,[&](const auto &r){return ink.shapeConflicts(r.shape(),region.shape());}))return;
         edited.imageRegions.insert(index+i,region);
     }
     selectedRegionIds.clear();selectedImageRegion=-1;
@@ -3497,7 +3546,7 @@ void MainWindow::setBlockLanguage(int index, const QString &language, bool notTe
     if (!notText && region.content == "picture") region.content = "text";
     region.language = language;
     region.notText = notText;
-    if (notText) edited.words.removeIf([&](const OcrWord &word) { return overlapsWord(word, region.bounds); });
+    if (notText) edited.words.removeIf([&](const OcrWord &word) { return overlapsWord(word, region); });
     selectedImageRegion = index;
     undoStack.push(new ReplacePageCommand(document, currentPage, std::move(edited), tr("Select block language")));
 }
@@ -3588,7 +3637,7 @@ void MainWindow::copyBlockImage(int index)
     for (auto *item:scene->items()) if (auto *pixmap=qgraphicsitem_cast<QGraphicsPixmapItem *>(item)) { image=pixmap->pixmap().toImage(); break; }
     const auto bounds=page->imageRegions[index].bounds;
     if (image.isNull() || bounds.isEmpty() || !image.rect().contains(bounds)) { showError(tr("Could not read the block's source image.")); return; }
-    QApplication::clipboard()->setImage(image.copy(bounds));
+    QApplication::clipboard()->setImage(page->imageRegions[index].crop(image));
     statusBar()->showMessage(tr("Copied block image (%1 × %2 pixels).").arg(bounds.width()).arg(bounds.height()),5000);
 }
 
@@ -3612,7 +3661,7 @@ void MainWindow::refreshSpellLanguage()
                 if (index < 0 || index >= page->words.size()) continue;
                 QString code = fallback;
                 for (const auto &region : page->imageRegions)
-                    if (!region.notText && region.bounds.contains(page->words[index].bounds.center())) {
+                    if (!region.notText && region.shape().contains(page->words[index].bounds.center())) {
                         code = blockLanguage(region);
                         break;
                     }

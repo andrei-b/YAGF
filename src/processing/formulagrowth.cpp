@@ -241,7 +241,7 @@ void growOne(const QImage &gray, QVector<ImageRegion> &blocks, int index, std::s
         QVector<std::pair<int,QRect>> trims;
         for (int b = 0; b < blocks.size(); ++b) {
             if (b == index || !blocks[b].bounds.intersects(grown)) continue;
-            if (!canDonate(blocks[b]) || original.intersects(blocks[b].bounds)) return false;
+            if (!blocks[b].parts.isEmpty() || !canDonate(blocks[b]) || original.intersects(blocks[b].bounds)) return false;
             if (grown.contains(blocks[b].bounds) && std::ranges::any_of(ordered, [&](int i) {
                     return blocks[b].bounds.contains(glyphs[i].box.center());
                 })) {
@@ -339,7 +339,7 @@ QVector<core::ImageRegion> growFormulaBlocks(const QImage &image,
     auto result = blocks;
     const auto gray = image.convertToFormat(QImage::Format_Grayscale8);
     for (int i = 0; i < blocks.size() && !stop.stop_requested(); ++i)
-        if (isFormula(blocks[i])) growOne(gray,result,i,stop);
+        if (isFormula(blocks[i]) && result[i].parts.isEmpty()) growOne(gray,result,i,stop);
     if (stop.stop_requested()) return blocks;
     for (qsizetype i = result.size(); i-- > 0;)
         if (result[i].bounds.isEmpty() && !blocks[i].bounds.isEmpty()) result.removeAt(i);
@@ -533,6 +533,86 @@ QVector<InlinePart> partitionInlineFormulas(const QImage &gray, QRect parent, co
     return result;
 }
 
+// Split the shared strip at the midpoint, then bend that boundary around
+// connected ink. Only compare vertically staggered neighbors, never nested
+// model alternatives, illustrations, or neighboring columns.
+static void refineLinePair(const QImage &gray, ImageRegion &upper, ImageRegion &lower,
+                           const QVector<ImageRegion> &blocks)
+{
+    const QRect u = upper.bounds, l = lower.bounds;
+    const int left = std::max(u.left(),l.left()), right = std::min(u.right(),l.right());
+    const int overlap = u.bottom()+1-l.top();
+    const int height = std::min(u.height(),l.height());
+    if (height < 6 || l.top() <= u.top() || l.bottom() <= u.bottom() ||
+        2*overlap > height || overlap < -2 || right-left+1 < std::min(u.width(),l.width())/2 ||
+        right-left < 4) return;
+    const int seam = (u.bottom()+1+l.top())/2;
+    const int halo = std::clamp(height,12,120);
+    const QRect roi = QRect(QPoint(left-2,seam-halo),QPoint(right+2,seam+halo)).intersected(gray.rect());
+    if (roi.isEmpty() || qint64(roi.width())*roi.height() > 1000000) return;
+    const auto beforeUpper = upper.shape(), beforeLower = lower.shape();
+    if (overlap > 0 && (!upper.parts.isEmpty() || !lower.parts.isEmpty()) &&
+        !beforeUpper.intersects(beforeLower)) return;
+    const QRegion owned = beforeUpper | beforeLower;
+    const auto glyphs = components(gray,roi).glyphs;
+    if (glyphs.isEmpty()) return;
+    const auto signs = boundedIntegralSigns(gray,roi);
+    QRegion upperInk, lowerInk;
+    bool protrudes = false;
+    for (const auto &glyph : glyphs) {
+        const QRect b = glyph.box;
+        if (b.right() < left || b.left() > right || b.top() > std::max(l.top(),u.bottom()+1)+1 ||
+            b.bottom() < std::min(l.top(),u.bottom()+1)-1 || !owned.intersects(b)) continue;
+        const auto sign = std::ranges::find_if(signs,[&](QRect s){return s.contains(b);});
+        const QRect group = sign == signs.end() ? b : *sign;
+        const int above = std::clamp(seam-group.top(),0,group.height());
+        const int below = group.height()-above;
+        if (above && below && 3*std::min(above,below) > 2*std::max(above,below)) return;
+        const bool toUpper = above > below;
+        const auto footprint = group.adjusted(-1,-1,1,1).intersected(gray.rect());
+        if ((toUpper && beforeLower.intersects(group)) || (!toUpper && beforeUpper.intersects(group)))
+            protrudes = true;
+        (toUpper ? upperInk : lowerInk) |= footprint;
+    }
+    if (!protrudes || upperInk.intersects(lowerInk)) return;
+    const QRect shared = u.intersected(l);
+    QRegion top = beforeUpper, bottom = beforeLower;
+    if (!shared.isEmpty()) {
+        const auto mutual = top & bottom;
+        QRect above = shared; above.setBottom(seam-1);
+        top -= mutual.subtracted(above);
+        bottom -= mutual.intersected(above);
+    }
+    // Only transfer pixels within the original pair or the narrow gap that
+    // separates them. Never acquire content from another column or block.
+    QRegion transferable = owned;
+    if (overlap < 0) transferable |= QRect(left,u.bottom()+1,right-left+1,-overlap);
+    upperInk &= transferable; lowerInk &= transferable;
+    top = (top - lowerInk) | upperInk;
+    bottom = (bottom - upperInk) | lowerInk;
+    if (top.isEmpty() || bottom.isEmpty() || top.rectCount()>4096 || bottom.rectCount()>4096) return;
+    const QRegion acquired = (top-beforeUpper) | (bottom-beforeLower);
+    for (const auto &other : blocks)
+        if (&other != &upper && &other != &lower && acquired.intersects(other.bounds) &&
+            acquired.intersects(other.shape())) return;
+    if (top != beforeUpper) upper.setShape(top);
+    if (bottom != beforeLower) lower.setShape(bottom);
+}
+
+void refineLineShapes(const QImage &image, QVector<ImageRegion> &blocks, std::stop_token stop)
+{
+    const auto gray = image.convertToFormat(QImage::Format_Grayscale8);
+    if (gray.isNull()) return;
+    for (int i=0; i<blocks.size() && !stop.stop_requested(); ++i) {
+        if (blocks[i].notText || blocks[i].content=="picture") continue;
+        for (int j=i+1; j<blocks.size() && !stop.stop_requested(); ++j) {
+            if (blocks[j].notText || blocks[j].content=="picture") continue;
+            const bool firstAbove = blocks[i].bounds.top() < blocks[j].bounds.top();
+            refineLinePair(gray,blocks[firstAbove ? i : j],blocks[firstAbove ? j : i],blocks);
+        }
+    }
+}
+
 QVector<core::ImageRegion> refineFormulaRegions(const QImage &image,
     const QVector<core::ImageRegion> &regions, const QVector<core::OcrWord> &words, std::stop_token stop)
 {
@@ -545,18 +625,28 @@ QVector<core::ImageRegion> refineFormulaRegions(const QImage &image,
             wordHints.append(word.bounds);
     }
     const auto gray = image.convertToFormat(QImage::Format_Grayscale8);
-    const auto grown = growFormulaBlocks(gray,regions,stop);
+    auto shaped = regions;
+    refineLineShapes(gray,shaped,stop);
+    const auto grown = growFormulaBlocks(gray,shaped,stop);
     QVector<core::ImageRegion> result;
     for (int i = 0; i < grown.size(); ++i) {
         if (stop.stop_requested()) return regions;
         const auto &parent = grown[i];
         QVector<InlinePart> parts;
         if (!parent.notText && (parent.content.isEmpty() || parent.content=="text" || parent.content=="mixed")) {
-            auto hints = findInlineFormulaHints(gray,parent.bounds,stop);
-            for (const auto &box : wordHints)
-                if (parent.bounds.contains(box) && std::ranges::none_of(hints,[&](QRect hint){return hint.contains(box);}))
-                    hints.append(box);
-            parts = partitionInlineFormulas(gray,parent.bounds,hints);
+            const bool compound = !parent.parts.isEmpty();
+            const auto pixels = compound ? parent.crop(gray).convertToFormat(QImage::Format_Grayscale8) : gray;
+            const auto offset = compound ? parent.bounds.topLeft() : QPoint();
+            const QRect bounds = parent.bounds.translated(-offset);
+            auto hints = findInlineFormulaHints(pixels,bounds,stop);
+            for (const auto &box : wordHints) {
+                const auto local = box.translated(-offset);
+                if (bounds.contains(local) && (!compound || QRegion(box).subtracted(parent.shape()).isEmpty()) &&
+                    std::ranges::none_of(hints,[&](QRect hint){return hint.contains(local);}))
+                    hints.append(local);
+            }
+            parts = partitionInlineFormulas(pixels,bounds,hints);
+            for (auto &part : parts) part.bounds.translate(offset);
         }
         if (parts.isEmpty() || result.size()+parts.size()+grown.size()-i-1 > 1000) {
             result.append(parent);
@@ -565,7 +655,8 @@ QVector<core::ImageRegion> refineFormulaRegions(const QImage &image,
         for (const auto &part : parts) {
             core::ImageRegion child;
             child.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-            child.bounds = part.bounds;
+            child.setShape(parent.shape().intersected(part.bounds));
+            if (child.bounds.isEmpty()) continue;
             child.content = part.content();
             if (part.formula >= 0) child.detectedLabel = "inline_formula_geometry";
             child.language = parent.language;
