@@ -1,0 +1,321 @@
+{
+  "version": 1,
+  "sources": {
+    "calculus-69": {
+      "title": "matematika_dlya_vtuzov_spets_kursy.djvu",
+      "raster_size": [734, 1142],
+      "file_page": 69,
+      "printed_page": 69,
+      "render_dpi": 150
+    },
+    "arithmetic-66": {
+      "title": "matematika_klein_1.pdf",
+      "raster_size": [586, 1028],
+      "file_page": 70,
+      "printed_page": 66,
+      "render_dpi": 150
+    },
+    "symbol-strip": {
+      "title": "Isolated math glyph recognition sample",
+      "raster_size": [500, 95]
+    },
+    "summation": {
+      "title": "equations.pdf (typeset test sheet)",
+      "raster_size": [502, 148],
+      "file_page": 8,
+      "render_dpi": 150
+    },
+    "calculus-69-skewed": {
+      "title": "Controlled skew variant of calculus page 69",
+      "derived_from": "calculus-69",
+      "clockwise_degrees": 2.5,
+      "raster_size": [784, 1174],
+      "transform": "Rotate about the full raster center, expand the canvas, use bicubic resampling and white fill."
+    }
+  },
+  "contexts": {
+    "calculus-displays": {
+      "source": "calculus-69",
+      "image": "context/calculus-displays.png",
+      "source_xywh": [22, 150, 678, 280]
+    },
+    "calculus-inline-paragraph": {
+      "source": "calculus-69",
+      "image": "context/calculus-inline-paragraph.png",
+      "source_xywh": [29, 701, 667, 248]
+    },
+    "calculus-bounded-integral": {
+      "source": "calculus-69",
+      "image": "context/calculus-bounded-integral.png",
+      "source_xywh": [27, 1008, 672, 98]
+    },
+    "continued-fraction-definitions": {
+      "source": "arithmetic-66",
+      "image": "context/continued-fraction-definitions.png",
+      "source_xywh": [5, 38, 576, 133]
+    },
+    "decimal-convergents": {
+      "source": "arithmetic-66",
+      "image": "context/decimal-convergents.png",
+      "source_xywh": [6, 520, 577, 140]
+    },
+    "symbol-strip": {
+      "source": "symbol-strip",
+      "image": "context/symbol-strip.png",
+      "source_xywh": [0, 0, 500, 95]
+    },
+    "typeset-sum": {
+      "source": "summation",
+      "image": "context/typeset-sum.png",
+      "source_xywh": [150, 52, 201, 85]
+    },
+    "calculus-skewed-displays": {
+      "source": "calculus-69-skewed",
+      "image": "context/calculus-skewed-displays.png",
+      "source_xywh": [50, 78, 701, 385]
+    }
+  },
+  "cases": [
+    {
+      "id": "hyperbolic-tangent",
+      "image": "formulas/hyperbolic-tangent.png",
+      "context": "calculus-displays",
+      "context_xywh": [241, 30, 184, 47],
+      "expected_latex": "\\operatorname{th} z=\\frac{\\operatorname{sh} z}{\\operatorname{ch} z}=\\frac{e^{z}-e^{-z}}{e^{z}+e^{-z}}",
+      "check": "Preserve both quotient bars and the signs of the exponents. Keep equation number (16) separate."
+    },
+    {
+      "id": "poles-and-parameter-range",
+      "image": "formulas/poles-and-parameter-range.png",
+      "context": "calculus-displays",
+      "context_xywh": [161, 161, 347, 36],
+      "expected_latex": "z=\\frac{\\pi}{2}i+k\\pi i\\qquad(k=0,\\pm1,\\pm2,\\ldots)",
+      "check": "Keep the expression and the parenthesized range together when the preceding paragraph shares one row of blank pixels.",
+      "neighbor_context_xywh": [4, 84, 668, 78]
+    },
+    {
+      "id": "skewed-poles-and-parameter-range",
+      "image": "formulas/skewed-poles-and-parameter-range.png",
+      "context": "calculus-skewed-displays",
+      "context_xywh": [167, 241, 350, 52],
+      "expected_latex": "z=\\frac{\\pi}{2}i+k\\pi i\\qquad(k=0,\\pm1,\\pm2,\\ldots)",
+      "check": "Use surrounding prose to estimate the clockwise tilt and preserve the whole formula across deskew.",
+      "upright_case": "poles-and-parameter-range"
+    },
+    {
+      "id": "origin-inline",
+      "image": "formulas/origin-inline.png",
+      "context": "calculus-displays",
+      "context_xywh": [302, 205, 45, 25],
+      "expected_latex": "z=0",
+      "check": "Keep this expression separate from the adjacent word."
+    },
+    {
+      "id": "nearest-singularities",
+      "image": "formulas/nearest-singularities.png",
+      "context": "calculus-displays",
+      "context_xywh": [434, 200, 54, 38],
+      "expected_latex": "\\pm\\frac{\\pi}{2}i",
+      "check": "Keep the leading plus-or-minus and the trailing imaginary unit."
+    },
+    {
+      "id": "convergence-radius",
+      "image": "formulas/convergence-radius.png",
+      "context": "calculus-displays",
+      "context_xywh": [385, 240, 25, 38],
+      "expected_latex": "\\frac{\\pi}{2}",
+      "check": "Keep the numerator and denominator together at the end of a line."
+    },
+    {
+      "id": "interval-in-prose",
+      "image": "formulas/interval-in-prose.png",
+      "context": "calculus-inline-paragraph",
+      "context_xywh": [347, 58, 115, 34],
+      "expected_latex": "-\\frac{\\pi}{2}<x<\\frac{\\pi}{2}",
+      "check": "Keep both fractions and the initial minus; preserve prose on both sides."
+    },
+    {
+      "id": "real-points-in-prose",
+      "image": "formulas/real-points-in-prose.png",
+      "context": "calculus-inline-paragraph",
+      "context_xywh": [233, 97, 72, 34],
+      "expected_latex": "x=\\pm\\frac{\\pi}{2}",
+      "check": "Separate the full assignment from the text on the same line."
+    },
+    {
+      "id": "complex-points-in-prose",
+      "image": "formulas/complex-points-in-prose.png",
+      "context": "calculus-inline-paragraph",
+      "context_xywh": [123, 174, 82, 34],
+      "expected_latex": "z=\\pm\\frac{\\pi}{2}i",
+      "check": "Include the imaginary unit and leave the following conjunction in the text block."
+    },
+    {
+      "id": "integral-z0-to-z",
+      "image": "formulas/integral-z0-to-z.png",
+      "context": "calculus-bounded-integral",
+      "context_xywh": [213, 31, 140, 65],
+      "expected_latex": "\\int_{z_{0}}^{z} f(z)\\,dz=\\Phi(z)",
+      "check": "Recognize one integral with both limits. Keep the preceding т. е. and the following Но in reading order.",
+      "landmarks_context_xywh": {
+        "upper_z": [222, 32, 7, 9],
+        "integral_stroke": [218, 44, 9, 34],
+        "lower_z0": [216, 82, 13, 12]
+      },
+      "previous_mixed_block_context_xywh": [2, 38, 665, 56],
+      "prior_symptom": "Text OCR read the upper limit as 2 and the lower limit as р."
+    },
+    {
+      "id": "derivative-next-to-integral",
+      "image": "formulas/derivative-next-to-integral.png",
+      "context": "calculus-bounded-integral",
+      "context_xywh": [449, 45, 108, 32],
+      "expected_latex": "\\Phi'(z)=f(z)",
+      "check": "Keep the prime and the second expression distinct from the preceding integral."
+    },
+    {
+      "id": "first-definition",
+      "image": "formulas/first-definition.png",
+      "context": "continued-fraction-definitions",
+      "context_xywh": [44, 40, 90, 67],
+      "expected_latex": "n_0=\\frac{p_0}{q_0}",
+      "check": "Preserve fraction nesting, numerator and denominator subscripts, and expression order."
+    },
+    {
+      "id": "second-definition",
+      "image": "formulas/second-definition.png",
+      "context": "continued-fraction-definitions",
+      "context_xywh": [140, 40, 148, 68],
+      "expected_latex": "n_0+\\frac{1}{n_1}=\\frac{p_1}{q_1}",
+      "check": "Preserve fraction nesting, numerator and denominator subscripts, and expression order."
+    },
+    {
+      "id": "nested-definition",
+      "image": "formulas/nested-definition.png",
+      "context": "continued-fraction-definitions",
+      "context_xywh": [293, 40, 245, 78],
+      "expected_latex": "n_0+\\frac{1}{n_1+\\frac{1}{n_2}}=\\frac{p_2}{q_2}",
+      "check": "Preserve fraction nesting, numerator and denominator subscripts, and expression order."
+    },
+    {
+      "id": "pi-decimal",
+      "image": "formulas/pi-decimal.png",
+      "context": "decimal-convergents",
+      "context_xywh": [175, 4, 214, 33],
+      "expected_latex": "\\pi=3{,}14159265\\ldots",
+      "check": "Distinguish printed π from the Cyrillic letter л and preserve the decimal comma."
+    },
+    {
+      "id": "convergents-full-row",
+      "image": "formulas/convergents-full-row.png",
+      "context": "decimal-convergents",
+      "context_xywh": [2, 37, 568, 47],
+      "expected_latex": "\\frac{p_0}{q_0}=3,\\quad \\frac{p_1}{q_1}=\\frac{22}{7}=3{,}14285\\ldots,\\quad \\frac{p_2}{q_2}=\\frac{333}{106}=3{,}141509\\ldots",
+      "check": "Read all three expressions in one line, in the order shown in the reported crop."
+    },
+    {
+      "id": "convergent-p0",
+      "image": "formulas/convergent-p0.png",
+      "context": "decimal-convergents",
+      "context_xywh": [4, 38, 84, 47],
+      "expected_latex": "\\frac{p_0}{q_0}=3",
+      "check": "Preserve the printed fraction and every digit; keep Latin p and q distinct from Cyrillic prose."
+    },
+    {
+      "id": "convergent-p1",
+      "image": "formulas/convergent-p1.png",
+      "context": "decimal-convergents",
+      "context_xywh": [89, 38, 234, 47],
+      "expected_latex": "\\frac{p_1}{q_1}=\\frac{22}{7}=3{,}14285\\ldots",
+      "check": "Preserve the printed fraction and every digit; keep Latin p and q distinct from Cyrillic prose."
+    },
+    {
+      "id": "convergent-p2",
+      "image": "formulas/convergent-p2.png",
+      "context": "decimal-convergents",
+      "context_xywh": [327, 38, 243, 47],
+      "expected_latex": "\\frac{p_2}{q_2}=\\frac{333}{106}=3{,}141509\\ldots",
+      "check": "Preserve the printed fraction and every digit; keep Latin p and q distinct from Cyrillic prose."
+    },
+    {
+      "id": "convergent-p3",
+      "image": "formulas/convergent-p3.png",
+      "context": "decimal-convergents",
+      "context_xywh": [145, 87, 285, 50],
+      "expected_latex": "\\frac{p_3}{q_3}=\\frac{355}{113}=3{,}14159292\\ldots",
+      "check": "Read 355 over 113; the earlier reading dropped a 5."
+    },
+    {
+      "id": "italic-x",
+      "image": "formulas/italic-x.png",
+      "context": "symbol-strip",
+      "context_xywh": [5, 23, 28, 24],
+      "expected_latex": "x",
+      "check": "Recognize the isolated math glyph and preserve its mathematical alphabet or operator identity."
+    },
+    {
+      "id": "italic-z",
+      "image": "formulas/italic-z.png",
+      "context": "symbol-strip",
+      "context_xywh": [65, 23, 24, 24],
+      "expected_latex": "z",
+      "check": "Recognize the isolated math glyph and preserve its mathematical alphabet or operator identity."
+    },
+    {
+      "id": "italic-u",
+      "image": "formulas/italic-u.png",
+      "context": "symbol-strip",
+      "context_xywh": [125, 23, 28, 24],
+      "expected_latex": "u",
+      "check": "Recognize the isolated math glyph and preserve its mathematical alphabet or operator identity."
+    },
+    {
+      "id": "italic-v",
+      "image": "formulas/italic-v.png",
+      "context": "symbol-strip",
+      "context_xywh": [185, 23, 24, 24],
+      "expected_latex": "v",
+      "check": "Recognize the isolated math glyph and preserve its mathematical alphabet or operator identity."
+    },
+    {
+      "id": "fraktur-a",
+      "image": "formulas/fraktur-a.png",
+      "context": "symbol-strip",
+      "context_xywh": [245, 13, 33, 34],
+      "expected_latex": "\\mathfrak{A}",
+      "check": "Recognize the isolated math glyph and preserve its mathematical alphabet or operator identity."
+    },
+    {
+      "id": "sum-symbol",
+      "image": "formulas/sum-symbol.png",
+      "context": "symbol-strip",
+      "context_xywh": [305, 11, 46, 45],
+      "expected_latex": "\\sum",
+      "check": "Recognize the isolated math glyph and preserve its mathematical alphabet or operator identity."
+    },
+    {
+      "id": "integral-symbol",
+      "image": "formulas/integral-symbol.png",
+      "context": "symbol-strip",
+      "context_xywh": [365, 9, 31, 49],
+      "expected_latex": "\\int",
+      "check": "Recognize the isolated math glyph and preserve its mathematical alphabet or operator identity."
+    },
+    {
+      "id": "product-symbol",
+      "image": "formulas/product-symbol.png",
+      "context": "symbol-strip",
+      "context_xywh": [425, 11, 42, 45],
+      "expected_latex": "\\prod",
+      "check": "Recognize the isolated math glyph and preserve its mathematical alphabet or operator identity."
+    },
+    {
+      "id": "summation-with-limits",
+      "image": "formulas/summation-with-limits.png",
+      "context": "typeset-sum",
+      "context_xywh": [11, 5, 177, 73],
+      "expected_latex": "\\sum_{i=1}^{n}i=\\frac{n(n+1)}{2}",
+      "check": "Include both the upper n and the lower i=1 when assigning the summation crop."
+    }
+  ]
+}
