@@ -204,8 +204,10 @@ python3 -m venv .venv-kraken
 . .venv-kraken/bin/activate
 python -m pip install kraken
 python service/server.py --engine kraken --model /path/to/recognition-model.safetensors \
-  --host 127.0.0.1 --port 8769 --device cpu
+  --host 127.0.0.1 --port 8769
 ```
+
+Kraken defaults to CPU. Use `--device gpu` for the first CUDA GPU or `--device cuda:N` for a specific CUDA device.
 
 Select **Kraken (remote service)** with `http://127.0.0.1:8769` and language `auto`. The selected model controls script and language. Check that model's own license before redistribution. If Kraken returns character geometry that cannot be aligned with its transcription, the service retains that line as one text item with a line box instead of inventing word boxes.
 

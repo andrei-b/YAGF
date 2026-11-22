@@ -5,6 +5,7 @@ import binascii
 import hashlib
 import hmac
 import json
+import logging
 import math
 import os
 from pathlib import Path
@@ -67,10 +68,40 @@ def distance(a,b):
 def normalized(text): return ' '.join(unicodedata.normalize('NFC',text).split())
 
 
-def atomic_json(path,value):
-    temporary=path.with_suffix('.tmp')
-    temporary.write_text(json.dumps(value,ensure_ascii=False,allow_nan=False,indent=2),encoding='utf-8')
-    temporary.replace(path)
+def atomic_json(path, value):
+    fd, name = tempfile.mkstemp(dir=path.parent, prefix=f'.{path.name}.', suffix='.tmp')
+    temporary = Path(name)
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as stream:
+            json.dump(value, stream, ensure_ascii=False, allow_nan=False, indent=2)
+            stream.flush()
+            os.fsync(stream.fileno())
+        temporary.replace(path)
+        if hasattr(os, 'O_DIRECTORY'):
+            directory_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def finite_number(text):
+    number = float(text)
+    if not math.isfinite(number):
+        raise ValueError('Non-finite number in training job state')
+    return number
+
+
+def read_state(path):
+    try:
+        data = json.loads(path.read_text(encoding='utf-8'), parse_float=finite_number, parse_constant=finite_number)
+    except (OSError, ValueError, RecursionError) as error:
+        raise ValueError('Unreadable training job state') from error
+    if not isinstance(data, dict) or data.get('status') not in ('queued', 'running', 'complete', 'failed', 'cancelled'):
+        raise ValueError('Invalid training job state')
+    return data
 
 
 class TrainingHost:
@@ -79,10 +110,23 @@ class TrainingHost:
         self.profiles={p['id']:p for p in profiles}; self.lock=threading.Lock(); self.active=None; self.cancel={}; self.state_lock=threading.RLock()
         self.catalog=LocalOcrCatalog(); self.inference_slots=threading.BoundedSemaphore(2)
         # A stopped/restarted host cannot silently report an orphaned run as active.
-        for state in self.root.glob('*/state.json'):
-            data=json.loads(state.read_text())
+        for path, data in self.job_states(log_invalid=True):
             if data.get('status') in ('queued','running'):
-                data.update(status='failed',message='Training host restarted; start a new run from the reviewed dataset'); atomic_json(state,data)
+                data.update(status='failed', message='Training host restarted; start a new run from the reviewed dataset')
+                try:
+                    atomic_json(path, data)
+                except (OSError, ValueError, RecursionError) as error:
+                    logging.warning('Could not update interrupted training job %s: %s', path.parent.name, error)
+
+    def job_states(self, log_invalid=False):
+        for path in self.root.glob('*/state.json'):
+            try:
+                state = self.state(path.parent.name)
+            except (OSError, ValueError) as error:
+                if log_invalid:
+                    logging.warning('Skipping training job %s: %s', path.parent.name, error)
+                continue
+            yield path, state
 
     def capabilities(self):
         profiles=[]
@@ -98,10 +142,12 @@ class TrainingHost:
             if not re.fullmatch(r'[A-Za-z0-9_-]{1,64}',profile['id']): continue
             original=self.profiles[profile['id']]
             services.append(dict(path='/profiles/'+profile['id'],provider='native',label=profile['label'],language=original.get('language','auto'),ready=profile['ready'],reason=profile['reason']))
-        for path in self.root.glob('*/state.json'):
-            state=self.state(path.parent.name)
+        for _, state in self.job_states():
             if state.get('status')=='complete' and state.get('eligible') and state.get('scope')=='shared':
-                services.append(dict(path=state['model_url'],provider='native',label=state['label']+' · '+state['id'][:8],language='auto',ready=True))
+                label, jid, url = (state.get(key) for key in ('label', 'id', 'model_url'))
+                if not all(isinstance(value, str) for value in (label, jid, url)):
+                    continue
+                services.append(dict(path=url,provider='native',label=label+' · '+jid[:8],language='auto',ready=True))
                 if len(services)>=64: break
         for entry in self.catalog.discover():
             if 'profiles' in entry:
@@ -133,11 +179,15 @@ class TrainingHost:
         return directory
 
     def state(self,jid):
-        with self.state_lock: return json.loads((self.directory(jid)/'state.json').read_text())
+        with self.state_lock:
+            return read_state(self.directory(jid)/'state.json')
 
     def update(self,jid,**fields):
         with self.state_lock:
-            path=self.directory(jid)/'state.json'; data=json.loads(path.read_text()); data.update(fields); atomic_json(path,data)
+            path = self.directory(jid)/'state.json'
+            data = read_state(path)
+            data.update(fields)
+            atomic_json(path, data)
 
     def submit(self,request):
         profile=self.profiles.get(request.get('profile_id'))
@@ -294,11 +344,13 @@ def handler_for(host,token=''):
                 elif self.path.startswith('/v1/jobs/'): self.send(200,host.state(self.path.rsplit('/',1)[-1]))
                 elif self.path=='/v1/models':
                     models=[]
-                    for path in host.root.glob('*/state.json'):
-                        state=host.state(path.parent.name)
+                    for _, state in host.job_states():
                         if state.get('status')=='complete' and state.get('eligible'):
-                            summary={key:state[key] for key in ('id','status','scope','source_id','engine','label','eligible','model_url','profile_id','samples')}
-                            summary['baseline']={'cer':state['baseline']['cer']}; summary['candidate']={'cer':state['candidate']['cer']}
+                            try:
+                                summary={key:state[key] for key in ('id','status','scope','source_id','engine','label','eligible','model_url','profile_id','samples')}
+                                summary['baseline']={'cer':state['baseline']['cer']}; summary['candidate']={'cer':state['candidate']['cer']}
+                            except (KeyError, TypeError):
+                                continue
                             models.append(summary)
                     self.send(200,{'models':models})
                 else: self.send(404,{'error':'Unknown endpoint'})

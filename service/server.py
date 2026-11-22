@@ -443,13 +443,20 @@ class KrakenBackend:
     def __init__(self, model_path, device):
         if not model_path or not os.path.isfile(model_path):
             raise ValueError("Kraken requires an existing --model file")
+        device = {"auto": "cpu", "gpu": "cuda:0"}.get(device, device)
+        if device == "cpu":
+            runtime = {"accelerator": "cpu", "device": 1}
+        elif re.fullmatch(r"cuda:[0-9]+", device):
+            runtime = {"accelerator": "cuda", "device": [int(device.removeprefix("cuda:"))]}
+        else:
+            raise ValueError("Kraken device must be auto, cpu, gpu, or cuda:N")
+        runtime["num_threads"] = 2
+        self.benchmark_device = device
         from kraken.tasks import RecognitionTaskModel, SegmentationTaskModel
         from kraken.configs import RecognitionInferenceConfig, SegmentationInferenceConfig
         self.lock = threading.Lock()
         self.segmenter = SegmentationTaskModel.load_model()
         self.recognizer = RecognitionTaskModel.load_model(model_path)
-        runtime = {'accelerator': 'cpu' if device == 'cpu' else 'cuda',
-                   'device': 1 if device == 'cpu' else [int(device.split(':')[-1])], 'num_threads': 2}
         self.segment_config = SegmentationInferenceConfig(**runtime)
         self.recognize_config = RecognitionInferenceConfig(**runtime, num_line_workers=0)
 
@@ -689,8 +696,9 @@ def main():
     elif args.engine == "surya":
         backend = SuryaBackend()
     else:
-        backend = KrakenBackend(args.model, "cuda:0" if device == "gpu" else device)
-    backend.benchmark_device = device
+        backend = KrakenBackend(args.model, device)
+    if args.engine != "kraken":
+        backend.benchmark_device = device
     server = ThreadingHTTPServer((args.host, args.port), handler_for(backend, token))
     print(f"YAGF OCR service listening on {args.host}:{args.port}", flush=True)
     try:

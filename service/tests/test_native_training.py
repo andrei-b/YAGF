@@ -1,7 +1,9 @@
 import base64
 import importlib.util
 import json
+import os
 from pathlib import Path
+import stat
 import struct
 import sys
 import tempfile
@@ -29,6 +31,79 @@ def samples():
 
 
 class NativeTrainingTests(unittest.TestCase):
+    def test_corrupt_job_states_do_not_block_startup_or_model_discovery(self):
+        with tempfile.TemporaryDirectory() as root:
+            def state_file(index):
+                jid = f'00000000-0000-0000-0000-{index:012d}'
+                directory = Path(root)/jid
+                directory.mkdir()
+                return jid, directory/'state.json'
+
+            corrupt = []
+            for index, payload in enumerate((b'', b'{"status":', b'\xff', b'[]', b'{}',
+                                             b'{"status":"queued","value":NaN}')):
+                jid, path = state_file(index)
+                path.write_bytes(payload)
+                corrupt.append((jid, path, payload))
+            interrupted, path = state_file(10)
+            path.write_text(json.dumps(dict(id=interrupted, status='running')))
+            complete, path = state_file(11)
+            path.write_text(json.dumps(dict(id=complete, status='complete', scope='shared',
+                eligible=True, source_id='a'*64, label='Validated model', engine='tesseract',
+                profile_id='tess', model_url='/models/'+complete, samples=3,
+                baseline={'cer': .5}, candidate={'cer': .1})))
+            with self.assertLogs(level='WARNING') as warnings:
+                host = worker.TrainingHost(root, [])
+            self.assertEqual(len(warnings.records), len(corrupt))
+            self.assertEqual(host.state(interrupted)['status'], 'failed')
+            for jid, path, payload in corrupt:
+                self.assertEqual(path.read_bytes(), payload)
+                with self.assertRaises(ValueError):
+                    host.state(jid)
+            server = ThreadingHTTPServer(('127.0.0.1', 0), worker.handler_for(host))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                url = f'http://127.0.0.1:{server.server_port}/v1'
+                with patch.object(host.catalog, 'discover', return_value=[]):
+                    with urllib.request.urlopen(url+'/health', timeout=3) as response:
+                        self.assertEqual([entry['path'] for entry in json.load(response)['services']],
+                                         ['/models/'+complete])
+                    with urllib.request.urlopen(url+'/models', timeout=3) as response:
+                        self.assertEqual([entry['id'] for entry in json.load(response)['models']], [complete])
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join()
+
+    def test_atomic_json_syncs_before_and_after_replace(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root)/'state.json'
+            previous, updated = {'status': 'queued'}, {'status': 'running'}
+            path.write_text(json.dumps(previous))
+            syncs = []
+
+            def check_sync(fd):
+                if stat.S_ISDIR(os.fstat(fd).st_mode):
+                    self.assertEqual(json.loads(path.read_text()), updated)
+                    syncs.append('directory')
+                else:
+                    self.assertEqual(json.loads(path.read_text()), previous)
+                    temporary, = Path(root).glob('*.tmp')
+                    self.assertEqual(json.loads(temporary.read_text()), updated)
+                    syncs.append('file')
+
+            with patch.object(worker.os, 'fsync', side_effect=OSError('sync failed')):
+                with self.assertRaises(OSError):
+                    worker.atomic_json(path, updated)
+            self.assertEqual(json.loads(path.read_text()), previous)
+            self.assertEqual(list(Path(root).iterdir()), [path])
+            with patch.object(worker.os, 'fsync', side_effect=check_sync):
+                worker.atomic_json(path, updated)
+            self.assertEqual(json.loads(path.read_text()), updated)
+            self.assertEqual(syncs, ['file', 'directory'] if hasattr(os, 'O_DIRECTORY') else ['file'])
+            self.assertEqual(list(Path(root).iterdir()), [path])
+
     def test_review_and_holdout_gate(self):
         self.assertEqual(len(worker.validate_samples(samples())),3)
         for change in [lambda s:s[0].update(decision='pending'),lambda s:s[0].update(text='two\nlines'),

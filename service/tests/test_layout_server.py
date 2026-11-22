@@ -3,11 +3,14 @@ import importlib.util
 import json
 from pathlib import Path
 import struct
+import sys
 import threading
 import unittest
 import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 spec = importlib.util.spec_from_file_location('layout_server', Path(__file__).resolve().parents[1] / 'layout_server.py')
 worker = importlib.util.module_from_spec(spec)
@@ -15,6 +18,37 @@ spec.loader.exec_module(worker)
 
 
 class LayoutTests(unittest.TestCase):
+    def test_decode_and_inference_hold_the_same_lock(self):
+        backend = worker.OnnxLayout.__new__(worker.OnnxLayout)
+        backend.lock = threading.Lock()
+        calls = []
+
+        def locked(stage, result):
+            def call(*args, **kwargs):
+                self.assertTrue(backend.lock.locked(), stage)
+                calls.append(stage)
+                return result
+            return call
+
+        rgb = MagicMock()
+        rgb.paste = locked("composite", None)
+        original = MagicMock()
+        original.__enter__.return_value = original
+        original.format, original.size, original.mode = "PNG", (100, 200), "RGBA"
+        original.convert = locked("decode", MagicMock())
+        backend.Image = SimpleNamespace(open=locked("open", original), new=MagicMock(return_value=rgb))
+        backend.np = MagicMock()
+        backend.outputs = ["boxes", "count"]
+        boxes = MagicMock()
+        boxes.__len__.return_value = 0
+        boxes.tolist.return_value = []
+        backend.session = SimpleNamespace(run=locked("infer", (boxes, [0])))
+        cv2 = SimpleNamespace(INTER_LINEAR=1, resize=locked("resize", MagicMock()))
+        with patch.dict(sys.modules, {"cv2": cv2}):
+            self.assertEqual(backend.detect(b"fixture", 100, 200, .5), [])
+        self.assertEqual(calls, ["open", "decode", "composite", "resize", "infer"])
+        self.assertFalse(backend.lock.locked())
+
     def test_actual_alternatives_share_query_and_have_strong_scores(self):
         box = [10, 20, 100, 80, 7]
         rows = [[22, .81, *box], [14, .68, *box], [5, .59, *box],

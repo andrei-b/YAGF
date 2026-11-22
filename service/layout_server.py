@@ -91,7 +91,7 @@ class OnnxLayout:
         self.outputs = [o.name for o in self.session.get_outputs()[:2]]
         self.lock = threading.Lock()
 
-    def detect(self, png, width, height, threshold):
+    def _prepare_image(self, png, width, height):
         np, Image = self.np, self.Image
         with Image.open(io.BytesIO(png)) as original:
             if original.format != "PNG" or original.size != (width, height):
@@ -111,9 +111,14 @@ class OnnxLayout:
             except ImportError:
                 resized = np.asarray(image.resize((800, 800), Image.Resampling.BILINEAR))
         data = np.ascontiguousarray(resized.transpose(2, 0, 1)[None], dtype=np.float32) / np.float32(255.)
-        feed = {"image": data, "im_shape": np.asarray([[800., 800.]], dtype=np.float32),
+        return {"image": data, "im_shape": np.asarray([[800., 800.]], dtype=np.float32),
                 "scale_factor": np.asarray([[800./height, 800./width]], dtype=np.float32)}
+
+    def detect(self, png, width, height, threshold):
+        # Decoding and compositing a full page use much more memory than the
+        # resized tensor. Keep them in the same one-request slot as inference.
         with self.lock:
+            feed = self._prepare_image(png, width, height)
             boxes, counts = self.session.run(self.outputs, feed)
         if len(counts) != 1 or int(counts[0]) != len(boxes):
             raise ValueError("Unexpected model detection count")

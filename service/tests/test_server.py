@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from server import (TranscriptionTruncated, PROTOCOL, DocTrBackend, RapidOcrBackend, SuryaBackend, KrakenBackend, PaddleVlBackend, FormulaNetBackend,
-                    handler_for, normalize_paddle_result,
+                    handler_for, main, normalize_paddle_result,
                     normalize_doctr_result, normalize_rapid_result,
                     normalize_surya_result, normalize_kraken_records)
 
@@ -428,9 +428,24 @@ class ServerTests(unittest.TestCase):
         pil.Image = SimpleNamespace(open=lambda path: FakeImage())
         with patch.dict(sys.modules, {"kraken.tasks": tasks, "kraken.configs": configs,
                                       "PIL": pil}), patch("server.os.path.isfile", return_value=True):
-            backend = KrakenBackend("model.safetensors", "cpu")
-            self.assertEqual(backend.recognize_config["num_line_workers"], 0)
-            self.assertEqual(backend.recognize(b"image", 20, 10, "auto")[0]["text"], "Old")
+            for requested, resolved, accelerator, device in (
+                ("auto", "cpu", "cpu", 1), ("cpu", "cpu", "cpu", 1),
+                ("gpu", "cuda:0", "cuda", [0]), ("cuda:2", "cuda:2", "cuda", [2]),
+            ):
+                with self.subTest(requested=requested):
+                    backend = KrakenBackend("model.safetensors", requested)
+                    runtime = {"accelerator": accelerator, "device": device, "num_threads": 2}
+                    self.assertEqual(backend.segment_config, runtime)
+                    self.assertEqual(backend.recognize_config, dict(runtime, num_line_workers=0))
+                    self.assertEqual(backend.benchmark_device, resolved)
+                    self.assertEqual(backend.recognize(b"image", 20, 10, "auto")[0]["text"], "Old")
+            with patch.object(sys, "argv", ["server.py", "--engine", "kraken", "--model", "model.safetensors"]), \
+                    patch("server.ThreadingHTTPServer") as http_server, \
+                    patch("server.handler_for") as make_handler, patch("builtins.print"):
+                main()
+            backend = make_handler.call_args.args[0]
+            self.assertEqual(backend.benchmark_device, "cpu")
+            http_server.return_value.serve_forever.assert_called_once()
 
 
 if __name__ == "__main__":
