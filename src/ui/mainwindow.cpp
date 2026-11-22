@@ -269,6 +269,20 @@ bool overlapsWord(const OcrWord &word, const QRect &selection)
     return false;
 }
 
+std::expected<OcrPage, QString> previousInRecognitionFrame(OcrPage page, const OcrPage &result, bool pdf)
+{
+    if (page.preprocessing == result.preprocessing) return page;
+    if (!page.coordinates.isDefined()) {
+        auto origin = ImageProcessor::coordinatePipeline({page.sourceWidth, page.sourceHeight},
+            page.preprocessing, pdf ? page.renderDpi : 0);
+        if (!origin) return std::unexpected(origin.error());
+        page.coordinates = *origin;
+    }
+    auto mapped = core::remapPageGeometry(page, result.coordinates);
+    if (mapped) mapped->preprocessing = result.preprocessing;
+    return mapped;
+}
+
 void carryCorrections(OcrPage &fresh, const OcrPage *oldPage, bool estimateFormatting, bool keepLayout)
 {
     if (!oldPage) return;
@@ -524,14 +538,14 @@ void PageView::updateRegionDrag(const QPoint &position)
             if (resizeEdges & 8) next.setBottom(qBound(editStartRect.top() + 8.0,
                                                       editStartRect.bottom() + delta.y(), limits.bottom()));
         }
-        editingRegionItem->setRect(core::constrainRegion(editStartRect, next, regionObstacles()));
+        editingRegionItem->setRect(core::constrainRegion(editStartRect, next, regionObstacles(), ink));
     } else {
         const auto point = mapToScene(position);
         const auto limits = scene()->sceneRect();
         const QPointF end(qBound(limits.left(), qreal(qRound(point.x())), limits.right()),
                           qBound(limits.top(), qreal(qRound(point.y())), limits.bottom()));
         drawingRegion = core::constrainRegion(QRectF(regionAnchor, QSizeF(0, 0)),
-            QRectF(regionAnchor, end).normalized(), regionObstacles());
+            QRectF(regionAnchor, end).normalized(), regionObstacles(), ink);
         rubberBand->setGeometry(mapFromScene(QRectF(drawingRegion)).boundingRect());
     }
 }
@@ -1444,12 +1458,14 @@ MainWindow::MainWindow()
         const auto *old = document.page(currentPage);
         const QString language = split.language;
         auto blocks = std::move(split.imageRegions);
-        OcrPage page = old ? *old : std::move(split);
+        auto previous = old ? previousInRecognitionFrame(*old, split, processing::pageSourceKind(originalPath) == processing::PageSourceKind::Pdf)
+                            : std::expected<OcrPage, QString>(std::move(split));
+        if (!previous) { showError(previous.error()); return; }
+        OcrPage page = std::move(*previous);
         if (!old) {
             page.engineId.clear();
             page.sourceWidth = rawImage.width();
             page.sourceHeight = rawImage.height();
-            page.preprocessing = displayedPreprocessing;
         }
         page.imageRegions = std::move(blocks);
         page.language = language;
@@ -1471,6 +1487,14 @@ MainWindow::MainWindow()
         QImageReader reader(imagePath);
         const QSize size = reader.size();
         const OcrPage *oldPage = document.page(currentPage);
+        const bool correctedFrame = region.isEmpty() && newPage.preprocessing != displayedPreprocessing;
+        std::optional<OcrPage> previous;
+        if (oldPage && correctedFrame) {
+            auto mapped = previousInRecognitionFrame(*oldPage, newPage, processing::pageSourceKind(originalPath) == processing::PageSourceKind::Pdf);
+            if (!mapped) { showError(mapped.error()); return; }
+            previous = std::move(*mapped);
+            oldPage = &*previous;
+        }
         if (oldPage) {
             newPage.sourceWidth = oldPage->sourceWidth;
             newPage.sourceHeight = oldPage->sourceHeight;
@@ -1480,7 +1504,7 @@ MainWindow::MainWindow()
             newPage.sourceHeight = rawImage.height();
         }
         if(oldPage && oldPage->coordinates.isDefined())newPage.coordinates=oldPage->coordinates;
-        else {
+        else if (!correctedFrame) {
             auto coordinates=ImageProcessor::coordinatePipeline(rawImage.size(),displayedPreprocessing,
                 processing::pageSourceKind(originalPath)==processing::PageSourceKind::Pdf?processor.renderedDpi(currentPage):0);
             if(!coordinates){showError(coordinates.error());return;}newPage.coordinates=*coordinates;
@@ -1596,6 +1620,13 @@ MainWindow::MainWindow()
             [this](OcrPage page, const QSize &sourceSize) {
         const int number = page.number;
         const OcrPage *oldPage = document.page(number);
+        std::optional<OcrPage> previous;
+        if (oldPage && oldPage->preprocessing != page.preprocessing) {
+            auto mapped = previousInRecognitionFrame(*oldPage, page, processing::pageSourceKind(originalPath) == processing::PageSourceKind::Pdf);
+            if (!mapped) { processor.cancel(); showError(mapped.error()); return; }
+            previous = std::move(*mapped);
+            oldPage = &*previous;
+        }
         if (oldPage && (oldPage->sourceWidth != sourceSize.width() ||
                         oldPage->sourceHeight != sourceSize.height() ||
                         oldPage->width != page.width || oldPage->height != page.height)) {
@@ -2281,6 +2312,7 @@ void MainWindow::loadImage(const QString &path)
     applyButton->setEnabled(false);
     regionOcrButton->setEnabled(false);
     scene->clear();
+    view->setPageInk(image);
     scene->addPixmap(QPixmap::fromImage(image));
     if (currentPage >= 1 && currentPage <= pageList->count())
         pageList->item(currentPage - 1)->setIcon(QIcon(QPixmap::fromImage(
@@ -2359,14 +2391,17 @@ void MainWindow::correctCurrentPageSkew()
     if (imagePath.isEmpty() || processor.isBusy() || exportBusy || projectLoading || !maybeApplyEditor()) return;
     const auto assessment = ImageProcessor::assess(QImage(imagePath));
     if (!assessment) { showError(assessment.error()); return; }
-    if (std::abs(assessment->skewDegrees) < .1) {
+    const auto *page = document.page(currentPage);
+    const auto text = page ? processing::recognizedTextGuidance(page->words) : processing::TextGuidance{};
+    const double residual = processing::recognitionGuidedSkew(assessment->skewDegrees, text);
+    if (std::abs(residual) < .1) {
         statusBar()->showMessage(tr("No additional skew detected on this page."), 5000);
         return;
     }
     // Assess the displayed, already preprocessed image. Add its remaining tilt
     // to the saved angle, preserving rotation, restoration and other filters.
     auto settings = displayedPreprocessing;
-    settings.deskewDegrees = std::round((settings.deskewDegrees+assessment->skewDegrees)*10)/10;
+    settings.deskewDegrees = std::round((settings.deskewDegrees+residual)*10)/10;
     if (std::abs(settings.deskewDegrees) > 15) {
         showError(tr("The detected correction exceeds 15°. Adjust the page rotation in Improve page first."));
         return;
@@ -3084,8 +3119,8 @@ void MainWindow::selectRegion(const QRectF &bounds)
     if (area.width() < 8 || area.height() < 8) return;
     OcrPage edited = document.page(currentPage) ? *document.page(currentPage) : OcrPage{};
     for (const auto &region : edited.imageRegions)
-        if (area.intersects(region.bounds)) {
-            statusBar()->showMessage(tr("Blocks cannot overlap. Draw in an empty part of the page."), 5000);
+        if (view->pageInk().conflicts(area, region.bounds)) {
+            statusBar()->showMessage(tr("Blocks may share a small blank margin. Move the edge away from the neighboring content."), 5000);
             return;
         }
     if (edited.imageRegions.size() >= 1000) { showError(tr("This page has too many regions.")); return; }
@@ -3211,7 +3246,7 @@ void MainWindow::moveImageRegion(int index, const QRectF &bounds)
     const QRect area = bounds.toAlignedRect().intersected(scene->sceneRect().toAlignedRect());
     if (area.width() < 8 || area.height() < 8 || area == page->imageRegions.at(index).bounds) return;
     for (int i = 0; i < page->imageRegions.size(); ++i)
-        if (i != index && area.intersects(page->imageRegions[i].bounds)) { showDocument(); return; }
+        if (i != index && view->pageInk().conflicts(area, page->imageRegions[i].bounds)) { showDocument(); return; }
     OcrPage edited = *page;
     edited.imageRegions[index].bounds = area;
     edited.imageRegions[index].autoDetected = false;
@@ -3319,32 +3354,9 @@ QImage MainWindow::displayedPageImage() const
     return {};
 }
 
-void MainWindow::classifyPageAreas()
+std::expected<processing::LayoutPage, QString> MainWindow::prepareCurrentLayoutPage(const QImage &image, OcrPage page)
 {
-    if (processor.isBusy() || exportBusy || projectLoading || imagePath.isEmpty() || !maybeApplyEditor()) return;
-    const QImage image=displayedPageImage();
-    if (image.isNull()) { showError(tr("Could not read the page image for layout analysis.")); return; }
-    const auto *old = document.page(currentPage);
-    AiPageLayoutDialog dialog(image, old ? old->imageRegions : QVector<ImageRegion>{}, this, currentPage, layoutSessionToken);
-    processing::OcrOptions context;context.pageNumber=currentPage;
-    auto mapping=ImageProcessor::coordinatePipeline(rawImage.size(),displayedPreprocessing,
-        processing::pageSourceKind(originalPath)==processing::PageSourceKind::Pdf?processor.renderedDpi(currentPage):0);
-    if(mapping)context.historyCoordinates=*mapping;
-    dialog.enableHistory(context,originalPath,core::preprocessingEvidence(displayedPreprocessing,processor.renderedDpi(currentPage)));
-    const int outcome=dialog.exec(); layoutSessionToken=dialog.sessionToken();updatePageLayoutService();
-    const auto history=dialog.recordedHistory();bool historyStored=false;
-    auto preserve=qScopeGuard([&] {
-        if(historyStored || history.runs.isEmpty())return;
-        auto page=document.page(currentPage)?*document.page(currentPage):OcrPage{};
-        if(!document.page(currentPage)){page.id=QStringLiteral("page-%1").arg(currentPage);page.number=currentPage;
-            page.width=image.width();page.height=image.height();page.sourceWidth=rawImage.width();page.sourceHeight=rawImage.height();
-            page.preprocessing=displayedPreprocessing;if(mapping)page.coordinates=*mapping;}
-        core::mergeRecognitionHistory(page.recognitionHistory,history);
-        undoStack.push(new ReplacePageCommand(document,currentPage,std::move(page),tr("Record layout recognition history")));
-    });
-    if (outcome != QDialog::Accepted) return;
-    OcrPage page = old ? *old : OcrPage{};
-    if (!old) {
+    if (!page.width) {
         page.number = currentPage;
         page.id = QStringLiteral("page-%1").arg(currentPage);
         page.width = image.width(); page.height = image.height();
@@ -3352,6 +3364,39 @@ void MainWindow::classifyPageAreas()
         page.preprocessing = displayedPreprocessing;
         page.renderDpi = processor.renderedDpi(currentPage);
     }
+    const int pdfDpi = processing::pageSourceKind(originalPath) == processing::PageSourceKind::Pdf ? page.renderDpi : 0;
+    return processing::prepareLayoutPage(rawImage, image, std::move(page), pdfDpi, languageEdit->text());
+}
+
+void MainWindow::classifyPageAreas()
+{
+    if (processor.isBusy() || exportBusy || projectLoading || imagePath.isEmpty() || !maybeApplyEditor()) return;
+    const QImage image=displayedPageImage();
+    if (image.isNull()) { showError(tr("Could not read the page image for layout analysis.")); return; }
+    const auto *old = document.page(currentPage);
+    auto prepared = prepareCurrentLayoutPage(image, old ? *old : OcrPage{});
+    if (!prepared) { showError(prepared.error()); return; }
+    AiPageLayoutDialog dialog(prepared->image, prepared->page.imageRegions, this, currentPage, layoutSessionToken,
+                              false, prepared->page.preprocessing.deskewDegrees - displayedPreprocessing.deskewDegrees);
+    processing::OcrOptions context; context.pageNumber = currentPage;
+    context.historyCoordinates = prepared->page.coordinates;
+    dialog.enableHistory(context, originalPath, core::preprocessingEvidence(prepared->page.preprocessing, prepared->page.renderDpi));
+    const int outcome=dialog.exec(); layoutSessionToken=dialog.sessionToken();updatePageLayoutService();
+    const auto history=dialog.recordedHistory();bool historyStored=false;
+    auto preserve=qScopeGuard([&] {
+        if(historyStored || history.runs.isEmpty())return;
+        auto page=document.page(currentPage)?*document.page(currentPage):OcrPage{};
+        if(!document.page(currentPage)){page.id=QStringLiteral("page-%1").arg(currentPage);page.number=currentPage;
+            page.width=image.width();page.height=image.height();page.sourceWidth=rawImage.width();page.sourceHeight=rawImage.height();
+            page.preprocessing=displayedPreprocessing;page.renderDpi=processor.renderedDpi(currentPage);
+            auto mapping=ImageProcessor::coordinatePipeline(rawImage.size(),displayedPreprocessing,
+                processing::pageSourceKind(originalPath)==processing::PageSourceKind::Pdf?page.renderDpi:0);
+            if(mapping)page.coordinates=*mapping;}
+        core::mergeRecognitionHistory(page.recognitionHistory,history);
+        undoStack.push(new ReplacePageCommand(document,currentPage,std::move(page),tr("Record layout recognition history")));
+    });
+    if (outcome != QDialog::Accepted) return;
+    OcrPage page = std::move(prepared->page);
     page.language = languageEdit->text();
     page.imageRegions = dialog.regions();
     core::mergeRecognitionHistory(page.recognitionHistory,history);historyStored=true;
@@ -3398,19 +3443,19 @@ void MainWindow::splitSelectedBlockWithAi()
 {
     if(processor.isBusy() || exportBusy || projectLoading || imagePath.isEmpty() || selectedRegionIds.size()!=1 || !maybeApplyEditor())return;
     const auto *page=document.page(currentPage);if(!page)return;
-    const auto parent=std::ranges::find_if(page->imageRegions,[&](const auto &r){return selectedRegionIds.contains(r.id);});
-    if(parent==page->imageRegions.end())return;
-    const ImageRegion original=*parent;const QImage image=displayedPageImage();
-    if(image.isNull() || !image.rect().contains(original.bounds)){showError(tr("The selected block lies outside the displayed page."));return;}
-    AiPageLayoutDialog dialog(image.copy(original.bounds),{},this,currentPage,layoutSessionToken,true);
-    processing::OcrOptions context;context.pageNumber=currentPage;context.historyCoordinates=page->coordinates;
-    if(!context.historyCoordinates.isDefined()) {
-        auto mapping=ImageProcessor::coordinatePipeline(rawImage.size(),displayedPreprocessing,
-            processing::pageSourceKind(originalPath)==processing::PageSourceKind::Pdf?processor.renderedDpi(currentPage):0);
-        if(mapping)context.historyCoordinates=*mapping;
-    }
+    auto prepared = prepareCurrentLayoutPage(displayedPageImage(), *page);
+    if (!prepared) { showError(prepared.error()); return; }
+    auto &edited = prepared->page;
+    const auto parent = std::ranges::find_if(edited.imageRegions, [&](const auto &r) { return selectedRegionIds.contains(r.id); });
+    if (parent == edited.imageRegions.end()) return;
+    const int index = parent - edited.imageRegions.begin();
+    const ImageRegion original = *parent;
+    if (!prepared->image.rect().contains(original.bounds)) { showError(tr("The selected block lies outside the displayed page.")); return; }
+    AiPageLayoutDialog dialog(prepared->image.copy(original.bounds), {}, this, currentPage, layoutSessionToken,
+                              true, edited.preprocessing.deskewDegrees - displayedPreprocessing.deskewDegrees);
+    processing::OcrOptions context;context.pageNumber=currentPage;context.historyCoordinates=edited.coordinates;
     context=processing::croppedOcrOptions(context,original.bounds);
-    dialog.enableHistory(context,originalPath,core::preprocessingEvidence(displayedPreprocessing,processor.renderedDpi(currentPage)));
+    dialog.enableHistory(context,originalPath,core::preprocessingEvidence(edited.preprocessing,edited.renderDpi));
     const int outcome=dialog.exec();layoutSessionToken=dialog.sessionToken();updatePageLayoutService();
     const auto history=dialog.recordedHistory();bool historyStored=false;
     auto preserve=qScopeGuard([&] {
@@ -3420,17 +3465,16 @@ void MainWindow::splitSelectedBlockWithAi()
     });
     if(outcome!=QDialog::Accepted)return;
     auto subdivisions=dialog.regions();if(subdivisions.size()<2)return;
-    page=document.page(currentPage);if(!page)return;
-    const auto found=std::ranges::find_if(page->imageRegions,[&](const auto &r){return r.id==original.id && r.bounds==original.bounds;});
-    if(found==page->imageRegions.end() || page->imageRegions.size()-1+subdivisions.size()>1000)return;
-    OcrPage edited=*page;core::mergeRecognitionHistory(edited.recognitionHistory,history);
-    const int index=found-page->imageRegions.begin();edited.imageRegions.removeAt(index);
+    if (edited.imageRegions.size()-1+subdivisions.size()>1000) return;
+    core::mergeRecognitionHistory(edited.recognitionHistory,history);
+    edited.imageRegions.removeAt(index);
+    const core::RegionInk ink(prepared->image);
     for(int i=0;i<subdivisions.size();++i) {
         auto &region=subdivisions[i];region.bounds.translate(original.bounds.topLeft());
         region.autoDetected=false; // Keep the explicitly accepted split during automatic layout.
         if(!original.bounds.contains(region.bounds))return;
         if(region.language.isEmpty())region.language=original.language;
-        if(std::ranges::any_of(edited.imageRegions,[&](const auto &r){return r.bounds.intersects(region.bounds);}))return;
+        if(std::ranges::any_of(edited.imageRegions,[&](const auto &r){return ink.conflicts(r.bounds, region.bounds);}))return;
         edited.imageRegions.insert(index+i,region);
     }
     selectedRegionIds.clear();selectedImageRegion=-1;

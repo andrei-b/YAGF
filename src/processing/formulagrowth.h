@@ -31,6 +31,10 @@ QVector<QRect> findInlineFormulaHints(const QImage &gray, QRect parent, std::sto
 QVector<core::ImageRegion> refineFormulaRegions(const QImage &image,
     const QVector<core::ImageRegion> &regions, const QVector<core::OcrWord> &words = {}, std::stop_token stop = {});
 
+// Measure a double-bounded integral whose central stroke is inside the candidate.
+// The returned box covers the operator and its printed upper and lower limits.
+QVector<QRect> boundedIntegralSigns(const QImage &gray, QRect candidate);
+
 // Grow one recognition crop within a caller-supplied search window. Protected
 // boxes are prose or other content that the formula engine must not consume.
 QRect growSymbolCrop(const QImage &gray, QRect seed, QRect window,

@@ -183,6 +183,10 @@ int main(int argc, char **argv)
     script(directory.filePath("pdfinfo"), "#!/bin/sh\necho 'Pages: 5'\n");
     script(directory.filePath("pdftoppm"), "#!/bin/sh\nfor arg do last=$arg; done\ncp \"$SCAN_IMAGE\" \"$last.png\"\n");
     script(directory.filePath("tesseract"), R"(#!/bin/sh
+case "$1" in
+    --version) echo 'tesseract 5'; exit 0 ;;
+    --list-langs) printf 'List of available languages (1):\neng\n'; exit 0 ;;
+esac
 echo BEGIN >> "$HINT_LOG"
 while [ "$#" -gt 0 ]; do
     if [ "$1" = "--user-words" ]; then cat "$2" >> "$HINT_LOG" || exit 1; break; fi

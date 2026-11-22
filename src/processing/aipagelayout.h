@@ -1,5 +1,6 @@
 #pragma once
 #include "iocrengine.h"
+#include "regiongeometry.h"
 #include <QUrl>
 
 namespace yagf::processing {
@@ -33,12 +34,13 @@ struct PageLayoutOptions {
 };
 std::expected<PageLayout, OcrError> detectPageAreas(const QImage &image, const PageLayoutOptions &options,
                                                   std::stop_token stop = {}, QJsonObject *evidence = nullptr);
-// Inline formulas belong to their containing text block. Keep the paragraph intact
-// and route it through mixed OCR rather than proposing overlapping tiny blocks.
-void consolidateInlineAreas(QVector<PageArea> &areas);
+// Route inline formulas through mixed OCR. Preserve bounded integrals as dedicated
+// crops when the image supports partitioning their surrounding prose.
+void consolidateInlineAreas(QVector<PageArea> &areas, const QImage &gray);
 // Selected-block review can keep detected inline expressions as individual
 // math crops and partition their containing paragraph around them.
 void subdivideInlineAreas(QVector<PageArea> &areas, const QImage &gray, const QVector<QRect> &localHints);
 QVector<core::ImageRegion> mergePageAreas(const QVector<core::ImageRegion> &existing,
-                                         const QVector<PageArea> &accepted, bool replaceAutomatic);
+                                         const QVector<PageArea> &accepted, bool replaceAutomatic,
+                                         const core::RegionInk &ink = {});
 }

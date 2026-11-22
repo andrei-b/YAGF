@@ -1,11 +1,13 @@
 #pragma once
 
 #include "ocrdocument.h"
+#include "regiongeometry.h"
 #include "correctionmemory.h"
 #include "verificationqueue.h"
 
 #include <optional>
 #include "documentprocessor.h"
+#include "textguidedanalysis.h"
 #include "exporttypes.h"
 
 #include <QFutureWatcher>
@@ -60,6 +62,8 @@ class PageView : public QGraphicsView {
 public:
     explicit PageView(QWidget *parent = nullptr);
     void setActiveRegionIndex(int index);
+    void setPageInk(const QImage &image) { ink = core::RegionInk(image); }
+    const core::RegionInk &pageInk() const { return ink; }
     void fitPage();
     void zoomBy(qreal factor);
     QToolBar *imageTools() const { return imageToolbar; }
@@ -91,6 +95,7 @@ private:
     void positionImageToolbar();
     void updateImageToolbar(const QPoint &position);
     QVector<QRectF> regionObstacles() const;
+    core::RegionInk ink;
     QRubberBand *rubberBand;
     QPointF regionAnchor;
     QRect drawingRegion;
@@ -144,6 +149,7 @@ private:
     void showPage(int number);
     void updatePageControls();
     void runOcr();
+    std::expected<processing::LayoutPage, QString> prepareCurrentLayoutPage(const QImage &image, core::OcrPage page);
     void classifyPageAreas();
     void splitSelectedBlockWithAi();
     void refineFormulaBlocks();

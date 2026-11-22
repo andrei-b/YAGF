@@ -1,4 +1,5 @@
 #include "aipagelayoutdialog.h"
+#include "textguidedanalysis.h"
 #include "documentcommands.h"
 #include "exportpage.h"
 #include "latexdocumentexporter.h"
@@ -139,6 +140,107 @@ private slots:
         server.areas.append(area("two","math",QRect(90,70,70,30)));
         dialog.findChild<QPushButton *>("analyzePageAreas")->click();QTRY_VERIFY_WITH_TIMEOUT(apply->isEnabled(),3000);
         QCOMPARE(dialog.regions().size(),2);dialog.close();
+    }
+    void displayFormulaTouchingParagraphPadding() {
+        QImage page(200, 120, QImage::Format_RGB32);
+        page.fill(Qt::white);
+        const QRect paragraph(6, 6, 180, 44), formula(45, 49, 102, 20);
+        page.setPixelColor(formula.center(), Qt::black);
+        Server server;
+        server.areas = {area("paragraph", "text", paragraph, .91),
+                        area("equation", "math", formula, .89, "display_formula")};
+        processing::PageLayoutOptions options{server.url()};
+        const auto layout = processing::detectPageAreas(page, options);
+        QVERIFY(layout);
+        QCOMPARE(layout->rawAreas.last().bounds, formula);
+        const auto merged = processing::mergePageAreas({}, layout->areas, true, core::RegionInk(page));
+        QCOMPARE(merged.size(), 2);
+        QCOMPARE(merged.first().bounds, paragraph);
+        QCOMPARE(merged.last().bounds, formula);
+
+        QSettings settings("YAGF", "YAGF Revival");
+        settings.setValue("layout/url", server.url().toString());
+        settings.setValue("layout/threshold", .5);
+        ui::AiPageLayoutDialog dialog(page, {});
+        dialog.show();
+        QTRY_COMPARE_WITH_TIMEOUT(dialog.regions().size(), 2, 3000);
+        QCOMPARE(dialog.regions().last().bounds, formula);
+        auto *slider = dialog.findChild<QSlider *>();
+        QVERIFY(slider);
+        slider->setValue(90);
+        QCOMPARE(dialog.regions().size(), 1);
+        slider->setValue(50);
+        QCOMPARE(dialog.regions().size(), 2);
+
+        auto proposals = layout->rawAreas;
+        page.setPixelColor(formula.topLeft(), Qt::black);
+        QCOMPARE(processing::mergePageAreas({}, proposals, true, core::RegionInk(page)).size(), 1);
+        proposals.first().bounds.translate(0, 10);
+        page.fill(Qt::white);
+        QCOMPARE(processing::mergePageAreas({}, proposals, true, core::RegionInk(page)).size(), 1);
+    }
+    void inlineIntegralWithDetachedLimitsSurvivesParagraphConsolidation() {
+        QImage gray(210,130,QImage::Format_Grayscale8);
+        gray.fill(Qt::white);
+        QPainter p(&gray);
+        for (auto box : {QRect(8,8,155,10),QRect(7,64,50,10),QRect(80,57,6,3),
+                         QRect(80,59,2,29),QRect(77,87,5,3),QRect(80,45,6,7),
+                         QRect(77,94,10,7),QRect(95,66,34,9),QRect(149,64,52,10)})
+            p.fillRect(box, Qt::black);
+        p.end();
+        const auto modelAreas = QVector<processing::PageArea>{
+            {"text","text",{4,5,200,100},.94,{},"text","paragraph"},
+            {"inline_formula","mixed",{73,44,60,58},.85,{},"mixed","integral"}};
+        auto proposals = modelAreas;
+        processing::consolidateInlineAreas(proposals, gray);
+        const auto math = std::ranges::find(proposals,QString("math"),&processing::PageArea::type);
+        QVERIFY(math != proposals.end());
+        QVERIFY(math->bounds.contains(QRect(77,45,10,56)));
+        QCOMPARE(math->id,QString("integral"));
+        QCOMPARE(math->score,.85);
+        const core::ImageRegion kept{"kept",{4,0,200,12},{},false,"text"};
+        const auto merged = processing::mergePageAreas({kept},proposals,true,core::RegionInk(gray));
+        QVERIFY(std::ranges::any_of(merged,[&](const auto &r){return r.content=="math" && r.bounds==math->bounds;}));
+        QPainter erase(&gray); erase.fillRect(77,94,10,7,Qt::white); erase.end();
+        proposals = modelAreas;
+        processing::consolidateInlineAreas(proposals,gray);
+        QCOMPARE(proposals.size(),1);
+        QCOMPARE(proposals[0].type,QString("mixed"));
+    }
+
+    void recognitionGuidesLayoutDeskewAndPreservesWordGeometry() {
+        QImage scan(360, 260, QImage::Format_RGB32);
+        scan.fill(Qt::white);
+        core::OcrPage page;
+        page.width = page.sourceWidth = scan.width(); page.height = page.sourceHeight = scan.height();
+        page.number = 1;
+        QPainter painter(&scan);
+        for (int line = 0; line < 4; ++line) {
+            for (int i = 0; i < 5; ++i) {
+                QRect box(18 + i*60, 20 + line*42 + i*3, 32, 12);
+                page.words.append({1, 1, 1, line+1, box, "word", "word", 95});
+                painter.fillRect(box, Qt::black);
+            }
+        }
+        painter.end();
+        page.rebuildHierarchy();
+        page.words.first().reviewed = true;
+        const auto id = page.words.first().id;
+        page.imageRegions.append({"manual", {14, 18, 280, 36}, {}, false, "text"});
+        auto prepared = processing::prepareLayoutPage(scan, scan, page, 0, "eng");
+        QVERIFY2(prepared, qPrintable(prepared ? QString() : prepared.error()));
+        QVERIFY(std::abs(prepared->page.preprocessing.deskewDegrees - 2.86) < .5);
+        QCOMPARE(prepared->page.coordinates.outputSize(), QSizeF(prepared->image.size()));
+        QCOMPARE(prepared->page.words.first().id, id);
+        QVERIFY(prepared->page.words.first().reviewed);
+        QCOMPARE(prepared->page.imageRegions.first().id, QString("manual"));
+        auto again = processing::prepareLayoutPage(scan, prepared->image, prepared->page, 0, "eng");
+        QVERIFY(again);
+        QCOMPARE(again->page.preprocessing.deskewDegrees, prepared->page.preprocessing.deskewDegrees);
+        for (auto &word : page.words) word.geometryInferred = true;
+        QVERIFY(!processing::recognizedTextGuidance(page.words).skewDegrees);
+        for (auto &word : page.words) { word.geometryInferred = false; word.layoutBlock = true; }
+        QVERIFY(!processing::recognizedTextGuidance(page.words).skewDegrees);
     }
     void manualBlocksAndUndo() {
         core::ImageRegion manual{"manual",QRect(0,0,30,30),"rus",false,"text",false};

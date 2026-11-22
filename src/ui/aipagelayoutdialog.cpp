@@ -85,8 +85,8 @@ QToolButton *thumbnail(const QImage &image,QRect bounds,QWidget *parent)
     return button;
 }
 }
-AiPageLayoutDialog::AiPageLayoutDialog(QImage source,QVector<core::ImageRegion> blocks,QWidget *parent,int pageNumber,QString bearerToken,bool blockScope)
-    :QDialog(parent),image(std::move(source)),existing(std::move(blocks)),blockScope(blockScope)
+AiPageLayoutDialog::AiPageLayoutDialog(QImage source,QVector<core::ImageRegion> blocks,QWidget *parent,int pageNumber,QString bearerToken,bool blockScope,double deskewAdjustment)
+    :QDialog(parent),image(std::move(source)),ink(image),existing(std::move(blocks)),blockScope(blockScope)
 {
     setWindowTitle(tr("AI page areas")); setWindowIcon(aiPageAreasIcon()); setObjectName("aiPageLayoutDialog"); resize(1160,820);
     setStyleSheet(QStringLiteral(R"(
@@ -122,10 +122,11 @@ AiPageLayoutDialog::AiPageLayoutDialog(QImage source,QVector<core::ImageRegion> 
     auto *title=new QLabel(pageNumber>0 ? tr("Page %1 · AI areas").arg(pageNumber) : tr("AI page areas"),this); title->setObjectName("layoutTitle"); titles->addWidget(title);
     auto *intro=new QLabel(tr("Review each block, choose its type, then apply the areas to your page."),this); intro->setObjectName("layoutSubtitle"); intro->setWordWrap(true); titles->addWidget(intro);
     if(blockScope) {
-        splitGray=image.convertToFormat(QImage::Format_Grayscale8);
         setWindowTitle(tr("AI split selected block"));title->setText(tr("Page %1 · split selected block").arg(pageNumber));
-        intro->setText(tr("Only the selected block is analyzed. Select at least two subdivisions to replace it; the rest of the page stays in place."));
+        intro->setText(tr("Select at least two subdivisions to replace the selected block."));
     }
+    if (deskewAdjustment != 0)
+        intro->setText(intro->text() + tr(" Applying these areas also deskews the page by %1°.").arg(deskewAdjustment, 0, 'f', 1));
     header->addLayout(titles,1);
     optionsButton=new QToolButton(this); optionsButton->setText(tr("Options")); optionsButton->setCheckable(true); optionsButton->setArrowType(Qt::DownArrow); optionsButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon); optionsButton->setObjectName("layoutOptionsButton"); header->addWidget(optionsButton); layout->addLayout(header);
     auto *optionsPanel=new QFrame(this); optionsPanel->setObjectName("layoutOptions"); auto *form=new QFormLayout(optionsPanel); form->setContentsMargins(12,10,12,10);
@@ -205,15 +206,21 @@ void AiPageLayoutDialog::enableHistory(processing::OcrOptions context,QString so
     historyContext.historyRole="layout";
 }
 core::RecognitionHistory AiPageLayoutDialog::recordedHistory() {
-    watcher.waitForFinished();return historyContext.history?historyContext.history->snapshot():core::RecognitionHistory{};
+    if (busy) watcher.waitForFinished();
+    return historyContext.history ? historyContext.history->snapshot() : core::RecognitionHistory{};
 }
 QString AiPageLayoutDialog::sessionToken() const {return token->text();}
-AiPageLayoutDialog::~AiPageLayoutDialog() {stop.request_stop(); watcher.waitForFinished();}
+AiPageLayoutDialog::~AiPageLayoutDialog() {stop.request_stop(); if (busy) watcher.waitForFinished();}
 void AiPageLayoutDialog::reject() {stop.request_stop(); QDialog::reject();}
 void AiPageLayoutDialog::showEvent(QShowEvent *event)
 {
     QDialog::showEvent(event);
-    if (!opened) {opened=true; QTimer::singleShot(0,this,[this]{fitPreview(); analyze();});}
+    if (!opened) {
+        opened = true;
+        QTimer::singleShot(0, this, [this] {
+            if (isVisible()) { fitPreview(); analyze(); }
+        });
+    }
 }
 bool AiPageLayoutDialog::eventFilter(QObject *object,QEvent *event)
 {
@@ -239,7 +246,7 @@ void AiPageLayoutDialog::analyze()
     stop=std::stop_source{}; busy=true; areas.clear();allAreas.clear();typeOverrides.clear();selectionOverrides.clear();hasAnalysis=false; populate();
     analyzeButton->setEnabled(false); endpoint->setEnabled(false); token->setEnabled(false); replaceAutomatic->setEnabled(false);
     progress->show(); message->setText(blockScope?tr("Finding finer areas within the selected block…"):tr("Finding text, pictures and formulas on the current page…"));
-    watcher.setFuture(QtConcurrent::run([source=image,gray=splitGray,options,context=historyContext,path=historySourcePath,token=stop.get_token()] {
+    watcher.setFuture(QtConcurrent::run([source=image,gray=blockScope ? ink.grayscale() : QImage{},options,context=historyContext,path=historySourcePath,token=stop.get_token()] {
         core::RecognitionRun run;
         if(context.history) {
             run=context.history->begin("ai-page-layout","auto",source,context);
@@ -264,8 +271,8 @@ void AiPageLayoutDialog::filterAreas()
 {
     areas.clear();
     for(const auto &area:allAreas)if(area.score+1e-9>=threshold->value()/100.)areas.append(area);
-    if (blockScope) processing::subdivideInlineAreas(areas,splitGray,localInlineHints);
-    else processing::consolidateInlineAreas(areas);
+    if (blockScope) processing::subdivideInlineAreas(areas,ink.grayscale(),localInlineHints);
+    else processing::consolidateInlineAreas(areas, ink.grayscale());
     for(auto &area:areas)if(typeOverrides.contains(area.id))area.type=typeOverrides.value(area.id);
     populate();
     message->setText(allAreas.isEmpty()?tr("No areas returned by the model. Use Analyze again to retry."):
@@ -277,7 +284,7 @@ void AiPageLayoutDialog::rememberSelection(int index,bool checked)
 {
     selectionOverrides[areas[index].id]=checked;
     if(checked)for(const auto &area:(blockScope ? areas : allAreas))
-        if(area.id!=areas[index].id && area.bounds.intersects(areas[index].bounds))selectionOverrides[area.id]=false;
+        if(area.id!=areas[index].id && ink.conflicts(area.bounds, areas[index].bounds))selectionOverrides[area.id]=false;
 }
 void AiPageLayoutDialog::populate(bool resetSelection)
 {
@@ -329,8 +336,8 @@ void AiPageLayoutDialog::populate(bool resetSelection)
         return std::max(areas[a].score,areas[a].splitParentScore) > std::max(areas[b].score,areas[b].splitParentScore);
     });
     for (int i:order) {
-        const bool overlap=std::ranges::any_of(occupied,[&](const auto &box){return box.intersects(areas[i].bounds);});
-        const bool preservedOverlap=std::ranges::any_of(existing,[&](const auto &block){return (!replaceAutomatic->isChecked() || !block.autoDetected) && block.bounds.intersects(areas[i].bounds);});
+        const bool overlap=std::ranges::any_of(occupied,[&](const auto &box){return ink.conflicts(box, areas[i].bounds);});
+        const bool preservedOverlap=std::ranges::any_of(existing,[&](const auto &block){return (!replaceAutomatic->isChecked() || !block.autoDetected) && ink.conflicts(block.bounds, areas[i].bounds);});
         if (preservedOverlap) {
             areaItems[i]->setFlags(Qt::ItemIsSelectable|Qt::ItemIsEnabled);
             areaItems[i]->setToolTip(tr("Overlaps a kept block. Adjust that block on the page before analyzing again.")); cards[i].use->setEnabled(false); cards[i].use->setToolTip(areaItems[i]->toolTip());
@@ -364,7 +371,7 @@ void AiPageLayoutDialog::updateSelection(int changed)
     if (updating) return;
     updating=true;
     if (changed>=0 && areaItems[changed]->checkState()==Qt::Checked) {
-        for (int i=0;i<areas.size();++i) if (i!=changed && areas[i].bounds.intersects(areas[changed].bounds)) areaItems[i]->setCheckState(Qt::Unchecked);
+        for (int i=0;i<areas.size();++i) if (i!=changed && ink.conflicts(areas[i].bounds, areas[changed].bounds)) areaItems[i]->setCheckState(Qt::Unchecked);
     }
     int selected=0;
     for (int i=0;i<areas.size();++i) {
@@ -376,13 +383,13 @@ void AiPageLayoutDialog::updateSelection(int changed)
     }
     blockCount->setText(hasAnalysis ? tr("%1 selected / %2 proposed").arg(selected).arg(areas.size()) : tr("%1 existing").arg(existing.size()));
     applyButton->setEnabled(!busy && hasAnalysis && selected>=(blockScope?2:1) && regions().size()<=1000);
-    if(blockScope)applyButton->setToolTip(tr("Select at least two non-overlapping subdivisions to replace the selected block."));
+    if(blockScope)applyButton->setToolTip(tr("Select at least two subdivisions. Their margins may share whitespace."));
     updating=false;
 }
 QVector<core::ImageRegion> AiPageLayoutDialog::regions() const
 {
     QVector<processing::PageArea> accepted;
     for (int i=0;i<areas.size();++i) if (areaItems[i]->checkState()==Qt::Checked) accepted.append(areas[i]);
-    return processing::mergePageAreas(existing,accepted,replaceAutomatic->isChecked());
+    return processing::mergePageAreas(existing,accepted,replaceAutomatic->isChecked(), ink);
 }
 }

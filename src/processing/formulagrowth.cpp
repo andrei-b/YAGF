@@ -273,6 +273,53 @@ void growOne(const QImage &gray, QVector<ImageRegion> &blocks, int index, std::s
 }
 } // namespace
 
+QVector<QRect> boundedIntegralSigns(const QImage &gray, QRect candidate)
+{
+    if (gray.format() != QImage::Format_Grayscale8 || candidate.height() < 8) return {};
+    const int halo = std::clamp(2 * candidate.height(), 24, 160);
+    const int side = std::max(8,halo/4);
+    const QRect roi = candidate.adjusted(-side, -halo, side, halo).intersected(gray.rect());
+    if (roi.isEmpty() || qint64(roi.width()) * roi.height() > 1000000) return {};
+    const auto [glyphs, threshold] = components(gray, roi);
+    QVector<QRect> signs;
+    for (const auto &glyph : glyphs) {
+        const QRect op = glyph.box;
+        const int h = op.height(), w = op.width();
+        if (!candidate.contains(op.center()) || h < 16 || w < 4 || h < 2*w || h > 9*w) continue;
+        // An integral has opposing hooks. Compare each end to the nearby
+        // stem so this also works with slanted type and residual page skew.
+        const auto inkSpan = [&](int first, int last) {
+            int left = w, right = -1;
+            for (int y = first; y <= last; ++y) {
+                const auto *row = gray.constScanLine(op.y()+y) + op.x();
+                for (int x = 0; x < w; ++x) if (row[x] <= threshold) {
+                    left = std::min(left,x); right = std::max(right,x);
+                }
+            }
+            return std::pair(left,right);
+        };
+        const auto top = inkSpan(0,h/5), upperStem = inkSpan(h/4,h/3);
+        const auto bottom = inkSpan(h-1-h/5,h-1), lowerStem = inkSpan(2*h/3,3*h/4);
+        const int hook = std::max(2,w/4);
+        if (top.second-upperStem.second < hook || lowerStem.first-bottom.first < hook ||
+            upperStem.second-upperStem.first+1 > .65*w || lowerStem.second-lowerStem.first+1 > .65*w) continue;
+        QRect upper, lower;
+        for (const auto &piece : glyphs) {
+            const QRect b = piece.box;
+            if (piece.ink < 3 || b.height() < 2 || b.height() > .55*h || b.width() > .85*h ||
+                std::abs(b.center().x()-op.center().x()) > .48*h ||
+                gap(b.left(),b.right(),op.left(),op.right()) > .22*h) continue;
+            const bool above = b.bottom() < op.top() && op.top()-b.bottom() <= .42*h;
+            const bool below = op.bottom() < b.top() && b.top()-op.bottom() <= .42*h;
+            if ((!above && !below) || belongsToLine(b,glyphs,op,.45*h,{})) continue;
+            if (above) upper |= b;
+            else lower |= b;
+        }
+        if (upper.isValid() && lower.isValid()) signs.append(op | upper | lower);
+    }
+    return signs;
+}
+
 QRect growSymbolCrop(const QImage &gray, QRect seed, QRect window,
     const QVector<QRect> &protectedBoxes, bool largeOperator, std::stop_token stop)
 {

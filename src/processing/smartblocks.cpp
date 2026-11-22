@@ -1,4 +1,5 @@
 #include "smartblocks.h"
+#include "regiongeometry.h"
 #include "mathsymbols.h"
 #include "recognitionrecorder.h"
 #include "formulagrowth.h"
@@ -151,14 +152,14 @@ void restoreRecoveredText(core::OcrPage &page, const QVector<Row> &rows)
 }
 
 QVector<core::ImageRegion> textBlocksFromReading(const core::OcrPage &page,
-    const QVector<core::ImageRegion> &explicitRegions, const QVector<core::ImageRegion> &detected)
+    const QVector<core::ImageRegion> &explicitRegions, const QVector<core::ImageRegion> &detected, const core::RegionInk &ink)
 {
     QVector<core::ImageRegion> result = explicitRegions;
     QVector<QRect> paragraphs;
     QHash<QString, bool> formulas;
     for (const auto &word : page.words) formulas.insert(word.id, word.layoutBlock);
     for (const auto &region : page.regions) for (const auto &paragraph : region.paragraphs) {
-        if (std::ranges::any_of(explicitRegions, [&](const auto &r) { return r.bounds.intersects(paragraph.bounds); }))
+        if (std::ranges::any_of(explicitRegions, [&](const auto &r) { return ink.conflicts(r.bounds, paragraph.bounds); }))
             continue;
         paragraphs.append(paragraph.bounds);
         bool math = false, text = false;
@@ -172,7 +173,7 @@ QVector<core::ImageRegion> textBlocksFromReading(const core::OcrPage &page,
     // Keep proposals beside manually drawn blocks where a raw paragraph crosses
     // an explicit boundary. Other prose outlines follow the raw paragraphs.
     for (int i = explicitRegions.size(); i < detected.size(); ++i) {
-        if (!std::ranges::any_of(paragraphs, [&](const auto &box) { return box.intersects(detected[i].bounds); }))
+        if (!std::ranges::any_of(paragraphs, [&](const auto &box) { return ink.conflicts(box, detected[i].bounds); }))
             result.append(detected[i]);
     }
     return result;
@@ -203,7 +204,8 @@ bool proseWord(const QString &text)
     static const QRegularExpression functions(QStringLiteral("^(sin|cos|tan|log|ln|lim|exp|max|min)$"));
     // OCR often joins a Russian word to a footnote star or an inline operator.
     // That punctuation must not turn the whole word into a formula candidate.
-    if (text.contains(cyrillicWord)) return true;
+    static const QRegularExpression initials(QStringLiteral("^(?:[А-Яа-яЁё]\\.){2,}$"));
+    if (text.contains(cyrillicWord) || initials.match(text).hasMatch()) return true;
     if (hasMathOperator(text)) return false;
     static const QStringList shortWords{"и", "в", "с", "к", "у", "а", "о", "я"};
     return (text.contains(letters) && !functions.match(text).hasMatch()) || shortWords.contains(text.toLower());
@@ -602,6 +604,7 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
         QPainter painter(&gray);
         painter.drawImage(0, 0, image);
     }
+    const core::RegionInk ink(gray);
     QImage uncovered = gray;
     if (includeUnmarked && !regions.isEmpty()) {
         QPainter mask(&uncovered);
@@ -626,6 +629,7 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
     if (initialReading) baselines.emplace(page.language, *initialReading);
     TesseractEngine tesseract;
     IOcrEngine &prose = textProvider ? *textProvider : tesseract;
+    QSet<QRect> inlineCrops;
     const auto analyze = [&](const QImage &pixels, QRect area, const QString &mode, QString language,
                              const QVector<core::ImageRegion> &excluded)
             -> std::expected<QVector<Row>, OcrError> {
@@ -683,6 +687,28 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
             const auto native = baselines.find(language.isEmpty() ? page.language : language);
             const auto &context = native == baselines.end() ? local : native->second.words;
             routeMathSymbols(found,pixels,area,mode,context,regions,includeUnmarked,symbolEvidence,stop);
+            // Native OCR can read the integral as a brace and each limit as
+            // a separate word. Repair its formula proposal before dispatch.
+            for (auto &row : found) for (auto &word : row.words) {
+                if (!word.layoutBlock) continue;
+                const QRect before = word.bounds;
+                for (const QRect &sign : boundedIntegralSigns(pixels, before)) {
+                    const QRect grown = word.bounds.united(sign);
+                    if (grown == word.bounds || (!includeUnmarked && !area.contains(grown))) continue;
+                    if (std::ranges::any_of(regions, [&](const auto &other) {
+                            return other.bounds != area && (other.notText || other.content == "math") &&
+                                   ink.conflicts(grown,other.bounds);
+                        })) continue;
+                    if (std::ranges::any_of(context, [&](const auto &other) {
+                            return grown.contains(other.bounds.center()) && !before.contains(other.bounds.center()) &&
+                                   (other.reviewed || (!sign.contains(other.bounds) && proseWord(other.text)));
+                        })) continue;
+                    word.bounds = grown;
+                    row.box |= grown;
+                    symbolEvidence.crops.insert(grown);
+                    if (row.content == "mixed") inlineCrops.insert(grown);
+                }
+            }
         }
         std::ranges::stable_sort(found, {}, [](const Row &row) { return std::pair(row.box.top(), row.box.left()); });
         if (!splitOnly) for (auto &row : found) {
@@ -713,18 +739,17 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
         }
         return found;
     };
-    QSet<QRect> inlineCrops;
     const auto analyzeRegion = [&](const core::ImageRegion &region) -> std::expected<QVector<Row>, OcrError> {
         const QRect box = region.bounds.intersected(gray.rect());
-        if (!box.isEmpty() && region.content == "math" &&
-            (region.detectedLabel == "inline_formula" || region.detectedLabel == "inline_formula_geometry")) {
+        const bool inlineFormula = region.detectedLabel == "inline_formula" || region.detectedLabel == "inline_formula_geometry";
+        if (!box.isEmpty() && region.content == "math" && (inlineFormula || region.detectedLabel == "display_formula")) {
             // The accepted crop is one expression, even if native OCR gives
             // the numerator and denominator different lines.
-            inlineCrops.insert(box);
+            if (inlineFormula) inlineCrops.insert(box);
             OcrWord formula;
             formula.bounds = box;
             formula.layoutBlock = true;
-            return QVector<Row>{{box,"mixed",{formula}}};
+            return QVector<Row>{{box, inlineFormula ? "mixed" : "math", {formula}}};
         }
         return analyze(gray, box, region.content, region.language, {});
     };
@@ -777,7 +802,7 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
     for (const auto &row : *detected) {
         // A rectangular proposal can still span an excluded hole in the mask.
         const auto overlaps = [&](const QRect &box) {
-            return std::ranges::any_of(regions, [&](const auto &r) { return box.intersects(r.bounds); });
+            return std::ranges::any_of(regions, [&](const auto &r) { return ink.conflicts(box, r.bounds); });
         };
         if (overlaps(row.box)) { lastText = -1; continue; }
         if (lastText >= 0 && row.content == "text") {
@@ -830,7 +855,7 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
         });
         if (!splitOnly) restoreRecoveredText(original, rows);
         original.rebuildHierarchy();
-        original.imageRegions = textBlocksFromReading(original, regions, page.imageRegions);
+        original.imageRegions = textBlocksFromReading(original, regions, page.imageRegions, ink);
         if (!limitBlocks(original.imageRegions))
             return std::unexpected(OcrError{QStringLiteral("More than 1000 blocks detected. Select a smaller area.")});
         if (splitOnly) {
@@ -981,7 +1006,7 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
                 for (const auto &id : line.wordIds) if (!formulaIds.contains(id)) allMath = false;
             if (allMath) region.type = "equation";
         }
-        original.imageRegions = textBlocksFromReading(original, regions, page.imageRegions);
+        original.imageRegions = textBlocksFromReading(original, regions, page.imageRegions, ink);
         if (!limitBlocks(original.imageRegions))
             return std::unexpected(OcrError{QStringLiteral("More than 1000 blocks detected. Select a smaller area.")});
         if (warnings && !failures.isEmpty())
@@ -1060,11 +1085,12 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
     auto result = recognizeBlocks(image,options,crops,splitOnly,stop,includeUnmarked,initialReading,
                                   warnings,textProvider,formulaProvider,readBaseline,parallelFormulas);
     if (result && adjusted) {
+        const core::RegionInk ink(image);
         auto outlines = regions;
         for (const auto &r : result->imageRegions) {
             auto saved = std::ranges::find(outlines,r.id,&core::ImageRegion::id);
             if (saved != outlines.end()) saved->content = r.content;
-            else if (outlines.size() < 1000 && !std::ranges::any_of(regions,[&](const auto &old){return old.bounds.intersects(r.bounds);}))
+            else if (outlines.size() < 1000 && !std::ranges::any_of(regions,[&](const auto &old){return ink.conflicts(old.bounds, r.bounds);}))
                 outlines.append(r);
         }
         result->imageRegions = std::move(outlines);

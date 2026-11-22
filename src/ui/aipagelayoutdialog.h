@@ -23,7 +23,7 @@ class AiPageLayoutDialog : public QDialog {
     Q_OBJECT
 public:
     AiPageLayoutDialog(QImage image, QVector<core::ImageRegion> existing, QWidget *parent=nullptr, int pageNumber=0,
-                       QString bearerToken={}, bool blockScope=false);
+                       QString bearerToken={}, bool blockScope=false, double deskewAdjustment=0);
     ~AiPageLayoutDialog() override;
     QVector<core::ImageRegion> regions() const;
     QString sessionToken() const;
@@ -49,7 +49,8 @@ private:
     void fitPreview();
     void filterAreas();
     void rememberSelection(int index,bool checked);
-    QImage image, splitGray;
+    QImage image;
+    core::RegionInk ink;
     QVector<QRect> localInlineHints;
     QVector<core::ImageRegion> existing;
     QVector<processing::PageArea> areas;

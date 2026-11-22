@@ -121,26 +121,8 @@ std::expected<PageLayout, OcrError> detectPageAreas(const QImage &image, const P
     }
     result.rawOutput=root;
     result.rawAreas=result.areas;
-    consolidateInlineAreas(result.areas);
+    consolidateInlineAreas(result.areas, image.convertToFormat(QImage::Format_Grayscale8));
     return result;
-}
-void consolidateInlineAreas(QVector<PageArea> &areas)
-{
-    QSet<int> remove;
-    for (int i=0;i<areas.size();++i) if (areas[i].label=="inline_formula") {
-        int best=-1; qint64 size=std::numeric_limits<qint64>::max();
-        for (int j=0;j<areas.size();++j) if (i!=j && areas[j].label!="inline_formula" &&
-            (areas[j].type=="text" || areas[j].type=="mixed") && areas[j].bounds.contains(areas[i].bounds)) {
-            const qint64 area=qint64(areas[j].bounds.width())*areas[j].bounds.height();
-            if (area<size) { size=area; best=j; }
-        }
-        if (best>=0) {
-            areas[best].type=areas[best].detectedType="mixed";
-            areas[best].alternatives.removeIf([](const auto &a){return a.type=="mixed";});
-            remove.insert(i);
-        }
-    }
-    for (int i=areas.size()-1;i>=0;--i) if (remove.contains(i)) areas.removeAt(i);
 }
 namespace {
 QVector<PageArea> splitParagraph(const PageArea &parent, const QImage &gray, const QVector<PageArea> &areas,
@@ -178,6 +160,67 @@ QVector<PageArea> splitParagraph(const PageArea &parent, const QImage &gray, con
 }
 } // namespace
 
+void consolidateInlineAreas(QVector<PageArea> &areas, const QImage &gray)
+{
+    QHash<int,QVector<int>> children;
+    for (int i = 0; i < areas.size(); ++i) {
+        if (areas[i].label != "inline_formula") continue;
+        int best = -1;
+        qint64 size = std::numeric_limits<qint64>::max();
+        for (int j = 0; j < areas.size(); ++j) {
+            const auto &parent = areas[j];
+            if (parent.label == "inline_formula" || (parent.type != "text" && parent.type != "mixed") ||
+                !parent.bounds.contains(areas[i].bounds)) continue;
+            const qint64 pixels = qint64(parent.bounds.width()) * parent.bounds.height();
+            if (pixels < size) { best = j; size = pixels; }
+        }
+        if (best >= 0) children[best].append(i);
+    }
+    QSet<int> consumed;
+    QHash<int,QVector<PageArea>> splits;
+    qsizetype count = areas.size();
+    for (int i = 0; i < areas.size(); ++i) {
+        const auto it = children.constFind(i);
+        if (it == children.cend()) continue;
+        auto &parent = areas[i];
+        parent.type = parent.detectedType = "mixed";
+        parent.alternatives.removeIf([](const auto &a){return a.type=="mixed";});
+        const auto &hints = it.value();
+        for (int hint : hints) consumed.insert(hint);
+        count -= hints.size();
+        // A baseline split can put a printed integral's limits on separate
+        // rows. Retain its model crop when there are clear gutters around it.
+        bool hasLimits = false;
+        for (int hint : hints) {
+            auto &box = areas[hint].bounds;
+            for (const auto &sign : boundedIntegralSigns(gray, box)) {
+                if (!parent.bounds.contains(sign)) continue;
+                box |= sign;
+                hasLimits = true;
+            }
+        }
+        if (hasLimits) {
+            auto ranked = hints;
+            std::stable_sort(ranked.begin(), ranked.end(), [&](int a,int b){return areas[a].score > areas[b].score;});
+            auto parts = splitParagraph(parent,gray,areas,ranked,{});
+            if (!parts.isEmpty() && count + parts.size() - 1 <= 1000) {
+                // Continue mixed OCR on the prose fragments: another expression
+                // on this line may have fallen below the layout score threshold.
+                for (auto &part : parts)
+                    if (part.type == "text") part.type = part.detectedType = "mixed";
+                count += parts.size() - 1;
+                splits.insert(i,std::move(parts));
+            }
+        }
+    }
+    QVector<PageArea> result;
+    for (int i = 0; i < areas.size(); ++i) {
+        if (splits.contains(i)) result += splits.value(i);
+        else if (!consumed.contains(i)) result.append(areas[i]);
+    }
+    areas = std::move(result);
+}
+
 void subdivideInlineAreas(QVector<PageArea> &areas, const QImage &gray, const QVector<QRect> &localHints)
 {
     if (areas.isEmpty()) return;
@@ -203,6 +246,7 @@ void subdivideInlineAreas(QVector<PageArea> &areas, const QImage &gray, const QV
         return;
     }
 
+    const core::RegionInk ink(gray);
     std::stable_sort(parents.begin(), parents.end(), byScore);
     QSet<int> replaced;
     auto remainingLocalHints = localHints;
@@ -210,7 +254,7 @@ void subdivideInlineAreas(QVector<PageArea> &areas, const QImage &gray, const QV
     for (int index : parents) {
         const auto &parent = areas[index];
         if (replaced.contains(index) ||
-            std::ranges::any_of(pictures, [&](QRect box){return box.intersects(parent.bounds);})) continue;
+            std::ranges::any_of(pictures, [&](QRect box){return ink.conflicts(box, parent.bounds);})) continue;
         auto children = splitParagraph(parent, gray, areas, formulas, remainingLocalHints);
         if (children.isEmpty()) continue;
         for (int j = 0; j < areas.size(); ++j)
@@ -231,12 +275,12 @@ void subdivideInlineAreas(QVector<PageArea> &areas, const QImage &gray, const QV
     }
     areas = std::move(result);
 }
-QVector<core::ImageRegion> mergePageAreas(const QVector<core::ImageRegion> &existing, const QVector<PageArea> &accepted, bool replaceAutomatic)
+QVector<core::ImageRegion> mergePageAreas(const QVector<core::ImageRegion> &existing, const QVector<PageArea> &accepted, bool replaceAutomatic, const core::RegionInk &ink)
 {
     QVector<core::ImageRegion> result;
     for (const auto &region:existing) if (!replaceAutomatic || !region.autoDetected) result.append(region);
     for (const auto &area:accepted) {
-        if (area.bounds.isEmpty() || std::ranges::any_of(result,[&](const auto &r){ return r.bounds.intersects(area.bounds); })) continue;
+        if (area.bounds.isEmpty() || std::ranges::any_of(result,[&](const auto &r){ return ink.conflicts(r.bounds, area.bounds); })) continue;
         core::ImageRegion region;
         region.id=QUuid::createUuid().toString(QUuid::WithoutBraces);
         region.bounds=area.bounds; region.content=area.type; region.notText=area.type=="picture";

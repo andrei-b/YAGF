@@ -601,18 +601,18 @@ int main(int argc, char **argv)
     QTest::mouseRelease(pageView->viewport(), Qt::LeftButton, {}, resizeEnd);
     QApplication::processEvents();
     assert(regionBox(0) == allowedResize);
-    assert(!regionBox(0).intersects(regionBox(1)));
-    assert(regionBox(0).right() + 1 == regionBox(1).left());
+    assert(regionBox(0).intersects(regionBox(1)));
+    assert(!pageView->pageInk().conflicts(regionBox(0), regionBox(1)));
     regionUndo->trigger();
     assert(regionBox(0) == beforeCollision);
     drag({qreal(beforeCollision.center().x()), qreal(beforeCollision.center().y())},
          {180, qreal(beforeCollision.center().y())});
-    assert(!regionBox(0).intersects(regionBox(1)));
-    assert(regionBox(0).right() + 1 == regionBox(1).left());
+    assert(regionBox(0).intersects(regionBox(1)));
+    assert(!pageView->pageInk().conflicts(regionBox(0), regionBox(1)));
     regionUndo->trigger();
     drag({95, 0}, {195, 80});
     assert(regions->count() == 3); // The new block keeps the permitted part of the drag.
-    assert(!regionBox(2).intersects(regionBox(0)) && !regionBox(2).intersects(regionBox(1)));
+    assert(!pageView->pageInk().conflicts(regionBox(2), regionBox(0)) && !pageView->pageInk().conflicts(regionBox(2), regionBox(1)));
     regionUndo->trigger();
     assert(regions->count() == 2);
 
@@ -794,8 +794,11 @@ int main(int argc, char **argv)
         release(end);
         assert(miniatures->count() == 2 && created.size() == 1);
         const QRect saved = box(1);
-        assert(!saved.intersects(obstacle));
-        assert(backwards ? saved.left() == obstacle.right() + 1 : saved.right() + 1 == obstacle.left());
+        assert(saved.intersects(obstacle) && !canvas->pageInk().conflicts(saved, obstacle));
+        auto beyond = saved;
+        if (backwards) beyond.setLeft(saved.left() - 1);
+        else beyond.setRight(saved.right() + 1);
+        assert(canvas->pageInk().conflicts(beyond, obstacle));
         assert(saved == qvariant_cast<QRectF>(created.at(0).at(0)).toAlignedRect());
         assert(visibleAllowed == canvas->mapFromScene(QRectF(saved)).boundingRect());
         QAction *undoDrawing = nullptr, *redoDrawing = nullptr;
@@ -1754,7 +1757,11 @@ int main(int argc, char **argv)
                 if (split<0 || socket->property("sent").toBool()) return;
                 int length=0; for (const auto &line:bytes.left(split).split('\n')) if(line.toLower().startsWith("content-length:")) length=line.mid(15).trimmed().toInt();
                 if (bytes.size()<split+4+length) return; socket->setProperty("sent",true);
-                const QJsonObject result{{"protocol","yagf-layout/1"},{"model","fixture-layout"},{"width",200},{"height",100},
+                const auto request = QJsonDocument::fromJson(bytes.mid(split + 4, length)).object();
+                QImage sent;
+                assert(sent.loadFromData(QByteArray::fromBase64(request["image_png"].toString().toLatin1())));
+                assert(sent.width() > 200 && sent.height() > 100);
+                const QJsonObject result{{"protocol","yagf-layout/1"},{"model","fixture-layout"},{"width",sent.width()},{"height",sent.height()},
                     {"areas",QJsonArray{QJsonObject{{"id","text"},{"label","text"},{"type","text"},{"score",.9},{"box",QJsonArray{10,20,60,15}}},
                                         QJsonObject{{"id","image"},{"label","chart"},{"type","picture"},{"score",.95},{"box",QJsonArray{80,40,60,45}}}}}};
                 const auto data=QJsonDocument(result).toJson(QJsonDocument::Compact);
@@ -1764,15 +1771,33 @@ int main(int argc, char **argv)
         QSettings("YAGF","YAGF Revival").setValue("layout/url",QString("http://127.0.0.1:%1").arg(server.serverPort()));
         yagf::core::OcrDocument book; book.sourcePath=sourcePath; book.engine="tesseract"; book.language="eng";
         yagf::core::OcrPage page; page.width=page.sourceWidth=200; page.height=page.sourceHeight=100; page.language="eng";
-        page.words.append({1,1,1,1,{10,20,60,15},"keep","keep",90,true});
+        for (int line = 0; line < 3; ++line)
+            for (int word = 0; word < 4; ++word)
+                page.words.append({1,1,1,line+1,{10+45*word,20+20*line+2*word,25,8},"keep","keep",90,true});
+        page.rebuildHierarchy();
         page.imageRegions={{"manual",{0,0,20,15},"eng",false,"text",false},{"old-auto",{110,0,80,15},{},false,"text",true}};
         book.replacePage(page); const auto project=directory.filePath("ai-layout.yagf.json"); QString error;
         assert(yagf::core::ProjectFile::save(project,book,&error));
-        yagf::ui::MainWindow layoutWindow; layoutWindow.show(); layoutWindow.loadProject(project);
+        yagf::ui::MainWindow layoutWindow;
+        layoutWindow.show(); layoutWindow.loadProject(project);
         auto *action=layoutWindow.findChild<QAction *>("aiPageAreasAction"); assert(action);
         auto *blocks=layoutWindow.findChild<QListWidget *>("imageRegions");
         waitUi([&]{return action->isEnabled() && blocks->count()==2;});
         auto *options=layoutWindow.findChild<QToolButton *>("smartSplitOptions"); assert(options && options->menu()->actions().contains(action));
+        QTimer::singleShot(0, &layoutWindow, [&] {
+            auto *dialog = qobject_cast<yagf::ui::AiPageLayoutDialog *>(QApplication::activeModalWidget());
+            assert(dialog && dialog->findChild<QLabel *>("layoutSubtitle")->text().contains("deskews"));
+            dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Cancel)->click();
+        });
+        action->trigger();
+        const auto savedPage = [&] {
+            for (auto *a : layoutWindow.findChildren<QAction *>()) if (a->text()=="Save project") a->trigger();
+            yagf::core::OcrDocument saved;
+            assert(yagf::core::ProjectFile::load(project, &saved, &error));
+            return *saved.page(1);
+        };
+        const auto cancelled = savedPage();
+        assert(cancelled.preprocessing.deskewDegrees == 0 && cancelled.words[0].bounds == page.words[0].bounds);
         QTimer::singleShot(0,&layoutWindow,[&] {
             auto *dialog=qobject_cast<yagf::ui::AiPageLayoutDialog *>(QApplication::activeModalWidget()); assert(dialog);
             assert(blocks->count()==2);
@@ -1781,17 +1806,18 @@ int main(int argc, char **argv)
             assert(blocks->count()==2); apply->click();
         });
         action->trigger(); assert(blocks->count()==3);
-        auto *words=layoutWindow.findChild<QListWidget *>("recognizedWords"); assert(words->count()==1);
+        auto *words=layoutWindow.findChild<QListWidget *>("recognizedWords"); assert(words->count()==page.words.size());
         QAction *undo=nullptr, *redo=nullptr;
         for (auto *a:layoutWindow.findChildren<QAction *>()) {
             if (a->shortcut()==QKeySequence::Undo) undo=a;
             if (a->shortcut()==QKeySequence::Redo) redo=a;
         }
-        assert(undo && redo); undo->trigger(); assert(blocks->count()==2); redo->trigger(); assert(blocks->count()==3);
-        for (auto *a:layoutWindow.findChildren<QAction *>()) if (a->text()=="Save project") a->trigger();
-        yagf::core::OcrDocument saved; assert(yagf::core::ProjectFile::load(project,&saved,&error));
-        assert(saved.page(1)->imageRegions[0].id=="manual" && saved.page(1)->words[0].text=="keep" && saved.page(1)->words[0].reviewed);
-        assert(saved.page(1)->imageRegions[2].content=="picture" && saved.page(1)->imageRegions[2].notText && saved.page(1)->imageRegions[2].detectedLabel=="chart");
+        assert(undo && redo); undo->trigger(); assert(blocks->count()==2); assert(savedPage().preprocessing.deskewDegrees==0); redo->trigger(); assert(blocks->count()==3);
+        const auto saved = savedPage();
+        assert(saved.preprocessing.deskewDegrees > 2 && saved.words[0].id == page.words[0].id);
+        assert(saved.words[0].bounds != page.words[0].bounds);
+        assert(saved.imageRegions[0].id=="manual" && saved.words[0].text=="keep" && saved.words[0].reviewed);
+        assert(saved.imageRegions[2].content=="picture" && saved.imageRegions[2].notText && saved.imageRegions[2].detectedLabel=="chart");
     }
 
     // AI splitting sends only the selected crop, reviews before replacing it,

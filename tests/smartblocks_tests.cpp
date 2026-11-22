@@ -229,6 +229,26 @@ private slots:
         QCOMPARE(across->imageRegions[1].bounds,sideBySide[1].bounds);
     }
 
+    void misreadIntegralKeepsBothLimitsInMixedText()
+    {
+        const QRect upper(59,20,6,7), op(55,30,9,33), lower(54,66,11,8);
+        const auto raw = reading({word(1,1,upper,"2"), word(1,2,{5,39,21,10},"т.е."),
+            word(1,2,op,"{"), word(1,2,{68,40,34,11},"f(x)="), word(1,2,{107,40,9,12},"1"),
+            word(1,2,{140,40,29,10},"далее"), word(1,3,lower,"р")},{180,90});
+        QImage image = scan(raw);
+        QPainter p(&image);
+        p.fillRect(op,Qt::white);
+        p.fillRect(58,30,6,3,Qt::black); p.fillRect(58,32,2,29,Qt::black);
+        p.fillRect(55,60,5,3,Qt::black); p.end();
+        const QVector<core::ImageRegion> regions{{"line",{1,28,175,49},{},false,"mixed"}};
+        mathBackend();
+        const auto result = processing::recognizeSmartBlocks(image,{.language="rus"},regions,false,{},true,&raw);
+        QVERIFY(result);
+        QCOMPARE(text(*result),(QStringList{"т.е.","\\(x=1\\)","далее"}));
+        QVERIFY(result->words[1].bounds.contains(upper) && result->words[1].bounds.contains(lower));
+        QVERIFY(!result->words[1].bounds.intersects(raw.words[1].bounds));
+    }
+
     void acceptedInlineCropReadsOnceInProseOrder()
     {
         auto raw=reading({word(1,1,{82,8,8,6},"n"),word(1,2,{10,20,42,10},"Before"),
@@ -620,6 +640,22 @@ private slots:
         QCOMPARE(result->imageRegions[0].id, block.id);
         QVERIFY(result->imageRegions[0].autoDetected);
         QCOMPARE(result->imageRegions[0].detectedLabel, block.detectedLabel);
+    }
+
+    void displayFormulaUsesWholeCropAcrossWhitespaceAndFractionLines()
+    {
+        mathBackend();
+        const auto raw = reading({word(1, 1, {20, 20, 8, 8}, "p"),
+                                  word(1, 2, {20, 43, 8, 8}, "q"),
+                                  word(2, 1, {182, 28, 70, 12}, "(k=0,1)")}, {280, 75});
+        const core::ImageRegion block{"equation", {8, 12, 255, 48}, "rus", false,
+                                      "math", true, "display_formula", .89};
+        const auto result = processing::recognizeSmartBlocks(scan(raw), {.language = "rus"},
+            {block}, false, {}, false, &raw);
+        QVERIFY2(result, qPrintable(result ? QString() : result.error().message));
+        QCOMPARE(text(*result), QStringList{"x=1"});
+        QCOMPARE(result->words.first().bounds, block.bounds);
+        QCOMPARE(result->words.first().sourceWordIds.size(), 3);
     }
 
     void acceptedFormulaReplacesInterleavedTokensWithoutDroppingProse()

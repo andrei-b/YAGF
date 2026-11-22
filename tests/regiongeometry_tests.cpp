@@ -34,4 +34,21 @@ int main()
     assert(constrainRegion({90, 10, 0, 0}, {-10, 10, 100, 40}, {{30, 0, 20, 100}}) == QRect(50, 10, 40, 16));
     assert(constrainRegion({10, 10, 0, 0}, {10, 10, 40, 100}, {{0, 50, 100, 20}}) == QRect(10, 10, 16, 40));
     assert(constrainRegion({10, 90, 0, 0}, {10, -10, 40, 100}, {{0, 30, 100, 20}}) == QRect(10, 50, 16, 40));
+    QImage paper(180, 100, QImage::Format_Grayscale8);
+    paper.fill(232);
+    paper.scanLine(17)[45] = 40;
+    paper.scanLine(19)[42] = 198; // faint ink
+    const yagf::core::RegionInk ink(paper);
+    assert(!ink.conflicts({20, 10, 22, 20}, {40, 0, 60, 60}));
+    assert(ink.conflicts({20, 10, 23, 20}, {40, 0, 60, 60}));
+    assert(ink.conflicts({40, 60, 40, 30}, {45, 70, 20, 10})); // containment even on blank paper
+    assert(!ink.conflicts({20, 12, 25, 4}, {40, 0, 60, 60})); // ink elsewhere in the neighbor
+    assert(constrainRegion(start, {100, 10, 20, 20}, right, ink) == QRect(22, 10, 20, 20));
+    assert(constrainRegion({22, 10, 20, 20}, {10, 10, 20, 20}, right, ink) == start);
+    QImage transparent(60, 30, QImage::Format_ARGB32);
+    transparent.fill(Qt::transparent);
+    const QRect first(0, 0, 25, 20), second(21, 0, 25, 20);
+    assert(!yagf::core::RegionInk(transparent).conflicts(first, second));
+    transparent.setPixelColor(24, 10, Qt::black);
+    assert(yagf::core::RegionInk(transparent).conflicts(first, second));
 }
