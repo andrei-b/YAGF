@@ -198,6 +198,7 @@ AiPageLayoutDialog::AiPageLayoutDialog(QImage source,QVector<core::ImageRegion> 
         }
         localInlineHints=std::move(result->localInlineHints);
         allAreas=std::move(result->rawAreas);hasAnalysis=true;filterAreas();
+        initialRegions = regions();
     });
     populate();
 }

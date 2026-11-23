@@ -112,6 +112,8 @@ std::expected<core::OcrPage,QString> remapPageGeometry(const core::OcrPage &sour
             word.symbolShape.clear(); // A mask sampled in an old frame cannot be reused as a new crop.
         }return {};
     };
+    // The scope follows the page. Captured examples keep their original pixels and geometry.
+    if (!map("layout-training/scope",page.layoutTraining.scope)) page.layoutTraining.scope = {};
     if(auto r=words(page.words,"word/");!r)return std::unexpected(r.error());
     if(auto r=words(page.pendingCorrections,"pending/");!r)return std::unexpected(r.error());
     if(auto r=words(page.deletedWords,"deleted/");!r)return std::unexpected(r.error());

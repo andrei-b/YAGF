@@ -1968,10 +1968,14 @@ int main(int argc, char **argv)
         assert(clearNumber->value() == 1 && clearRegions->count() == 2);
         auto saved = saveClearProject();
         assert(saved.page(1)->imageRegions.size() == 2 && saved.page(2)->imageRegions.isEmpty());
+        assert(saved.page(1)->layoutTraining.examples.isEmpty());
+        const auto cleared = saved.page(2)->layoutTraining.examples;
+        assert(cleared.size() == 1 && cleared[0].proposed.size() == 2 && cleared[0].corrected.isEmpty());
+        assert(QImage::fromData(cleared[0].png).size() == QSize(saved.page(2)->width, saved.page(2)->height));
         pageMenu(2, false);
         clearUndo->trigger();
         saved = saveClearProject();
-        assert(saved.page(2)->imageRegions.size() == 2);
+        assert(saved.page(2)->imageRegions.size() == 2 && saved.page(2)->layoutTraining.examples.isEmpty());
         clearRedo->trigger();
         assert(saveClearProject().page(2)->imageRegions.isEmpty());
         pageMenu(1, true, true);
@@ -2239,6 +2243,7 @@ int main(int argc, char **argv)
         assert(undo && redo); undo->trigger(); assert(blocks->count()==2); assert(savedPage().preprocessing.deskewDegrees==0); redo->trigger(); assert(blocks->count()==3);
         const auto saved = savedPage();
         assert(saved.preprocessing.deskewDegrees > 2 && saved.words[0].id == page.words[0].id);
+        assert(saved.layoutTraining.examples.isEmpty());
         assert(saved.words[0].bounds != page.words[0].bounds);
         assert(saved.imageRegions[0].id=="manual" && saved.words[0].text=="keep" && saved.words[0].reviewed);
         assert(saved.imageRegions[2].content=="picture" && saved.imageRegions[2].notText && saved.imageRegions[2].detectedLabel=="chart");
@@ -2266,7 +2271,7 @@ int main(int argc, char **argv)
         QSettings("YAGF","YAGF Revival").setValue("layout/url",QString("http://127.0.0.1:%1").arg(server.serverPort()));
         yagf::core::OcrDocument book;book.sourcePath=sourcePath;book.language="eng";book.engine="tesseract";
         yagf::core::OcrPage page;page.width=page.sourceWidth=200;page.height=page.sourceHeight=100;page.language="eng";
-        page.imageRegions={{"outside",{0,0,30,15},"eng",false,"text",false},{"parent",{40,20,140,70},"rus",false,"mixed",false}};
+        page.imageRegions={{"outside",{0,0,30,15},"eng",false,"text",false},{"parent",{40,20,140,70},"rus",false,"mixed",true}};
         page.words.append({1,1,1,1,{45,25,40,15},"reviewed","reviewed",95,true});page.rebuildHierarchy();book.replacePage(page);
         const auto project=directory.filePath("crop-split.yagf.json");QString error;assert(yagf::core::ProjectFile::save(project,book,&error));
         yagf::ui::MainWindow splitWindow;splitWindow.show();splitWindow.loadProject(project);
@@ -2277,7 +2282,12 @@ int main(int argc, char **argv)
             QTimer::singleShot(0,&splitWindow,[&,apply] {
                 auto *dialog=qobject_cast<yagf::ui::AiPageLayoutDialog *>(QApplication::activeModalWidget());assert(dialog && dialog->windowTitle()=="AI split selected block");
                 dialog->findChild<QPushButton *>("analyzePageAreas")->click();auto *accept=dialog->findChild<QPushButton *>("applyPageAreas");waitUi([&]{return accept->isEnabled();});
-                assert(blocks->count()==2);if(apply)accept->click();else dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Cancel)->click();
+                assert(blocks->count()==2);
+                if (apply) {
+                    auto *type = dialog->findChild<QComboBox *>("layoutType1");
+                    type->setCurrentIndex(type->findData("mixed"));
+                    accept->click();
+                } else dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Cancel)->click();
             });action->trigger();
         };
         review(false);assert(blocks->count()==2 && action->isEnabled());review(true);assert(blocks->count()==3);
@@ -2286,10 +2296,24 @@ int main(int argc, char **argv)
         save();yagf::core::OcrDocument saved;assert(yagf::core::ProjectFile::load(project,&saved,&error));
         const auto *edited=saved.page(1);assert(edited->imageRegions[0].id=="outside" && edited->imageRegions[0].bounds==page.imageRegions[0].bounds);
         assert(edited->imageRegions[1].bounds==QRect(45,25,60,20) && edited->imageRegions[2].bounds==QRect(120,52,50,25));
+        assert(edited->layoutTraining.examples.size() == 2);
+        const auto &example = edited->layoutTraining.examples.last();
+        assert(example.scope == page.imageRegions[1].bounds);
+        assert(example.proposed.last().toObject()["content"] == "math");
+        assert(example.corrected.last().toObject()["content"] == "mixed");
+        assert(example.corrected.last().toObject()["box"].toArray() == QJsonArray({120,52,50,25}));
         assert(edited->imageRegions[1].language=="rus" && edited->imageRegions[2].language=="rus");assert(edited->words[0].text=="reviewed" && edited->words[0].reviewed);
         QAction *undo=nullptr,*redo=nullptr;for(auto *a:splitWindow.findChildren<QAction *>()) {if(a->shortcut()==QKeySequence::Undo)undo=a;if(a->shortcut()==QKeySequence::Redo)redo=a;}
-        assert(undo && redo);undo->trigger();assert(blocks->count()==2);save();assert(yagf::core::ProjectFile::load(project,&saved,&error));assert(saved.page(1)->imageRegions[1].id=="parent");
+        assert(undo && redo);undo->trigger();assert(blocks->count()==2);save();assert(yagf::core::ProjectFile::load(project,&saved,&error));assert(saved.page(1)->imageRegions[1].id=="parent" && saved.page(1)->layoutTraining.examples.isEmpty());
         redo->trigger();assert(blocks->count()==3);save();
+        blocks->setCurrentRow(2);
+        splitWindow.findChild<QAction *>("imageRemoveBlockAction")->trigger();
+        assert(blocks->count() == 2);
+        save();
+        assert(yagf::core::ProjectFile::load(project, &saved, &error));
+        assert(saved.page(1)->layoutTraining.examples.size() == 2);
+        for (const auto &sample : saved.page(1)->layoutTraining.examples)
+            assert(sample.corrected.size() == 2);
     }
 
     // Formula growth edits OCR crops as one undoable page edit.

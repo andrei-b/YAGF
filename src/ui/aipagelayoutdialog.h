@@ -26,6 +26,7 @@ public:
                        QString bearerToken={}, bool blockScope=false, double deskewAdjustment=0);
     ~AiPageLayoutDialog() override;
     QVector<core::ImageRegion> regions() const;
+    const QVector<core::ImageRegion> &proposedRegions() const { return initialRegions; }
     QString sessionToken() const;
     void enableHistory(processing::OcrOptions context,QString sourcePath,QJsonObject preprocessing);
     core::RecognitionHistory recordedHistory();
@@ -53,6 +54,7 @@ private:
     core::RegionInk ink;
     QVector<QRect> localInlineHints;
     QVector<core::ImageRegion> existing;
+    QVector<core::ImageRegion> initialRegions;
     QVector<processing::PageArea> areas;
     QVector<processing::PageArea> allAreas;
     QHash<QString,QString> typeOverrides;

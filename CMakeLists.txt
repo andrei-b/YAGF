@@ -37,6 +37,7 @@ elseif(MSVC)
 endif()
 
 add_library(yagf_core STATIC
+    src/core/layoutcorrection.cpp src/core/layoutcorrection.h src/core/layouttraining.h
     src/core/recognitionhistory.cpp src/core/recognitionhistory.h
     src/core/coordinateframes.cpp src/core/coordinateframes.h
     src/core/pagegeometry.cpp src/core/pagegeometry.h
@@ -159,6 +160,7 @@ target_compile_definitions(yagf2 PRIVATE YAGF_VERSION="${PROJECT_VERSION}")
 target_link_libraries(yagf2 PRIVATE yagf_experiments yagf_core yagf_processing yagf_export Qt6::Widgets Qt6::Concurrent Qt6::Network)
 
 install(TARGETS yagf2 yagf2-benchmark RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(PROGRAMS tools/export_layout_training.py DESTINATION ${CMAKE_INSTALL_BINDIR} RENAME yagf2-export-layout-training)
 install(FILES packaging/io.github.andrei_b.YAGF.desktop
         DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
 install(FILES resources/yagf.png

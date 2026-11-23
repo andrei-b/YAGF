@@ -161,6 +161,9 @@ private:
     void splitSelectedBlockWithAi();
     void refineFormulaBlocks();
     QImage displayedPageImage() const;
+    void commitBlockEdit(core::OcrPage edited, const QString &label);
+    bool captureLayoutEdit(core::OcrPage &page, const QImage &image,
+        const QVector<core::ImageRegion> &proposed, const QVector<core::ImageRegion> &corrected, const QString &source);
     void trainNativeOcr();
     void syncNativeOcrModel();
     QString appliedNativeOcrUrl;

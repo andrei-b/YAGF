@@ -6,6 +6,7 @@
 #include "symbolrules.h"
 #include "recognitionresult.h"
 #include "recognitionhistory.h"
+#include "layouttraining.h"
 
 #include <QJsonArray>
 #include <QJsonObject>
@@ -131,6 +132,7 @@ struct OcrPage {
     QVector<OcrReading> ocrReadings;
     QVector<RecognitionResult> recognitionEvidence; // Immutable model output, separate from edits.
     RecognitionHistory recognitionHistory;
+    LayoutTraining layoutTraining;
     CoordinatePipeline coordinates;
     QHash<QString, GeometryAnchor> sourceGeometry;
     [[nodiscard]] QVector<int> specialistSpan(int start) const;

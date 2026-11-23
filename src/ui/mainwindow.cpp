@@ -19,6 +19,7 @@
 #include "imageprocessor.h"
 #include "formulagrowth.h"
 #include "layoutdialog.h"
+#include "layoutcorrection.h"
 #include "aipagelayoutdialog.h"
 #include "aipageicons.h"
 #include "nativetrainingdialog.h"
@@ -276,7 +277,11 @@ void carryCorrections(OcrPage &fresh, const OcrPage *oldPage, bool estimateForma
     if (!oldPage) return;
     auto detectedBlocks = std::move(fresh.imageRegions);
     core::retainCorrections(fresh, *oldPage, estimateFormatting);
-    if (!detectedBlocks.isEmpty() || fresh.engineId == "local-mixed") fresh.imageRegions = std::move(detectedBlocks);
+    if (!detectedBlocks.isEmpty() || fresh.engineId == "local-mixed") {
+        if (core::layoutAnnotations(detectedBlocks) != core::layoutAnnotations(fresh.imageRegions))
+            core::beginLayoutSplit(fresh);
+        fresh.imageRegions = std::move(detectedBlocks);
+    }
     if (!keepLayout) {
         fresh.imageRegions.removeIf([](const auto &block) { return block.autoDetected && block.detectedLabel.isEmpty(); });
         return;
@@ -1498,6 +1503,7 @@ MainWindow::MainWindow()
             page.sourceHeight = rawImage.height();
         }
         page.imageRegions = std::move(blocks);
+        core::beginLayoutSplit(page);
         page.language = language;
         selectedRegionIds.clear();
         selectedImageRegion = -1;
@@ -3192,6 +3198,19 @@ void MainWindow::updateRecognitionProgress(qsizetype completed, qsizetype total)
     recognitionProgress->show();
 }
 
+static QVector<ImageRegion> ocrLayoutBlocks(const OcrPage &page)
+{
+    QVector<ImageRegion> blocks;
+    for (const auto &region : page.regions) {
+        ImageRegion block;
+        block.bounds = region.bounds;
+        block.content = region.type;
+        block.notText = region.isFigure();
+        blocks.append(std::move(block));
+    }
+    return blocks;
+}
+
 void MainWindow::editLayout()
 {
     if (imagePath.isEmpty() || processor.isBusy() || !maybeApplyEditor()) return;
@@ -3199,39 +3218,13 @@ void MainWindow::editLayout()
     if (!page || page->regions.isEmpty()) return;
     LayoutDialog dialog(*page, QImage(imagePath), this);
     if (dialog.exec() != QDialog::Accepted || !dialog.hasChanges()) return;
-    const OcrPage target = dialog.editedPage();
-    bool changed = false;
-    for (int i = 0; i < target.regions.size(); ++i) {
-        const OcrRegion &wanted = target.regions.at(i);
-        const OcrRegion &current = page->regions.at(i);
-        changed |= wanted.id != current.id || wanted.type != current.type || wanted.bounds != current.bounds;
-    }
-    if (!changed) return;
-    undoStack.beginMacro(tr("Edit layout"));
-    for (int desired = 0; desired < target.regions.size(); ++desired) {
-        const QString id = target.regions.at(desired).id;
-        int actual = -1;
-        for (int j = 0; j < document.page(currentPage)->regions.size(); ++j)
-            if (document.page(currentPage)->regions.at(j).id == id) { actual = j; break; }
-        while (actual > desired) {
-            undoStack.push(new ChangeReadingOrderCommand(document, currentPage, actual, -1));
-            --actual;
-        }
-    }
-    for (const OcrRegion &wanted : target.regions) {
-        const OcrRegion *current = nullptr;
-        for (const OcrRegion &region : document.page(currentPage)->regions)
-            if (region.id == wanted.id) { current = &region; break; }
-        if (!current) continue;
-        if (current->type != wanted.type)
-            undoStack.push(new ChangeRegionTypeCommand(document, currentPage, wanted.id, wanted.type));
-        current = nullptr;
-        for (const OcrRegion &region : document.page(currentPage)->regions)
-            if (region.id == wanted.id) { current = &region; break; }
-        if (current && current->bounds != wanted.bounds)
-            undoStack.push(new MoveRegionCommand(document, currentPage, wanted.id, wanted.bounds));
-    }
-    undoStack.endMacro();
+    auto target = dialog.editedPage();
+    const auto before = ocrLayoutBlocks(*page);
+    const auto after = ocrLayoutBlocks(target);
+    if (core::layoutAnnotations(before) == core::layoutAnnotations(after) &&
+        std::ranges::equal(target.regions, page->regions, {}, &OcrRegion::id, &OcrRegion::id)) return;
+    if (!captureLayoutEdit(target, displayedPageImage(), before, after, "ocr-layout")) return;
+    undoStack.push(new ReplacePageCommand(document, currentPage, std::move(target), tr("Edit layout")));
     status->setText(tr("Page %1 layout and reading order updated").arg(currentPage));
 }
 
@@ -3242,6 +3235,7 @@ void MainWindow::createRegionFromSelection()
     if (!page) return;
     OcrPage edited = *page;
     if (!edited.extractRegion(selectedWords)) return;
+    if (!captureLayoutEdit(edited, displayedPageImage(), ocrLayoutBlocks(*page), ocrLayoutBlocks(edited), "ocr-layout")) return;
     undoStack.push(new ExtractRegionCommand(document, currentPage, std::move(edited)));
     status->setText(tr("Created a region from selected words. Use Edit layout to set its type and order."));
 }
@@ -3369,6 +3363,33 @@ void MainWindow::selectWord(int index)
     view->centerOn(wordBoxes.at(index));
 }
 
+bool MainWindow::captureLayoutEdit(OcrPage &page, const QImage &image, const QVector<ImageRegion> &proposed,
+                                   const QVector<ImageRegion> &corrected, const QString &source)
+{
+    auto result = core::recordLayoutCorrection(page, image, proposed, corrected, source);
+    if (!result) showError(result.error());
+    return result.has_value();
+}
+
+void MainWindow::commitBlockEdit(OcrPage edited, const QString &label)
+{
+    const int number = edited.number;
+    const auto *before = document.page(number);
+    if (before && (!before->imageRegions.isEmpty() || !before->layoutTraining.splitId.isEmpty()) &&
+        core::layoutAnnotations(before->imageRegions) != core::layoutAnnotations(edited.imageRegions)) {
+        QImage image;
+        if (number == currentPage) image = displayedPageImage();
+        else {
+            QTemporaryDir directory;
+            auto rendered = processing::readExportPage(document, number, directory, std::atomic_bool{false});
+            if (!rendered) { showError(rendered.error().error); return; }
+            image = std::move(*rendered);
+        }
+        if (!captureLayoutEdit(edited, image, before->imageRegions, edited.imageRegions, "block-edit")) return;
+    }
+    undoStack.push(new ReplacePageCommand(document, number, std::move(edited), label));
+}
+
 void MainWindow::selectRegion(const QRectF &bounds)
 {
     if (imagePath.isEmpty() || processor.isBusy() || exportBusy) return;
@@ -3396,7 +3417,7 @@ void MainWindow::selectRegion(const QRectF &bounds)
     edited.imageRegions.append({QUuid::createUuid().toString(QUuid::WithoutBraces), area});
     selectedRegionIds = {edited.imageRegions.last().id};
     selectedImageRegion = static_cast<int>(edited.imageRegions.size()) - 1;
-    undoStack.push(new ReplacePageCommand(document, currentPage, std::move(edited), tr("Add image region")));
+    commitBlockEdit(std::move(edited), tr("Add image region"));
 }
 
 void MainWindow::refreshImageRegionSelection(bool updateWords)
@@ -3513,7 +3534,7 @@ void MainWindow::moveImageRegion(int index, const QRectF &bounds)
     edited.imageRegions[index].detectedLabel.clear();
     edited.imageRegions[index].detectionScore = -1;
     selectedImageRegion = index;
-    undoStack.push(new ReplacePageCommand(document, currentPage, std::move(edited), tr("Move image region")));
+    commitBlockEdit(std::move(edited), tr("Move image region"));
 }
 
 void MainWindow::deleteImageRegion(int index)
@@ -3525,7 +3546,7 @@ void MainWindow::deleteImageRegion(int index)
     selectedRegionIds.remove(edited.imageRegions.at(index).id);
     edited.imageRegions.removeAt(index);
     selectedImageRegion = -1;
-    undoStack.push(new ReplacePageCommand(document, currentPage, std::move(edited), tr("Delete image region")));
+    commitBlockEdit(std::move(edited), tr("Delete image region"));
 }
 
 void MainWindow::clearPageBlocks(int pageNumber)
@@ -3539,7 +3560,7 @@ void MainWindow::clearPageBlocks(int pageNumber)
         selectedRegionIds.clear();
         selectedImageRegion = -1;
     }
-    undoStack.push(new ReplacePageCommand(document, pageNumber, std::move(edited), tr("Clear all blocks")));
+    commitBlockEdit(std::move(edited), tr("Clear all blocks"));
     statusBar()->showMessage(tr("Cleared all blocks on page %1").arg(pageNumber), 5000);
 }
 
@@ -3679,6 +3700,8 @@ void MainWindow::classifyPageAreas()
     OcrPage page = std::move(prepared->page);
     page.language = languageEdit->text();
     page.imageRegions = dialog.regions();
+    core::beginLayoutSplit(page);
+    if (!captureLayoutEdit(page, prepared->image, dialog.proposedRegions(), page.imageRegions, "ai-page")) return;
     core::mergeRecognitionHistory(page.recognitionHistory,history);historyStored=true;
     selectedRegionIds.clear(); selectedImageRegion = -1;
     undoStack.push(new ReplacePageCommand(document, currentPage, std::move(page), tr("AI page areas")));
@@ -3715,7 +3738,7 @@ void MainWindow::refineFormulaBlocks()
     edited.imageRegions = std::move(regions);
     selectedRegionIds.clear();
     selectedImageRegion = -1;
-    undoStack.push(new ReplacePageCommand(document, currentPage, std::move(edited), tr("Refine formula blocks")));
+    commitBlockEdit(std::move(edited), tr("Refine formula blocks"));
     status->setText(tr("Block boundaries refined. Review the outlines, then recognize the page."));
 }
 
@@ -3747,6 +3770,7 @@ void MainWindow::splitSelectedBlockWithAi()
     auto subdivisions=dialog.regions();if(subdivisions.size()<2)return;
     if (edited.imageRegions.size()-1+subdivisions.size()>1000) return;
     core::mergeRecognitionHistory(edited.recognitionHistory,history);
+    const auto previousBlocks = edited.imageRegions;
     edited.imageRegions.removeAt(index);
     const core::RegionInk ink(prepared->image);
     for(int i=0;i<subdivisions.size();++i) {
@@ -3759,6 +3783,24 @@ void MainWindow::splitSelectedBlockWithAi()
         if(std::ranges::any_of(edited.imageRegions,[&](const auto &r){return ink.shapeConflicts(r.shape(),region.shape());}))return;
         edited.imageRegions.insert(index+i,region);
     }
+    // Applying a subdivision corrects the original coarse block. A change in
+    // the review dialog also supplies a distinct example of the AI proposal.
+    const bool correctingPreviousSplit = original.autoDetected || !original.detectedLabel.isEmpty() ||
+                                         !edited.layoutTraining.splitId.isEmpty();
+    core::beginLayoutSplit(edited, original.bounds);
+    if (correctingPreviousSplit &&
+        !captureLayoutEdit(edited, prepared->image, previousBlocks, edited.imageRegions, "subdivide-block")) return;
+    auto proposed = previousBlocks;
+    proposed.removeAt(index);
+    int insertion = index;
+    for (auto region : dialog.proposedRegions()) {
+        region.bounds.translate(original.bounds.topLeft());
+        const auto clipped = region.shape().intersected(original.shape());
+        if (clipped.isEmpty()) continue;
+        region.setShape(clipped);
+        proposed.insert(insertion++, region);
+    }
+    if (!captureLayoutEdit(edited, prepared->image, proposed, edited.imageRegions, "ai-block")) return;
     selectedRegionIds.clear();selectedImageRegion=-1;
     historyStored=true;
     undoStack.push(new ReplacePageCommand(document,currentPage,std::move(edited),tr("AI split block")));
@@ -3781,7 +3823,7 @@ void MainWindow::setBlockLanguage(int index, const QString &language, bool notTe
     region.notText = notText;
     if (notText) edited.words.removeIf([&](const OcrWord &word) { return overlapsWord(word, region); });
     selectedImageRegion = index;
-    undoStack.push(new ReplacePageCommand(document, currentPage, std::move(edited), tr("Select block language")));
+    commitBlockEdit(std::move(edited), tr("Select block language"));
 }
 
 void MainWindow::recognizeTable(const ImageRegion &region, bool confirmCorrections)
@@ -3871,7 +3913,7 @@ void MainWindow::showBlockContextMenu(int index, const QPoint &globalPosition)
             changed.imageRegions[index].notText = kind == "picture";
             changed.imageRegions[index].detectedLabel.clear();
             changed.imageRegions[index].detectionScore = -1;
-            undoStack.push(new ReplacePageCommand(document, currentPage, std::move(changed), tr("Set block content")));
+            commitBlockEdit(std::move(changed), tr("Set block content"));
         });
     }
     menu.addAction(aiSplitBlockAction);
