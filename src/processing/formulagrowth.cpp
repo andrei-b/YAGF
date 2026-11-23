@@ -607,7 +607,7 @@ static void refineLinePair(const QImage &gray, ImageRegion &upper, ImageRegion &
     const auto glyphs = components(gray,roi).glyphs;
     if (glyphs.isEmpty()) return;
     const auto signs = boundedIntegralSigns(gray,roi);
-    QRegion upperInk, lowerInk;
+    QRegion upperInk, lowerInk, upperPadded, lowerPadded;
     bool protrudes = false;
     for (const auto &glyph : glyphs) {
         const QRect b = glyph.box;
@@ -622,9 +622,15 @@ static void refineLinePair(const QImage &gray, ImageRegion &upper, ImageRegion &
         const auto footprint = group.adjusted(-1,-1,1,1).intersected(gray.rect());
         if ((toUpper && beforeLower.intersects(group)) || (!toUpper && beforeUpper.intersects(group)))
             protrudes = true;
-        (toUpper ? upperInk : lowerInk) |= footprint;
+        (toUpper ? upperInk : lowerInk) |= group;
+        (toUpper ? upperPadded : lowerPadded) |= footprint;
     }
     if (!protrudes || upperInk.intersects(lowerInk)) return;
+    // Two separate glyphs can be close enough for their padding to touch.
+    // Give the actual glyphs priority and leave shared padding at the seam.
+    const QRegion sharedPadding = upperPadded & lowerPadded;
+    upperInk |= upperPadded - sharedPadding;
+    lowerInk |= lowerPadded - sharedPadding;
     const QRect shared = u.intersected(l);
     QRegion top = beforeUpper, bottom = beforeLower;
     if (!shared.isEmpty()) {

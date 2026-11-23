@@ -1,6 +1,5 @@
 #pragma once
 #include "iocrengine.h"
-#include "regiongeometry.h"
 #include <QUrl>
 
 namespace yagf::processing {
@@ -17,7 +16,6 @@ struct PageArea {
     QVector<PageAreaAlternative> alternatives;
     QString detectedType; // Retains the model's first choice when the user changes type.
     QString id; // Stable within one model response, including live score filtering.
-    double splitParentScore = -1; // Used to rank proposals in the review dialog only.
     QVector<QRect> parts;
     core::ImageRegion block() const {
         return {id,bounds,{},type=="picture",type,true,label,score,parts};
@@ -46,6 +44,5 @@ void consolidateInlineAreas(QVector<PageArea> &areas, const QImage &gray);
 // math crops and partition their containing paragraph around them.
 void subdivideInlineAreas(QVector<PageArea> &areas, const QImage &gray, const QVector<QRect> &localHints);
 QVector<core::ImageRegion> mergePageAreas(const QVector<core::ImageRegion> &existing,
-                                         const QVector<PageArea> &accepted, bool replaceAutomatic,
-                                         const core::RegionInk &ink = {});
+                                         const QVector<PageArea> &accepted, bool replaceAutomatic);
 }

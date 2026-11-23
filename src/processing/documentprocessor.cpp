@@ -632,7 +632,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
                 if (!layout) {
                     if (layout.error().cancelled || token.stop_requested()) {result.outcome=std::unexpected(layout.error());return result;}
                     result.warnings.append(QStringLiteral("AI page layout failed: %1 Used the existing blocks and local detection.").arg(layout.error().message));
-                } else local=mergePageAreas(local,layout->areas,true,core::RegionInk(input));
+                } else local=mergePageAreas(local,layout->areas,true);
             }
             result.outcome = recognizeSmartBlocks(input, options, local, splitOnly, token,
                 selected.isEmpty(), nullptr, &result.warnings,

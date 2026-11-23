@@ -107,7 +107,7 @@ When a tall character or an integral limit extends into the next line, the share
 
 When an inline integral has visible upper and lower limits, **AI page areas…** can give the expression its own **Math** block. Whole-page recognition also checks for detached limits in existing mixed blocks. Use **Recognize** to refresh a page whose integral was previously read without its limits.
 
-Small overlaps between block margins are allowed when their shared pixels contain only paper. You can keep both proposals in AI page areas or drag a block edge into its neighbor’s blank margin. An overlap containing ink, including a faint stroke or a formula limit, still counts as a conflict.
+AI page layout keeps overlapping blocks. In **AI page areas…** and **AI split selected block…**, each proposal can be included or excluded independently. When editing block edges directly on the page, you can drag an edge into a neighboring blank margin.
 
 During page splitting and automatic block recognition, YAGF checks the tilt of confident OCR words across several lines against the scan. On a visibly tilted page without usable word boxes, it can run a local OCR preview. When the lines support a correction, YAGF deskews before locating blocks and maps existing corrections into the new coordinates. In AI layout review, **Apply areas** or **Apply split** saves the deskew and the reviewed blocks together. **Undo** restores their previous geometry.
 

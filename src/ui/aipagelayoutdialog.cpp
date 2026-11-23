@@ -31,7 +31,6 @@
 #include <QVBoxLayout>
 #include <QtConcurrent>
 #include <algorithm>
-#include <numeric>
 
 namespace yagf::ui {
 namespace {
@@ -177,15 +176,17 @@ AiPageLayoutDialog::AiPageLayoutDialog(QImage source,QVector<core::ImageRegion> 
     applyButton=buttons->addButton(blockScope?tr("Apply split"):tr("Apply areas"),QDialogButtonBox::AcceptRole); applyButton->setObjectName("applyPageAreas"); applyButton->setEnabled(false); footer->addWidget(buttons); layout->addLayout(footer);
     applyButton->setStyleSheet(QStringLiteral("QPushButton {background: #216ec1; color: white; border: 1px solid #216ec1; padding: 8px 18px; font-weight: 700;} QPushButton:hover {background: #145fae;} QPushButton:disabled {background: #e7edf4; color: #a1acba; border-color: #e1e6ed;}"));
     connect(buttons,&QDialogButtonBox::rejected,this,&AiPageLayoutDialog::reject); connect(applyButton,&QPushButton::clicked,this,&QDialog::accept); connect(analyzeButton,&QPushButton::clicked,this,&AiPageLayoutDialog::analyze);
-    connect(replaceAutomatic,&QCheckBox::toggled,this,[this]{populate(false);});
+    connect(replaceAutomatic,&QCheckBox::toggled,this,&AiPageLayoutDialog::populate);
     connect(threshold,&QSlider::valueChanged,this,[this](int score){
         thresholdValue->setText(tr("%1%").arg(score));
         QSettings("YAGF","YAGF Revival").setValue("layout/threshold",score/100.);
         if(hasAnalysis)filterAreas();
     });
     connect(miniatures,&QListWidget::itemChanged,this,[this](QListWidgetItem *item){
-        if (!updating && item->data(Qt::UserRole).toInt()>=0) {
-            const int index=item->data(Qt::UserRole).toInt();rememberSelection(index,item->checkState()==Qt::Checked);updateSelection(index);
+        const int index=item->data(Qt::UserRole).toInt();
+        if (!updating && index>=0) {
+            selectionOverrides[areas[index].id]=item->checkState()==Qt::Checked;
+            updateSelection();
         }
     });
     connect(miniatures,&QListWidget::currentItemChanged,this,[this](QListWidgetItem *item){if (!updating) {updateSelection(); focusBlock(item);}});
@@ -283,25 +284,8 @@ void AiPageLayoutDialog::filterAreas()
         tr("Showing cached model results. Move the score slider to update the areas instantly. Manual blocks stay in place."));
     if(blockScope && !allAreas.isEmpty())message->setText(tr("Select at least two subdivisions. Lower the score to show more proposals, or adjust the parent block and analyze again."));
 }
-void AiPageLayoutDialog::rememberSelection(int index,bool checked)
+void AiPageLayoutDialog::populate()
 {
-    selectionOverrides[areas[index].id]=checked;
-    if (!checked) return;
-    const auto selected = areas[index].block().shape();
-    QSet<QString> visible;
-    for (const auto &area : areas) {
-        visible.insert(area.id);
-        if (area.id!=areas[index].id && ink.shapeConflicts(area.block().shape(),selected))
-            selectionOverrides[area.id]=false;
-    }
-    if (!blockScope) for (const auto &area : allAreas)
-        if (!visible.contains(area.id) && ink.shapeConflicts(area.block().shape(),selected))
-            selectionOverrides[area.id]=false;
-}
-void AiPageLayoutDialog::populate(bool resetSelection)
-{
-    QSet<int> previouslySelected;
-    if (!resetSelection) for (int i=0;i<areaItems.size();++i) if (areaItems[i]->checkState()==Qt::Checked) previouslySelected.insert(i);
     updating=true;
     for (auto *box:boxes) delete box;
     // QListWidget normally defers deleting item widgets. Remove old cards now
@@ -325,7 +309,9 @@ void AiPageLayoutDialog::populate(bool resetSelection)
     }
     for (int i=0;i<areas.size();++i) {
         if (areas[i].detectedType.isEmpty()) areas[i].detectedType=areas[i].type;
-        auto *item=new QListWidgetItem(miniatures); item->setFlags(Qt::ItemIsEnabled|Qt::ItemIsSelectable|Qt::ItemIsUserCheckable); item->setData(Qt::UserRole,i); item->setCheckState(Qt::Unchecked); item->setSizeHint(QSize(380,158)); areaItems.append(item);
+        auto *item=new QListWidgetItem(miniatures); item->setFlags(Qt::ItemIsEnabled|Qt::ItemIsSelectable|Qt::ItemIsUserCheckable); item->setData(Qt::UserRole,i);
+        item->setCheckState(selectionOverrides.value(areas[i].id,true) ? Qt::Checked : Qt::Unchecked);
+        item->setSizeHint(QSize(380,158)); areaItems.append(item);
         auto *card=new QFrame(miniatures); card->setObjectName("layoutBlockCard"); auto *row=new QHBoxLayout(card); row->setContentsMargins(10,10,10,10); row->setSpacing(12);
         auto *thumb=thumbnail(image,areas[i].block(),card); row->addWidget(thumb);
         auto *details=new QVBoxLayout; details->setSpacing(5); auto *use=new QCheckBox(tr("Block %1").arg(i+1),card); use->setObjectName(QString("layoutUseArea%1").arg(i)); details->addWidget(use);
@@ -338,22 +324,6 @@ void AiPageLayoutDialog::populate(bool resetSelection)
         connect(alternative,&QToolButton::clicked,this,[this,i,alternative]{cards[i].type->setCurrentIndex(cards[i].type->findData(alternative->property("alternativeType").toString()));});
         connect(thumb,&QToolButton::clicked,this,[this,item]{miniatures->setCurrentItem(item); focusBlock(item);});
         auto *box=new AreaOutline(areas[i].block(),[this,item]{miniatures->setCurrentItem(item); miniatures->scrollToItem(item); focusBlock(item);}); scene->addItem(box); box->setZValue(2); boxes.append(box);
-    }
-    QVector<QRegion> occupied;
-    for (const auto &block:existing) if (!replaceAutomatic->isChecked() || !block.autoDetected) occupied.append(block.shape());
-    QVector<int> order(areas.size()); std::iota(order.begin(),order.end(),0);
-    std::stable_sort(order.begin(),order.end(),[&](int a,int b){
-        const bool explicitA=selectionOverrides.value(areas[a].id,false),explicitB=selectionOverrides.value(areas[b].id,false);
-        if (explicitA != explicitB) return explicitA;
-        return std::max(areas[a].score,areas[a].splitParentScore) > std::max(areas[b].score,areas[b].splitParentScore);
-    });
-    for (int i:order) {
-        const bool overlap=std::ranges::any_of(occupied,[&](const auto &box){return ink.shapeConflicts(box, areas[i].block().shape());});
-        const bool preservedOverlap=std::ranges::any_of(existing,[&](const auto &block){return (!replaceAutomatic->isChecked() || !block.autoDetected) && ink.shapeConflicts(block.shape(), areas[i].block().shape());});
-        if (preservedOverlap) {
-            areaItems[i]->setFlags(Qt::ItemIsSelectable|Qt::ItemIsEnabled);
-            areaItems[i]->setToolTip(tr("Overlaps a kept block. Adjust that block on the page before analyzing again.")); cards[i].use->setEnabled(false); cards[i].use->setToolTip(areaItems[i]->toolTip());
-        } else if (!overlap && selectionOverrides.value(areas[i].id,resetSelection || previouslySelected.contains(i))) {areaItems[i]->setCheckState(Qt::Checked); occupied.append(areas[i].block().shape());}
     }
     updating=false; updateSelection();
     emptyHint->setVisible(miniatures->count()==0); emptyHint->setText(hasAnalysis ? tr("No areas at this score.\nLower the slider to show more results.") : tr("Finding areas on this page…\nBlock miniatures will appear here."));
@@ -378,13 +348,10 @@ void AiPageLayoutDialog::updateCard(int index)
         .arg(active ? "#f4f8ff" : "#ffffff").arg(active ? 2 : 1).arg(active ? areaColor(area.type).name() : "#dfe5ed"));
     const QSignalBlocker blocker(card.use); card.use->setChecked(areaItems[index]->checkState()==Qt::Checked);
 }
-void AiPageLayoutDialog::updateSelection(int changed)
+void AiPageLayoutDialog::updateSelection()
 {
     if (updating) return;
     updating=true;
-    if (changed>=0 && areaItems[changed]->checkState()==Qt::Checked) {
-        for (int i=0;i<areas.size();++i) if (i!=changed && ink.shapeConflicts(areas[i].block().shape(), areas[changed].block().shape())) areaItems[i]->setCheckState(Qt::Unchecked);
-    }
     int selected=0;
     for (int i=0;i<areas.size();++i) {
         const bool checked=areaItems[i]->checkState()==Qt::Checked; selected+=checked;
@@ -395,13 +362,13 @@ void AiPageLayoutDialog::updateSelection(int changed)
     }
     blockCount->setText(hasAnalysis ? tr("%1 selected / %2 proposed").arg(selected).arg(areas.size()) : tr("%1 existing").arg(existing.size()));
     applyButton->setEnabled(!busy && hasAnalysis && selected>=(blockScope?2:1) && regions().size()<=1000);
-    if(blockScope)applyButton->setToolTip(tr("Select at least two subdivisions. Their margins may share whitespace."));
+    if(blockScope)applyButton->setToolTip(tr("Select at least two subdivisions."));
     updating=false;
 }
 QVector<core::ImageRegion> AiPageLayoutDialog::regions() const
 {
     QVector<processing::PageArea> accepted;
     for (int i=0;i<areas.size();++i) if (areaItems[i]->checkState()==Qt::Checked) accepted.append(areas[i]);
-    return processing::mergePageAreas(existing,accepted,replaceAutomatic->isChecked(), ink);
+    return processing::mergePageAreas(existing,accepted,replaceAutomatic->isChecked());
 }
 }

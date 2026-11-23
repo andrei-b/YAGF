@@ -1,5 +1,6 @@
 #pragma once
 #include "aipagelayout.h"
+#include "regiongeometry.h"
 #include <QDialog>
 #include <QFutureWatcher>
 #include <QHash>
@@ -43,13 +44,12 @@ private:
         QToolButton *alternative;
     };
     void analyze();
-    void populate(bool resetSelection=true);
-    void updateSelection(int changed=-1);
+    void populate();
+    void updateSelection();
     void updateCard(int index);
     void focusBlock(QListWidgetItem *item);
     void fitPreview();
     void filterAreas();
-    void rememberSelection(int index,bool checked);
     QImage image;
     core::RegionInk ink;
     QVector<QRect> localInlineHints;

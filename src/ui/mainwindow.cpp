@@ -3772,7 +3772,6 @@ void MainWindow::splitSelectedBlockWithAi()
     core::mergeRecognitionHistory(edited.recognitionHistory,history);
     const auto previousBlocks = edited.imageRegions;
     edited.imageRegions.removeAt(index);
-    const core::RegionInk ink(prepared->image);
     for(int i=0;i<subdivisions.size();++i) {
         auto &region=subdivisions[i];region.bounds.translate(original.bounds.topLeft());
         region.autoDetected=false; // Keep the explicitly accepted split during automatic layout.
@@ -3780,7 +3779,6 @@ void MainWindow::splitSelectedBlockWithAi()
         if (clipped.isEmpty()) return;
         region.setShape(clipped);
         if(region.language.isEmpty())region.language=original.language;
-        if(std::ranges::any_of(edited.imageRegions,[&](const auto &r){return ink.shapeConflicts(r.shape(),region.shape());}))return;
         edited.imageRegions.insert(index+i,region);
     }
     // Applying a subdivision corrects the original coarse block. A change in

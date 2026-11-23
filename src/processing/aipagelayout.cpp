@@ -1,5 +1,6 @@
 #include "aipagelayout.h"
 #include "formulagrowth.h"
+#include "regiongeometry.h"
 #include <QBuffer>
 #include <QElapsedTimer>
 #include <QEventLoop>
@@ -155,7 +156,6 @@ QVector<PageArea> splitParagraph(const PageArea &parent, const QImage &gray, con
         }
         child.type = child.detectedType = part.content();
         child.bounds = part.bounds;
-        child.splitParentScore = parent.score;
         children.append(std::move(child));
     }
     return children;
@@ -255,14 +255,18 @@ void subdivideInlineAreas(QVector<PageArea> &areas, const QImage &gray, const QV
     QHash<int,QVector<PageArea>> subdivisions;
     for (int index : parents) {
         const auto &parent = areas[index];
-        if (replaced.contains(index) ||
-            std::ranges::any_of(pictures, [&](QRect box){return ink.conflicts(box, parent.bounds);})) continue;
+        if (std::ranges::any_of(pictures, [&](QRect box){return ink.conflicts(box, parent.bounds);})) continue;
         auto children = splitParagraph(parent, gray, areas, formulas, remainingLocalHints);
         if (children.isEmpty()) continue;
-        for (int j = 0; j < areas.size(); ++j)
-            if (parent.bounds.contains(areas[j].bounds)) replaced.insert(j);
-        // Overlapping paragraph proposals can share whitespace yet contain
-        // different formulas. Consume only hints covered by this split.
+        // Replace the parent and consume its formula hints, keeping other
+        // model blocks, including nested paragraphs.
+        replaced.insert(index);
+        for (int formula : formulas) {
+            const auto &hint = areas[formula];
+            if ((hint.label == "inline_formula" && parent.bounds.contains(hint.bounds)) ||
+                std::ranges::find(children,hint.id,&PageArea::id) != children.end())
+                replaced.insert(formula);
+        }
         formulas.removeIf([&](int i){return replaced.contains(i);});
         remainingLocalHints.removeIf([&](QRect box){return parent.bounds.contains(box);});
         subdivisions.insert(index, std::move(children));
@@ -288,14 +292,13 @@ void refinePageAreaShapes(QVector<PageArea> &areas,const QImage &gray)
     }
 }
 
-QVector<core::ImageRegion> mergePageAreas(const QVector<core::ImageRegion> &existing, const QVector<PageArea> &accepted, bool replaceAutomatic, const core::RegionInk &ink)
+QVector<core::ImageRegion> mergePageAreas(const QVector<core::ImageRegion> &existing, const QVector<PageArea> &accepted, bool replaceAutomatic)
 {
     QVector<core::ImageRegion> result;
     for (const auto &region:existing) if (!replaceAutomatic || !region.autoDetected) result.append(region);
     for (const auto &area:accepted) {
         auto region = area.block();
-        const auto shape = region.shape();
-        if (shape.isEmpty() || std::ranges::any_of(result,[&](const auto &r){return ink.shapeConflicts(r.shape(),shape);})) continue;
+        if (region.shape().isEmpty()) continue;
         region.id=QUuid::createUuid().toString(QUuid::WithoutBraces);
         for (const auto &alternative:area.alternatives) if (alternative.type==area.type) {
             region.detectedLabel=alternative.label; region.detectionScore=alternative.score; break;
