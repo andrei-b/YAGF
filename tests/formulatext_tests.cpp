@@ -15,6 +15,16 @@ using namespace yagf;
 int main(int argc,char **argv)
 {
     QCoreApplication app(argc,argv);
+    core::OcrPage notation;
+    core::OcrWord token;
+    token.text = "точка с координатой c, при х > 0";
+    notation.words = {token};
+    for (const auto &[offset, expected] : QVector<QPair<int,QString>>{
+             {int(token.text.indexOf("с координатой")), "с"}, {int(token.text.indexOf("х >")), "x"}}) {
+        const auto choices = core::localSymbolChoices(notation, 0, offset, 1);
+        assert(!choices.isEmpty() && choices.first().source == expected);
+    }
+    assert(core::localSymbolChoices(notation,0,2,1).isEmpty());
     const QVector<QPair<QString,QString>> expressions{
         {R"(p_{3}=2,\ q_1=1)","p₃=2,\u2009q₁=1"},
         {R"(\psi\leq\alpha+\beta)","ψ≤α+β"},

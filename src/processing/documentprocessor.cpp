@@ -420,7 +420,7 @@ void DocumentProcessor::discardRenderedPage(Job finishedJob)
 }
 
 void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
-                                      OcrOptions options, const QRect &region, bool batch, bool splitOnly, QVector<core::ImageRegion> selected)
+                                      OcrOptions options, const QRect &region, bool batch, bool splitOnly, QVector<core::ImageRegion> selected, std::optional<OcrService> tableService)
 {
     if ((!batch && isBusy()) || (batch && batchPages.isEmpty())) return;
     options.preserveFormatting = book && book->preserveFormatting;
@@ -467,7 +467,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
     }
     const bool wasBusy = isBusy();
     const bool localText = engine->id() == "tesseract";
-    const bool rawOutput = localText && book && book->useRawOcrOutput;
+    const bool rawOutput = !tableService && localText && book && book->useRawOcrOutput;
     const auto layoutService=pageLayoutService;
     const bool automaticLayout=layoutService && localText && !rawOutput && !splitOnly && selected.isEmpty() && region.isEmpty();
     const QString deferredCompanion=formulaRecognizer ? selectedFormulaService.key() : QString();
@@ -500,7 +500,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
     const bool typedFormulas = formulaRecognizer && std::ranges::any_of(blocks, [](const auto &block) {
         return !block.notText && (block.content=="math" || block.content=="mixed");
     });
-    const bool smart = splitOnly || (!rawOutput && (automatic || automaticLayout ||
+    const bool smart = splitOnly || (!tableService && !rawOutput && (automatic || automaticLayout ||
         (manuallyTyped && engine->id() != "rapid-latex-ocr") || (localText && !selected.isEmpty()) ||
         (engine->id()!="rapid-latex-ocr" && typedFormulas)));
     job = splitOnly ? Job::SplitBlocks : (batch ? Job::BatchOcr : Job::Ocr);
@@ -511,7 +511,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
     const bool deskewLayout = splitOnly || automaticLayout || (smart && automatic && region.isEmpty() && selected.isEmpty());
     const auto layoutBase = deskewLayout && savedPage ? *savedPage : core::OcrPage{};
     const auto rawPath = pagedSource ? pageFile(options.pageNumber) : sourcePath;
-    ocrWatcher.setFuture(QtConcurrent::run([this, path, image, options, region, token, formulaRegions, pagedSource, jobDpi, savedImageSize, savedDpi, batch, blocks, smart, automatic, localText, splitOnly, selected, rawOutput, symbolRules, unicodeFormulas, layoutService, automaticLayout, deferredCompanion, parallelFormulas, savedCoordinates, preprocessing, sourcePath, rawPath, layoutBase, deskewLayout]() mutable {
+    ocrWatcher.setFuture(QtConcurrent::run([this, path, image, options, region, token, formulaRegions, pagedSource, jobDpi, savedImageSize, savedDpi, batch, blocks, smart, automatic, localText, splitOnly, selected, rawOutput, symbolRules, unicodeFormulas, layoutService, automaticLayout, deferredCompanion, parallelFormulas, savedCoordinates, preprocessing, sourcePath, rawPath, layoutBase, deskewLayout, tableService]() mutable {
         const auto startedUtc=QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
         QElapsedTimer elapsed;elapsed.start();QImage auditInput;core::OcrPage auditPage;
         auto perform=[&]() -> OcrJobResult {
@@ -604,8 +604,17 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
         std::vector<ComparisonEngine> none;
         // Formula requests take priority over a full-page comparison using the
         // same server; a single inference slot must not starve the primary OCR.
-        ParallelOcrRun companions(splitOnly ? none : comparisonEngines,comparisonImage,options,comparisonAreas,token,deferredCompanion,false);
-        if (smart) {
+        ParallelOcrRun companions(splitOnly || tableService ? none : comparisonEngines,comparisonImage,options,comparisonAreas,token,deferredCompanion,false);
+        if (tableService) {
+            auto reader = makeOcrServiceEngine(*tableService);
+            if (!reader) { result.outcome = std::unexpected(OcrError{reader.error()}); return result; }
+            options.task = "table";
+            options.language = tableService->language.isEmpty() ? QStringLiteral("auto") : tableService->language;
+            result.outcome = (*reader)->recognize(input, options, token);
+            if (result.outcome && !std::ranges::any_of(result.outcome->regions,
+                    [](const auto &r) { return r.type == "table"; }))
+                result.outcome = std::unexpected(OcrError{tr("The recognition service returned no table.")});
+        } else if (smart) {
             if (options.progress) options.progress(QStringLiteral("Detecting text and formula areas"),0,0);
             auto local = blocks;
             for (auto &block : local) block.bounds.translate(-result.offset);
@@ -682,7 +691,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
                     return block.notText && block.shape().contains(word.bounds.center());
                 });
             });
-            if (!smart) page.engineId = engine->id();
+            if (!smart && !tableService) page.engineId = engine->id();
             page.renderDpi = dpi;
             if (deskewLayout) {
                 page.sourceWidth = sourceSize.width();
@@ -720,24 +729,24 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
                     word.symbolShape = symbolShape(input, word.bounds);
                 ids.insert(word.id);
             }
-            if (!rawOutput && !smart && engine->id() == "tesseract" && (formulaEngine || proseEngine)) {
+            if (!tableService && !rawOutput && !smart && engine->id() == "tesseract" && (formulaEngine || proseEngine)) {
                 QVector<QRect> localAreas = formulaRegions;
                 for (auto &area : localAreas) area.translate(-result.offset);
                 result.warnings = collectSpecialistReadings(page, input, localAreas,
                     formulaEngine.get(), proseEngine.get(), token,options);
                 if (token.stop_requested()) result.outcome = std::unexpected(OcrError{{}, true});
             }
-            if (result.outcome && !rawOutput && !splitOnly && engine->capabilities().supportsWordBoxes) {
+            if (result.outcome && !tableService && !rawOutput && !splitOnly && engine->capabilities().supportsWordBoxes) {
                 auto retries = collectSpellingFormulaReadings(page, input, token,options.progress,formulaRecognizer.get(),options);
                 if (!retries) result.outcome = std::unexpected(retries.error());
                 else result.warnings += *retries;
             }
-            if (result.outcome && !rawOutput && !splitOnly) {
+            if (result.outcome && !tableService && !rawOutput && !splitOnly) {
                 auto retries = collectFormulaTextReadings(page, input, options.language, token,options.progress,options);
                 if (!retries) result.outcome = std::unexpected(retries.error());
                 else result.warnings += *retries;
             }
-            if (result.outcome && !rawOutput && !splitOnly) {
+            if (result.outcome && !tableService && !rawOutput && !splitOnly) {
                 if (options.progress) options.progress(QStringLiteral("Applying learned symbol rules"),0,0);
                 applySymbolRules(page, input, symbolRules, token);
             }
@@ -749,7 +758,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
                 for (auto &block : fontBlocks) block.bounds.translate(-result.offset);
                 core::normalizeBlockFontSizes(page, fontBlocks, !region.isEmpty(), token);
             }
-            if (result.outcome && !splitOnly && !comparisonEngines.empty()) {
+            if (result.outcome && !tableService && !splitOnly && !comparisonEngines.empty()) {
                 if (options.progress) options.progress(QStringLiteral("Waiting for companion OCR results"),0,comparisonEngines.size());
                 page.ocrReadings=companions.finish();
                 if (!deferredCompanion.isEmpty() && !token.stop_requested()) {
@@ -796,14 +805,14 @@ void DocumentProcessor::recognizeTypedRegions(const QString &imagePath, const QS
 }
 
 void DocumentProcessor::recognizeRegion(const QString &imagePath, const QString &language,
-                                        int pageNumber, const QRect &region)
+                                        int pageNumber, const QRect &region, std::optional<OcrService> tableService)
 {
     if (region.isEmpty()) { emit failed(tr("Select an image region first.")); return; }
-    if (!engineCapabilities().supportsRegions) {
+    if (!tableService && !engineCapabilities().supportsRegions) {
         emit failed(tr("The selected OCR engine does not support region recognition."));
         return;
     }
-    startOcrImage(imagePath, {}, {.language = language, .pageNumber = pageNumber}, region, false);
+    startOcrImage(imagePath, {}, {.language = language, .pageNumber = pageNumber}, region, false, false, {}, std::move(tableService));
 }
 
 void DocumentProcessor::recognizePages(const QVector<BatchPageOptions> &pages)

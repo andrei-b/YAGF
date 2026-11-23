@@ -200,7 +200,7 @@ private:
     void deleteImageRegion(int index);
     void clearPageBlocks(int pageNumber);
     void showPageContextMenu(const QPoint &position);
-    void showPageActions(int pageNumber, const QPoint &globalPosition);
+    void showPageActions(int pageNumber, const QPoint &globalPosition, bool onScan = false);
     void showBlockContextMenu(int index, const QPoint &globalPosition);
     void copyBlockImage(int index);
     void setBlockLanguage(int index, const QString &language, bool notText);
@@ -209,6 +209,8 @@ private:
     void runNextImageRegion();
     void refreshReviewLabel();
     void editSelectedFormula();
+    void recognizeTable(const core::ImageRegion &region, bool confirmCorrections);
+    void markSelectedInlineFormula(QRect crop = {});
     void editFormulaAt(int index, qsizetype start, qsizetype length, bool display);
     void refreshSpellLanguage();
     void updateSelection(const QVector<int> &indices);

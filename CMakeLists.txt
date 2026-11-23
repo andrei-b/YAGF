@@ -98,6 +98,7 @@ add_library(yagf_ocr STATIC
     src/processing/mathocrengine.cpp src/processing/mathocrengine.h
     src/processing/iocrengine.h
     src/processing/tesseractengine.cpp src/processing/tesseractengine.h
+    src/processing/paddletable.cpp src/processing/paddletable.h
     src/processing/remoteocrengine.cpp src/processing/remoteocrengine.h)
 qt_add_resources(yagf_ocr "local_math" PREFIX "/math" BASE tools FILES tools/math_ocr.py)
 qt_add_resources(yagf_ocr "optional_models" PREFIX "/ocr" BASE service FILES service/optional-models.example.json)
@@ -142,7 +143,7 @@ qt_add_executable(yagf2
     src/ui/blockminiaturelist.cpp src/ui/blockminiaturelist.h
     src/ui/verificationcontroller.cpp src/ui/verificationcontroller.h
     src/ui/mainwindowreview.cpp src/ui/mainwindowexport.cpp src/ui/experimentdialog.cpp src/ui/experimentdialog.h
-    src/main.cpp src/ui/mainwindow.cpp src/ui/mainwindow.h src/ui/formulaeditor.cpp src/ui/formulaeditor.h
+    src/main.cpp src/ui/mainwindow.cpp src/ui/mainwindow.h src/ui/formulaeditor.cpp src/ui/formulaeditor.h src/ui/inlineformuladialog.cpp
     src/ui/restorationdialog.cpp src/ui/restorationdialog.h
     src/ui/preprocessdialog.cpp src/ui/preprocessdialog.h
     src/ui/layoutdialog.cpp src/ui/layoutdialog.h resources/icons.qrc)
@@ -333,7 +334,7 @@ if(BUILD_TESTING)
         src/ui/blockminiaturelist.cpp src/ui/blockminiaturelist.h
         src/ui/verificationcontroller.cpp src/ui/verificationcontroller.h
         src/ui/mainwindowreview.cpp src/ui/mainwindowexport.cpp src/ui/experimentdialog.cpp src/ui/experimentdialog.h
-        src/ui/mainwindow.cpp src/ui/mainwindow.h src/ui/formulaeditor.cpp src/ui/formulaeditor.h
+        src/ui/mainwindow.cpp src/ui/mainwindow.h src/ui/formulaeditor.cpp src/ui/formulaeditor.h src/ui/inlineformuladialog.cpp
         src/ui/restorationdialog.cpp src/ui/restorationdialog.h
         src/ui/preprocessdialog.cpp src/ui/preprocessdialog.h
         src/ui/layoutdialog.cpp src/ui/layoutdialog.h

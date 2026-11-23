@@ -1,4 +1,5 @@
 #include "remoteocrengine.h"
+#include "paddletable.h"
 #include "formulagrowth.h"
 
 #include <QBuffer>
@@ -252,7 +253,7 @@ EngineCapabilities RemoteOcrEngine::capabilities() const
     case Provider::Surya:
         return {.supportsRegions = true, .supportsConfidence = true, .supportsLayout = true, .supportsFormulas = true};
     case Provider::PaddleVl:
-        return {.supportsRegions = true, .supportsLayout = true, .supportsFormulas = true};
+        return {.supportsRegions = true, .supportsLayout = true, .supportsTables = true, .supportsFormulas = true};
     case Provider::PaddleOcr:
     case Provider::RapidOcr:
         return {.supportsRegions = true, .supportsConfidence = true, .supportsFormulas = formulas};
@@ -272,8 +273,8 @@ std::expected<RecognitionResult, OcrError> RemoteOcrEngine::recognizeResult(
         if(options.formula && canonicalModelTask(options.task)!="formula")
             return std::unexpected(OcrError{QStringLiteral("Conflicting formula and recognition task options.")});
         requestOptions.formula=canonicalModelTask(options.task)=="formula";
-        if(provider==Provider::PaddleVl && canonicalModelTask(options.task)!="text" && canonicalModelTask(options.task)!="formula")
-            return std::unexpected(OcrError{QStringLiteral("This chat adapter supports text and formula tasks only.")});
+        if(provider==Provider::PaddleVl && canonicalModelTask(options.task)!="text" && canonicalModelTask(options.task)!="formula" && options.task!="table")
+            return std::unexpected(OcrError{QStringLiteral("Unsupported chat recognition task.")});
     }
     if(profile) {
         ModelRequirements requirements;requirements.tasks={options.task.isEmpty()?(options.formula?QStringLiteral("formula"):QStringLiteral("text")):canonicalModelTask(options.task)};
@@ -390,7 +391,7 @@ std::expected<RecognitionResult, OcrError> RemoteOcrEngine::recognizeSection(
         payload = {{"model", model}, {"temperature", 0}, {"stream", false}, {"max_tokens", 4096},
             {"messages", QJsonArray{QJsonObject{{"role", "user"}, {"content", QJsonArray{
                 QJsonObject{{"type", "image_url"}, {"image_url", QJsonObject{{"url", "data:image/png;base64,"+QString::fromLatin1(png.toBase64())}}}},
-                QJsonObject{{"type", "text"}, {"text", options.formula ? "Formula Recognition:" : "OCR:"}}
+                QJsonObject{{"type", "text"}, {"text", options.formula ? "Formula Recognition:" : options.task == "table" ? "Table Recognition:" : "OCR:"}}
             }}}}}};
     }
     url.setQuery(QString());
@@ -522,7 +523,12 @@ std::expected<RecognitionResult, OcrError> RemoteOcrEngine::recognizeSection(
         result.provenance = {.model=root.value("model").toString(model), .task=options.formula ? "formula" : "ocr",
             .language="auto", .pageNumber=options.pageNumber, .imageSize=image.size()};
         result.structuredOutput = root;
-        if (options.formula) {
+        if (options.task == "table") {
+            auto table = parsePaddleTable(text);
+            if (!table) return std::unexpected(OcrError{table.error()});
+            table->order = 0;
+            result.tables.append(*table);
+        } else if (options.formula) {
             core::FormulaRegion formula; formula.latex = text; formula.order = 0;
             result.formulas.append(formula);
         } else {

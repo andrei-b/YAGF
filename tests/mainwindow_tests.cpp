@@ -1,5 +1,7 @@
 #include "mainwindow.h"
 #include "exportpage.h"
+#include "latexdocumentexporter.h"
+#include "docxexporter.h"
 #include "projectfile.h"
 #include "verificationcontroller.h"
 #include "correctionretention.h"
@@ -41,6 +43,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QProcess>
+#include <QGraphicsView>
 #include <QProgressBar>
 #include <QProgressDialog>
 #include <QRubberBand>
@@ -66,6 +69,115 @@
 #include <cassert>
 #include <functional>
 namespace processing = yagf::processing;
+
+static void testInlineTarget(const QTemporaryDir &directory, const QString &sourcePath, bool table = false)
+{
+    using namespace yagf;
+    const QString original = table ? QStringLiteral("Столбец\tЗначение\nСтрока\tс=2") :
+        QStringLiteral(R"(Исправлено: \(a=1\), затем с=2, где с — число.)");
+    const QString expected = QString(original).replace("с=2", R"(\(c=2\))");
+    core::OcrDocument book;
+    book.sourcePath = sourcePath;
+    core::OcrPage page;
+    page.width = page.sourceWidth = 200;
+    page.height = page.sourceHeight = 100;
+    page.words = {{1,1,1,1,{0,0,200,100},"raw OCR",original,90,true}};
+    page.words.first().layoutBlock = true;
+    page.rebuildHierarchy();
+    QJsonObject header{{"header",true},{"rowspan",1},{"colspan",1}};
+    QJsonObject cell = header; cell["header"] = false;
+    QJsonArray layout{QJsonArray{header,header},QJsonArray{header,cell}};
+    if (table) { page.regions.first().type="table"; page.regions.first().tableLayout=layout; }
+    book.replacePage(page);
+    QString error;
+    const auto path = directory.filePath("inline-test.yagf.json");
+    assert(core::ProjectFile::save(path, book, &error));
+    const auto bin = directory.filePath("yagf2/math-ocr/venv/bin");
+    assert(QDir().mkpath(bin));
+    QFile engine(bin + "/python");
+    assert(engine.open(QIODevice::WriteOnly));
+    engine.write("#!/bin/sh\nif [ -e \"$0.fail\" ]; then exit 2; fi\nprintf '%s' '[{\"box\":[0,0,10,10],\"text\":\"c=2\"}]'\n");
+    engine.close();
+    assert(engine.setPermissions(QFileDevice::ReadOwner | QFileDevice::ExeOwner));
+    ui::MainWindow window;
+    window.loadProject(path);
+    auto *editor = window.findChild<QTextEdit *>("recognizedTextEditor");
+    auto *words = window.findChild<QListWidget *>("recognizedWords");
+    words->setCurrentRow(0, QItemSelectionModel::ClearAndSelect);
+    QFile failure(engine.fileName()+".fail");
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        const bool accept = attempt == 2;
+        if (attempt == 1) { assert(failure.open(QIODevice::WriteOnly)); failure.close(); }
+        if (accept) assert(failure.remove());
+        auto cursor = editor->textCursor();
+        cursor.setPosition(original.indexOf("с=2"));
+        cursor.setPosition(cursor.position()+3, QTextCursor::KeepAnchor);
+        editor->setTextCursor(cursor);
+        QTimer::singleShot(0, &window, [&] {
+            auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget()); assert(menu);
+            QTimer::singleShot(0, &window, [&] {
+                auto *dialog = QApplication::activeModalWidget();
+                assert(dialog && dialog->objectName()=="inlineFormulaTarget");
+                assert(dialog->findChild<QPlainTextEdit *>()->textCursor().selectedText()=="с=2");
+                if (attempt == 0) { qobject_cast<QDialog *>(dialog)->reject(); return; }
+                auto *view = dialog->findChild<QGraphicsView *>();
+                view->rubberBandChanged(QRect(2,2,30,20), QPointF(4,5), QPointF(34,25));
+                QTimer *poll = new QTimer(dialog);
+                QObject::connect(poll, &QTimer::timeout, dialog, [poll,dialog,accept] {
+                    if (!accept) {
+                        for (auto *button : dialog->findChildren<QPushButton *>())
+                            if (button->text()=="Recognize crop" && button->isEnabled()) {
+                                poll->stop(); qobject_cast<QDialog *>(dialog)->reject(); return;
+                            }
+                    }
+                    auto *preview=qobject_cast<QDialog *>(QApplication::activeModalWidget());
+                    if (preview && preview->objectName()=="formulaEditor") {
+                        assert(preview->findChild<QPlainTextEdit *>("formulaSource")->toPlainText()=="c=2");
+                        poll->stop(); preview->accept();
+                    }
+                });
+                poll->start(10);
+                for (auto *button : dialog->findChildren<QPushButton *>())
+                    if (button->text()=="Recognize crop") button->click();
+            });
+            for (auto *action : menu->actions()) if (action->text()=="Mark as inline formula…") action->trigger();
+            menu->close();
+        });
+        editor->customContextMenuRequested({});
+        assert(words->item(0)->text()==(accept ? expected : original));
+    }
+    const auto trigger = [&](QString name) {
+        for (auto *action: window.findChildren<QAction *>()) if (action->text()==name) { action->trigger(); return; }
+        assert(false);
+    };
+    trigger("Undo"); assert(words->item(0)->text()==original);
+    trigger("Redo"); assert(words->item(0)->text()==expected);
+    trigger("Save project");
+    assert(core::ProjectFile::load(path,&book,&error));
+    assert(book.page(1)->words.first().text==expected && book.page(1)->words.first().originalText=="raw OCR");
+    if (table) assert(book.page(1)->regions.first().tableLayout == layout);
+    assert(book.page(1)->recognitionHistory.decisions.size()==1);
+    assert(book.page(1)->recognitionHistory.decisions.first().processedArea==QRect(4,5,30,20));
+    window.loadProject(path);
+    assert(words->item(0)->text()==expected);
+    const auto tex = directory.filePath("inline-test.tex");
+    assert(processing::LatexDocumentExporter::write(book,tex,false).status==processing::ExportResult::Status::Success);
+    QFile output(tex); assert(output.open(QIODevice::ReadOnly));
+    const auto latex = QString::fromUtf8(output.readAll());
+    if (table) assert(latex.contains("longtable") && latex.contains(R"(\textbf{Строка} & \(c=2\))"));
+    else assert(latex.contains(expected));
+    if (!QStandardPaths::findExecutable("pandoc").isEmpty() && !QStandardPaths::findExecutable("unzip").isEmpty()) {
+        const auto docx = directory.filePath("inline-test.docx");
+        assert(processing::DocxExporter::write(book,docx,false).status==processing::ExportResult::Status::Success);
+        QProcess unzip; unzip.start("unzip", {"-p",docx,"word/document.xml"});
+        assert(unzip.waitForFinished());
+        const auto xml = unzip.readAllStandardOutput();
+        assert(xml.count("<m:oMath>")==(table?1:2) && !xml.contains("<m:oMathPara>"));
+        if (table) assert(xml.contains("<w:tbl>") && xml.contains("Строка") && xml.contains("Значение"));
+        else assert(xml.contains("Исправлено") && xml.contains("затем") && xml.contains("число."));
+    }
+    assert(engine.remove());
+}
 
 static void testUnrecognizedProjectSaving(const QTemporaryDir &directory)
 {
@@ -394,6 +506,9 @@ int main(int argc, char **argv)
     qputenv("YAGF_TEST_TSV", QFile::encodeName(fixturePath));
     qputenv("YAGF_TEST_ARGS", QFile::encodeName(argsPath));
 
+    testInlineTarget(directory, sourcePath);
+    testInlineTarget(directory, sourcePath, true);
+    if (app.arguments().contains("--inline-target-only")) return 0;
     testUnrecognizedProjectSaving(directory);
     if (app.arguments().contains("--unrecognized-save-only")) return 0;
     testScannedPages(directory);

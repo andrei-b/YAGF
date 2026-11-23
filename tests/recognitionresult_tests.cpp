@@ -1,4 +1,5 @@
 #include "iocrengine.h"
+#include "paddletable.h"
 #include "remoteocrengine.h"
 #include <QJsonDocument>
 #include <QTcpServer>
@@ -78,6 +79,50 @@ private slots:
         QCOMPARE(page->words[0].line,page->words[1].line); QCOMPARE(page->regions.size(),1);
         QCOMPARE(page->regions[0].type,"sectionheader"); QVERIFY(!page->words[0].layoutBlock);
         QVERIFY(!page->words[0].geometryInferred); QCOMPARE(page->recognitionEvidence[0].text.size(),4);
+    }
+    void orderedInlineChildKeepsParentProseAndGeometry() {
+        auto result = markdownResult();
+        core::TextRegion parent;
+        parent.id = "p"; parent.text = "Пусть"; parent.order = 0;
+        parent.granularity = core::TextGranularity::Paragraph;
+        parent.bounds = QRect(0,0,100,40);
+        core::FormulaRegion formula;
+        formula.id = "f"; formula.parentId = "p"; formula.order = 1;
+        formula.latex = "x^2"; formula.display = false;
+        formula.bounds = QRect(30,0,15,15);
+        result.text = {parent}; result.formulas = {formula};
+        const auto page = processing::recognitionToPage(result);
+        QVERIFY(page);
+        QCOMPARE(page->words.size(), 2);
+        QCOMPARE(page->regions.size(), 1);
+        QCOMPARE(page->regions.first().type, "text");
+        QCOMPARE(page->words[0].text, parent.text);
+        QCOMPARE(page->words[1].text, QStringLiteral(R"(\(x^2\))"));
+        QCOMPARE(page->words[1].bounds, *formula.bounds);
+        QCOMPARE(page->words[1].paragraph, page->words[0].paragraph);
+        const auto exported = processing::recognitionFromPage(*page);
+        QVERIFY(core::validateRecognitionResult(exported));
+        QCOMPARE(exported.formulas.size(), 1);
+        QVERIFY(!exported.formulas.first().display);
+        QCOMPARE(exported.formulas.first().parentId, parent.id);
+        QCOMPARE(exported.formulas.first().latex, formula.latex);
+        result.text[0].text += QStringLiteral(R"( \(x^2\))");
+        const auto embedded = processing::recognitionToPage(result);
+        QVERIFY(embedded);
+        QCOMPARE(embedded->words.size(), 1);
+    }
+    void paddleMergedTableStructure() {
+        const auto table = processing::parsePaddleTable(
+            R"(<ched>Dimensions<lcel><fcel>Units<nl><rhed>Area<fcel>\(x^2\)<fcel>m²<nl><ucel><fcel>2x<fcel>m<nl>)");
+        QVERIFY(table);
+        QCOMPARE(table->text,QStringLiteral("Dimensions\tUnits\nArea\t\\(x^2\\)\tm²\n2x\tm"));
+        const auto layout = table->structure["table_layout"].toArray();
+        QVERIFY(core::OcrRegion::validTableLayout(layout));
+        QCOMPARE(layout[0].toArray()[0].toObject()["colspan"].toInt(),2);
+        QVERIFY(layout[0].toArray()[0].toObject()["header"].toBool());
+        QCOMPARE(layout[1].toArray()[0].toObject()["rowspan"].toInt(),2);
+        QVERIFY(!processing::parsePaddleTable("<ucel><nl>"));
+        QVERIFY(!processing::parsePaddleTable("<fcel>x<fcel>y<nl><fcel>z<nl>"));
     }
     void coarseCoordinatesRemainOneBlock() {
         auto result=markdownResult(); core::TextRegion block; block.text="First line\nSecond line";

@@ -420,6 +420,56 @@ QVector<QRect> findInlineFormulaHints(const QImage &gray, QRect parent, std::sto
     return hints;
 }
 
+// Inspect overlapping line bands in page coordinates. A recentered pass can
+// see operands and limits that were cut off at the first window boundary.
+QVector<QRect> paragraphFormulaWindows(const QImage &gray, QRect paragraph, std::stop_token stop)
+{
+    paragraph = paragraph.intersected(gray.rect());
+    if (gray.format() != QImage::Format_Grayscale8 || paragraph.isEmpty() ||
+        qint64(paragraph.width()) * paragraph.height() > 8000000) return {};
+    const auto data = components(gray, paragraph);
+    QVector<int> heights;
+    for (const auto &glyph : data.glyphs)
+        if (glyph.box.height() >= 4 && glyph.box.width() <= 3 * glyph.box.height())
+            heights.append(glyph.box.height());
+    if (heights.isEmpty()) return {};
+    auto middle = heights.begin() + heights.size()/2;
+    std::nth_element(heights.begin(), middle, heights.end());
+    const int em = *middle;
+    QVector<QRect> found;
+    const auto include = [&](QRect hint) {
+        for (auto &previous : found) {
+            const QRect common = previous.intersected(hint);
+            if (common.isEmpty()) continue;
+            const auto area = [](QRect box) { return qint64(box.width()) * box.height(); };
+            if (area(common) * 2 >= std::min(area(previous), area(hint))) {
+                previous |= hint;
+                return;
+            }
+        }
+        found.append(hint);
+    };
+    const auto column = paragraph.adjusted(-em, -2*em, em, 2*em).intersected(gray.rect());
+    for (int y = paragraph.top()-em; y <= paragraph.bottom() && !stop.stop_requested(); y += 3*em) {
+        const auto band = QRect(column.left(), y, column.width(), 6*em).intersected(column);
+        auto hints = findInlineFormulaHints(gray, band, stop);
+        hints += boundedIntegralSigns(gray, band);
+        for (auto hint : hints) {
+            if (!paragraph.intersects(hint)) continue;
+            if (hint.top() <= band.top()+1 || hint.bottom() >= band.bottom()-1) {
+                const auto retry = hint.adjusted(-4*em,-3*em,4*em,3*em).intersected(column);
+                for (const auto &other : findInlineFormulaHints(gray, retry, stop))
+                    if (other.contains(hint.center())) hint |= other;
+            }
+            include(hint);
+        }
+    }
+    std::stable_sort(found.begin(), found.end(), [](QRect a, QRect b) {
+        return std::pair(a.top(), a.left()) < std::pair(b.top(), b.left());
+    });
+    return found;
+}
+
 QRect inkBox(const QImage &gray, QRect area)
 {
     if (!area.isValid() || gray.format() != QImage::Format_Grayscale8) return {};

@@ -57,7 +57,7 @@ public:
     void recognizeTypedRegions(const QString &imagePath, const QString &language, int pageNumber,
                                const QVector<core::ImageRegion> &selected);
     void recognizeRegion(const QString &imagePath, const QString &language,
-                         int pageNumber, const QRect &region);
+                         int pageNumber, const QRect &region, std::optional<OcrService> tableService = {});
     void recognizePages(const QVector<BatchPageOptions> &pages);
     void cancel();
 signals:
@@ -91,7 +91,7 @@ private:
     void prepareBatchImage(const QString &path);
     void finishBatchError(const QString &message);
     void startOcrImage(const QString &path, const QImage &image, OcrOptions options,
-                       const QRect &region, bool batch, bool splitOnly = false, QVector<core::ImageRegion> selected = {});
+                       const QRect &region, bool batch, bool splitOnly = false, QVector<core::ImageRegion> selected = {}, std::optional<OcrService> tableService = {});
 
     struct OcrJobResult {
         std::expected<core::OcrPage, OcrError> outcome;

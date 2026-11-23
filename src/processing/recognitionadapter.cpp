@@ -1,4 +1,5 @@
 #include "recognitionadapter.h"
+#include "formulatext.h"
 #include <QSet>
 #include <QUuid>
 #include <algorithm>
@@ -31,16 +32,20 @@ std::expected<OcrPage, QString> recognitionToPage(const RecognitionResult &resul
     QHash<QString, const TextRegion *> nodes;
     for (const auto &r : result.text) if (!r.id.isEmpty()) nodes.insert(r.id, &r);
     for (const auto &r : result.text) if (!r.parentId.isEmpty()) parents.insert(r.parentId);
-    for (const auto &r : result.formulas) if (!r.parentId.isEmpty()) parents.insert(r.parentId);
+    // Formula children can supplement a prose-only parent.
     for (const auto &r : result.tables) if (!r.parentId.isEmpty()) parents.insert(r.parentId);
     for (const auto &r : result.figures) if (!r.parentId.isEmpty()) parents.insert(r.parentId);
     QHash<QString, int> parentBlocks, parentParagraphs, parentLines;
-    for (const auto &r : result.text) {
-        if (!r.id.isEmpty() && parents.contains(r.id)) continue; // Prefer detailed children over duplicated parent text.
+    const auto addText = [&](const TextRegion &r) {
         int block = r.block, paragraph = r.paragraph, line = r.line;
-        QString ancestor = r.parentId, root, paragraphId, lineId, type = r.type;
+        QString ancestor = r.parentId, root = r.id, paragraphId, lineId, type = r.type;
+        if (r.granularity == TextGranularity::Paragraph) paragraphId = r.id;
+        if (r.granularity == TextGranularity::Line) lineId = r.id;
         while (nodes.contains(ancestor)) {
             const auto *parent = nodes[ancestor]; root = ancestor;
+            if (!block) block = parent->block;
+            if (!paragraph) paragraph = parent->paragraph;
+            if (!line) line = parent->line;
             if (parent->granularity == TextGranularity::Paragraph) paragraphId = ancestor;
             if (parent->granularity == TextGranularity::Line) lineId = ancestor;
             if (type == "text" && parent->type != "text") type = parent->type;
@@ -59,8 +64,27 @@ std::expected<OcrPage, QString> recognitionToPage(const RecognitionResult &resul
             line = parentLines[lineId];
         }
         add(r, r.text, r.granularity != TextGranularity::Word, type, block, paragraph, line);
+    };
+    for (const auto &r : result.text) {
+        if (!r.id.isEmpty() && parents.contains(r.id)) continue;
+        addText(r);
     }
-    for (const auto &r : result.formulas) add(r, r.display ? r.latex : "\\("+r.latex+"\\)", true, "equation");
+    for (const auto &r : result.formulas) {
+        if (r.display) {
+            add(r, r.latex, true, "equation");
+        } else {
+            const auto *parent = nodes.value(r.parentId);
+            if (parent && !parents.contains(parent->id) &&
+                std::ranges::any_of(mathTextSpans(parent->text), [&](const auto &span) {
+                    return !span.display && span.source == r.latex;
+                })) continue;
+            TextRegion inlineWord;
+            static_cast<RecognitionRegion &>(inlineWord) = r;
+            inlineWord.text = "\\(" + r.latex + "\\)";
+            inlineWord.granularity = TextGranularity::Word;
+            addText(inlineWord);
+        }
+    }
     for (const auto &r : result.tables) {
         const auto layout = r.structure.value("table_layout").toArray();
         if (!layout.isEmpty() && !OcrRegion::validTableLayout(layout))
@@ -100,26 +124,90 @@ RecognitionResult recognitionFromPage(const OcrPage &page) {
     QHash<QString, OcrRegion> regions;
     for (const auto &region : page.regions) for (const auto &paragraph : region.paragraphs)
         for (const auto &line : paragraph.lines) for (const auto &id : line.wordIds) regions.insert(id, region);
+    QHash<QString, QString> nativeParents;
+    QHash<QString, TextRegion> nativeText;
+    for (const auto &reading : page.recognitionEvidence) {
+        for (const auto &text : reading.text) {
+            nativeParents.insert(text.id, text.parentId);
+            nativeText.insert(text.id, text);
+        }
+        for (const auto &formula : reading.formulas) nativeParents.insert(formula.id, formula.parentId);
+    }
+    QSet<QString> emittedIds;
     for (int i = 0; i < page.words.size(); ++i) {
         const auto &word = page.words[i]; const auto region = regions.value(word.id);
         RecognitionRegion base;
         base.id = word.id;
+        base.parentId = nativeParents.value(word.id);
+        emittedIds.insert(word.id);
         if (word.geometryInferred) base.inputArea = word.bounds;
         else base.bounds = word.bounds;
         base.order = i; base.confidence = word.confidence;
-        if (region.type == "equation" || region.type == "formula") {
-            FormulaRegion formula; static_cast<RecognitionRegion &>(formula) = base; formula.latex = word.text;
+        const auto source = formulaSourceText(word);
+        const auto spans = mathTextSpans(source);
+        const bool delimited = spans.size() == 1 && spans.first().length == source.size();
+        if (region.type != "table" && (delimited || region.type == "equation" || region.type == "formula")) {
+            FormulaRegion formula; static_cast<RecognitionRegion &>(formula) = base;
+            formula.latex = delimited ? spans.first().source : source;
+            formula.display = !delimited || spans.first().display;
             result.formulas.append(formula);
         } else if (region.type == "table") {
-            TableRegion table; static_cast<RecognitionRegion &>(table) = base; table.text = word.text;
+            TableRegion table; static_cast<RecognitionRegion &>(table) = base; table.text = source;
             if (!region.tableLayout.isEmpty()) table.structure["table_layout"] = region.tableLayout;
             result.tables.append(table);
         } else {
-            TextRegion text; static_cast<RecognitionRegion &>(text) = base; text.text = word.text;
+            TextRegion text; static_cast<RecognitionRegion &>(text) = base; text.text = source;
             text.block = word.block; text.paragraph = word.paragraph; text.line = word.line; text.type = region.type;
             text.granularity = word.layoutBlock ? TextGranularity::Block : TextGranularity::Word;
             result.text.append(text);
+            int occurrence = 0;
+            for (const auto &span : spans) {
+                if (span.display) continue;
+                FormulaRegion child;
+                child.id = word.id + QStringLiteral("/inline-%1").arg(++occurrence);
+                child.parentId = word.id;
+                child.order = i;
+                child.latex = span.source;
+                child.display = false;
+                child.inputArea = word.bounds;
+                // Several formulas can share one coarse OCR box. Only attach
+                // precise geometry if there is evidence for this occurrence.
+                for (auto decision=page.recognitionHistory.decisions.crbegin();
+                     decision!=page.recognitionHistory.decisions.crend(); ++decision) {
+                    if (decision->wordIds.contains(word.id) && decision->proposedText == span.source &&
+                        decision->decision == "accepted" && word.bounds.intersects(decision->processedArea) &&
+                        std::ranges::count_if(spans,[&](const auto &s){return s.source==span.source;}) == 1) {
+                        child.inputArea = decision->processedArea;
+                        break;
+                    }
+                }
+                result.formulas.append(child);
+            }
         }
+    }
+    // Recreate structural ancestors omitted from the editable leaf sequence.
+    // Their coordinates may belong to a crop, so only use the current page frame.
+    const auto restoreParents = [&](RecognitionRegion &child) {
+        QString ancestor = child.parentId;
+        if (!ancestor.isEmpty() && !emittedIds.contains(ancestor) && !nativeText.contains(ancestor)) {
+            child.parentId.clear(); return;
+        }
+        while (!ancestor.isEmpty() && !emittedIds.contains(ancestor)) {
+            auto parent = nativeText.value(ancestor);
+            if (parent.id.isEmpty()) break;
+            emittedIds.insert(ancestor);
+            parent.text.clear();
+            parent.bounds.reset();
+            parent.inputArea = QRect(QPoint(), result.provenance.imageSize);
+            result.text.append(parent);
+            ancestor = parent.parentId;
+        }
+    };
+    for (auto &formula : result.formulas) restoreParents(formula);
+    for (int i=0; i<result.text.size(); ++i) {
+        auto text = result.text[i];
+        restoreParents(text);
+        result.text[i].parentId = text.parentId;
     }
     for (const auto &hint : page.imageRegions) {
         FigureRegion figure; figure.id = hint.id; figure.bounds = hint.bounds;

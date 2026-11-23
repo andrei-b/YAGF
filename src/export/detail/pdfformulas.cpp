@@ -16,15 +16,8 @@ namespace {
 std::optional<QString> delimited(QString text)
 {
     text = text.trimmed();
-    for (const auto &[left, right] : {std::pair{QStringLiteral("\\("), QStringLiteral("\\)")},
-             std::pair{QStringLiteral("\\["), QStringLiteral("\\]")},
-             std::pair{QStringLiteral("$$"), QStringLiteral("$$")},
-             std::pair{QStringLiteral("$"), QStringLiteral("$")}}) {
-        if (text.startsWith(left) && text.endsWith(right) && text.size() > left.size() + right.size()) {
-            const auto body = text.mid(left.size(), text.size()-left.size()-right.size());
-            if (!body.contains(right)) return body;
-        }
-    }
+    const auto spans = core::mathTextSpans(text);
+    if (spans.size() == 1 && spans.first().length == text.size()) return spans.first().source;
     return {};
 }
 
@@ -110,9 +103,6 @@ std::expected<QString, QString> mathTokens(const QString &source, bool allowUnic
     return output;
 }
 
-// Surya can return prose and several delimited equations in a single OCR box.
-const QRegularExpression inlineMath(QStringLiteral(R"(\\\(([\s\S]+?)\\\)|\\\[([\s\S]+?)\\\])"));
-
 QString proseTokens(QStringView source)
 {
     QString text;
@@ -132,16 +122,14 @@ std::expected<QString, QString> passageTokens(const QString &source)
 {
     QString text;
     qsizetype pos = 0;
-    auto spans = inlineMath.globalMatch(source);
-    while (spans.hasNext()) {
-        const auto span = spans.next();
-        text += proseTokens(QStringView(source).mid(pos, span.capturedStart()-pos));
-        const bool display = span.capturedStart(2) >= 0;
-        const auto math = mathTokens(span.captured(display ? 2 : 1).trimmed());
+    for (const auto &span : core::mathTextSpans(source)) {
+        text += proseTokens(QStringView(source).mid(pos, span.start - pos));
+        const bool display = span.display;
+        const auto math = mathTokens(span.source.trimmed());
         if (!math) return std::unexpected(math.error());
         if (display) text += "\\par\\noindent\\hbox to \\hsize{\\hss$\\displaystyle " + *math + "$\\hss}\\par ";
         else text += "$" + *math + "$";
-        pos = span.capturedEnd();
+        pos = span.start + span.length;
     }
     text += proseTokens(QStringView(source).mid(pos));
     return text;
@@ -193,21 +181,12 @@ QVector<FormulaSpan> editableFormulaSpans(const core::OcrPage &page, const QVect
         if (index < 0 || index >= page.words.size()) continue;
         const auto &word = page.words.at(index);
         const QString original=core::formulaSourceText(word);
-        const QString text = original.trimmed();
-        if (const auto body = delimited(text)) {
-            const auto offset = (text.size() - body->size()) / 2;
-            spans.append({index, original.indexOf(text) + offset, body->size(),
-                          text.startsWith("\\[") || text.startsWith("$$")});
-        } else if (equations.contains(word.id)) {
+        const auto matches = core::mathTextSpans(original);
+        if (matches.isEmpty() && equations.contains(word.id))
             spans.append({index, 0, original.size(), true});
-        } else {
-            auto matches = inlineMath.globalMatch(original);
-            while (matches.hasNext()) {
-                const auto match = matches.next();
-                const bool display = match.capturedStart(2) >= 0;
-                const int group = display ? 2 : 1;
-                spans.append({index, match.capturedStart(group), match.capturedLength(group), display});
-            }
+        for (const auto &match : matches) {
+            const auto delimiterLength = (match.length - match.source.size()) / 2;
+            spans.append({index, match.start + delimiterLength, match.source.size(), match.display});
         }
     }
     return spans;
@@ -285,7 +264,7 @@ PdfFormulaPage collectPdfFormulas(const core::OcrPage &page, const QRegion &prot
         if (const auto source = delimited(original)) {
             result.formulas.append({word.bounds, *source, original.trimmed().startsWith("\\[") || original.trimmed().startsWith("$$")});
             result.wordIds.insert(word.id);
-        } else if (inlineMath.match(original).hasMatch()) {
+        } else if (!core::mathTextSpans(original).isEmpty()) {
             result.formulas.append({word.bounds, original, false, true, word.fontSizePt});
             result.wordIds.insert(word.id);
         }

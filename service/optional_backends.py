@@ -1,4 +1,5 @@
 """Opt-in OCR adapters. Importing this module loads no inference frameworks."""
+
 import base64
 import copy
 import html
@@ -97,12 +98,23 @@ def add_block(result, label, content, box=None, html_content=False, confidence=-
         region['box'] = box
     kind = label.lower().rstrip('+').replace('_', '-')
     text = plain_text(content) if html_content else content.strip()
-    if kind in ('formula', 'equation', 'display-formula', 'equation-block', 'math'):
-        region.update(latex=latex_text(text), display=True)
+    inline = kind in ('inline-formula', 'inline-equation', 'inline-math', 'formula-inline')
+    if inline or kind in ('formula', 'equation', 'display-formula', 'equation-block', 'math'):
+        region.update(latex=latex_text(text), display=not inline)
         result['formulas'].append(region)
     elif kind == 'table':
+        structure = {}
+        if html_content:
+            from server import BlockTextParser
+            parser = BlockTextParser('table')
+            parser.feed(content)
+            parser.close()
+            if parser.rows:
+                text = parser.text()
+                structure['table_layout'] = [[{k: v for k, v in cell.items() if k != 'text'}
+                                              for cell in row] for row in parser.rows]
         region.update(text=text, markdown='' if html_content else content,
-                      html=content if html_content else '', structure={})
+                      html=content if html_content else '', structure=structure)
         result['tables'].append(region)
     elif kind in ('image', 'figure', 'chart', 'header-image', 'footer-image'):
         region.update(caption=text, type=label)

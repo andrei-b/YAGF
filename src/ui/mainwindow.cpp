@@ -1,6 +1,7 @@
 #include "pdfexporter.h"
 #include "detail/pdfformulas.h"
 #include "formulaeditor.h"
+#include "inlineformuladialog.h"
 #include "exportpage.h"
 #include "scientificbookexporter.h"
 #include "latexdocumentexporter.h"
@@ -1250,7 +1251,10 @@ MainWindow::MainWindow()
     });
     connect(selectionEditor, &QTextEdit::customContextMenuRequested, this, [this](const QPoint &position) {
         std::unique_ptr<QMenu> menu(selectionEditor->createStandardContextMenu());
-        menu->addSeparator(); menu->addAction(teachSymbolAction);
+        menu->addSeparator();
+        auto *mark = menu->addAction(tr("Mark as inline formula…"), this, [this] { markSelectedInlineFormula(); });
+        mark->setEnabled(!selectedWords.isEmpty() && !editorPending);
+        menu->addAction(teachSymbolAction);
         menu->exec(selectionEditor->viewport()->mapToGlobal(position));
     });
     auto *wordPanel = new QWidget(editorSplitter);
@@ -1380,7 +1384,7 @@ MainWindow::MainWindow()
     connect(view, &PageView::regionChanged, this, &MainWindow::moveImageRegion);
     connect(view, &PageView::regionDeleteRequested, this, &MainWindow::deleteImageRegion);
     connect(view, &PageView::regionContextMenuRequested, this, &MainWindow::showBlockContextMenu);
-    connect(view, &PageView::pageContextMenuRequested, this, [this](const QPoint &position) { showPageActions(currentPage, position); });
+    connect(view, &PageView::pageContextMenuRequested, this, [this](const QPoint &position) { showPageActions(currentPage, position, true); });
     connect(blockMiniatures, &BlockMiniatureList::blockContextMenuRequested, this, &MainWindow::showBlockContextMenu);
     connect(regionList, &QListWidget::itemSelectionChanged, this, [this] {
         QSet<QString> ids;
@@ -1584,6 +1588,13 @@ MainWindow::MainWindow()
                 auto target = std::ranges::find(merged.imageRegions, detected.id, &ImageRegion::id);
                 if (target != merged.imageRegions.end() && target->content.isEmpty())
                     target->content = detected.content;
+            }
+            if (std::ranges::any_of(newPage.recognitionEvidence, [](const auto &r) {return r.provenance.task=="table";})) {
+                for (auto &block : merged.imageRegions) if (block.id == selectedArea.id) {
+                    block.notText = false;
+                    block.content = "text";
+                    block.detectedLabel = "table";
+                }
             }
             merged.id = QStringLiteral("page-%1").arg(currentPage);
             merged.number = currentPage;
@@ -2193,7 +2204,7 @@ bool MainWindow::loadProjectFile(const QString &path, bool recovered, const QStr
     for (const auto &source : loaded.pageSources) {
         if (!QFileInfo(source.path).isFile()) {
             showError(tr("Source document is missing: %1").arg(source.path));
-            return;
+            return false;
         }
     }
     processor.resetSource();
@@ -2716,7 +2727,7 @@ void MainWindow::runOcr()
     if (const OcrPage *page = document.page(currentPage); page && !selectedRegionIds.isEmpty()) {
         QVector<ImageRegion> targets;
         for (const auto &region : page->imageRegions)
-            if (selectedRegionIds.contains(region.id) && !region.notText) targets.append(region);
+            if (selectedRegionIds.contains(region.id) && (!region.notText || region.detectedLabel == "table")) targets.append(region);
         if (targets.isEmpty()) {
             status->setText(tr("The selected regions are marked Not a text."));
             return;
@@ -2730,7 +2741,7 @@ void MainWindow::runOcr()
             tr("Some selected regions contain corrected text. New OCR may replace unmatched corrections. Continue?"))
             != QMessageBox::Yes) return;
         if (targets.size() > 1 && processor.engineId() == "tesseract" &&
-            std::ranges::all_of(targets, [](const auto &r) { return !r.content.isEmpty(); })) {
+            std::ranges::all_of(targets, [](const auto &r) { return !r.content.isEmpty() && r.detectedLabel != "table"; })) {
             status->setText(tr("Recognizing selected blocks…"));
             processor.recognizeTypedRegions(imagePath, languageEdit->text(), currentPage, targets);
             return;
@@ -2757,7 +2768,8 @@ void MainWindow::runNextImageRegion()
     status->setText(tr("Recognizing region %1 of %2…")
                     .arg(nextQueuedImageRegion + 1).arg(queuedImageRegions.size()));
     const auto &region = queuedImageRegions.at(nextQueuedImageRegion);
-    processor.recognizeRegion(imagePath, blockLanguage(region), currentPage, region.bounds);
+    if (region.detectedLabel == "table") recognizeTable(region, false);
+    else processor.recognizeRegion(imagePath, blockLanguage(region), currentPage, region.bounds);
 }
 
 bool MainWindow::usePaddleVlService(const QUrl &url)
@@ -3539,7 +3551,7 @@ void MainWindow::showPageContextMenu(const QPoint &position)
     showPageActions(number, pageList->viewport()->mapToGlobal(position));
 }
 
-void MainWindow::showPageActions(int number, const QPoint &globalPosition)
+void MainWindow::showPageActions(int number, const QPoint &globalPosition, bool onScan)
 {
     const auto *page = document.page(number);
     QMenu menu(this);
@@ -3552,6 +3564,20 @@ void MainWindow::showPageActions(int number, const QPoint &globalPosition)
         copy->setObjectName("copyBlockImageAction");
         copy->setEnabled(!processor.isBusy() && !exportBusy && !projectLoading && !imagePath.isEmpty());
         connect(copy,&QAction::triggered,this,[this,index=selected] { copyBlockImage(index); });
+    }
+    if (onScan && page && !editorPending && !processor.isBusy() && !exportBusy) {
+        const auto point = view->mapToScene(view->viewport()->mapFromGlobal(globalPosition)).toPoint();
+        QVector<int> hits;
+        QRect crop;
+        for (int i=0; i<page->words.size(); ++i) if (page->words[i].bounds.contains(point)) {
+            hits.append(i);
+            const auto box = page->words[i].bounds;
+            if (crop.isEmpty() || qint64(box.width())*box.height() < qint64(crop.width())*crop.height()) crop=box;
+        }
+        if (!hits.isEmpty()) menu.addAction(tr("Mark as inline formula…"),this,[this,hits,crop] {
+            updateSelection(hits);
+            markSelectedInlineFormula(crop);
+        });
     }
     auto *clear = menu.addAction(QIcon(":/actions/clear-blocks.png"), tr("Clear all blocks"));
     clear->setObjectName(QStringLiteral("clearPageBlocks"));
@@ -3758,6 +3784,29 @@ void MainWindow::setBlockLanguage(int index, const QString &language, bool notTe
     undoStack.push(new ReplacePageCommand(document, currentPage, std::move(edited), tr("Select block language")));
 }
 
+void MainWindow::recognizeTable(const ImageRegion &region, bool confirmCorrections)
+{
+    auto services = ocrServices;
+    services.removeIf([](const auto &service) { return !service.enabled; });
+    const auto primary = processor.primaryOcrService();
+    services.prepend(processor.formulaOcrService());
+    services.prepend(primary);
+    processing::ModelRequirements requirements;
+    requirements.tasks = {"table"};
+    auto service = processing::selectOcrModel(services, requirements, primary.key());
+    if (!service) {
+        // Saved remote services acquire readiness on discovery. An explicit
+        // table request can also try an already configured endpoint.
+        for (const auto &configured : services)
+            if (configured.modelProfile().tasks.contains("table")) { service = configured; break; }
+    }
+    if (!service) { queuedImageRegions.clear(); showError(tr("Enable a table-capable model in Recognition settings.")); return; }
+    const auto &words = document.page(currentPage)->words;
+    if (confirmCorrections && std::ranges::any_of(words, [&](const auto &word) { return word.reviewed && overlapsWord(word, region); }) &&
+        QMessageBox::question(this, tr("Recognize table"), tr("Replace the corrected text in this area?")) != QMessageBox::Yes) return;
+    processor.recognizeRegion(imagePath, blockLanguage(region), currentPage, region.bounds, service);
+}
+
 void MainWindow::showBlockContextMenu(int index, const QPoint &globalPosition)
 {
     if (processor.isBusy() || exportBusy || !maybeApplyEditor()) return;
@@ -3769,9 +3818,15 @@ void MainWindow::showBlockContextMenu(int index, const QPoint &globalPosition)
     menu.setObjectName(QStringLiteral("blockContextMenu"));
     auto *recognize = menu.addAction(recognizeActionIcon(), tr("Recognize block"));
     recognize->setIconVisibleInMenu(true);
-    recognize->setEnabled(!region.notText);
+    recognize->setEnabled(!region.notText || region.detectedLabel == "table");
     connect(recognize, &QAction::triggered, this, &MainWindow::runOcr);
     auto *languages = menu.addMenu(tr("Select block language"));
+    auto *mark = menu.addAction(tr("Mark as inline formula…"), this,
+        [this, region] { markSelectedInlineFormula(region.bounds); });
+    mark->setEnabled(!selectedWords.isEmpty() || std::ranges::any_of(page->words, [&](const auto &word) {
+        return word.bounds.intersects(region.bounds);
+    }));
+    menu.addAction(tr("Recognize table…"), this, [this, region] { recognizeTable(region, true); });
     const auto addLanguage = [&](const QString &label, const QString &code, bool notText = false) {
         auto *action = languages->addAction(label);
         action->setData(code);
@@ -3974,6 +4029,81 @@ void MainWindow::updateSelection(const QVector<int> &indices)
     selectionEditor->moveCursor(QTextCursor::Start);
     teachSymbolAction->setEnabled(!processor.isBusy() && !exportBusy && !projectLoading && !imagePath.isEmpty() && !indices.isEmpty());
     refreshSpellLanguage();
+}
+
+void MainWindow::markSelectedInlineFormula(QRect crop)
+{
+    if (processor.isBusy() || exportBusy || projectLoading || editorPending) return;
+    const auto *page = document.page(currentPage);
+    if (!page) return;
+    auto candidates = selectedWords;
+    if (!crop.isEmpty()) {
+        for (int i=0; i<page->words.size(); ++i)
+            if (page->words[i].bounds.contains(crop.center()) && !candidates.contains(i)) candidates.append(i);
+        if (candidates.isEmpty())
+            for (int i=0; i<page->words.size(); ++i)
+                if (page->words[i].bounds.intersects(crop)) candidates.append(i);
+    }
+    if (candidates.isEmpty()) return;
+    const auto cursor = selectionEditor->textCursor();
+    int index = -1, start = -1, length = 0;
+    for (int candidate : candidates) {
+        const auto range = editorWordRanges.value(candidate);
+        if (crop.isEmpty() && cursor.hasSelection() && cursor.selectionStart() >= range.first &&
+            cursor.selectionEnd() <= range.first + range.second) {
+            index = candidate;
+            if (core::formulaSourceText(page->words[index]) == page->words[index].text) {
+                start = cursor.selectionStart() - range.first;
+                length = cursor.selectionEnd() - cursor.selectionStart();
+            }
+            break;
+        }
+    }
+    std::optional<OcrPage> combined;
+    if (index < 0 && crop.isEmpty() && cursor.hasSelection()) {
+        QVector<int> span;
+        for (int candidate : candidates) {
+            const auto range = editorWordRanges.value(candidate);
+            if (range.first < cursor.selectionEnd() && range.first + range.second > cursor.selectionStart())
+                span.append(candidate);
+        }
+        if (span.size() > 1) {
+            const auto &first = page->words[span.first()];
+            const auto from = editorWordRanges[span.first()].first;
+            const auto last = editorWordRanges[span.last()];
+            if (std::ranges::any_of(span, [&](int i) {
+                    const auto &w = page->words[i];
+                    return w.block != first.block || w.paragraph != first.paragraph || w.layoutBlock ||
+                           core::formulaSourceText(w) != w.text;
+                })) { showError(tr("Select consecutive words in one paragraph or one structured OCR item.")); return; }
+            const auto text = selectionEditor->toPlainText().mid(from, last.first + last.second - from);
+            auto merged = core::WordEditor::apply(*page, span,
+                {{text, first.bold, first.italic, first.fontSizePt, first.fontFamily, true}});
+            if (!merged) { showError(merged.error()); return; }
+            combined = std::move(*merged);
+            page = &*combined;
+            index = span.first();
+            start = std::max(0, cursor.selectionStart() - from);
+            length = std::min(last.first + last.second, cursor.selectionEnd()) - from - start;
+        }
+    }
+    if (index < 0 && candidates.size() == 1) index = candidates.first();
+    if (index < 0) {
+        QStringList choices;
+        for (int i : candidates)
+            choices.append(tr("%1. %2").arg(choices.size()+1).arg(page->words[i].text.left(120)));
+        bool ok = false;
+        const auto choice = QInputDialog::getItem(this, tr("Mark as inline formula"),
+            tr("Choose the text containing the expression"), choices, 0, false, &ok);
+        if (!ok) return;
+        index = candidates[choices.indexOf(choice)];
+    }
+    if (crop.isEmpty()) crop = page->words[index].bounds;
+    auto edited = markInlineFormula(this, *page, index, start, length, displayedPageImage(), crop,
+                                    processor.formulaOcrService(), originalPath, document.unicodeFormulas);
+    if (!edited) return;
+    undoStack.push(new ReplacePageCommand(document, currentPage, std::move(*edited), tr("Mark as inline formula")));
+    updateSelection({index});
 }
 
 void MainWindow::editSelectedFormula()

@@ -30,6 +30,7 @@ struct InlinePart {
 };
 QVector<InlinePart> partitionInlineFormulas(const QImage &gray, QRect parent,
                                           const QVector<QRect> &hints);
+QVector<QRect> paragraphFormulaWindows(const QImage &gray, QRect paragraph, std::stop_token stop = {});
 QVector<QRect> findInlineFormulaHints(const QImage &gray, QRect parent, std::stop_token stop = {});
 QVector<core::ImageRegion> refineFormulaRegions(const QImage &image,
     const QVector<core::ImageRegion> &regions, const QVector<core::OcrWord> &words = {}, std::stop_token stop = {});

@@ -55,6 +55,8 @@ ModelProfile OcrService::modelProfile() const {
         else if(provider=="rapid-latex-ocr")p.tasks={"formula"};
         else {p.tasks={"text"};if(provider=="surya" || provider=="paddleocr-vl")p.tasks.append("formula");}
     }
+    if (provider == "paddleocr-vl" && protocol != "yagf-ocr/1" && !p.tasks.contains("table"))
+        p.tasks.append("table");
     return p;
 }
 bool OcrService::supportsFormulas() const {return modelProfile().tasks.contains("formula");}
@@ -195,7 +197,7 @@ std::expected<OcrDiscovery,OcrError> discoverOcrServices(const QVector<QUrl> &ta
                 if(!generic && !model.contains("paddleocr-vl",Qt::CaseInsensitive))continue;
                 OcrService s; s.provider=generic?engine:QStringLiteral("paddleocr-vl"); s.url=p->base; s.model=model; s.label=model.left(128);
                 s.protocol=generic?QStringLiteral("yagf-ocr/1"):QStringLiteral("openai-chat/1");
-                s.language="auto"; if(!generic)s.tasks={"ocr","formula"}; s.ready=true; s.token=tokenFor(p->base,known);
+                s.language="auto"; if(!generic)s.tasks={"ocr","formula","table"}; s.ready=true; s.token=tokenFor(p->base,known);
                 if(!applyProfile(s,entry)){result.diagnostics.append(endpoint+": invalid model profile");continue;}
                 add(std::move(s)); compatible.insert(endpoint);
             }
