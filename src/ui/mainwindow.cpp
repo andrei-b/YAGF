@@ -1093,6 +1093,7 @@ MainWindow::MainWindow()
     pageList->setGridSize(QSize(170, 190));
     pageList->setIconSize(QSize(126, 156));
     pageList->setMinimumHeight(80);
+    pageList->setToolTip(tr("Right-click a page or press Delete to remove it."));
     pageList->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(pageList, &QListWidget::customContextMenuRequested, this, &MainWindow::showPageContextMenu);
     navigationPane->setMinimumWidth(195);
@@ -1498,7 +1499,7 @@ MainWindow::MainWindow()
         const auto *previous=document.page(evidence.number);
         auto page=previous?*previous:evidence;
         core::mergeRecognitionHistory(page.recognitionHistory,evidence.recognitionHistory);
-        document.sourcePath=originalPath;document.totalPages=pageCount;
+        document.totalPages=pageCount;
         undoStack.push(new ReplacePageCommand(document,evidence.number,std::move(page),tr("Save recognition history")));
     });
     connect(&processor, &DocumentProcessor::recognized, this,
@@ -1563,7 +1564,6 @@ MainWindow::MainWindow()
             core::retainCorrections(newPage, previous, document.preserveFormatting);
             core::normalizeBlockFontSizes(newPage, {}, true);
         }
-        document.sourcePath = originalPath;
         document.engine = newPage.engineId;
         document.language = newPage.language;
         document.totalPages = pageCount;
@@ -1647,7 +1647,7 @@ MainWindow::MainWindow()
         const OcrPage *oldPage = document.page(number);
         std::optional<OcrPage> previous;
         if (oldPage && oldPage->preprocessing != page.preprocessing) {
-            auto mapped = previousInRecognitionFrame(*oldPage, page, processing::pageSourceKind(originalPath) == processing::PageSourceKind::Pdf);
+            auto mapped = previousInRecognitionFrame(*oldPage, page, processing::pageSourceKind(document.sourceForPage(number).path) == processing::PageSourceKind::Pdf);
             if (!mapped) { processor.cancel(); showError(mapped.error()); return; }
             previous = std::move(*mapped);
             oldPage = &*previous;
@@ -1743,6 +1743,12 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
     if (event->type() == QEvent::KeyPress) {
         const auto *widget = qobject_cast<QWidget *>(watched);
         const auto *key = static_cast<QKeyEvent *>(event);
+        if ((watched == pageList || watched == pageList->viewport()) &&
+            key->key() == Qt::Key_Delete && key->modifiers() == Qt::NoModifier) {
+            removeDocumentPage(pageList->currentRow() + 1);
+            event->accept();
+            return true;
+        }
         if (widget && widget->window() == this && key->modifiers() == Qt::NoModifier &&
             (key->key() == Qt::Key_PageUp || key->key() == Qt::Key_PageDown)) {
             // Reuse navigation's busy/boundary checks and pending-edit handling.
@@ -1844,7 +1850,7 @@ void MainWindow::updatePageControls()
     }
     if (batchAction) batchAction->setEnabled(available && !imagePath.isEmpty());
     if (remainingAction) remainingAction->setEnabled(available && !imagePath.isEmpty() &&
-        processing::isPagedSource(originalPath) && pageCount > 1);
+        pageCount > 1);
     if (documentContextAction) documentContextAction->setEnabled(available && !originalPath.isEmpty());
     if (nextSpecialistAction) nextSpecialistAction->setEnabled(available && !imagePath.isEmpty() &&
         document.page(currentPage) && !document.page(currentPage)->words.isEmpty());
@@ -1878,8 +1884,97 @@ void MainWindow::scanPage()
         QUuid::createUuid().toString(QUuid::WithoutBraces) + QStringLiteral(".png");
     ScannerDialog dialog(path, this);
     if (dialog.exec() != QDialog::Accepted) return;
-    loadSource(path);
-    if (originalPath != path) QFile::remove(path);
+    if (!appendScannedPage(path)) QFile::remove(path);
+}
+
+bool MainWindow::appendScannedPage(const QString &path)
+{
+    if (processor.isBusy() || exportBusy || projectLoading || !maybeApplyEditor()) return false;
+    QImageReader reader(path);
+    reader.setAutoTransform(true);
+    const auto image = reader.read();
+    if (image.isNull()) { showError(tr("Could not read the scanned page.")); return false; }
+    if (document.sourcePath.isEmpty()) {
+        loadSource(path);
+        if (originalPath != path) return false;
+    }
+    auto after = document;
+    const bool firstPage = after.pages.isEmpty() && after.sourcePath == path && pageCount == 1;
+    const int number = firstPage ? 1 : after.totalPages + 1;
+    after.materializePageSources();
+    if (!firstPage) {
+        after.pageSources.append({QFileInfo(path).absoluteFilePath(), 1});
+        ++after.totalPages;
+    }
+    OcrPage page;
+    page.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    page.number = number;
+    page.width = page.sourceWidth = image.width();
+    page.height = page.sourceHeight = image.height();
+    after.replacePage(std::move(page));
+    if (firstPage) {
+        document.totalPages = 0;
+        currentPage = 0;
+    }
+    undoStack.push(new ChangePageSequenceCommand(document, std::move(after), currentPage, number,
+        [this](int selectedPage) { refreshPageSequence(selectedPage); }, tr("Add scanned page")));
+    return true;
+}
+
+void MainWindow::refreshPageSequence(int number)
+{
+    processor.resetSource();
+    verificationTarget.reset();
+    verification->invalidate(1);
+    correctionMemory.reset();
+    pageCount = document.totalPages;
+    currentPage = pageCount ? std::clamp(number, 1, pageCount) : 0;
+    // Rebuild even when undo/redo keeps the count but changes the sources.
+    pageList->clear();
+    rawImagePath.clear();
+    if (pageCount) {
+        originalPath = document.sourceForPage(currentPage).path;
+        updatePageControls();
+        processor.startThumbnails(pageCount);
+        showPage(currentPage);
+    } else {
+        originalPath.clear();
+        imagePath.clear();
+        rawImage = {};
+        wordBoxes.clear(); imageRegionBoxes.clear();
+        displayedWords.clear(); selectedWords.clear();
+        selectedRegionIds.clear(); selectedImageRegion = -1;
+        queuedImageRegions.clear();
+        selectionEditor->clear();
+        wordList->clear(); regionList->clear(); scene->clear();
+        view->setPageInk({});
+        showDocument();
+        setBusy(false);
+        status->setText(tr("No pages. Scan or open a document to begin."));
+    }
+}
+
+void MainWindow::removeDocumentPage(int number)
+{
+    if (processor.isBusy() || exportBusy || projectLoading || document.sourcePath.isEmpty() ||
+        number < 1 || number > pageCount) return;
+    if (QMessageBox::question(this, tr("Remove page"),
+        tr("Remove page %1 from the document? Its text and blocks will also be removed.").arg(number),
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes) return;
+    if (!maybeApplyEditor()) return;
+    auto after = document;
+    after.materializePageSources();
+    after.pageSources.removeAt(number - 1);
+    after.removePage(number);
+    for (auto &page : after.pages) if (page.number > number) {
+        --page.number;
+        for (auto *words : {&page.words, &page.deletedWords, &page.pendingCorrections})
+            for (auto &word : *words) word.page = page.number;
+    }
+    --after.totalPages;
+    const int next = currentPage > number ? currentPage - 1 : currentPage;
+    undoStack.push(new ChangePageSequenceCommand(document, std::move(after), currentPage, next,
+        [this](int selectedPage) { refreshPageSequence(selectedPage); }, tr("Remove page")));
 }
 
 void MainWindow::pasteImage()
@@ -2053,6 +2148,12 @@ void MainWindow::loadProject(const QString &path)
         showError(tr("Source document is missing: %1").arg(loaded.sourcePath));
         return;
     }
+    for (const auto &source : loaded.pageSources) {
+        if (!QFileInfo(source.path).isFile()) {
+            showError(tr("Source document is missing: %1").arg(source.path));
+            return;
+        }
+    }
     processor.resetSource();
     undoStack.clear();
     originalPath = loaded.sourcePath;
@@ -2109,7 +2210,10 @@ void MainWindow::loadProject(const QString &path)
     currentPage = 1;
     pageCount = 1;
     updatePageControls();
-    if (processing::isPagedSource(originalPath)) {
+    if (!document.pageSources.isEmpty() || document.totalPages == 0) {
+        refreshPageSequence(1);
+        if (document.totalPages == 0) finishProjectLoading();
+    } else if (processing::isPagedSource(originalPath)) {
         projectLoadingProgress->setLabelText(tr("Rendering the first page…"));
         status->setText(tr("Reading project source document…"));
         processor.openDocument(originalPath);
@@ -2162,8 +2266,8 @@ void MainWindow::refreshRecentProjects()
 bool MainWindow::saveProject()
 {
     if (!maybeApplyEditor()) return false;
-    if (document.sourcePath.isEmpty() || document.pages.isEmpty()) {
-        showError(tr("Recognize a document before saving a project."));
+    if (document.sourcePath.isEmpty()) {
+        showError(tr("Open or scan a document before saving a project."));
         return false;
     }
     if (projectPath.isEmpty()) return saveProjectAs();
@@ -2185,8 +2289,8 @@ bool MainWindow::saveProject()
 bool MainWindow::saveProjectAs()
 {
     if (!maybeApplyEditor()) return false;
-    if (document.sourcePath.isEmpty() || document.pages.isEmpty()) {
-        showError(tr("Recognize a document before saving a project."));
+    if (document.sourcePath.isEmpty()) {
+        showError(tr("Open or scan a document before saving a project."));
         return false;
     }
     QString path = QFileDialog::getSaveFileName(this, tr("Save YAGF project"), projectPath,
@@ -2208,8 +2312,9 @@ bool MainWindow::saveProjectAs()
 
 bool MainWindow::savePortableProject()
 {
-    if (document.sourcePath.isEmpty() || document.pages.isEmpty() || !maybeApplyEditor()) {
-        if (document.pages.isEmpty()) showError(tr("Recognize a document before saving a project."));
+    if (!maybeApplyEditor()) return false;
+    if (document.sourcePath.isEmpty()) {
+        showError(tr("Open or scan a document before saving a project."));
         return false;
     }
     QString directory = QFileDialog::getSaveFileName(this, tr("Save portable YAGF project folder"), {},
@@ -2361,6 +2466,7 @@ void MainWindow::showPage(int number)
     if (number < 1 || number > pageCount || processor.isBusy() || exportBusy) return;
     if (!maybeApplyEditor()) return;
     currentPage = number;
+    originalPath = document.sourceForPage(number).path;
     updatePageControls();
     if (const OcrPage *page = document.page(number);
         page && !mathMode->isChecked() && (page->engineId == processor.engineId() || page->engineId == "local-mixed") && !page->language.isEmpty())
@@ -2925,7 +3031,7 @@ void MainWindow::runBatchOcr(bool remainingOnly)
     if (hasCorrections && QMessageBox::question(this, tr("Recognize all pages again"),
         tr("Matching corrections will be kept, but unmatched words may be replaced. Continue?"))
         != QMessageBox::Yes) return;
-    if (!processing::isPagedSource(originalPath)) {
+    if (pageCount == 1 && !processing::isPagedSource(originalPath)) {
         status->setText(tr("Recognizing the whole page…"));
         updateRecognitionProgress(0, 1);
         processor.recognize(imagePath, languageEdit->text().trimmed(), currentPage);
@@ -3350,6 +3456,12 @@ void MainWindow::showPageActions(int number, const QPoint &globalPosition)
     clear->setObjectName(QStringLiteral("clearPageBlocks"));
     clear->setEnabled(!processor.isBusy() && !exportBusy && page && !page->imageRegions.isEmpty());
     connect(clear, &QAction::triggered, this, [this, number] { clearPageBlocks(number); });
+    menu.addSeparator();
+    auto *remove = menu.addAction(tr("Remove page…"));
+    remove->setObjectName(QStringLiteral("removePageAction"));
+    remove->setEnabled(!processor.isBusy() && !exportBusy && !projectLoading &&
+        !document.sourcePath.isEmpty() && number >= 1 && number <= pageCount);
+    connect(remove, &QAction::triggered, this, [this, number] { removeDocumentPage(number); });
     menu.exec(globalPosition);
 }
 

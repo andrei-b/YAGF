@@ -82,6 +82,22 @@ int main()
     assert(loaded.page(2)->words.at(0).text == QStringLiteral("Hallo!"));
     assert(loaded.page(2)->regions.at(0).paragraphs.at(0).lines.at(0).wordIds.size() == 1);
 
+    {
+        auto sequence = original;
+        sequence.materializePageSources();
+        sequence.pageSources[1] = {directory.filePath("second.png"), 1};
+        assert(ProjectFile::save(path, sequence, &error));
+        assert(ProjectFile::load(path, &loaded, &error));
+        assert(loaded.sourceForPage(2).path == sequence.pageSources[1].path);
+        assert(loaded.sourceForPage(2).page == 1);
+        auto json = sequence.toJson();
+        json["page_sources"] = QJsonArray{QJsonObject{{"path", "image.png"}, {"page", 1}}};
+        assert(!OcrDocument::fromJson(json, &loaded, &error));
+        json["page_sources"] = QJsonArray{QJsonObject{{"path", "image.png"}, {"page", 0}},
+                                         QJsonObject{{"path", "second.png"}, {"page", 1}}};
+        assert(!OcrDocument::fromJson(json, &loaded, &error));
+    }
+
     original.page(1)->words[0].text = QStringLiteral("planet");
     assert(ProjectFile::save(path, original, &error));
     assert(ProjectFile::load(path, &loaded, &error));
