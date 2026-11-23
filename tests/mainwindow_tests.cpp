@@ -238,7 +238,12 @@ static void testUnrecognizedProjectSaving(const QTemporaryDir &directory)
             window.loadProject(destination);
             wait([&] { return recognize->isEnabled() && pages->count() == count; });
             // A saved source can be reopened and resaved without creating OCR records.
-            save->trigger();
+            window.activateWindow();
+            wait([&] { return QApplication::activeWindow() == &window && !QApplication::activeModalWidget(); });
+            view->setFocus();
+            QSignalSpy saveInvoked(save, &QAction::triggered);
+            QTest::keyClick(window.windowHandle(), Qt::Key_S, Qt::ControlModifier);
+            assert(saveInvoked.size() == 1);
             assert(load() && saved.pages.isEmpty());
             for (int number = 1; number <= count; ++number) {
                 pages->setCurrentRow(number - 1);

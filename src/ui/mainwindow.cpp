@@ -789,7 +789,9 @@ MainWindow::MainWindow()
     recentProjectsMenu->setObjectName(QStringLiteral("recentProjectsMenu"));
     connect(fileMenu, &QMenu::aboutToShow, this, &MainWindow::refreshRecentProjects);
     refreshRecentProjects();
-    fileMenu->addAction(tr("Save project"), this, &MainWindow::saveProject);
+    auto *saveProjectAction = fileMenu->addAction(tr("Save project"), this, &MainWindow::saveProject);
+    saveProjectAction->setShortcuts(QKeySequence::Save);
+    addAction(saveProjectAction);
     auto *saveAction = toolbar->addAction(style()->standardIcon(QStyle::SP_DialogSaveButton),
                                           tr("Save"), this, &MainWindow::saveProject);
     saveAction->setToolTip(tr("Save the current project"));
