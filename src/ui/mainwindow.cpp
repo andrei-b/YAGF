@@ -1,22 +1,26 @@
 #include "pdfexporter.h"
 #include "detail/pdfformulas.h"
 #include "formulaeditor.h"
+#include "inlineformuladialog.h"
 #include "exportpage.h"
 #include "scientificbookexporter.h"
 #include "latexdocumentexporter.h"
 #include "docxexporter.h"
 #include "verifiedsampleexporter.h"
 #include "mainwindow.h"
+#include "overlapreading.h"
 #include "regionoutline.h"
 #include <QScopeGuard>
 #include "blockminiaturelist.h"
 #include "projectfile.h"
+#include "sessionrecovery.h"
 #include "preprocessdialog.h"
 #include "restorationdialog.h"
 #include <QBuffer>
 #include "imageprocessor.h"
 #include "formulagrowth.h"
 #include "layoutdialog.h"
+#include "layoutcorrection.h"
 #include "aipagelayoutdialog.h"
 #include "aipageicons.h"
 #include "nativetrainingdialog.h"
@@ -274,7 +278,11 @@ void carryCorrections(OcrPage &fresh, const OcrPage *oldPage, bool estimateForma
     if (!oldPage) return;
     auto detectedBlocks = std::move(fresh.imageRegions);
     core::retainCorrections(fresh, *oldPage, estimateFormatting);
-    if (!detectedBlocks.isEmpty() || fresh.engineId == "local-mixed") fresh.imageRegions = std::move(detectedBlocks);
+    if (!detectedBlocks.isEmpty() || fresh.engineId == "local-mixed") {
+        if (core::layoutAnnotations(detectedBlocks) != core::layoutAnnotations(fresh.imageRegions))
+            core::beginLayoutSplit(fresh);
+        fresh.imageRegions = std::move(detectedBlocks);
+    }
     if (!keepLayout) {
         fresh.imageRegions.removeIf([](const auto &block) { return block.autoDetected && block.detectedLabel.isEmpty(); });
         return;
@@ -781,7 +789,9 @@ MainWindow::MainWindow()
     recentProjectsMenu->setObjectName(QStringLiteral("recentProjectsMenu"));
     connect(fileMenu, &QMenu::aboutToShow, this, &MainWindow::refreshRecentProjects);
     refreshRecentProjects();
-    fileMenu->addAction(tr("Save project"), this, &MainWindow::saveProject);
+    auto *saveProjectAction = fileMenu->addAction(tr("Save project"), this, &MainWindow::saveProject);
+    saveProjectAction->setShortcuts(QKeySequence::Save);
+    addAction(saveProjectAction);
     auto *saveAction = toolbar->addAction(style()->standardIcon(QStyle::SP_DialogSaveButton),
                                           tr("Save"), this, &MainWindow::saveProject);
     saveAction->setToolTip(tr("Save the current project"));
@@ -1252,7 +1262,10 @@ MainWindow::MainWindow()
     });
     connect(selectionEditor, &QTextEdit::customContextMenuRequested, this, [this](const QPoint &position) {
         std::unique_ptr<QMenu> menu(selectionEditor->createStandardContextMenu());
-        menu->addSeparator(); menu->addAction(teachSymbolAction);
+        menu->addSeparator();
+        auto *mark = menu->addAction(tr("Mark as inline formula…"), this, [this] { markSelectedInlineFormula(); });
+        mark->setEnabled(!selectedWords.isEmpty() && !editorPending);
+        menu->addAction(teachSymbolAction);
         menu->exec(selectionEditor->viewport()->mapToGlobal(position));
     });
     auto *wordPanel = new QWidget(editorSplitter);
@@ -1382,7 +1395,7 @@ MainWindow::MainWindow()
     connect(view, &PageView::regionChanged, this, &MainWindow::moveImageRegion);
     connect(view, &PageView::regionDeleteRequested, this, &MainWindow::deleteImageRegion);
     connect(view, &PageView::regionContextMenuRequested, this, &MainWindow::showBlockContextMenu);
-    connect(view, &PageView::pageContextMenuRequested, this, [this](const QPoint &position) { showPageActions(currentPage, position); });
+    connect(view, &PageView::pageContextMenuRequested, this, [this](const QPoint &position) { showPageActions(currentPage, position, true); });
     connect(blockMiniatures, &BlockMiniatureList::blockContextMenuRequested, this, &MainWindow::showBlockContextMenu);
     connect(regionList, &QListWidget::itemSelectionChanged, this, [this] {
         QSet<QString> ids;
@@ -1421,6 +1434,10 @@ MainWindow::MainWindow()
     statusBar()->addPermanentWidget(status);
 
     connect(&processor, &DocumentProcessor::busyChanged, this, &MainWindow::setBusy);
+    recoveryTimer = new QTimer(this);
+    recoveryTimer->setSingleShot(true);
+    recoveryTimer->setInterval(1500);
+    connect(recoveryTimer, &QTimer::timeout, this, &MainWindow::writeRecoverySnapshot);
     connect(&processor, &DocumentProcessor::recognitionStage, this,
         [this](int page,const QString &stage,int complete,int total) {
             if (!processor.isRecognizing()) return;
@@ -1430,6 +1447,7 @@ MainWindow::MainWindow()
                 setFixedProgressText(recognitionProgress, tr("Page %1: %2").arg(page).arg(detail));
         });
     connect(&processor, &DocumentProcessor::failed, this, [this](const QString &message) {
+        recognitionInterrupted = false;
         queuedImageRegions.clear();
         verificationTarget.reset();
         refreshRenderedPageIfNeeded();
@@ -1440,9 +1458,12 @@ MainWindow::MainWindow()
         verificationTarget.reset();
         status->setText(tr("Cancelled"));
         refreshRenderedPageIfNeeded();
+        if (std::exchange(recognitionInterrupted, false))
+            // Leave the processor's signal before a save dialog can open.
+            QTimer::singleShot(0, this, &MainWindow::finishInterruptedRecognition);
     });
     connect(&processor, &DocumentProcessor::documentOpened, this, [this](int count) {
-        if (!projectPath.isEmpty() && document.totalPages != count) {
+        if (!document.pages.isEmpty() && document.totalPages != count) {
             // Version 1 projects described only the first rendered page.
             if (document.totalPages == 1 && document.pages.size() == 1 && document.pages.first().number == 1)
                 markDirty();
@@ -1488,6 +1509,7 @@ MainWindow::MainWindow()
             page.sourceHeight = rawImage.height();
         }
         page.imageRegions = std::move(blocks);
+        core::beginLayoutSplit(page);
         page.language = language;
         selectedRegionIds.clear();
         selectedImageRegion = -1;
@@ -1503,14 +1525,15 @@ MainWindow::MainWindow()
         undoStack.push(new ReplacePageCommand(document,evidence.number,std::move(page),tr("Save recognition history")));
     });
     connect(&processor, &DocumentProcessor::recognized, this,
-            [this](OcrPage newPage, const QPoint &offset, const QRect &region) {
+            [this](OcrPage newPage, const QPoint &offset, const QRect &region, const QString &blockId) {
         QImageReader reader(imagePath);
         const QSize size = reader.size();
         const OcrPage *oldPage = document.page(currentPage);
         ImageRegion selectedArea;
         selectedArea.bounds = region;
         if (oldPage && !region.isEmpty()) {
-            const auto match = std::ranges::find(oldPage->imageRegions,region,&ImageRegion::bounds);
+            const auto match = blockId.isEmpty() ? std::ranges::find(oldPage->imageRegions,region,&ImageRegion::bounds)
+                                                 : std::ranges::find(oldPage->imageRegions,blockId,&ImageRegion::id);
             if (match != oldPage->imageRegions.end()) selectedArea = *match;
         }
         const bool correctedFrame = region.isEmpty() && newPage.preprocessing != displayedPreprocessing;
@@ -1547,6 +1570,11 @@ MainWindow::MainWindow()
             area.translate(offset);
         }
         core::attachRecognitionCoordinates(newPage);
+        const bool table = std::ranges::any_of(newPage.recognitionEvidence, [](const auto &r) {
+            return r.provenance.task == "table";
+        });
+        const QRegion shared = oldPage && !region.isEmpty() && !table
+            ? core::sharedReadingArea(selectedArea,oldPage->imageRegions) : QRegion{};
         if (region.isEmpty()) {
             if (oldPage) newPage.words.removeIf([&](const OcrWord &word) {
                 return std::ranges::any_of(oldPage->imageRegions, [&](const ImageRegion &block) {
@@ -1560,6 +1588,13 @@ MainWindow::MainWindow()
             previous.words.removeIf([&](const auto &word) { return !overlapsWord(word, selectedArea); });
             previous.pendingCorrections.removeIf([&](const auto &word) { return !overlapsWord(word, selectedArea); });
             previous.deletedWords.removeIf([&](const auto &word) { return !overlapsWord(word, selectedArea); });
+            if (!shared.isEmpty()) {
+                QVector<OcrWord> neighbors;
+                for (const auto &word : previous.words)
+                    if (shared.intersects(word.bounds)) neighbors.append(word);
+                core::reconcileOverlap(newPage.words,neighbors,shared,selectedArea.shape(),{});
+                for (auto &word : neighbors) core::insertOverlapWord(newPage.words,std::move(word));
+            }
             newPage.width = size.width(); newPage.height = size.height();
             core::retainCorrections(newPage, previous, document.preserveFormatting);
             core::normalizeBlockFontSizes(newPage, {}, true);
@@ -1578,6 +1613,13 @@ MainWindow::MainWindow()
                 auto target = std::ranges::find(merged.imageRegions, detected.id, &ImageRegion::id);
                 if (target != merged.imageRegions.end() && target->content.isEmpty())
                     target->content = detected.content;
+            }
+            if (table) {
+                for (auto &block : merged.imageRegions) if (block.id == selectedArea.id) {
+                    block.notText = false;
+                    block.content = "text";
+                    block.detectedLabel = "table";
+                }
             }
             merged.id = QStringLiteral("page-%1").arg(currentPage);
             merged.number = currentPage;
@@ -1622,7 +1664,20 @@ MainWindow::MainWindow()
                 insertion = 0;
                 while (insertion < kept.size() && kept.at(insertion).bounds.top() < region.top()) ++insertion;
             }
-            for (const OcrWord &word : newPage.words) kept.insert(insertion++, word);
+            if (!shared.isEmpty()) {
+                // A crop can read just the last few letters of a word whose
+                // center and most of its ink belong to the neighboring block.
+                // Keep its reading position even if the token splits or joins.
+                QVector<OcrWord> before = kept.mid(0,insertion);
+                QVector<OcrWord> after = kept.mid(insertion);
+                core::reconcileOverlap(before,newPage.words,shared,{},selectedArea.shape());
+                core::reconcileOverlap(after,newPage.words,shared,{},selectedArea.shape());
+                kept = std::move(before);
+                kept += newPage.words;
+                kept += after;
+            } else {
+                for (const OcrWord &word : newPage.words) kept.insert(insertion++, word);
+            }
             merged.words = std::move(kept);
             if (!document.useRawOcrOutput || merged.engineId!="tesseract") core::setFormulaOutput(merged,document.unicodeFormulas);
             undoStack.push(new ReplacePageCommand(document, currentPage, std::move(merged), tr("Recognize region")));
@@ -1669,6 +1724,7 @@ MainWindow::MainWindow()
         const QString engineId = page.engineId;
         core::normalizeBlockFontSizes(page);
         undoStack.push(new ReplacePageCommand(document, number, std::move(page), tr("Recognize page")));
+        ++recognizedThisRun;
         document.engine = engineId;
         document.language = language;
         document.totalPages = pageCount;
@@ -1679,6 +1735,7 @@ MainWindow::MainWindow()
         updateRecognitionProgress(completed, total);
     });
     connect(&processor, &DocumentProcessor::batchFinished, this, [this] {
+        recognitionInterrupted = false;
         status->setText(tr("Batch OCR complete"));
         refreshRenderedPageIfNeeded();
     });
@@ -2044,6 +2101,7 @@ void MainWindow::loadSource(const QString &path)
         return;
     }
     if (!maybeSave()) return;
+    discardRecoverySnapshot();
     processor.resetSource();
     verificationTarget.reset();
     originalPath = QFileInfo(path).absoluteFilePath();
@@ -2113,8 +2171,40 @@ void MainWindow::openPortableProject()
 
 void MainWindow::loadProject(const QString &path)
 {
-    if (processor.isBusy() || exportBusy || projectLoading || path.isEmpty()) return;
-    if (!maybeSave()) return;
+    loadProjectFile(path, false);
+}
+
+bool MainWindow::recoverUnsavedProject()
+{
+    const auto snapshot = core::SessionRecovery::orphanedSnapshot();
+    if (!snapshot) return false;
+    // Reattach to the project file only while it is no newer than the recovery copy;
+    // if it was saved again later (or is gone), restore as Untitled so nothing is overwritten.
+    const QFileInfo original(snapshot->originalProject);
+    const bool reattach = !snapshot->originalProject.isEmpty() && original.exists() &&
+                          original.lastModified() <= QFileInfo(snapshot->path).lastModified();
+    if (!loadProjectFile(snapshot->path, true, reattach ? snapshot->originalProject : QString())) return false;
+    // Take the restored work over into this session's own recovery copy before
+    // dropping the old one, so a second crash cannot lose it.
+    writeRecoverySnapshot();
+    if (recovery && QFileInfo::exists(recovery->snapshotPath())) core::SessionRecovery::removeSnapshot(snapshot->path);
+    if (reattach)
+        statusBar()->showMessage(tr("Restored unsaved changes to %1 from a session that ended unexpectedly. "
+                                    "Save to keep them.").arg(original.fileName()), 30000);
+    else if (!snapshot->originalProject.isEmpty())
+        statusBar()->showMessage(tr("Restored unsaved changes to %1 as an Untitled project, because that file "
+                                    "is missing or was saved again later.").arg(snapshot->originalProject), 30000);
+    else
+        statusBar()->showMessage(tr("Restored an unsaved project from a session that ended unexpectedly. "
+                                    "Save it to keep it."), 30000);
+    return true;
+}
+
+bool MainWindow::loadProjectFile(const QString &path, bool recovered, const QString &originalProject)
+{
+    if (processor.isBusy() || exportBusy || projectLoading || path.isEmpty()) return false;
+    if (!maybeSave()) return false;
+    discardRecoverySnapshot();
     projectLoading = true;
     if (!projectLoadingProgress) {
         projectLoadingProgress = new ProjectLoadingDialog(this);
@@ -2142,23 +2232,25 @@ void MainWindow::loadProject(const QString &path)
     }));
     loadingEvents.exec();
     auto result = loading.result();
-    if (!result.opened) { showError(result.error); return; }
+    const QString keptCopy = recovered ? tr("\n\nThe unsaved work is kept in %1.").arg(path) : QString();
+    if (!result.opened) { showError(result.error + keptCopy); return false; }
     OcrDocument loaded = std::move(result.document);
     if (!QFileInfo::exists(loaded.sourcePath)) {
-        showError(tr("Source document is missing: %1").arg(loaded.sourcePath));
-        return;
+        showError(tr("Source document is missing: %1").arg(loaded.sourcePath) + keptCopy);
+        return false;
     }
     for (const auto &source : loaded.pageSources) {
         if (!QFileInfo(source.path).isFile()) {
             showError(tr("Source document is missing: %1").arg(source.path));
-            return;
+            return false;
         }
     }
     processor.resetSource();
     undoStack.clear();
     originalPath = loaded.sourcePath;
-    projectPath = path;
-    rememberProject();
+    // A recovered copy saves back to the project it came from, or stays Untitled.
+    projectPath = recovered ? originalProject : path;
+    if (!projectPath.isEmpty()) rememberProject();
     verificationTarget.reset();
     document = std::move(loaded);
     verification->invalidate(1);
@@ -2172,7 +2264,8 @@ void MainWindow::loadProject(const QString &path)
         rawOcrOutputAction->setChecked(document.useRawOcrOutput);
     }
     correctionMemory.reset();
-    externalDirty = false;
+    // Recovered work is not in any project file yet: keep it marked as modified.
+    externalDirty = recovered;
     mathMode->setChecked(document.mathOcr);
     { const QSignalBlocker blocker(unicodeFormulasAction); unicodeFormulasAction->setChecked(document.unicodeFormulas); }
     if (const auto *first = document.page(1); first && !mathMode->isChecked() &&
@@ -2182,7 +2275,7 @@ void MainWindow::loadProject(const QString &path)
     else if (!mathMode->isChecked() && (document.engine == processor.engineId() || document.engine == "local-mixed") && !document.language.isEmpty())
         languageEdit->setText(document.engine == "tesseract"
             ? processing::TesseractEngine::modelLanguage(document.language) : document.language);
-    dirty = false;
+    dirty = recovered;
     updateTitle();
     wordList->clear();
     displayedWords.clear();
@@ -2220,6 +2313,7 @@ void MainWindow::loadProject(const QString &path)
     } else {
         loadImage(originalPath);
     }
+    return true;
 }
 
 void MainWindow::finishProjectLoading()
@@ -2281,6 +2375,7 @@ bool MainWindow::saveProject()
     externalDirty = false;
     undoStack.setClean();
     dirty = false;
+    discardRecoverySnapshot();
     updateTitle();
     statusBar()->showMessage(tr("Project saved: %1").arg(projectPath));
     return true;
@@ -2305,6 +2400,7 @@ bool MainWindow::saveProjectAs()
     externalDirty = false;
     undoStack.setClean();
     dirty = false;
+    discardRecoverySnapshot();
     updateTitle();
     statusBar()->showMessage(tr("Project saved: %1").arg(projectPath));
     return true;
@@ -2329,6 +2425,7 @@ bool MainWindow::savePortableProject()
     externalDirty = false;
     undoStack.setClean();
     dirty = false;
+    discardRecoverySnapshot();
     updateTitle();
     statusBar()->showMessage(tr("Portable project saved: %1").arg(directory));
     return true;
@@ -2356,6 +2453,51 @@ void MainWindow::refreshDirty()
 {
     dirty = externalDirty || !undoStack.isClean();
     updateTitle();
+    scheduleRecoverySnapshot();
+}
+
+void MainWindow::scheduleRecoverySnapshot()
+{
+    // Keep a recovery copy whenever there are changes not yet in a project file.
+    if (dirty && !document.pages.isEmpty() && !document.sourcePath.isEmpty()) {
+        // Do not restart a pending write, so a stream of changes still gets saved.
+        if (recoveryTimer && !recoveryTimer->isActive()) recoveryTimer->start();
+    } else {
+        discardRecoverySnapshot();
+    }
+}
+
+void MainWindow::writeRecoverySnapshot()
+{
+    if (recoveryTimer) recoveryTimer->stop();
+    if (!dirty || document.pages.isEmpty() || document.sourcePath.isEmpty()) return;
+    if (!recovery) recovery = std::make_unique<core::SessionRecovery>();
+    QString error;
+    if (!recovery->save(document, projectPath, &error))
+        statusBar()->showMessage(tr("Could not write the recovery copy: %1").arg(error), 15000);
+}
+
+void MainWindow::discardRecoverySnapshot()
+{
+    if (recoveryTimer) recoveryTimer->stop();
+    if (recovery) recovery->discard();
+}
+
+void MainWindow::finishInterruptedRecognition()
+{
+    if (recognizedThisRun == 0) {
+        status->setText(tr("Recognition interrupted before any page was finished."));
+        return;
+    }
+    status->setText(tr("Recognition interrupted: %1 of %2 pages recognized.")
+                        .arg(recognizedThisRun).arg(recognitionTotal));
+    // Secure the finished pages at once, whatever happens with the save below.
+    writeRecoverySnapshot();
+    if (!projectPath.isEmpty()) {
+        saveProject();
+    } else if (!saveProjectAs()) {
+        statusBar()->showMessage(tr("The recognized pages are kept in a recovery copy until you save the project."), 30000);
+    }
 }
 
 void MainWindow::updateTitle()
@@ -2623,7 +2765,7 @@ void MainWindow::runOcr()
     if (const OcrPage *page = document.page(currentPage); page && !selectedRegionIds.isEmpty()) {
         QVector<ImageRegion> targets;
         for (const auto &region : page->imageRegions)
-            if (selectedRegionIds.contains(region.id) && !region.notText) targets.append(region);
+            if (selectedRegionIds.contains(region.id) && (!region.notText || region.detectedLabel == "table")) targets.append(region);
         if (targets.isEmpty()) {
             status->setText(tr("The selected regions are marked Not a text."));
             return;
@@ -2637,7 +2779,7 @@ void MainWindow::runOcr()
             tr("Some selected regions contain corrected text. New OCR may replace unmatched corrections. Continue?"))
             != QMessageBox::Yes) return;
         if (targets.size() > 1 && processor.engineId() == "tesseract" &&
-            std::ranges::all_of(targets, [](const auto &r) { return !r.content.isEmpty(); })) {
+            std::ranges::all_of(targets, [](const auto &r) { return !r.content.isEmpty() && r.detectedLabel != "table"; })) {
             status->setText(tr("Recognizing selected blocks…"));
             processor.recognizeTypedRegions(imagePath, languageEdit->text(), currentPage, targets);
             return;
@@ -2664,7 +2806,8 @@ void MainWindow::runNextImageRegion()
     status->setText(tr("Recognizing region %1 of %2…")
                     .arg(nextQueuedImageRegion + 1).arg(queuedImageRegions.size()));
     const auto &region = queuedImageRegions.at(nextQueuedImageRegion);
-    processor.recognizeRegion(imagePath, blockLanguage(region), currentPage, region.bounds);
+    if (region.detectedLabel == "table") recognizeTable(region, false);
+    else processor.recognizeRegion(imagePath, blockLanguage(region), currentPage, region.bounds, {}, region.id);
 }
 
 bool MainWindow::usePaddleVlService(const QUrl &url)
@@ -3059,7 +3202,8 @@ void MainWindow::updateRecognitionProgress(qsizetype completed, qsizetype total)
         recognitionProgress = new QProgressDialog(this);
         recognitionProgress->setObjectName(QStringLiteral("recognitionProgressDialog"));
         recognitionProgress->setWindowTitle(tr("Recognizing pages"));
-        recognitionProgress->setCancelButtonText(tr("Cancel"));
+        // Size the fixed dialog for the longer of the two button labels.
+        recognitionProgress->setCancelButtonText(tr("Interrupt"));
         recognitionProgress->setMinimumDuration(0);
         recognitionProgress->setAutoClose(false);
         recognitionProgress->setAutoReset(false);
@@ -3071,12 +3215,32 @@ void MainWindow::updateRecognitionProgress(qsizetype completed, qsizetype total)
         label->setMinimumHeight(label->fontMetrics().lineSpacing());
         recognitionProgress->setLabel(label);
         recognitionProgress->setFixedSize(recognitionProgress->sizeHint());
-        connect(recognitionProgress, &QProgressDialog::canceled, &processor, &DocumentProcessor::cancel);
+        connect(recognitionProgress, &QProgressDialog::canceled, this, [this] {
+            // Multipage runs stop but keep every finished page; a single page is simply cancelled.
+            recognitionInterrupted = recognitionTotal > 1;
+            processor.cancel();
+        });
     }
+    if (completed == 0) recognizedThisRun = 0;
+    recognitionTotal = total;
+    recognitionProgress->setCancelButtonText(total > 1 ? tr("Interrupt") : tr("Cancel"));
     recognitionProgress->setRange(0, static_cast<int>(total));
     setFixedProgressText(recognitionProgress, tr("%1 / %2 pages recognized").arg(completed).arg(total));
     recognitionProgress->setValue(static_cast<int>(completed));
     recognitionProgress->show();
+}
+
+static QVector<ImageRegion> ocrLayoutBlocks(const OcrPage &page)
+{
+    QVector<ImageRegion> blocks;
+    for (const auto &region : page.regions) {
+        ImageRegion block;
+        block.bounds = region.bounds;
+        block.content = region.type;
+        block.notText = region.isFigure();
+        blocks.append(std::move(block));
+    }
+    return blocks;
 }
 
 void MainWindow::editLayout()
@@ -3086,39 +3250,13 @@ void MainWindow::editLayout()
     if (!page || page->regions.isEmpty()) return;
     LayoutDialog dialog(*page, QImage(imagePath), this);
     if (dialog.exec() != QDialog::Accepted || !dialog.hasChanges()) return;
-    const OcrPage target = dialog.editedPage();
-    bool changed = false;
-    for (int i = 0; i < target.regions.size(); ++i) {
-        const OcrRegion &wanted = target.regions.at(i);
-        const OcrRegion &current = page->regions.at(i);
-        changed |= wanted.id != current.id || wanted.type != current.type || wanted.bounds != current.bounds;
-    }
-    if (!changed) return;
-    undoStack.beginMacro(tr("Edit layout"));
-    for (int desired = 0; desired < target.regions.size(); ++desired) {
-        const QString id = target.regions.at(desired).id;
-        int actual = -1;
-        for (int j = 0; j < document.page(currentPage)->regions.size(); ++j)
-            if (document.page(currentPage)->regions.at(j).id == id) { actual = j; break; }
-        while (actual > desired) {
-            undoStack.push(new ChangeReadingOrderCommand(document, currentPage, actual, -1));
-            --actual;
-        }
-    }
-    for (const OcrRegion &wanted : target.regions) {
-        const OcrRegion *current = nullptr;
-        for (const OcrRegion &region : document.page(currentPage)->regions)
-            if (region.id == wanted.id) { current = &region; break; }
-        if (!current) continue;
-        if (current->type != wanted.type)
-            undoStack.push(new ChangeRegionTypeCommand(document, currentPage, wanted.id, wanted.type));
-        current = nullptr;
-        for (const OcrRegion &region : document.page(currentPage)->regions)
-            if (region.id == wanted.id) { current = &region; break; }
-        if (current && current->bounds != wanted.bounds)
-            undoStack.push(new MoveRegionCommand(document, currentPage, wanted.id, wanted.bounds));
-    }
-    undoStack.endMacro();
+    auto target = dialog.editedPage();
+    const auto before = ocrLayoutBlocks(*page);
+    const auto after = ocrLayoutBlocks(target);
+    if (core::layoutAnnotations(before) == core::layoutAnnotations(after) &&
+        std::ranges::equal(target.regions, page->regions, {}, &OcrRegion::id, &OcrRegion::id)) return;
+    if (!captureLayoutEdit(target, displayedPageImage(), before, after, "ocr-layout")) return;
+    undoStack.push(new ReplacePageCommand(document, currentPage, std::move(target), tr("Edit layout")));
     status->setText(tr("Page %1 layout and reading order updated").arg(currentPage));
 }
 
@@ -3129,6 +3267,7 @@ void MainWindow::createRegionFromSelection()
     if (!page) return;
     OcrPage edited = *page;
     if (!edited.extractRegion(selectedWords)) return;
+    if (!captureLayoutEdit(edited, displayedPageImage(), ocrLayoutBlocks(*page), ocrLayoutBlocks(edited), "ocr-layout")) return;
     undoStack.push(new ExtractRegionCommand(document, currentPage, std::move(edited)));
     status->setText(tr("Created a region from selected words. Use Edit layout to set its type and order."));
 }
@@ -3256,6 +3395,33 @@ void MainWindow::selectWord(int index)
     view->centerOn(wordBoxes.at(index));
 }
 
+bool MainWindow::captureLayoutEdit(OcrPage &page, const QImage &image, const QVector<ImageRegion> &proposed,
+                                   const QVector<ImageRegion> &corrected, const QString &source)
+{
+    auto result = core::recordLayoutCorrection(page, image, proposed, corrected, source);
+    if (!result) showError(result.error());
+    return result.has_value();
+}
+
+void MainWindow::commitBlockEdit(OcrPage edited, const QString &label)
+{
+    const int number = edited.number;
+    const auto *before = document.page(number);
+    if (before && (!before->imageRegions.isEmpty() || !before->layoutTraining.splitId.isEmpty()) &&
+        core::layoutAnnotations(before->imageRegions) != core::layoutAnnotations(edited.imageRegions)) {
+        QImage image;
+        if (number == currentPage) image = displayedPageImage();
+        else {
+            QTemporaryDir directory;
+            auto rendered = processing::readExportPage(document, number, directory, std::atomic_bool{false});
+            if (!rendered) { showError(rendered.error().error); return; }
+            image = std::move(*rendered);
+        }
+        if (!captureLayoutEdit(edited, image, before->imageRegions, edited.imageRegions, "block-edit")) return;
+    }
+    undoStack.push(new ReplacePageCommand(document, number, std::move(edited), label));
+}
+
 void MainWindow::selectRegion(const QRectF &bounds)
 {
     if (imagePath.isEmpty() || processor.isBusy() || exportBusy) return;
@@ -3283,7 +3449,7 @@ void MainWindow::selectRegion(const QRectF &bounds)
     edited.imageRegions.append({QUuid::createUuid().toString(QUuid::WithoutBraces), area});
     selectedRegionIds = {edited.imageRegions.last().id};
     selectedImageRegion = static_cast<int>(edited.imageRegions.size()) - 1;
-    undoStack.push(new ReplacePageCommand(document, currentPage, std::move(edited), tr("Add image region")));
+    commitBlockEdit(std::move(edited), tr("Add image region"));
 }
 
 void MainWindow::refreshImageRegionSelection(bool updateWords)
@@ -3400,7 +3566,7 @@ void MainWindow::moveImageRegion(int index, const QRectF &bounds)
     edited.imageRegions[index].detectedLabel.clear();
     edited.imageRegions[index].detectionScore = -1;
     selectedImageRegion = index;
-    undoStack.push(new ReplacePageCommand(document, currentPage, std::move(edited), tr("Move image region")));
+    commitBlockEdit(std::move(edited), tr("Move image region"));
 }
 
 void MainWindow::deleteImageRegion(int index)
@@ -3412,7 +3578,7 @@ void MainWindow::deleteImageRegion(int index)
     selectedRegionIds.remove(edited.imageRegions.at(index).id);
     edited.imageRegions.removeAt(index);
     selectedImageRegion = -1;
-    undoStack.push(new ReplacePageCommand(document, currentPage, std::move(edited), tr("Delete image region")));
+    commitBlockEdit(std::move(edited), tr("Delete image region"));
 }
 
 void MainWindow::clearPageBlocks(int pageNumber)
@@ -3426,7 +3592,7 @@ void MainWindow::clearPageBlocks(int pageNumber)
         selectedRegionIds.clear();
         selectedImageRegion = -1;
     }
-    undoStack.push(new ReplacePageCommand(document, pageNumber, std::move(edited), tr("Clear all blocks")));
+    commitBlockEdit(std::move(edited), tr("Clear all blocks"));
     statusBar()->showMessage(tr("Cleared all blocks on page %1").arg(pageNumber), 5000);
 }
 
@@ -3438,7 +3604,7 @@ void MainWindow::showPageContextMenu(const QPoint &position)
     showPageActions(number, pageList->viewport()->mapToGlobal(position));
 }
 
-void MainWindow::showPageActions(int number, const QPoint &globalPosition)
+void MainWindow::showPageActions(int number, const QPoint &globalPosition, bool onScan)
 {
     const auto *page = document.page(number);
     QMenu menu(this);
@@ -3451,6 +3617,20 @@ void MainWindow::showPageActions(int number, const QPoint &globalPosition)
         copy->setObjectName("copyBlockImageAction");
         copy->setEnabled(!processor.isBusy() && !exportBusy && !projectLoading && !imagePath.isEmpty());
         connect(copy,&QAction::triggered,this,[this,index=selected] { copyBlockImage(index); });
+    }
+    if (onScan && page && !editorPending && !processor.isBusy() && !exportBusy) {
+        const auto point = view->mapToScene(view->viewport()->mapFromGlobal(globalPosition)).toPoint();
+        QVector<int> hits;
+        QRect crop;
+        for (int i=0; i<page->words.size(); ++i) if (page->words[i].bounds.contains(point)) {
+            hits.append(i);
+            const auto box = page->words[i].bounds;
+            if (crop.isEmpty() || qint64(box.width())*box.height() < qint64(crop.width())*crop.height()) crop=box;
+        }
+        if (!hits.isEmpty()) menu.addAction(tr("Mark as inline formula…"),this,[this,hits,crop] {
+            updateSelection(hits);
+            markSelectedInlineFormula(crop);
+        });
     }
     auto *clear = menu.addAction(QIcon(":/actions/clear-blocks.png"), tr("Clear all blocks"));
     clear->setObjectName(QStringLiteral("clearPageBlocks"));
@@ -3552,6 +3732,8 @@ void MainWindow::classifyPageAreas()
     OcrPage page = std::move(prepared->page);
     page.language = languageEdit->text();
     page.imageRegions = dialog.regions();
+    core::beginLayoutSplit(page);
+    if (!captureLayoutEdit(page, prepared->image, dialog.proposedRegions(), page.imageRegions, "ai-page")) return;
     core::mergeRecognitionHistory(page.recognitionHistory,history);historyStored=true;
     selectedRegionIds.clear(); selectedImageRegion = -1;
     undoStack.push(new ReplacePageCommand(document, currentPage, std::move(page), tr("AI page areas")));
@@ -3588,7 +3770,7 @@ void MainWindow::refineFormulaBlocks()
     edited.imageRegions = std::move(regions);
     selectedRegionIds.clear();
     selectedImageRegion = -1;
-    undoStack.push(new ReplacePageCommand(document, currentPage, std::move(edited), tr("Refine formula blocks")));
+    commitBlockEdit(std::move(edited), tr("Refine formula blocks"));
     status->setText(tr("Block boundaries refined. Review the outlines, then recognize the page."));
 }
 
@@ -3620,8 +3802,8 @@ void MainWindow::splitSelectedBlockWithAi()
     auto subdivisions=dialog.regions();if(subdivisions.size()<2)return;
     if (edited.imageRegions.size()-1+subdivisions.size()>1000) return;
     core::mergeRecognitionHistory(edited.recognitionHistory,history);
+    const auto previousBlocks = edited.imageRegions;
     edited.imageRegions.removeAt(index);
-    const core::RegionInk ink(prepared->image);
     for(int i=0;i<subdivisions.size();++i) {
         auto &region=subdivisions[i];region.bounds.translate(original.bounds.topLeft());
         region.autoDetected=false; // Keep the explicitly accepted split during automatic layout.
@@ -3629,9 +3811,26 @@ void MainWindow::splitSelectedBlockWithAi()
         if (clipped.isEmpty()) return;
         region.setShape(clipped);
         if(region.language.isEmpty())region.language=original.language;
-        if(std::ranges::any_of(edited.imageRegions,[&](const auto &r){return ink.shapeConflicts(r.shape(),region.shape());}))return;
         edited.imageRegions.insert(index+i,region);
     }
+    // Applying a subdivision corrects the original coarse block. A change in
+    // the review dialog also supplies a distinct example of the AI proposal.
+    const bool correctingPreviousSplit = original.autoDetected || !original.detectedLabel.isEmpty() ||
+                                         !edited.layoutTraining.splitId.isEmpty();
+    core::beginLayoutSplit(edited, original.bounds);
+    if (correctingPreviousSplit &&
+        !captureLayoutEdit(edited, prepared->image, previousBlocks, edited.imageRegions, "subdivide-block")) return;
+    auto proposed = previousBlocks;
+    proposed.removeAt(index);
+    int insertion = index;
+    for (auto region : dialog.proposedRegions()) {
+        region.bounds.translate(original.bounds.topLeft());
+        const auto clipped = region.shape().intersected(original.shape());
+        if (clipped.isEmpty()) continue;
+        region.setShape(clipped);
+        proposed.insert(insertion++, region);
+    }
+    if (!captureLayoutEdit(edited, prepared->image, proposed, edited.imageRegions, "ai-block")) return;
     selectedRegionIds.clear();selectedImageRegion=-1;
     historyStored=true;
     undoStack.push(new ReplacePageCommand(document,currentPage,std::move(edited),tr("AI split block")));
@@ -3654,7 +3853,30 @@ void MainWindow::setBlockLanguage(int index, const QString &language, bool notTe
     region.notText = notText;
     if (notText) edited.words.removeIf([&](const OcrWord &word) { return overlapsWord(word, region); });
     selectedImageRegion = index;
-    undoStack.push(new ReplacePageCommand(document, currentPage, std::move(edited), tr("Select block language")));
+    commitBlockEdit(std::move(edited), tr("Select block language"));
+}
+
+void MainWindow::recognizeTable(const ImageRegion &region, bool confirmCorrections)
+{
+    auto services = ocrServices;
+    services.removeIf([](const auto &service) { return !service.enabled; });
+    const auto primary = processor.primaryOcrService();
+    services.prepend(processor.formulaOcrService());
+    services.prepend(primary);
+    processing::ModelRequirements requirements;
+    requirements.tasks = {"table"};
+    auto service = processing::selectOcrModel(services, requirements, primary.key());
+    if (!service) {
+        // Saved remote services acquire readiness on discovery. An explicit
+        // table request can also try an already configured endpoint.
+        for (const auto &configured : services)
+            if (configured.modelProfile().tasks.contains("table")) { service = configured; break; }
+    }
+    if (!service) { queuedImageRegions.clear(); showError(tr("Enable a table-capable model in Recognition settings.")); return; }
+    const auto &words = document.page(currentPage)->words;
+    if (confirmCorrections && std::ranges::any_of(words, [&](const auto &word) { return word.reviewed && overlapsWord(word, region); }) &&
+        QMessageBox::question(this, tr("Recognize table"), tr("Replace the corrected text in this area?")) != QMessageBox::Yes) return;
+    processor.recognizeRegion(imagePath, blockLanguage(region), currentPage, region.bounds, service, region.id);
 }
 
 void MainWindow::showBlockContextMenu(int index, const QPoint &globalPosition)
@@ -3668,9 +3890,15 @@ void MainWindow::showBlockContextMenu(int index, const QPoint &globalPosition)
     menu.setObjectName(QStringLiteral("blockContextMenu"));
     auto *recognize = menu.addAction(recognizeActionIcon(), tr("Recognize block"));
     recognize->setIconVisibleInMenu(true);
-    recognize->setEnabled(!region.notText);
+    recognize->setEnabled(!region.notText || region.detectedLabel == "table");
     connect(recognize, &QAction::triggered, this, &MainWindow::runOcr);
     auto *languages = menu.addMenu(tr("Select block language"));
+    auto *mark = menu.addAction(tr("Mark as inline formula…"), this,
+        [this, region] { markSelectedInlineFormula(region.bounds); });
+    mark->setEnabled(!selectedWords.isEmpty() || std::ranges::any_of(page->words, [&](const auto &word) {
+        return word.bounds.intersects(region.bounds);
+    }));
+    menu.addAction(tr("Recognize table…"), this, [this, region] { recognizeTable(region, true); });
     const auto addLanguage = [&](const QString &label, const QString &code, bool notText = false) {
         auto *action = languages->addAction(label);
         action->setData(code);
@@ -3715,7 +3943,7 @@ void MainWindow::showBlockContextMenu(int index, const QPoint &globalPosition)
             changed.imageRegions[index].notText = kind == "picture";
             changed.imageRegions[index].detectedLabel.clear();
             changed.imageRegions[index].detectionScore = -1;
-            undoStack.push(new ReplacePageCommand(document, currentPage, std::move(changed), tr("Set block content")));
+            commitBlockEdit(std::move(changed), tr("Set block content"));
         });
     }
     menu.addAction(aiSplitBlockAction);
@@ -3873,6 +4101,81 @@ void MainWindow::updateSelection(const QVector<int> &indices)
     selectionEditor->moveCursor(QTextCursor::Start);
     teachSymbolAction->setEnabled(!processor.isBusy() && !exportBusy && !projectLoading && !imagePath.isEmpty() && !indices.isEmpty());
     refreshSpellLanguage();
+}
+
+void MainWindow::markSelectedInlineFormula(QRect crop)
+{
+    if (processor.isBusy() || exportBusy || projectLoading || editorPending) return;
+    const auto *page = document.page(currentPage);
+    if (!page) return;
+    auto candidates = selectedWords;
+    if (!crop.isEmpty()) {
+        for (int i=0; i<page->words.size(); ++i)
+            if (page->words[i].bounds.contains(crop.center()) && !candidates.contains(i)) candidates.append(i);
+        if (candidates.isEmpty())
+            for (int i=0; i<page->words.size(); ++i)
+                if (page->words[i].bounds.intersects(crop)) candidates.append(i);
+    }
+    if (candidates.isEmpty()) return;
+    const auto cursor = selectionEditor->textCursor();
+    int index = -1, start = -1, length = 0;
+    for (int candidate : candidates) {
+        const auto range = editorWordRanges.value(candidate);
+        if (crop.isEmpty() && cursor.hasSelection() && cursor.selectionStart() >= range.first &&
+            cursor.selectionEnd() <= range.first + range.second) {
+            index = candidate;
+            if (core::formulaSourceText(page->words[index]) == page->words[index].text) {
+                start = cursor.selectionStart() - range.first;
+                length = cursor.selectionEnd() - cursor.selectionStart();
+            }
+            break;
+        }
+    }
+    std::optional<OcrPage> combined;
+    if (index < 0 && crop.isEmpty() && cursor.hasSelection()) {
+        QVector<int> span;
+        for (int candidate : candidates) {
+            const auto range = editorWordRanges.value(candidate);
+            if (range.first < cursor.selectionEnd() && range.first + range.second > cursor.selectionStart())
+                span.append(candidate);
+        }
+        if (span.size() > 1) {
+            const auto &first = page->words[span.first()];
+            const auto from = editorWordRanges[span.first()].first;
+            const auto last = editorWordRanges[span.last()];
+            if (std::ranges::any_of(span, [&](int i) {
+                    const auto &w = page->words[i];
+                    return w.block != first.block || w.paragraph != first.paragraph || w.layoutBlock ||
+                           core::formulaSourceText(w) != w.text;
+                })) { showError(tr("Select consecutive words in one paragraph or one structured OCR item.")); return; }
+            const auto text = selectionEditor->toPlainText().mid(from, last.first + last.second - from);
+            auto merged = core::WordEditor::apply(*page, span,
+                {{text, first.bold, first.italic, first.fontSizePt, first.fontFamily, true}});
+            if (!merged) { showError(merged.error()); return; }
+            combined = std::move(*merged);
+            page = &*combined;
+            index = span.first();
+            start = std::max(0, cursor.selectionStart() - from);
+            length = std::min(last.first + last.second, cursor.selectionEnd()) - from - start;
+        }
+    }
+    if (index < 0 && candidates.size() == 1) index = candidates.first();
+    if (index < 0) {
+        QStringList choices;
+        for (int i : candidates)
+            choices.append(tr("%1. %2").arg(choices.size()+1).arg(page->words[i].text.left(120)));
+        bool ok = false;
+        const auto choice = QInputDialog::getItem(this, tr("Mark as inline formula"),
+            tr("Choose the text containing the expression"), choices, 0, false, &ok);
+        if (!ok) return;
+        index = candidates[choices.indexOf(choice)];
+    }
+    if (crop.isEmpty()) crop = page->words[index].bounds;
+    auto edited = markInlineFormula(this, *page, index, start, length, displayedPageImage(), crop,
+                                    processor.formulaOcrService(), originalPath, document.unicodeFormulas);
+    if (!edited) return;
+    undoStack.push(new ReplacePageCommand(document, currentPage, std::move(*edited), tr("Mark as inline formula")));
+    updateSelection({index});
 }
 
 void MainWindow::editSelectedFormula()

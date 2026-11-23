@@ -1,3 +1,4 @@
+#include "layoutcorrection.h"
 #include "ocrdocument.h"
 #include "ocrreadings.h"
 #include "coordinateframes.h"
@@ -79,6 +80,7 @@ QJsonObject wordJson(const OcrWord &word)
     }
     if (!word.symbolShape.isEmpty()) result.insert("symbol_shape", QString::fromLatin1(word.symbolShape.toHex()));
     if (word.layoutBlock) result.insert("layout_block", true);
+    if (word.atOcrCropEdge) result.insert("at_ocr_crop_edge", true);
     if (word.geometryInferred) result.insert("geometry_inferred", true);
     return result;
 }
@@ -121,6 +123,8 @@ bool parseWord(const QJsonObject &json, int pageNumber, int width, int height, O
     if (json.contains("layout_block") && !json.value("layout_block").isBool()) return false;
     word->layoutBlock = json.value("layout_block").toBool();
     if (json.contains("geometry_inferred") && !json["geometry_inferred"].isBool()) return false;
+    if (json.contains("at_ocr_crop_edge") && !json["at_ocr_crop_edge"].isBool()) return false;
+    word->atOcrCropEdge = json["at_ocr_crop_edge"].toBool();
     word->geometryInferred = json["geometry_inferred"].toBool();
     if (json.contains("symbol_shape")) {
         const QByteArray hex = json.value("symbol_shape").toString().toLatin1();
@@ -521,6 +525,8 @@ QJsonObject OcrDocument::toJson(bool includeRestoredPixels) const
             for (const auto &result : page.recognitionEvidence) evidence.append(coordinateFrames.encode(result));
             item.insert("recognition_evidence", evidence);
         }
+        if (!page.layoutTraining.splitId.isEmpty() || !page.layoutTraining.examples.isEmpty())
+            item["layout_training"] = layoutTrainingJson(page.layoutTraining);
         if (!page.recognitionHistory.runs.isEmpty()) item["recognition_history"]=recognitionHistoryJson(page.recognitionHistory,&coordinateFrames);
         const auto frames=coordinateFrames.toJson();if(!frames.isEmpty())item["recognition_frames"]=frames;
         if (includeRestoredPixels && !page.preprocessing.restoredPng.isEmpty())
@@ -747,6 +753,11 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
                 if (!result) return fail(result.error());
                 page.recognitionEvidence.append(std::move(*result));
             }
+        }
+        if (object.contains("layout_training")) {
+            auto training = readLayoutTraining(object["layout_training"]);
+            if (!training) return fail(training.error());
+            page.layoutTraining = std::move(*training);
         }
         if (object.contains("recognition_history")) {
             auto history=readRecognitionHistory(object["recognition_history"],&coordinateFrames);

@@ -1,3 +1,4 @@
+#include "layoutcorrection.h"
 #include "projectfile.h"
 
 #include <QFile>
@@ -20,6 +21,39 @@ int main()
 {
     QTemporaryDir directory;
     assert(directory.isValid());
+    {
+        OcrPage page;
+        page.width = 64;
+        page.height = 48;
+        QImage scan(page.width, page.height, QImage::Format_RGB32);
+        scan.fill(Qt::white);
+        scan.setPixelColor(12, 15, Qt::black);
+        QVector<ImageRegion> original{{"automatic", {10, 10, 32, 20}, {}, false, "text", true}};
+        auto revised = original;
+        revised[0].content = "math";
+        revised[0].setShape(QRegion(QRect(10,10,32,10)) | QRect(10,20,24,10));
+        beginLayoutSplit(page);
+        assert(recordLayoutCorrection(page, scan, original, original, "ai-page"));
+        assert(page.layoutTraining.examples.isEmpty());
+        assert(recordLayoutCorrection(page, scan, original, revised, "block-edit"));
+        auto stored = readLayoutTraining(layoutTrainingJson(page.layoutTraining));
+        assert(stored && stored->examples.size() == 1);
+        page.layoutTraining = *stored;
+        assert(QImage::fromData(stored->examples[0].png).pixelColor(12,15) == Qt::black);
+        assert(stored->examples[0].corrected[0].toObject()["parts"].toArray().size() == 2);
+        auto moved = revised;
+        moved[0].bounds.translate(2, 4);
+        assert(recordLayoutCorrection(page, scan, revised, moved, "block-edit"));
+        assert(page.layoutTraining.examples.size() == 1);
+        assert(page.layoutTraining.examples[0].proposed == layoutAnnotations(original));
+        assert(page.layoutTraining.examples[0].corrected == layoutAnnotations(moved));
+        beginLayoutSplit(page);
+        assert(recordLayoutCorrection(page, scan, moved, revised, "block-edit"));
+        assert(page.layoutTraining.examples.size() == 2);
+        assert(layoutTrainingJson(page.layoutTraining)["images"].toObject().size() == 1);
+        assert(recordLayoutCorrection(page, scan, revised, moved, "block-edit"));
+        assert(page.layoutTraining.examples.size() == 1);
+    }
     const QString path = directory.filePath(QStringLiteral("sample.yagf.json"));
     OcrDocument original;
     original.sourcePath = QStringLiteral("/tmp/source.png");

@@ -84,6 +84,18 @@ class OptionalOcrTests(unittest.TestCase):
                 self.assertTrue(result['markdown'])
                 self.assertEqual(result['text'], [])
 
+    def test_inline_formula_and_math_cell_ownership(self):
+        result = {kind: [] for kind in ('text', 'formulas', 'tables', 'figures')}
+        adapters.add_block(result, 'inline_formula', r'\(x^2\)')
+        self.assertFalse(result['formulas'][0]['display'])
+        self.assertEqual(result['formulas'][0]['latex'], 'x^2')
+        adapters.add_block(result, 'table', '<tr><th colspan="2">Rate</th></tr>'
+                           '<tr><td><math>x^2</math></td><td>м</td></tr>', html_content=True)
+        table = result['tables'][0]
+        self.assertEqual(table['text'], 'Rate\n' + r'\(x^2\)' + '\tм')
+        self.assertEqual(table['structure']['table_layout'][0][0],
+                         {'header': True, 'colspan': 2, 'rowspan': 1})
+
     def test_chat_rejects_invalid_truncated_and_oversized_outputs(self):
         backend = adapters.ChatBackend('glm-ocr', 'http://127.0.0.1:8082/v1')
         self.assertEqual(backend.endpoint, 'http://127.0.0.1:8082/v1/chat/completions')

@@ -153,7 +153,7 @@ private slots:
         const auto layout = processing::detectPageAreas(page, options);
         QVERIFY(layout);
         QCOMPARE(layout->rawAreas.last().bounds, formula);
-        const auto merged = processing::mergePageAreas({}, layout->areas, true, core::RegionInk(page));
+        const auto merged = processing::mergePageAreas({}, layout->areas, true);
         QCOMPARE(merged.size(), 2);
         QCOMPARE(merged.first().bounds, paragraph);
         QCOMPARE(merged.last().bounds, formula);
@@ -174,10 +174,13 @@ private slots:
 
         auto proposals = layout->rawAreas;
         page.setPixelColor(formula.topLeft(), Qt::black);
-        QCOMPARE(processing::mergePageAreas({}, proposals, true, core::RegionInk(page)).size(), 1);
+        const core::RegionInk ink(page);
+        QVERIFY(ink.conflicts(paragraph,formula));
+        QCOMPARE(processing::mergePageAreas({}, proposals, true).size(), 2);
         proposals.first().bounds.translate(0, 10);
         page.fill(Qt::white);
-        QCOMPARE(processing::mergePageAreas({}, proposals, true, core::RegionInk(page)).size(), 1);
+        QVERIFY(core::RegionInk(page).conflicts(proposals.first().bounds,formula));
+        QCOMPARE(processing::mergePageAreas({}, proposals, true).size(), 2);
     }
     void overlappingLineProposalsCanBothBeApplied() {
         QImage page(180,100,QImage::Format_RGB32); page.fill(Qt::white);
@@ -204,6 +207,33 @@ private slots:
         QCOMPARE(dialog.regions()[1].shape(),regions[1].shape());
         QCOMPARE(server.requests,1);
     }
+    void overlappingParagraphsKeepBothBlocksWhenGlyphMarginsTouch() {
+        QImage page(180,130,QImage::Format_RGB32); page.fill(Qt::white);
+        const QRect upperGlyph(65,46,9,15), lowerGlyph(75,61,8,16);
+        QPainter painter(&page);
+        painter.fillRect(upperGlyph,Qt::black);
+        painter.fillRect(lowerGlyph,Qt::black);
+        painter.end();
+        Server server;
+        server.areas = {area("upper","mixed",{10,8,160,54},.94),
+                        area("lower","mixed",{10,58,160,62},.95)};
+        const auto layout = processing::detectPageAreas(page, {server.url()});
+        QVERIFY(layout);
+        const auto merged = processing::mergePageAreas({},layout->areas,true);
+        QCOMPARE(merged.size(),2);
+        QVERIFY(!merged[0].shape().intersects(merged[1].shape()));
+        QVERIFY(QRegion(upperGlyph).subtracted(merged[0].shape()).isEmpty());
+        QVERIFY(QRegion(lowerGlyph).subtracted(merged[1].shape()).isEmpty());
+
+        QSettings settings("YAGF", "YAGF Revival");
+        settings.setValue("layout/url",server.url().toString());
+        settings.setValue("layout/threshold",.5);
+        ui::AiPageLayoutDialog dialog(page,{});
+        dialog.show();
+        QTRY_COMPARE_WITH_TIMEOUT(dialog.regions().size(),2,3000);
+        QCOMPARE(dialog.regions()[0].shape(),merged[0].shape());
+        QCOMPARE(dialog.regions()[1].shape(),merged[1].shape());
+    }
     void inlineIntegralWithDetachedLimitsSurvivesParagraphConsolidation() {
         QImage gray(210,130,QImage::Format_Grayscale8);
         gray.fill(Qt::white);
@@ -224,7 +254,7 @@ private slots:
         QCOMPARE(math->id,QString("integral"));
         QCOMPARE(math->score,.85);
         const core::ImageRegion kept{"kept",{4,0,200,12},{},false,"text"};
-        const auto merged = processing::mergePageAreas({kept},proposals,true,core::RegionInk(gray));
+        const auto merged = processing::mergePageAreas({kept},proposals,true);
         QVERIFY(std::ranges::any_of(merged,[&](const auto &r){return r.content=="math" && r.bounds==math->bounds;}));
         QPainter erase(&gray); erase.fillRect(77,94,10,7,Qt::white); erase.end();
         proposals = modelAreas;
@@ -271,16 +301,19 @@ private slots:
         core::ImageRegion manual{"manual",QRect(0,0,30,30),"rus",false,"text",false};
         core::ImageRegion oldAuto{"old",QRect(0,100,50,50),{},false,"text",true};
         QVector<processing::PageArea> areas{{"image","picture",QRect(10,10,80,80),.99},{"chart","picture",QRect(80,80,80,80),.9}};
-        auto merged=processing::mergePageAreas({manual,oldAuto},areas,true); QCOMPARE(merged.size(),2);
+        auto merged=processing::mergePageAreas({manual,oldAuto},areas,true); QCOMPARE(merged.size(),3);
         QCOMPARE(merged[0].id,"manual"); QCOMPARE(merged[0].language,"rus"); QCOMPARE(merged[1].content,"picture"); QVERIFY(merged[1].notText);
-        QCOMPARE(merged[1].detectedLabel,"chart"); QCOMPARE(merged[1].detectionScore,.9);
-        auto appended=processing::mergePageAreas({manual,oldAuto},areas,false); QCOMPARE(appended.size(),3);
+        QVERIFY(merged[0].shape().intersects(merged[1].shape()));
+        QCOMPARE(merged[2].detectedLabel,"chart"); QCOMPARE(merged[2].detectionScore,.9);
+        auto appended=processing::mergePageAreas({manual,oldAuto},areas,false); QCOMPARE(appended.size(),4);
         core::OcrDocument book; book.sourcePath=directory.filePath("scan.png"); core::OcrPage page; page.width=page.height=page.sourceWidth=page.sourceHeight=200; page.imageRegions={manual,oldAuto}; book.replacePage(page);
         auto after=page; after.imageRegions=merged;
         QUndoStack undo; undo.push(new ui::ReplacePageCommand(book,1,after,"AI page areas")); QCOMPARE(book.page(1)->imageRegions[1].content,"picture");
         undo.undo(); QCOMPARE(book.page(1)->imageRegions[1].id,"old"); undo.redo();
         core::OcrDocument restored; QString error; QVERIFY2(core::OcrDocument::fromJson(book.toJson(),&restored,&error),qPrintable(error));
-        QCOMPARE(restored.page(1)->imageRegions[1].detectedLabel,"chart"); QCOMPARE(restored.page(1)->imageRegions[1].detectionScore,.9);
+        const auto &saved=restored.page(1)->imageRegions;
+        QCOMPARE(saved.size(),3); QVERIFY(saved[0].shape().intersects(saved[1].shape()));
+        QCOMPARE(saved[2].detectedLabel,"chart"); QCOMPARE(saved[2].detectionScore,.9);
         auto json=book.toJson(); auto pages=json["pages"].toArray(); auto p=pages[0].toObject(); auto regions=p["image_regions"].toArray(); auto r=regions[1].toObject(); r["detection_score"]=2.; regions[1]=r; p["image_regions"]=regions; pages[0]=p; json["pages"]=pages;
         QVERIFY(!core::OcrDocument::fromJson(json,&restored,&error));
     }
@@ -304,8 +337,11 @@ private slots:
         auto *use0=dialog.findChild<QCheckBox *>("layoutUseArea0");
         auto *use1=dialog.findChild<QCheckBox *>("layoutUseArea1");
         auto *use2=dialog.findChild<QCheckBox *>("layoutUseArea2");
-        QVERIFY(use0 && use1 && use2); QVERIFY(!use0->isEnabled()); QVERIFY(use1->isChecked()); QVERIFY(!use2->isChecked());
-        use2->click(); QVERIFY(!use1->isChecked()); use1->click(); QVERIFY(!use2->isChecked());
+        QVERIFY(use0 && use1 && use2); QVERIFY(use0->isEnabled());
+        QVERIFY(use0->isChecked() && use1->isChecked() && use2->isChecked());
+        QCOMPARE(dialog.regions().size(),5);
+        use0->click(); use2->click(); QVERIFY(use1->isChecked());
+        use2->click(); QVERIFY(use1->isChecked()); use2->click(); QVERIFY(use1->isChecked());
         auto *type=dialog.findChild<QComboBox *>("layoutType1"); QVERIFY(type);
         auto *alternative=type->parentWidget()->findChild<QToolButton *>("layoutAlternative"); QVERIFY(alternative && !alternative->isHidden());
         QVERIFY(alternative->text().contains("Picture") && alternative->text().contains("80%"));
@@ -389,6 +425,11 @@ private slots:
         ui::AiPageLayoutDialog dialog(image,{},nullptr,1,{},true);
         dialog.show();
         QTRY_VERIFY(dialog.findChild<QPushButton *>("applyPageAreas")->isEnabled());
+        QCOMPARE(dialog.regions().size(),8);
+        QCOMPARE(dialog.regions().first().bounds,image.rect());
+        auto *keepFallback=dialog.findChild<QCheckBox *>("layoutUseArea0");
+        QVERIFY(keepFallback && keepFallback->isChecked());
+        keepFallback->click();
         const auto parts=dialog.regions();
         QCOMPARE(parts.size(),7);
         QCOMPARE(parts[2].content,"math"); QCOMPARE(parts[4].content,"math");

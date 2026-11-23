@@ -1,5 +1,6 @@
 #include "blockfont.h"
 #include "documentprocessor.h"
+#include "overlapreading.h"
 #include "pagegeometry.h"
 #include "fontestimator.h"
 
@@ -99,13 +100,17 @@ DocumentProcessor::DocumentProcessor(QObject *parent, const core::OcrDocument *s
         OcrJobResult result = ocrWatcher.result();
         const bool batch = job == Job::BatchOcr;
         const bool split = job == Job::SplitBlocks;
-        if((cancellationRequested || !result.outcome) && !result.historyPage.recognitionHistory.runs.isEmpty())
+        if((!result.outcome || (cancellationRequested && !batch)) && !result.historyPage.recognitionHistory.runs.isEmpty())
             emit recognitionHistoryReady(result.historyPage);
         if (cancellationRequested || (!result.outcome && result.outcome.error().cancelled)) {
+            // A batch page that completed while the stop request was in flight is
+            // finished work: deliver it before reporting the interruption.
+            const bool keepPage = batch && result.outcome.has_value();
             cancellationRequested = false;
             batchPages.clear();
             job = Job::None;
             emit busyChanged(false);
+            if (keepPage) emit batchPageRecognized(std::move(*result.outcome), batchSourceSize);
             emit cancelled();
             return;
         }
@@ -164,9 +169,9 @@ DocumentProcessor::DocumentProcessor(QObject *parent, const core::OcrDocument *s
                         crop.regions.append(std::move(region));
                     }
                     crop.rebuildHierarchy();
-                    emit recognized(std::move(crop), block.bounds.topLeft(), block.bounds);
+                    emit recognized(std::move(crop), block.bounds.topLeft(), block.bounds, block.id);
                 }
-            } else emit recognized(std::move(*result.outcome), result.offset, result.region);
+            } else emit recognized(std::move(*result.outcome), result.offset, result.region, result.blockId);
         }
     });
     connect(&thumbnailProcess, &QProcess::finished, this, [this](int exitCode, QProcess::ExitStatus status) {
@@ -416,7 +421,7 @@ void DocumentProcessor::discardRenderedPage(Job finishedJob)
 }
 
 void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
-                                      OcrOptions options, const QRect &region, bool batch, bool splitOnly, QVector<core::ImageRegion> selected)
+                                      OcrOptions options, const QRect &region, bool batch, bool splitOnly, QVector<core::ImageRegion> selected, std::optional<OcrService> tableService, const QString &blockId)
 {
     if ((!batch && isBusy()) || (batch && batchPages.isEmpty())) return;
     options.preserveFormatting = book && book->preserveFormatting;
@@ -463,7 +468,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
     }
     const bool wasBusy = isBusy();
     const bool localText = engine->id() == "tesseract";
-    const bool rawOutput = localText && book && book->useRawOcrOutput;
+    const bool rawOutput = !tableService && localText && book && book->useRawOcrOutput;
     const auto layoutService=pageLayoutService;
     const bool automaticLayout=layoutService && localText && !rawOutput && !splitOnly && selected.isEmpty() && region.isEmpty();
     const QString deferredCompanion=formulaRecognizer ? selectedFormulaService.key() : QString();
@@ -485,7 +490,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
             TesseractEngine::modelLanguage(savedPage->language) != options.language;
         for (const auto &block : savedPage->imageRegions) {
             if (block.autoDetected && (splitOnly || (newLanguage && block.detectedLabel.isEmpty()))) continue;
-            if (!region.isEmpty() && block.bounds != region) continue;
+            if (!region.isEmpty() && (block.bounds != region || (!blockId.isEmpty() && block.id != blockId))) continue;
             blocks.append(block);
         }
     }
@@ -496,7 +501,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
     const bool typedFormulas = formulaRecognizer && std::ranges::any_of(blocks, [](const auto &block) {
         return !block.notText && (block.content=="math" || block.content=="mixed");
     });
-    const bool smart = splitOnly || (!rawOutput && (automatic || automaticLayout ||
+    const bool smart = splitOnly || (!tableService && !rawOutput && (automatic || automaticLayout ||
         (manuallyTyped && engine->id() != "rapid-latex-ocr") || (localText && !selected.isEmpty()) ||
         (engine->id()!="rapid-latex-ocr" && typedFormulas)));
     job = splitOnly ? Job::SplitBlocks : (batch ? Job::BatchOcr : Job::Ocr);
@@ -507,7 +512,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
     const bool deskewLayout = splitOnly || automaticLayout || (smart && automatic && region.isEmpty() && selected.isEmpty());
     const auto layoutBase = deskewLayout && savedPage ? *savedPage : core::OcrPage{};
     const auto rawPath = pagedSource ? pageFile(options.pageNumber) : sourcePath;
-    ocrWatcher.setFuture(QtConcurrent::run([this, path, image, options, region, token, formulaRegions, pagedSource, jobDpi, savedImageSize, savedDpi, batch, blocks, smart, automatic, localText, splitOnly, selected, rawOutput, symbolRules, unicodeFormulas, layoutService, automaticLayout, deferredCompanion, parallelFormulas, savedCoordinates, preprocessing, sourcePath, rawPath, layoutBase, deskewLayout]() mutable {
+    ocrWatcher.setFuture(QtConcurrent::run([this, path, image, options, region, token, formulaRegions, pagedSource, jobDpi, savedImageSize, savedDpi, batch, blocks, smart, automatic, localText, splitOnly, selected, rawOutput, symbolRules, unicodeFormulas, layoutService, automaticLayout, deferredCompanion, parallelFormulas, savedCoordinates, preprocessing, sourcePath, rawPath, layoutBase, deskewLayout, tableService]() mutable {
         const auto startedUtc=QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
         QElapsedTimer elapsed;elapsed.start();QImage auditInput;core::OcrPage auditPage;
         auto perform=[&]() -> OcrJobResult {
@@ -577,6 +582,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
             }
             result.offset = bounded.topLeft();
             result.region = bounded;
+            if (blocks.size() == 1) result.blockId = blocks.first().id;
             options=croppedOcrOptions(options,bounded);
             const auto owner = std::ranges::find(blocks,bounded,&core::ImageRegion::bounds);
             input = owner == blocks.end() ? input.copy(bounded) : owner->crop(input);
@@ -600,8 +606,17 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
         std::vector<ComparisonEngine> none;
         // Formula requests take priority over a full-page comparison using the
         // same server; a single inference slot must not starve the primary OCR.
-        ParallelOcrRun companions(splitOnly ? none : comparisonEngines,comparisonImage,options,comparisonAreas,token,deferredCompanion,false);
-        if (smart) {
+        ParallelOcrRun companions(splitOnly || tableService ? none : comparisonEngines,comparisonImage,options,comparisonAreas,token,deferredCompanion,false);
+        if (tableService) {
+            auto reader = makeOcrServiceEngine(*tableService);
+            if (!reader) { result.outcome = std::unexpected(OcrError{reader.error()}); return result; }
+            options.task = "table";
+            options.language = tableService->language.isEmpty() ? QStringLiteral("auto") : tableService->language;
+            result.outcome = (*reader)->recognize(input, options, token);
+            if (result.outcome && !std::ranges::any_of(result.outcome->regions,
+                    [](const auto &r) { return r.type == "table"; }))
+                result.outcome = std::unexpected(OcrError{tr("The recognition service returned no table.")});
+        } else if (smart) {
             if (options.progress) options.progress(QStringLiteral("Detecting text and formula areas"),0,0);
             auto local = blocks;
             for (auto &block : local) block.bounds.translate(-result.offset);
@@ -619,7 +634,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
                 if (!layout) {
                     if (layout.error().cancelled || token.stop_requested()) {result.outcome=std::unexpected(layout.error());return result;}
                     result.warnings.append(QStringLiteral("AI page layout failed: %1 Used the existing blocks and local detection.").arg(layout.error().message));
-                } else local=mergePageAreas(local,layout->areas,true,core::RegionInk(input));
+                } else local=mergePageAreas(local,layout->areas,true);
             }
             result.outcome = recognizeSmartBlocks(input, options, local, splitOnly, token,
                 selected.isEmpty(), nullptr, &result.warnings,
@@ -634,6 +649,8 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
             merged.language = options.language;
             merged.imageRegions = selected;
             int lastBlock = 0;
+            QVector<QVector<core::OcrWord>> cropWords;
+            QVector<QRegion> cropShapes;
             for (const auto &block : selected) {
                 if (block.notText) continue;
                 const QRect crop = block.bounds.intersected(input.rect());
@@ -646,17 +663,23 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
                 auto reading = engine->recognize(block.crop(input), settings, token);
                 if (!reading) { result.outcome = std::unexpected(reading.error()); return result; }
                 appendRecognitionEvidence(merged, *reading, crop.topLeft());
+                const auto shape = block.shape();
                 int maximumBlock = lastBlock;
-                for (auto word : reading->words) {
+                for (auto &word : reading->words) {
                     word.bounds.translate(crop.topLeft());
                     for (auto &box : word.sourceBoxes) box.translate(crop.topLeft());
+                    word.atOcrCropEdge = core::touchesOcrCropEdge(word,shape);
                     word.block += lastBlock;
                     maximumBlock = std::max(maximumBlock, word.block);
                     word.id.clear(); word.sourceWordIds.clear();
-                    merged.words.append(std::move(word));
                 }
+                for (int i=0; i<cropWords.size(); ++i)
+                    core::reconcileOverlap(cropWords[i],reading->words,cropShapes[i] & shape,cropShapes[i],shape);
+                cropShapes.append(shape);
+                cropWords.append(std::move(reading->words));
                 lastBlock = maximumBlock;
             }
+            for (auto &words : cropWords) merged.words += std::move(words);
             result.outcome = std::move(merged);
         } else if (!rawOutput && engine->id()=="rapid-latex-ocr") {
             QVector<core::ImageRegion> scopes = selected;
@@ -678,7 +701,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
                     return block.notText && block.shape().contains(word.bounds.center());
                 });
             });
-            if (!smart) page.engineId = engine->id();
+            if (!smart && !tableService) page.engineId = engine->id();
             page.renderDpi = dpi;
             if (deskewLayout) {
                 page.sourceWidth = sourceSize.width();
@@ -699,6 +722,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
                 if (options.progress) options.progress(QStringLiteral("Matching text fonts"),0,0);
                 estimateTextFormatting(page, input, token);
             }
+            const QRegion inputCrop = !region.isEmpty() && blocks.size()==1 ? blocks.first().shape().translated(-result.offset) : QRegion(input.rect());
             QSet<QString> ids;
             for (core::OcrWord &word : page.words) {
                 if (!input.rect().contains(word.bounds) || word.bounds.isEmpty() ||
@@ -714,26 +738,27 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
                 if (engine->capabilities().supportsWordBoxes && !word.layoutBlock && !word.geometryInferred &&
                     core::isSingleSymbol(word.originalText))
                     word.symbolShape = symbolShape(input, word.bounds);
+                if (!region.isEmpty()) word.atOcrCropEdge |= core::touchesOcrCropEdge(word,inputCrop);
                 ids.insert(word.id);
             }
-            if (!rawOutput && !smart && engine->id() == "tesseract" && (formulaEngine || proseEngine)) {
+            if (!tableService && !rawOutput && !smart && engine->id() == "tesseract" && (formulaEngine || proseEngine)) {
                 QVector<QRect> localAreas = formulaRegions;
                 for (auto &area : localAreas) area.translate(-result.offset);
                 result.warnings = collectSpecialistReadings(page, input, localAreas,
                     formulaEngine.get(), proseEngine.get(), token,options);
                 if (token.stop_requested()) result.outcome = std::unexpected(OcrError{{}, true});
             }
-            if (result.outcome && !rawOutput && !splitOnly && engine->capabilities().supportsWordBoxes) {
+            if (result.outcome && !tableService && !rawOutput && !splitOnly && engine->capabilities().supportsWordBoxes) {
                 auto retries = collectSpellingFormulaReadings(page, input, token,options.progress,formulaRecognizer.get(),options);
                 if (!retries) result.outcome = std::unexpected(retries.error());
                 else result.warnings += *retries;
             }
-            if (result.outcome && !rawOutput && !splitOnly) {
+            if (result.outcome && !tableService && !rawOutput && !splitOnly) {
                 auto retries = collectFormulaTextReadings(page, input, options.language, token,options.progress,options);
                 if (!retries) result.outcome = std::unexpected(retries.error());
                 else result.warnings += *retries;
             }
-            if (result.outcome && !rawOutput && !splitOnly) {
+            if (result.outcome && !tableService && !rawOutput && !splitOnly) {
                 if (options.progress) options.progress(QStringLiteral("Applying learned symbol rules"),0,0);
                 applySymbolRules(page, input, symbolRules, token);
             }
@@ -745,7 +770,7 @@ void DocumentProcessor::startOcrImage(const QString &path, const QImage &image,
                 for (auto &block : fontBlocks) block.bounds.translate(-result.offset);
                 core::normalizeBlockFontSizes(page, fontBlocks, !region.isEmpty(), token);
             }
-            if (result.outcome && !splitOnly && !comparisonEngines.empty()) {
+            if (result.outcome && !tableService && !splitOnly && !comparisonEngines.empty()) {
                 if (options.progress) options.progress(QStringLiteral("Waiting for companion OCR results"),0,comparisonEngines.size());
                 page.ocrReadings=companions.finish();
                 if (!deferredCompanion.isEmpty() && !token.stop_requested()) {
@@ -792,14 +817,14 @@ void DocumentProcessor::recognizeTypedRegions(const QString &imagePath, const QS
 }
 
 void DocumentProcessor::recognizeRegion(const QString &imagePath, const QString &language,
-                                        int pageNumber, const QRect &region)
+                                        int pageNumber, const QRect &region, std::optional<OcrService> tableService, const QString &blockId)
 {
     if (region.isEmpty()) { emit failed(tr("Select an image region first.")); return; }
-    if (!engineCapabilities().supportsRegions) {
+    if (!tableService && !engineCapabilities().supportsRegions) {
         emit failed(tr("The selected OCR engine does not support region recognition."));
         return;
     }
-    startOcrImage(imagePath, {}, {.language = language, .pageNumber = pageNumber}, region, false);
+    startOcrImage(imagePath, {}, {.language = language, .pageNumber = pageNumber}, region, false, false, {}, std::move(tableService), blockId);
 }
 
 void DocumentProcessor::recognizePages(const QVector<BatchPageOptions> &pages)

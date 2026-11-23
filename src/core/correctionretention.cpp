@@ -84,6 +84,7 @@ OcrPage rescalePageGeometry(const OcrPage &source, int width, int height, int so
     }
     OcrPage page = source;
     const QRect from(0, 0, source.width, source.height), to(0, 0, width, height);
+    if (!page.layoutTraining.scope.isEmpty()) page.layoutTraining.scope = mapBox(page.layoutTraining.scope, from, to).intersected(to);
     const auto rescale = [&](OcrWord &word) {
         word.bounds = mapBox(word.bounds, from, to).intersected(to);
         for (auto &box : word.sourceBoxes) box = mapBox(box, from, to).intersected(word.bounds);
@@ -112,6 +113,7 @@ RetentionResult retainCorrections(OcrPage &fresh, const OcrPage &previous, bool 
         if(mapped)old=std::move(*mapped);
         else {compatible=false;old=rescalePageGeometry(previous,fresh.width,fresh.height,fresh.sourceWidth,fresh.sourceHeight,fresh.renderDpi);}
     } else old=rescalePageGeometry(previous,fresh.width,fresh.height,fresh.sourceWidth,fresh.sourceHeight,fresh.renderDpi);
+    fresh.layoutTraining = old.layoutTraining;
     fresh.imageRegions = old.imageRegions;
     fresh.deletedWords = old.deletedWords;
     fresh.pendingCorrections.clear();

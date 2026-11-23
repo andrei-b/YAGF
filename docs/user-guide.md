@@ -107,11 +107,24 @@ When a tall character or an integral limit extends into the next line, the share
 
 When an inline integral has visible upper and lower limits, **AI page areas…** can give the expression its own **Math** block. Whole-page recognition also checks for detached limits in existing mixed blocks. Use **Recognize** to refresh a page whose integral was previously read without its limits.
 
-Small overlaps between block margins are allowed when their shared pixels contain only paper. You can keep both proposals in AI page areas or drag a block edge into its neighbor’s blank margin. An overlap containing ink, including a faint stroke or a formula limit, still counts as a conflict.
+AI page layout keeps overlapping blocks. In **AI page areas…** and **AI split selected block…**, each proposal can be included or excluded independently. When editing block edges directly on the page, you can drag an edge into a neighboring blank margin.
+
+Overlapping text blocks can give OCR a complete view of a sloping line from either crop. YAGF compares word positions on the scan, including cases where one crop splits a word into several tokens. It favors reviewed text, then complete readings and OCR confidence. Words found by only one crop are kept, and repeated words on separate lines stay separate.
 
 During page splitting and automatic block recognition, YAGF checks the tilt of confident OCR words across several lines against the scan. On a visibly tilted page without usable word boxes, it can run a local OCR preview. When the lines support a correction, YAGF deskews before locating blocks and maps existing corrections into the new coordinates. In AI layout review, **Apply areas** or **Apply split** saves the deskew and the reviewed blocks together. **Undo** restores their previous geometry.
 
 To subdivide a large existing block, select it on the page or in **Image regions**, then choose **Tools → Page & layout → AI split selected block…** (also available in the Smart split dropdown and block context menu). YAGF sends only that block's crop to the configured AI layout service, giving the model a closer view. Inline formula detections can divide a paragraph horizontally between lines and vertically on the same line. In the preview, check the text before and after each expression and the numerator and denominator inside its Math outline. Review the proposed types and score filter, select at least two compatible subdivisions, then **Apply split**. Only the parent block is replaced; children inherit its language and their crop coordinates are translated back onto the page. Cancel, failed analysis or fewer than two selected subdivisions keeps the original block. Text and reviewed corrections are preserved, and the split can be undone. Model granularity still limits the proposals; for a boundary that cannot be refined safely, try splitting the larger block first or adjust its box manually.
+
+YAGF keeps corrected block splits in the project when you save. Each example pairs the processed page image with the original proposal and the corrected boxes, content types, and stepped outlines. Further edits to the same split update its target. Undo and redo also restore the example. Subdividing a block from a previous split records the coarse block it corrected. Changing the proposed subdivisions in the preview also records that proposal and its reviewed result. An unchanged full-page detection produces no training example.
+
+To collect examples from one or more saved projects, give the exporter a new output directory. The installed command is `yagf2-export-layout-training`. From a source checkout, run it with Python.
+
+```sh
+python3 tools/export_layout_training.py layout-dataset book.yagf.json another.yagf.json
+```
+
+The output contains lossless page PNGs under `images/` and one record per corrected split in `examples.jsonl`. Use `corrected` as the training target and `proposed` to study detector errors. All boxes and outline pieces use full-page pixel coordinates in `[x, y, width, height]` order. The `scope` field identifies the area of the split. An empty corrected list records removal of all blocks. An empty `content` field means the block inherits the page engine and has no explicit class.
+
 
 Recognition settings show each model's advertised tasks, coordinate granularity, output formats, languages, image limit and batching support when available. Text and formula choices follow these capabilities, including for models from unfamiliar providers using the YAGF protocol. Refreshing discovery preserves your selected models. Older services remain usable with their legacy task defaults; unspecified capabilities stay unknown. Requests exceeding an advertised image limit or unsupported task/language fail before uploading the image.
 

@@ -1,5 +1,7 @@
 #include "mainwindow.h"
 #include "exportpage.h"
+#include "latexdocumentexporter.h"
+#include "docxexporter.h"
 #include "projectfile.h"
 #include "verificationcontroller.h"
 #include "correctionretention.h"
@@ -41,6 +43,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QProcess>
+#include <QGraphicsView>
 #include <QProgressBar>
 #include <QProgressDialog>
 #include <QRubberBand>
@@ -66,6 +69,115 @@
 #include <cassert>
 #include <functional>
 namespace processing = yagf::processing;
+
+static void testInlineTarget(const QTemporaryDir &directory, const QString &sourcePath, bool table = false)
+{
+    using namespace yagf;
+    const QString original = table ? QStringLiteral("Столбец\tЗначение\nСтрока\tс=2") :
+        QStringLiteral(R"(Исправлено: \(a=1\), затем с=2, где с — число.)");
+    const QString expected = QString(original).replace("с=2", R"(\(c=2\))");
+    core::OcrDocument book;
+    book.sourcePath = sourcePath;
+    core::OcrPage page;
+    page.width = page.sourceWidth = 200;
+    page.height = page.sourceHeight = 100;
+    page.words = {{1,1,1,1,{0,0,200,100},"raw OCR",original,90,true}};
+    page.words.first().layoutBlock = true;
+    page.rebuildHierarchy();
+    QJsonObject header{{"header",true},{"rowspan",1},{"colspan",1}};
+    QJsonObject cell = header; cell["header"] = false;
+    QJsonArray layout{QJsonArray{header,header},QJsonArray{header,cell}};
+    if (table) { page.regions.first().type="table"; page.regions.first().tableLayout=layout; }
+    book.replacePage(page);
+    QString error;
+    const auto path = directory.filePath("inline-test.yagf.json");
+    assert(core::ProjectFile::save(path, book, &error));
+    const auto bin = directory.filePath("yagf2/math-ocr/venv/bin");
+    assert(QDir().mkpath(bin));
+    QFile engine(bin + "/python");
+    assert(engine.open(QIODevice::WriteOnly));
+    engine.write("#!/bin/sh\nif [ -e \"$0.fail\" ]; then exit 2; fi\nprintf '%s' '[{\"box\":[0,0,10,10],\"text\":\"c=2\"}]'\n");
+    engine.close();
+    assert(engine.setPermissions(QFileDevice::ReadOwner | QFileDevice::ExeOwner));
+    ui::MainWindow window;
+    window.loadProject(path);
+    auto *editor = window.findChild<QTextEdit *>("recognizedTextEditor");
+    auto *words = window.findChild<QListWidget *>("recognizedWords");
+    words->setCurrentRow(0, QItemSelectionModel::ClearAndSelect);
+    QFile failure(engine.fileName()+".fail");
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        const bool accept = attempt == 2;
+        if (attempt == 1) { assert(failure.open(QIODevice::WriteOnly)); failure.close(); }
+        if (accept) assert(failure.remove());
+        auto cursor = editor->textCursor();
+        cursor.setPosition(original.indexOf("с=2"));
+        cursor.setPosition(cursor.position()+3, QTextCursor::KeepAnchor);
+        editor->setTextCursor(cursor);
+        QTimer::singleShot(0, &window, [&] {
+            auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget()); assert(menu);
+            QTimer::singleShot(0, &window, [&] {
+                auto *dialog = QApplication::activeModalWidget();
+                assert(dialog && dialog->objectName()=="inlineFormulaTarget");
+                assert(dialog->findChild<QPlainTextEdit *>()->textCursor().selectedText()=="с=2");
+                if (attempt == 0) { qobject_cast<QDialog *>(dialog)->reject(); return; }
+                auto *view = dialog->findChild<QGraphicsView *>();
+                view->rubberBandChanged(QRect(2,2,30,20), QPointF(4,5), QPointF(34,25));
+                QTimer *poll = new QTimer(dialog);
+                QObject::connect(poll, &QTimer::timeout, dialog, [poll,dialog,accept] {
+                    if (!accept) {
+                        for (auto *button : dialog->findChildren<QPushButton *>())
+                            if (button->text()=="Recognize crop" && button->isEnabled()) {
+                                poll->stop(); qobject_cast<QDialog *>(dialog)->reject(); return;
+                            }
+                    }
+                    auto *preview=qobject_cast<QDialog *>(QApplication::activeModalWidget());
+                    if (preview && preview->objectName()=="formulaEditor") {
+                        assert(preview->findChild<QPlainTextEdit *>("formulaSource")->toPlainText()=="c=2");
+                        poll->stop(); preview->accept();
+                    }
+                });
+                poll->start(10);
+                for (auto *button : dialog->findChildren<QPushButton *>())
+                    if (button->text()=="Recognize crop") button->click();
+            });
+            for (auto *action : menu->actions()) if (action->text()=="Mark as inline formula…") action->trigger();
+            menu->close();
+        });
+        editor->customContextMenuRequested({});
+        assert(words->item(0)->text()==(accept ? expected : original));
+    }
+    const auto trigger = [&](QString name) {
+        for (auto *action: window.findChildren<QAction *>()) if (action->text()==name) { action->trigger(); return; }
+        assert(false);
+    };
+    trigger("Undo"); assert(words->item(0)->text()==original);
+    trigger("Redo"); assert(words->item(0)->text()==expected);
+    trigger("Save project");
+    assert(core::ProjectFile::load(path,&book,&error));
+    assert(book.page(1)->words.first().text==expected && book.page(1)->words.first().originalText=="raw OCR");
+    if (table) assert(book.page(1)->regions.first().tableLayout == layout);
+    assert(book.page(1)->recognitionHistory.decisions.size()==1);
+    assert(book.page(1)->recognitionHistory.decisions.first().processedArea==QRect(4,5,30,20));
+    window.loadProject(path);
+    assert(words->item(0)->text()==expected);
+    const auto tex = directory.filePath("inline-test.tex");
+    assert(processing::LatexDocumentExporter::write(book,tex,false).status==processing::ExportResult::Status::Success);
+    QFile output(tex); assert(output.open(QIODevice::ReadOnly));
+    const auto latex = QString::fromUtf8(output.readAll());
+    if (table) assert(latex.contains("longtable") && latex.contains(R"(\textbf{Строка} & \(c=2\))"));
+    else assert(latex.contains(expected));
+    if (!QStandardPaths::findExecutable("pandoc").isEmpty() && !QStandardPaths::findExecutable("unzip").isEmpty()) {
+        const auto docx = directory.filePath("inline-test.docx");
+        assert(processing::DocxExporter::write(book,docx,false).status==processing::ExportResult::Status::Success);
+        QProcess unzip; unzip.start("unzip", {"-p",docx,"word/document.xml"});
+        assert(unzip.waitForFinished());
+        const auto xml = unzip.readAllStandardOutput();
+        assert(xml.count("<m:oMath>")==(table?1:2) && !xml.contains("<m:oMathPara>"));
+        if (table) assert(xml.contains("<w:tbl>") && xml.contains("Строка") && xml.contains("Значение"));
+        else assert(xml.contains("Исправлено") && xml.contains("затем") && xml.contains("число."));
+    }
+    assert(engine.remove());
+}
 
 static void testUnrecognizedProjectSaving(const QTemporaryDir &directory)
 {
@@ -126,7 +238,12 @@ static void testUnrecognizedProjectSaving(const QTemporaryDir &directory)
             window.loadProject(destination);
             wait([&] { return recognize->isEnabled() && pages->count() == count; });
             // A saved source can be reopened and resaved without creating OCR records.
-            save->trigger();
+            window.activateWindow();
+            wait([&] { return QApplication::activeWindow() == &window && !QApplication::activeModalWidget(); });
+            view->setFocus();
+            QSignalSpy saveInvoked(save, &QAction::triggered);
+            QTest::keyClick(window.windowHandle(), Qt::Key_S, Qt::ControlModifier);
+            assert(saveInvoked.size() == 1);
             assert(load() && saved.pages.isEmpty());
             for (int number = 1; number <= count; ++number) {
                 pages->setCurrentRow(number - 1);
@@ -394,6 +511,9 @@ int main(int argc, char **argv)
     qputenv("YAGF_TEST_TSV", QFile::encodeName(fixturePath));
     qputenv("YAGF_TEST_ARGS", QFile::encodeName(argsPath));
 
+    testInlineTarget(directory, sourcePath);
+    testInlineTarget(directory, sourcePath, true);
+    if (app.arguments().contains("--inline-target-only")) return 0;
     testUnrecognizedProjectSaving(directory);
     if (app.arguments().contains("--unrecognized-save-only")) return 0;
     testScannedPages(directory);
@@ -1758,7 +1878,7 @@ int main(int argc, char **argv)
     assert(yagf::core::ProjectFile::load(batchResolutionProject, &batchLoaded, &error));
     assert(batchLoaded.pages.size() == 2 && batchLoaded.page(1)->renderDpi == 200 && batchLoaded.page(2)->renderDpi == 200);
 
-    // The dialog cancels the same queue as the toolbar and can be reused.
+    // The multipage dialog interrupts the same queue as the toolbar and can be reused.
     yagf::ui::MainWindow cancelBatchWindow;
     cancelBatchWindow.show(); cancelBatchWindow.loadSource(resolutionPdf);
     auto *cancelRecognizeAll = cancelBatchWindow.findChild<QAction *>("recognizeAllAction");
@@ -1767,7 +1887,7 @@ int main(int argc, char **argv)
     auto *cancelProgress = cancelBatchWindow.findChild<QProgressDialog *>("recognitionProgressDialog");
     assert(cancelProgress && cancelProgress->isVisible());
     auto *cancelProgressButton = cancelProgress->findChild<QPushButton *>();
-    assert(cancelProgressButton && cancelProgressButton->text() == "Cancel");
+    assert(cancelProgressButton && cancelProgressButton->text() == "Interrupt");
     cancelProgressButton->click();
     waitUi([&] { return cancelRecognizeAll->isEnabled(); });
     assert(!cancelProgress->isVisible());
@@ -1853,10 +1973,14 @@ int main(int argc, char **argv)
         assert(clearNumber->value() == 1 && clearRegions->count() == 2);
         auto saved = saveClearProject();
         assert(saved.page(1)->imageRegions.size() == 2 && saved.page(2)->imageRegions.isEmpty());
+        assert(saved.page(1)->layoutTraining.examples.isEmpty());
+        const auto cleared = saved.page(2)->layoutTraining.examples;
+        assert(cleared.size() == 1 && cleared[0].proposed.size() == 2 && cleared[0].corrected.isEmpty());
+        assert(QImage::fromData(cleared[0].png).size() == QSize(saved.page(2)->width, saved.page(2)->height));
         pageMenu(2, false);
         clearUndo->trigger();
         saved = saveClearProject();
-        assert(saved.page(2)->imageRegions.size() == 2);
+        assert(saved.page(2)->imageRegions.size() == 2 && saved.page(2)->layoutTraining.examples.isEmpty());
         clearRedo->trigger();
         assert(saveClearProject().page(2)->imageRegions.isEmpty());
         pageMenu(1, true, true);
@@ -2124,6 +2248,7 @@ int main(int argc, char **argv)
         assert(undo && redo); undo->trigger(); assert(blocks->count()==2); assert(savedPage().preprocessing.deskewDegrees==0); redo->trigger(); assert(blocks->count()==3);
         const auto saved = savedPage();
         assert(saved.preprocessing.deskewDegrees > 2 && saved.words[0].id == page.words[0].id);
+        assert(saved.layoutTraining.examples.isEmpty());
         assert(saved.words[0].bounds != page.words[0].bounds);
         assert(saved.imageRegions[0].id=="manual" && saved.words[0].text=="keep" && saved.words[0].reviewed);
         assert(saved.imageRegions[2].content=="picture" && saved.imageRegions[2].notText && saved.imageRegions[2].detectedLabel=="chart");
@@ -2151,7 +2276,7 @@ int main(int argc, char **argv)
         QSettings("YAGF","YAGF Revival").setValue("layout/url",QString("http://127.0.0.1:%1").arg(server.serverPort()));
         yagf::core::OcrDocument book;book.sourcePath=sourcePath;book.language="eng";book.engine="tesseract";
         yagf::core::OcrPage page;page.width=page.sourceWidth=200;page.height=page.sourceHeight=100;page.language="eng";
-        page.imageRegions={{"outside",{0,0,30,15},"eng",false,"text",false},{"parent",{40,20,140,70},"rus",false,"mixed",false}};
+        page.imageRegions={{"outside",{0,0,30,15},"eng",false,"text",false},{"parent",{40,20,140,70},"rus",false,"mixed",true}};
         page.words.append({1,1,1,1,{45,25,40,15},"reviewed","reviewed",95,true});page.rebuildHierarchy();book.replacePage(page);
         const auto project=directory.filePath("crop-split.yagf.json");QString error;assert(yagf::core::ProjectFile::save(project,book,&error));
         yagf::ui::MainWindow splitWindow;splitWindow.show();splitWindow.loadProject(project);
@@ -2162,7 +2287,12 @@ int main(int argc, char **argv)
             QTimer::singleShot(0,&splitWindow,[&,apply] {
                 auto *dialog=qobject_cast<yagf::ui::AiPageLayoutDialog *>(QApplication::activeModalWidget());assert(dialog && dialog->windowTitle()=="AI split selected block");
                 dialog->findChild<QPushButton *>("analyzePageAreas")->click();auto *accept=dialog->findChild<QPushButton *>("applyPageAreas");waitUi([&]{return accept->isEnabled();});
-                assert(blocks->count()==2);if(apply)accept->click();else dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Cancel)->click();
+                assert(blocks->count()==2);
+                if (apply) {
+                    auto *type = dialog->findChild<QComboBox *>("layoutType1");
+                    type->setCurrentIndex(type->findData("mixed"));
+                    accept->click();
+                } else dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Cancel)->click();
             });action->trigger();
         };
         review(false);assert(blocks->count()==2 && action->isEnabled());review(true);assert(blocks->count()==3);
@@ -2171,10 +2301,24 @@ int main(int argc, char **argv)
         save();yagf::core::OcrDocument saved;assert(yagf::core::ProjectFile::load(project,&saved,&error));
         const auto *edited=saved.page(1);assert(edited->imageRegions[0].id=="outside" && edited->imageRegions[0].bounds==page.imageRegions[0].bounds);
         assert(edited->imageRegions[1].bounds==QRect(45,25,60,20) && edited->imageRegions[2].bounds==QRect(120,52,50,25));
+        assert(edited->layoutTraining.examples.size() == 2);
+        const auto &example = edited->layoutTraining.examples.last();
+        assert(example.scope == page.imageRegions[1].bounds);
+        assert(example.proposed.last().toObject()["content"] == "math");
+        assert(example.corrected.last().toObject()["content"] == "mixed");
+        assert(example.corrected.last().toObject()["box"].toArray() == QJsonArray({120,52,50,25}));
         assert(edited->imageRegions[1].language=="rus" && edited->imageRegions[2].language=="rus");assert(edited->words[0].text=="reviewed" && edited->words[0].reviewed);
         QAction *undo=nullptr,*redo=nullptr;for(auto *a:splitWindow.findChildren<QAction *>()) {if(a->shortcut()==QKeySequence::Undo)undo=a;if(a->shortcut()==QKeySequence::Redo)redo=a;}
-        assert(undo && redo);undo->trigger();assert(blocks->count()==2);save();assert(yagf::core::ProjectFile::load(project,&saved,&error));assert(saved.page(1)->imageRegions[1].id=="parent");
+        assert(undo && redo);undo->trigger();assert(blocks->count()==2);save();assert(yagf::core::ProjectFile::load(project,&saved,&error));assert(saved.page(1)->imageRegions[1].id=="parent" && saved.page(1)->layoutTraining.examples.isEmpty());
         redo->trigger();assert(blocks->count()==3);save();
+        blocks->setCurrentRow(2);
+        splitWindow.findChild<QAction *>("imageRemoveBlockAction")->trigger();
+        assert(blocks->count() == 2);
+        save();
+        assert(yagf::core::ProjectFile::load(project, &saved, &error));
+        assert(saved.page(1)->layoutTraining.examples.size() == 2);
+        for (const auto &sample : saved.page(1)->layoutTraining.examples)
+            assert(sample.corrected.size() == 2);
     }
 
     // Formula growth edits OCR crops as one undoable page edit.

@@ -247,6 +247,14 @@ private slots:
         QVERIFY(!scan.isNull());
         QVector<ImageRegion> lines{block("previous",{2,0,665,45},"text"),
                                    block("formula-line",{2,38,665,56},"mixed")};
+        const auto hints = yagf::processing::paragraphFormulaWindows(
+            scan.convertToFormat(QImage::Format_Grayscale8), lines[1].bounds);
+        QCOMPARE(std::ranges::count_if(hints, [](const QRect &box) {
+            return box.contains(QRect(222,32,7,9)) && box.contains(QRect(216,82,13,12));
+        }), 1);
+        QVERIFY(std::ranges::any_of(hints, [](const QRect &box) {
+            return QRect(449,45,108,32).contains(box.center());
+        }));
         yagf::processing::refineLineShapes(scan,lines);
         const auto shape=lines[1].shape();
         QVERIFY(QRegion(QRect(222,32,7,9)).subtracted(shape).isEmpty());

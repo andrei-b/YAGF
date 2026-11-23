@@ -37,6 +37,8 @@ elseif(MSVC)
 endif()
 
 add_library(yagf_core STATIC
+    src/core/overlapreading.cpp src/core/overlapreading.h
+    src/core/layoutcorrection.cpp src/core/layoutcorrection.h src/core/layouttraining.h
     src/core/recognitionhistory.cpp src/core/recognitionhistory.h
     src/core/coordinateframes.cpp src/core/coordinateframes.h
     src/core/pagegeometry.cpp src/core/pagegeometry.h
@@ -58,6 +60,7 @@ add_library(yagf_core STATIC
     src/core/symbolmatcher.cpp src/core/symbolmatcher.h
     src/core/correctionmemory.cpp src/core/correctionmemory.h
     src/core/projectfile.cpp src/core/projectfile.h
+    src/core/sessionrecovery.cpp src/core/sessionrecovery.h
     src/core/wordeditor.cpp src/core/wordeditor.h)
 target_link_libraries(yagf_core PUBLIC Qt6::Core Qt6::Gui)
 target_include_directories(yagf_core PUBLIC src/core)
@@ -97,6 +100,7 @@ add_library(yagf_ocr STATIC
     src/processing/mathocrengine.cpp src/processing/mathocrengine.h
     src/processing/iocrengine.h
     src/processing/tesseractengine.cpp src/processing/tesseractengine.h
+    src/processing/paddletable.cpp src/processing/paddletable.h
     src/processing/remoteocrengine.cpp src/processing/remoteocrengine.h)
 qt_add_resources(yagf_ocr "local_math" PREFIX "/math" BASE tools FILES tools/math_ocr.py)
 qt_add_resources(yagf_ocr "optional_models" PREFIX "/ocr" BASE service FILES service/optional-models.example.json)
@@ -141,7 +145,7 @@ qt_add_executable(yagf2
     src/ui/blockminiaturelist.cpp src/ui/blockminiaturelist.h
     src/ui/verificationcontroller.cpp src/ui/verificationcontroller.h
     src/ui/mainwindowreview.cpp src/ui/mainwindowexport.cpp src/ui/experimentdialog.cpp src/ui/experimentdialog.h
-    src/main.cpp src/ui/mainwindow.cpp src/ui/mainwindow.h src/ui/formulaeditor.cpp src/ui/formulaeditor.h
+    src/main.cpp src/ui/mainwindow.cpp src/ui/mainwindow.h src/ui/formulaeditor.cpp src/ui/formulaeditor.h src/ui/inlineformuladialog.cpp
     src/ui/restorationdialog.cpp src/ui/restorationdialog.h
     src/ui/preprocessdialog.cpp src/ui/preprocessdialog.h
     src/ui/layoutdialog.cpp src/ui/layoutdialog.h resources/icons.qrc)
@@ -157,6 +161,7 @@ target_compile_definitions(yagf2 PRIVATE YAGF_VERSION="${PROJECT_VERSION}")
 target_link_libraries(yagf2 PRIVATE yagf_experiments yagf_core yagf_processing yagf_export Qt6::Widgets Qt6::Concurrent Qt6::Network)
 
 install(TARGETS yagf2 yagf2-benchmark RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(PROGRAMS tools/export_layout_training.py DESTINATION ${CMAKE_INSTALL_BINDIR} RENAME yagf2-export-layout-training)
 install(FILES packaging/io.github.andrei_b.YAGF.desktop
         DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
 install(FILES resources/yagf.png
@@ -332,7 +337,7 @@ if(BUILD_TESTING)
         src/ui/blockminiaturelist.cpp src/ui/blockminiaturelist.h
         src/ui/verificationcontroller.cpp src/ui/verificationcontroller.h
         src/ui/mainwindowreview.cpp src/ui/mainwindowexport.cpp src/ui/experimentdialog.cpp src/ui/experimentdialog.h
-        src/ui/mainwindow.cpp src/ui/mainwindow.h src/ui/formulaeditor.cpp src/ui/formulaeditor.h
+        src/ui/mainwindow.cpp src/ui/mainwindow.h src/ui/formulaeditor.cpp src/ui/formulaeditor.h src/ui/inlineformuladialog.cpp
         src/ui/restorationdialog.cpp src/ui/restorationdialog.h
         src/ui/preprocessdialog.cpp src/ui/preprocessdialog.h
         src/ui/layoutdialog.cpp src/ui/layoutdialog.h
@@ -357,6 +362,9 @@ if(BUILD_TESTING)
     qt_add_executable(projectfile_tests tests/projectfile_tests.cpp)
     target_link_libraries(projectfile_tests PRIVATE yagf_core)
     add_test(NAME projectfile_tests COMMAND projectfile_tests)
+    qt_add_executable(sessionrecovery_tests tests/sessionrecovery_tests.cpp)
+    target_link_libraries(sessionrecovery_tests PRIVATE yagf_core)
+    add_test(NAME sessionrecovery_tests COMMAND sessionrecovery_tests)
     qt_add_executable(pagerestoration_tests tests/pagerestoration_tests.cpp)
     target_link_libraries(pagerestoration_tests PRIVATE yagf_export yagf_imaging)
     add_test(NAME pagerestoration_tests COMMAND pagerestoration_tests)

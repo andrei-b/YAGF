@@ -6,6 +6,8 @@
 namespace yagf::core {
 struct OcrWord;
 struct OcrPage;
+struct SymbolChoice { QString source; int evidence; };
+QVector<SymbolChoice> localSymbolChoices(const OcrPage &page, int wordIndex, int start, int length);
 struct MathTextSpan { qsizetype start, length; QString source; bool display = false; };
 QVector<MathTextSpan> mathTextSpans(const QString &text);
 std::expected<QString, QString> unicodeMath(const QString &latex);

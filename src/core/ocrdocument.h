@@ -6,6 +6,7 @@
 #include "symbolrules.h"
 #include "recognitionresult.h"
 #include "recognitionhistory.h"
+#include "layouttraining.h"
 
 #include <QJsonArray>
 #include <QJsonObject>
@@ -51,6 +52,7 @@ struct OcrWord {
     int sourceFontSizePx = 0;
     QString latexText; // Canonical formula-bearing text retained for Unicode output.
     bool geometryInferred = false; // Editor input extent, not model-localized geometry.
+    bool atOcrCropEdge = false; // Localized ink touched the recognition crop boundary.
     [[nodiscard]] QString fontFamilyCss() const;
 };
 
@@ -131,6 +133,7 @@ struct OcrPage {
     QVector<OcrReading> ocrReadings;
     QVector<RecognitionResult> recognitionEvidence; // Immutable model output, separate from edits.
     RecognitionHistory recognitionHistory;
+    LayoutTraining layoutTraining;
     CoordinatePipeline coordinates;
     QHash<QString, GeometryAnchor> sourceGeometry;
     [[nodiscard]] QVector<int> specialistSpan(int start) const;

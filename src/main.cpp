@@ -4,6 +4,7 @@
 #include <QCommandLineParser>
 #include <QFileInfo>
 #include <QIcon>
+#include <QTimer>
 #include <QUrl>
 
 int main(int argc, char **argv)
@@ -40,5 +41,8 @@ int main(int argc, char **argv)
         else window.loadSource(path);
     }
     window.show();
+    // Without a document to open, pick up work lost when an earlier session ended unexpectedly.
+    if (parser.positionalArguments().isEmpty())
+        QTimer::singleShot(0, &window, [&window] { window.recoverUnsavedProject(); });
     return QApplication::exec();
 }

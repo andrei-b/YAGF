@@ -1,5 +1,6 @@
 #pragma once
 #include "aipagelayout.h"
+#include "regiongeometry.h"
 #include <QDialog>
 #include <QFutureWatcher>
 #include <QHash>
@@ -26,6 +27,7 @@ public:
                        QString bearerToken={}, bool blockScope=false, double deskewAdjustment=0);
     ~AiPageLayoutDialog() override;
     QVector<core::ImageRegion> regions() const;
+    const QVector<core::ImageRegion> &proposedRegions() const { return initialRegions; }
     QString sessionToken() const;
     void enableHistory(processing::OcrOptions context,QString sourcePath,QJsonObject preprocessing);
     core::RecognitionHistory recordedHistory();
@@ -42,17 +44,17 @@ private:
         QToolButton *alternative;
     };
     void analyze();
-    void populate(bool resetSelection=true);
-    void updateSelection(int changed=-1);
+    void populate();
+    void updateSelection();
     void updateCard(int index);
     void focusBlock(QListWidgetItem *item);
     void fitPreview();
     void filterAreas();
-    void rememberSelection(int index,bool checked);
     QImage image;
     core::RegionInk ink;
     QVector<QRect> localInlineHints;
     QVector<core::ImageRegion> existing;
+    QVector<core::ImageRegion> initialRegions;
     QVector<processing::PageArea> areas;
     QVector<processing::PageArea> allAreas;
     QHash<QString,QString> typeOverrides;

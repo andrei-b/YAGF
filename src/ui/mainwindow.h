@@ -52,6 +52,8 @@ class QProgressDialog;
 class QToolBar;
 class QTimer;
 
+namespace yagf::core { class SessionRecovery; }
+
 namespace yagf::ui {
 
 class SpellHighlighter;
@@ -119,6 +121,8 @@ public:
     ~MainWindow() override;
     void loadSource(const QString &path);
     void loadProject(const QString &path);
+    // Restore the newest unsaved work left by a session that ended unexpectedly.
+    bool recoverUnsavedProject();
     bool usePaddleVlService(const QUrl &url);
 signals:
     void exportProgress(qsizetype completed, qsizetype total);
@@ -157,6 +161,9 @@ private:
     void splitSelectedBlockWithAi();
     void refineFormulaBlocks();
     QImage displayedPageImage() const;
+    void commitBlockEdit(core::OcrPage edited, const QString &label);
+    bool captureLayoutEdit(core::OcrPage &page, const QImage &image,
+        const QVector<core::ImageRegion> &proposed, const QVector<core::ImageRegion> &corrected, const QString &source);
     void trainNativeOcr();
     void syncNativeOcrModel();
     QString appliedNativeOcrUrl;
@@ -196,7 +203,7 @@ private:
     void deleteImageRegion(int index);
     void clearPageBlocks(int pageNumber);
     void showPageContextMenu(const QPoint &position);
-    void showPageActions(int pageNumber, const QPoint &globalPosition);
+    void showPageActions(int pageNumber, const QPoint &globalPosition, bool onScan = false);
     void showBlockContextMenu(int index, const QPoint &globalPosition);
     void copyBlockImage(int index);
     void setBlockLanguage(int index, const QString &language, bool notText);
@@ -205,6 +212,8 @@ private:
     void runNextImageRegion();
     void refreshReviewLabel();
     void editSelectedFormula();
+    void recognizeTable(const core::ImageRegion &region, bool confirmCorrections);
+    void markSelectedInlineFormula(QRect crop = {});
     void editFormulaAt(int index, qsizetype start, qsizetype length, bool display);
     void refreshSpellLanguage();
     void updateSelection(const QVector<int> &indices);
@@ -213,6 +222,11 @@ private:
     bool maybeApplyEditor();
     void runBatchOcr(bool remainingOnly);
     void updateRecognitionProgress(qsizetype completed, qsizetype total);
+    void finishInterruptedRecognition();
+    bool loadProjectFile(const QString &path, bool recovered, const QString &originalProject = {});
+    void scheduleRecoverySnapshot();
+    void writeRecoverySnapshot();
+    void discardRecoverySnapshot();
     void editLayout();
     void createRegionFromSelection();
     void improveCurrentPage();
@@ -268,6 +282,9 @@ private:
     QAction *cancelRecognitionAction = nullptr;
     QAction *cancelExportAction = nullptr;
     QProgressDialog *recognitionProgress = nullptr;
+    bool recognitionInterrupted = false;
+    qsizetype recognitionTotal = 0;
+    qsizetype recognizedThisRun = 0;
     QPushButton *previousButton;
     QPushButton *nextButton;
     QAction *scanAction;
@@ -315,6 +332,9 @@ private:
     QString projectPath;
     bool dirty = false;
     bool externalDirty = false;
+    // Crash-recovery copy of changes that are not in a project file yet.
+    std::unique_ptr<core::SessionRecovery> recovery;
+    QTimer *recoveryTimer = nullptr;
     QUndoStack undoStack;
     bool editorPending = false;
     bool exportBusy = false;

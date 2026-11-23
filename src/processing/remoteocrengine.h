@@ -3,6 +3,7 @@
 #include "iocrengine.h"
 #include "modelprofile.h"
 
+#include <QDeadlineTimer>
 #include <QUrl>
 #include <QJsonArray>
 
@@ -31,8 +32,11 @@ public:
 private:
     QJsonObject runDetails;
     QJsonArray responses;
+    std::expected<RecognitionResult, OcrError> recognizeFormulaSections(
+        const QImage &image, const OcrOptions &options, const QList<QRect> &sections,
+        QDeadlineTimer deadline, std::stop_token stop);
     std::expected<RecognitionResult, OcrError> recognizeSection(
-        const QImage &image, const OcrOptions &options, std::stop_token stop, int depth);
+        const QImage &image, const OcrOptions &options, std::stop_token stop, int depth, bool *retryable = nullptr);
     QUrl server;
     QString bearerToken;
     Provider provider;

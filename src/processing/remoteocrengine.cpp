@@ -1,6 +1,10 @@
 #include "remoteocrengine.h"
+#include "paddletable.h"
+#include "formulagrowth.h"
 
 #include <QBuffer>
+#include <QDeadlineTimer>
+#include <QRegularExpression>
 #include <QEventLoop>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -50,6 +54,45 @@ int splitBoundary(const QImage &image, bool vertical)
         if (score < bestScore) { best = position; bestScore = score; }
     }
     return best;
+}
+
+// A cut must be blank through the full height of the row, including scripts.
+QList<QRect> formulaRowSections(const QImage &image)
+{
+    if (image.width() < 4LL * image.height() || image.height() < 8) return {};
+    const QImage gray = image.convertToFormat(QImage::Format_Grayscale8);
+    const QRect ink = inkBox(gray, gray.rect());
+    if (ink.height() < 8) return {};
+    const int minGap = std::max(6, (ink.height() + 2) / 3);
+    QList<QRect> sections;
+    int start = ink.left(), lastInk = start;
+    for (int x = start + 1; x <= ink.right(); ++x) {
+        bool marked = false;
+        for (int y = ink.top(); y <= ink.bottom() && !marked; ++y)
+            marked = gray.constScanLine(y)[x] < 175;
+        if (!marked) continue;
+        if (x - lastInk - 1 >= minGap) {
+            sections.append(inkBox(gray, QRect(start, ink.top(), lastInk - start + 1, ink.height())));
+            if (sections.size() >= 8) return {};
+            start = x;
+        }
+        lastInk = x;
+    }
+    if (sections.isEmpty()) return {};
+    sections.append(inkBox(gray, QRect(start, ink.top(), lastInk - start + 1, ink.height())));
+    // Require two expression-sized groups. A detached mark alone is not a row.
+    if (std::ranges::count_if(sections, [&](QRect part) {
+            return part.width() >= ink.height() && part.height() * 2 >= ink.height();
+        }) < 2) return {};
+    return sections;
+}
+
+bool repetitiveFormula(const QString &text)
+{
+    if (text.size() < 200) return false;
+    // Decode loops repeat a long token sequence, often to the generation limit.
+    static const QRegularExpression repeated(QStringLiteral(R"((.{12,128}?)\1{4})"));
+    return repeated.match(text.right(2048).simplified()).hasMatch();
 }
 
 QString providerName(RemoteOcrEngine::Provider provider)
@@ -210,7 +253,7 @@ EngineCapabilities RemoteOcrEngine::capabilities() const
     case Provider::Surya:
         return {.supportsRegions = true, .supportsConfidence = true, .supportsLayout = true, .supportsFormulas = true};
     case Provider::PaddleVl:
-        return {.supportsRegions = true, .supportsLayout = true, .supportsFormulas = true};
+        return {.supportsRegions = true, .supportsLayout = true, .supportsTables = true, .supportsFormulas = true};
     case Provider::PaddleOcr:
     case Provider::RapidOcr:
         return {.supportsRegions = true, .supportsConfidence = true, .supportsFormulas = formulas};
@@ -230,8 +273,8 @@ std::expected<RecognitionResult, OcrError> RemoteOcrEngine::recognizeResult(
         if(options.formula && canonicalModelTask(options.task)!="formula")
             return std::unexpected(OcrError{QStringLiteral("Conflicting formula and recognition task options.")});
         requestOptions.formula=canonicalModelTask(options.task)=="formula";
-        if(provider==Provider::PaddleVl && canonicalModelTask(options.task)!="text" && canonicalModelTask(options.task)!="formula")
-            return std::unexpected(OcrError{QStringLiteral("This chat adapter supports text and formula tasks only.")});
+        if(provider==Provider::PaddleVl && canonicalModelTask(options.task)!="text" && canonicalModelTask(options.task)!="formula" && options.task!="table")
+            return std::unexpected(OcrError{QStringLiteral("Unsupported chat recognition task.")});
     }
     if(profile) {
         ModelRequirements requirements;requirements.tasks={options.task.isEmpty()?(options.formula?QStringLiteral("formula"):QStringLiteral("text")):canonicalModelTask(options.task)};
@@ -243,7 +286,17 @@ std::expected<RecognitionResult, OcrError> RemoteOcrEngine::recognizeResult(
         if(!errors.isEmpty())return std::unexpected(OcrError{errors.join(' ')});
     }
     if(options.collectBenchmarkMetrics)runDetails["inference_ms_scope"]="Successful responses only; client latency includes retries and failures";
-    auto result = recognizeSection(image, requestOptions, stop, 0);
+    const auto sections = provider == Provider::PaddleVl && requestOptions.formula
+        ? formulaRowSections(image) : QList<QRect>{};
+    QDeadlineTimer deadline(std::clamp(options.timeoutMs, 1, 180000));
+    if (!sections.isEmpty()) {
+        // Reserve part of the caller's budget for one left-to-right retry.
+        requestOptions.timeoutMs = std::clamp(int(deadline.remainingTime()) * 2 / 3, 1, 12000);
+    }
+    bool retryable = false;
+    auto result = recognizeSection(image, requestOptions, stop, 0, sections.isEmpty() ? nullptr : &retryable);
+    if (!sections.isEmpty() && retryable && !stop.stop_requested())
+        result = recognizeFormulaSections(image, requestOptions, sections, deadline, stop);
     if (!result) return result;
     if(result->provenance.model.isEmpty())result->provenance.model=model;
     if(!options.task.isEmpty())result->provenance.task=canonicalModelTask(options.task);
@@ -252,8 +305,62 @@ std::expected<RecognitionResult, OcrError> RemoteOcrEngine::recognizeResult(
     return result;
 }
 
+std::expected<RecognitionResult, OcrError> RemoteOcrEngine::recognizeFormulaSections(
+    const QImage &image, const OcrOptions &options, const QList<QRect> &sections,
+    QDeadlineTimer deadline, std::stop_token stop)
+{
+    RecognitionResult row;
+    row.engineId = id();
+    row.provenance = {.model=model, .task="formula", .language="auto",
+                      .pageNumber=options.pageNumber, .imageSize=image.size()};
+    const int tallest = std::ranges::max(sections, {}, &QRect::height).height();
+    QJsonArray outputs;
+    for (int index = 0; index < sections.size(); ++index) {
+        const QRect ink = sections[index];
+        const QRect crop = ink.adjusted(-2,-2,2,2).intersected(image.rect());
+        auto settings = croppedOcrOptions(options, crop);
+        const auto read = [&](bool formula) -> std::expected<RecognitionResult, OcrError> {
+            if (stop.stop_requested()) return std::unexpected(OcrError{{}, true});
+            settings.timeoutMs = int(deadline.remainingTime());
+            if (settings.timeoutMs <= 0)
+                return std::unexpected(OcrError{QStringLiteral("Formula row retry timed out.")});
+            settings.formula = formula;
+            settings.task = formula ? "formula" : "ocr";
+            return recognizeSection(image.copy(crop), settings, stop, 1);
+        };
+        // A short group alongside stacked math can be prose. Confirm with text
+        // OCR before accepting it; a small equation still needs the math prompt.
+        const bool tryText = ink.height() * 2 < tallest;
+        auto part = read(!tryText);
+        if (!part) return std::unexpected(part.error());
+        if (tryText) {
+            static const QRegularExpression prose(QStringLiteral(
+                R"(^(?=.*\p{L}.*\p{L})[\p{L}\s.,;:!?()–—-]+$)"));
+            if (!prose.match(part->markdown).hasMatch()) {
+                part = read(true);
+                if (!part) return std::unexpected(part.error());
+            }
+        }
+        outputs.append(part->structuredOutput);
+        row.modelVersion = part->modelVersion;
+        if (!part->text.isEmpty()) {
+            auto text = part->text.first();
+            text.order = index;
+            text.inputArea = crop;
+            row.text.append(std::move(text));
+        } else {
+            auto formula = part->formulas.first();
+            formula.order = index;
+            formula.inputArea = crop;
+            row.formulas.append(std::move(formula));
+        }
+    }
+    row.structuredOutput = {{"formula_row_sections", outputs}};
+    return row;
+}
+
 std::expected<RecognitionResult, OcrError> RemoteOcrEngine::recognizeSection(
-    const QImage &image, const OcrOptions &options, std::stop_token stop, int depth)
+    const QImage &image, const OcrOptions &options, std::stop_token stop, int depth, bool *retryable)
 {
     if (stop.stop_requested()) return std::unexpected(OcrError{{}, true});
     if (image.isNull() || options.pageNumber < 1 ||
@@ -284,7 +391,7 @@ std::expected<RecognitionResult, OcrError> RemoteOcrEngine::recognizeSection(
         payload = {{"model", model}, {"temperature", 0}, {"stream", false}, {"max_tokens", 4096},
             {"messages", QJsonArray{QJsonObject{{"role", "user"}, {"content", QJsonArray{
                 QJsonObject{{"type", "image_url"}, {"image_url", QJsonObject{{"url", "data:image/png;base64,"+QString::fromLatin1(png.toBase64())}}}},
-                QJsonObject{{"type", "text"}, {"text", options.formula ? "Formula Recognition:" : "OCR:"}}
+                QJsonObject{{"type", "text"}, {"text", options.formula ? "Formula Recognition:" : options.task == "table" ? "Table Recognition:" : "OCR:"}}
             }}}}}};
     }
     url.setQuery(QString());
@@ -323,7 +430,7 @@ std::expected<RecognitionResult, OcrError> RemoteOcrEngine::recognizeSection(
     if (!reply->isFinished()) loop.exec();
     poll.stop();
     deadline.stop();
-    const QByteArray response = reply->readAll();
+    const QByteArray response = reply->isOpen() ? reply->readAll() : QByteArray{};
     const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     if(options.history) {
         const auto json=QJsonDocument::fromJson(response);
@@ -337,11 +444,15 @@ std::expected<RecognitionResult, OcrError> RemoteOcrEngine::recognizeSection(
         responses.append(attempt);
     }
     if (stop.stop_requested()) return std::unexpected(OcrError{{}, true});
-    if (timedOut) return std::unexpected(OcrError{QStringLiteral("Remote OCR timed out.")});
+    if (timedOut) {
+        if (retryable) *retryable = true;
+        return std::unexpected(OcrError{QStringLiteral("Remote OCR timed out.")});
+    }
     if (oversized)
         return std::unexpected(OcrError{QStringLiteral("Remote OCR response exceeded the %1 MiB limit.")
                                             .arg(qlonglong(maxResponseBytes / (1024 * 1024)))});
     if (reply->error() != QNetworkReply::NoError || status != 200) {
+        if (retryable && (status == 408 || status == 504)) *retryable = true;
         const QJsonObject error = QJsonDocument::fromJson(response).object();
         const QString message = error.value(QStringLiteral("error")).toString();
         if (status == 400 && error.value("code") == "transcription_truncated" &&
@@ -398,6 +509,12 @@ std::expected<RecognitionResult, OcrError> RemoteOcrEngine::recognizeSection(
         const auto choices = QJsonDocument::fromJson(response).object().value("choices").toArray();
         const auto choice = choices.isEmpty() ? QJsonObject{} : choices.first().toObject();
         const QString text = choice.value("message").toObject().value("content").toString().trimmed();
+        if (options.formula && choice.value("finish_reason") == "length" && retryable)
+            *retryable = true;
+        if (options.formula && (retryable || depth > 0) && repetitiveFormula(text)) {
+            if (retryable) *retryable = true;
+            return std::unexpected(OcrError{QStringLiteral("Formula transcription repeats a sequence excessively.")});
+        }
         if (response.size() > maxResponseBytes || choice.value("finish_reason") != "stop" || text.isEmpty() || text.size() > 65536)
             return std::unexpected(OcrError{QStringLiteral("The formula/OCR server returned an empty, truncated or invalid transcription.")});
         const auto root = QJsonDocument::fromJson(response).object();
@@ -406,7 +523,12 @@ std::expected<RecognitionResult, OcrError> RemoteOcrEngine::recognizeSection(
         result.provenance = {.model=root.value("model").toString(model), .task=options.formula ? "formula" : "ocr",
             .language="auto", .pageNumber=options.pageNumber, .imageSize=image.size()};
         result.structuredOutput = root;
-        if (options.formula) {
+        if (options.task == "table") {
+            auto table = parsePaddleTable(text);
+            if (!table) return std::unexpected(OcrError{table.error()});
+            table->order = 0;
+            result.tables.append(*table);
+        } else if (options.formula) {
             core::FormulaRegion formula; formula.latex = text; formula.order = 0;
             result.formulas.append(formula);
         } else {

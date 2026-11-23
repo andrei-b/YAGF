@@ -222,6 +222,62 @@ bool escaped(const QString &text,qsizetype at)
 }
 }
 
+QVector<SymbolChoice> localSymbolChoices(const core::OcrPage &page, int index, int start, int length)
+{
+    if (index < 0 || index >= page.words.size()) return {};
+    const auto &target = page.words[index];
+    const auto text = formulaSourceText(target);
+    if (length != 1 || start < 0 || start >= text.size()) return {};
+    const auto inWord = [&](int at) { return at >= 0 && at < text.size() && text[at].isLetter(); };
+    if (inWord(start-1) || inWord(start+1)) return {};
+    QString before = text.left(start).trimmed(), after = text.mid(start+1).trimmed();
+    const auto sameParagraph = [&](int other) {
+        return other >= 0 && other < page.words.size() && target.block == page.words[other].block &&
+               target.paragraph == page.words[other].paragraph;
+    };
+    if (before.isEmpty() && sameParagraph(index-1)) before = formulaSourceText(page.words[index-1]).trimmed();
+    if (after.isEmpty() && sameParagraph(index+1)) after = formulaSourceText(page.words[index+1]).trimmed();
+    const QString operators = "=<>≤≥±+−*/^_";
+    const bool mathematicalRole = (!before.isEmpty() && operators.contains(before.back())) ||
+                                  (!after.isEmpty() && operators.contains(after.front()));
+    static const QRegularExpression russianNoun(QStringLiteral(R"(^[А-Яа-яЁё]{2,})"));
+    const bool preposition = QStringLiteral("cс").contains(text[start]) && russianNoun.match(after).hasMatch();
+    const QStringList groups = {"cсϲ","xхχ","pрρ","aаα","oоο","vν","uυ","yуγ","BВΒ","HНΗ","KКΚ","TТΤ"};
+    QVector<SymbolChoice> choices;
+    for (const auto &group : groups) {
+        if (!group.contains(text[start])) continue;
+        for (QChar letter : group) {
+            int score = letter == text[start] ? 1 : 0;
+            if (letter.script() == QChar::Script_Latin && mathematicalRole) score += 3;
+            if (letter.script() == QChar::Script_Cyrillic && preposition) score += 6;
+            for (int n=0; n<page.words.size(); ++n) {
+                const auto &word = page.words[n];
+                if (word.block != target.block || word.paragraph != target.paragraph) continue;
+                const auto context = formulaSourceText(word);
+                for (int i=0; i<context.size(); ++i) {
+                    if (context[i] != letter || (n==index && i==start)) continue;
+                    if ((i && context[i-1].isLetter()) ||
+                        (i+1<context.size() && context[i+1].isLetter())) continue;
+                    // Count each occurrence once, giving confirmed notation and
+                    // identifiers beside mathematical operators greater weight.
+                    int left = i-1, right = i+1;
+                    while (left >= 0 && context[left].isSpace()) --left;
+                    while (right < context.size() && context[right].isSpace()) ++right;
+                    const bool math = (left >= 0 && operators.contains(context[left])) ||
+                                      (right < context.size() && operators.contains(context[right]));
+                    score += (word.reviewed ? 3 : 1) + (math ? 2 : 0);
+                }
+            }
+            choices.append({QString(letter), score});
+        }
+        break;
+    }
+    std::stable_sort(choices.begin(), choices.end(), [](const auto &a, const auto &b) {
+        return a.evidence > b.evidence;
+    });
+    return choices;
+}
+
 QVector<MathTextSpan> mathTextSpans(const QString &text)
 {
     QVector<MathTextSpan> spans;

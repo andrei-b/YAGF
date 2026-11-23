@@ -1,4 +1,5 @@
 #include "smartblocks.h"
+#include "overlapreading.h"
 #include "regiongeometry.h"
 #include "mathsymbols.h"
 #include "recognitionrecorder.h"
@@ -122,6 +123,7 @@ struct Row {
     QString content;
     QVector<OcrWord> words;
     bool recovered = false;
+    int sourceRegion = -1;
 };
 
 int median(QVector<int> values)
@@ -131,12 +133,21 @@ int median(QVector<int> values)
     return *middle;
 }
 
-void restoreRecoveredText(core::OcrPage &page, const QVector<Row> &rows)
+void restoreRecoveredText(core::OcrPage &page, const QVector<Row> &rows, const QRegion &shared = {})
 {
     int nextLine = 0;
     for (const auto &word : page.words) nextLine = std::max(nextLine, word.line);
     for (const auto &row : rows) {
         if (!row.recovered || row.words.isEmpty()) continue;
+        if (shared.intersects(row.box)) {
+            auto candidates = row.words;
+            core::reconcileOverlap(page.words,candidates,shared,{},{});
+            for (auto &word : candidates) {
+                if (word.id.isEmpty()) word.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+                core::insertOverlapWord(page.words,std::move(word));
+            }
+            continue;
+        }
         struct Line {
             int first, end;
             QRect box;
@@ -642,6 +653,12 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
         painter.drawImage(0, 0, image);
     }
     const core::RegionInk ink(gray);
+    QRegion seen, sharedAreas;
+    for (const auto &region : regions) if (!region.notText) {
+        const auto shape = region.shape();
+        sharedAreas |= seen & shape;
+        seen |= shape;
+    }
     QImage uncovered = gray;
     if (includeUnmarked && !regions.isEmpty()) {
         QPainter mask(&uncovered);
@@ -668,7 +685,7 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
     IOcrEngine &prose = textProvider ? *textProvider : tesseract;
     QSet<QRect> inlineCrops;
     const auto analyze = [&](const QImage &pixels, QRect area, const QString &mode, QString language,
-                             const QVector<core::ImageRegion> &excluded, const QRegion *owner=nullptr)
+                             const QVector<core::ImageRegion> &excluded, const QRegion *owner=nullptr, const QRegion &shared={})
             -> std::expected<QVector<Row>, OcrError> {
         if (stop.stop_requested()) return std::unexpected(OcrError{{}, true});
         if (area.isEmpty()) return QVector<Row>{};
@@ -685,32 +702,48 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
                 if (!result) return std::unexpected(result.error());
                 baselines.emplace(language, std::move(*result));
             }
-            if (owner && !splitOnly) {
+            if ((owner || !shared.isEmpty()) && !splitOnly) {
                 auto cropOptions = croppedOcrOptions(settings,area);
                 cropOptions.language = language;
                 auto reading = prose.recognize(pixels.copy(area),cropOptions,stop);
-                if (!reading) return std::unexpected(reading.error());
-                auto &baseline = baselines.at(language);
-                QVector<Row> lines;
-                std::optional<std::tuple<int,int,int>> previous;
-                for (auto word : reading->words) {
-                    word.bounds.translate(area.topLeft());
-                    for (auto &fragment : word.sourceBoxes) fragment.translate(area.topLeft());
-                    if (!owner->intersects(word.bounds)) continue;
-                    word.id.clear();
-                    word.sourceWordIds.clear();
-                    const auto key = std::tuple(word.block,word.paragraph,word.line);
-                    if (key != previous) lines.append(Row{{},"text",{},true});
-                    previous = key;
-                    lines.last().box |= word.bounds;
-                    lines.last().words.append(std::move(word));
+                if (!reading) {
+                    if (shared.isEmpty() || reading.error().cancelled || stop.stop_requested())
+                        return std::unexpected(reading.error());
+                    if (warnings) warnings->append(reading.error().message + QStringLiteral(" Kept the page reading for this overlap."));
+                } else {
+                    auto &baseline = baselines.at(language);
+                    const QRegion crop = owner ? *owner : QRegion(area);
+                    QVector<OcrWord> candidates;
+                    for (auto word : reading->words) {
+                        word.bounds.translate(area.topLeft());
+                        for (auto &fragment : word.sourceBoxes) fragment.translate(area.topLeft());
+                        if (!crop.intersects(word.bounds)) continue;
+                        word.atOcrCropEdge = core::touchesOcrCropEdge(word,crop);
+                        word.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+                        word.sourceWordIds.clear();
+                        candidates.append(std::move(word));
+                    }
+                    if (!candidates.isEmpty()) {
+                        if (shared.isEmpty()) baseline.words.removeIf([&](const auto &word) {
+                            return crop.contains(word.bounds.center());
+                        });
+                        core::reconcileOverlap(baseline.words,candidates,shared.isEmpty() ? QRegion{} : crop,image.rect(),crop);
+                        QVector<Row> lines;
+                        std::optional<std::tuple<int,int,int>> previous;
+                        for (auto &word : candidates) {
+                            const auto key = std::tuple(word.block,word.paragraph,word.line);
+                            // Unmatched words in shared lines can fall on either side
+                            // of an existing word. Insert each at its own position.
+                            if (!shared.isEmpty() || key != previous) lines.append(Row{{},"text",{},true});
+                            previous = key;
+                            lines.last().box |= word.bounds;
+                            lines.last().words.append(std::move(word));
+                        }
+                        restoreRecoveredText(baseline,lines);
+                    }
+                    appendRecognitionEvidence(baseline,*reading,area.topLeft());
+                    baseline.rebuildHierarchy();
                 }
-                if (!lines.isEmpty()) {
-                    baseline.words.removeIf([&](const auto &w){return owner->contains(w.bounds.center());});
-                    restoreRecoveredText(baseline,lines);
-                }
-                appendRecognitionEvidence(baseline,*reading,area.topLeft());
-                baseline.rebuildHierarchy();
             }
             for (const auto &word : baselines.at(language).words) {
                 if (!area.contains(word.bounds.center()) || (owner && !owner->contains(word.bounds.center()))) continue;
@@ -816,7 +849,8 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
             formula.layoutBlock = true;
             return QVector<Row>{{box, inlineFormula ? "mixed" : "math", {formula}}};
         }
-        if (region.parts.isEmpty()) return analyze(gray,box,region.content,region.language,{});
+        const QRegion shared = splitOnly ? QRegion{} : sharedAreas & region.shape();
+        if (region.parts.isEmpty()) return analyze(gray,box,region.content,region.language,{},nullptr,shared);
         const QRegion owner = region.shape();
         QImage pixels = gray;
         {
@@ -824,7 +858,7 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
             mask.setClipRegion(QRegion(box)-owner);
             mask.fillRect(box,Qt::white);
         }
-        auto rows = analyze(pixels,box,region.content,region.language,{},&owner);
+        auto rows = analyze(pixels,box,region.content,region.language,{},&owner,shared);
         if (rows) for (const auto &row : *rows) for (const auto &word : row.words)
             if (word.layoutBlock) formulaReadings.setMask(word.bounds,owner);
         return rows;
@@ -861,6 +895,7 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
             region.content = found->first().content;
             for (const auto &row : *found) if (row.content != region.content) region.content = "mixed";
         }
+        for (auto &row : *found) row.sourceRegion = i;
         rows += *found;
     }
     auto occupied = regions;
@@ -929,7 +964,7 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
             return (!includeUnmarked && !std::ranges::any_of(regions, contains)) ||
                 std::ranges::any_of(regions, [&](const auto &r) { return r.notText && contains(r); });
         });
-        if (!splitOnly) restoreRecoveredText(original, rows);
+        if (!splitOnly) restoreRecoveredText(original, rows, sharedAreas);
         original.rebuildHierarchy();
         original.imageRegions = textBlocksFromReading(original, regions, page.imageRegions, ink);
         if (!limitBlocks(original.imageRegions))
@@ -957,7 +992,7 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
             row.words.removeIf([](const auto &word) { return word.layoutBlock; });
             recovered.append(std::move(row));
         }
-        restoreRecoveredText(original, recovered);
+        restoreRecoveredText(original, recovered, sharedAreas);
         QList<QRect> boxes;
         QVector<bool> inlineMath;
         QVector<QVector<int>> covered;
@@ -981,7 +1016,7 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
                 if (!proposal.bounds.contains(word.bounds.center()) || !formulaReadings.owns(proposal.bounds,word.bounds.center())) continue;
                 span.append(i);
                 tokens += word.text;
-                if (claimed.contains(i) || (!forced && !assignments.contains(i) && !symbolEvidence.nativeSymbols.contains(word.bounds) && proseWord(word.text))) unsafe = true;
+                if (!forced && !assignments.contains(i) && !symbolEvidence.nativeSymbols.contains(word.bounds) && proseWord(word.text)) unsafe = true;
             }
             if (!forced) {
                 static const QRegularExpression operand(QStringLiteral("[\\p{L}\\p{N}]"));
@@ -999,6 +1034,8 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
             // row's tokens. Words outside the accepted block stay in place.
             if (!forced && !symbolEvidence.crops.contains(proposal.bounds) && !span.isEmpty() &&
                 span.last()-span.first()+1 != span.size()) unsafe = true;
+            if (std::ranges::any_of(span,[&](int i){return claimed.contains(i);}) &&
+                !sharedAreas.intersects(proposal.bounds)) unsafe = true;
             if (unsafe) continue;
             boxes.append(proposal.bounds);
             inlineMath.append(row.content == "mixed");
@@ -1014,12 +1051,51 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
                 failures.append(result.error().message);
             } else formulas = std::move(*result);
         }
-        QHash<int, OcrWord> replacements;
+        // Compare successful equation crops before consuming their native
+        // tokens. A failed first crop leaves its neighbor eligible.
+        struct FormulaReading {
+            int wordIndex, crop;
+            bool padded;
+        };
+        QVector<FormulaReading> ranked;
+        for (int i=0; i<formulas.words.size(); ++i) {
+            const auto box = formulas.words[i].bounds;
+            const int crop = boxes.indexOf(box);
+            if (crop < 0) continue;
+            const QRect inkBounds = sharedAreas.intersects(box) ? inkBox(gray,box) : QRect{};
+            ranked.append({i,crop,!inkBounds.isEmpty() && box.adjusted(1,1,-1,-1).contains(inkBounds)});
+        }
+        std::ranges::stable_sort(ranked,std::greater{},[&](const FormulaReading &r) {
+            return std::tuple(r.padded,formulas.words[r.wordIndex].confidence,covered[r.crop].size());
+        });
+        QVector<FormulaReading> accepted;
+        for (const auto &reading : ranked) {
+            const auto &candidate = covered[reading.crop];
+            const auto &box = boxes[reading.crop];
+            if (!candidate.isEmpty() && sharedAreas.intersects(box) &&
+                std::ranges::any_of(accepted,[&](const FormulaReading &prior) {
+                    if (!sharedAreas.intersects(box & boxes[prior.crop])) return false;
+                    const auto &other = covered[prior.crop];
+                    const auto common = std::ranges::count_if(candidate,[&](int token){return other.contains(token);});
+                    // A token at the edge can be shared by distinct expressions.
+                    return common && common*3 >= 2*std::max(candidate.size(),other.size());
+                })) continue;
+            accepted.append(reading);
+        }
+        std::ranges::sort(accepted,{},&FormulaReading::wordIndex);
+        QHash<int, QVector<OcrWord>> replacements;
         QSet<int> removed;
         QVector<Row> insertions;
-        for (auto formula : formulas.words) {
-            const int crop = boxes.indexOf(formula.bounds);
-            if (crop < 0) continue;
+        for (const auto &reading : accepted) {
+            auto formula = formulas.words[reading.wordIndex];
+            const int crop = reading.crop;
+            for (const auto &row : formulas.recognitionEvidence) {
+                if (row.provenance.inputArea == formula.bounds && !row.text.isEmpty() &&
+                    row.structuredOutput.contains("formula_row_sections")) {
+                    formula.text = formulaRowLatex(row, original.words);
+                    break;
+                }
+            }
             if (inlineMath[crop]) formula.text = "\\(" + formula.text + "\\)";
             formula.originalText = formula.text;
             readIsolatedSymbol(formula,symbolEvidence,image,settings,inlineMath[crop],formulas.recognitionHistory);
@@ -1040,15 +1116,15 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
             }
             if (inlineCrops.contains(formula.bounds))
                 insertions.append({formula.bounds,"mixed",{formula},true});
-            else replacements.insert(span.first(), std::move(formula));
+            else replacements[span.first()].append(std::move(formula));
         }
         QVector<OcrWord> words;
         for (int i = 0; i < original.words.size(); ++i) {
-            if (replacements.contains(i)) words.append(replacements.value(i));
+            if (replacements.contains(i)) words += replacements.value(i);
             else if (!removed.contains(i)) words.append(original.words[i]);
         }
         original.words = std::move(words);
-        restoreRecoveredText(original, insertions);
+        restoreRecoveredText(original, insertions, sharedAreas);
         // Display equations need their own export/editing regions. Split only
         // at those boundaries; retain native paragraphs and lines within prose.
         int nextBlock = 0;
@@ -1095,9 +1171,11 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
     QList<QRect> boxes;
     QList<int> indices;
     QStringList types;
+    QVector<int> owners;
     for (const auto &row : rows) {
         if (row.words.isEmpty()) continue;
         types.append(row.content);
+        owners.append(row.sourceRegion);
         for (auto word : row.words) {
             if (word.layoutBlock) {
                 boxes.append(word.bounds);
@@ -1123,14 +1201,41 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
             if (types[word.block-1] == "mixed") word.text = "\\(" + word.text + "\\)";
             word.originalText = word.text;
             word.readingEngine = formulas->words[i].readingEngine;
+            word.confidence = formulas->words[i].confidence;
+            word.geometryInferred = formulas->words[i].geometryInferred;
             word.sourceBoxes = formulas->words[i].sourceBoxes;
             readIsolatedSymbol(word,symbolEvidence,image,settings,types[word.block-1] == "mixed",formulas->recognitionHistory);
         }
         appendRecognitionEvidence(page, *formulas);
     }
+    // Different language baselines (and math-only blocks) produce independent
+    // readings. Reconcile across their source crops before building the hierarchy.
+    if (!sharedAreas.isEmpty()) {
+        QVector<QVector<OcrWord>> blockWords(regions.size());
+        QVector<OcrWord> unmarked;
+        for (auto &word : page.words) {
+            const int owner = owners[word.block-1];
+            (owner < 0 ? unmarked : blockWords[owner]).append(std::move(word));
+        }
+        for (int i=0; i<regions.size(); ++i) {
+            if (blockWords[i].isEmpty() || !sharedAreas.intersects(regions[i].bounds)) continue;
+            for (int j=i+1; j<regions.size(); ++j) {
+                if (blockWords[j].isEmpty() || !regions[i].bounds.intersects(regions[j].bounds)) continue;
+                const auto first = regions[i].shape(), second = regions[j].shape();
+                core::reconcileOverlap(blockWords[i],blockWords[j],first & second,first,second);
+            }
+        }
+        page.words = std::move(unmarked);
+        for (auto &words : blockWords) page.words += std::move(words);
+        std::ranges::stable_sort(page.words, {}, &OcrWord::block);
+    }
     page.rebuildHierarchy();
-    for (int i = 0; i < types.size(); ++i)
-        page.regions[i].type = types[i] == "math" ? QStringLiteral("equation") : QStringLiteral("text");
+    int regionIndex = 0, previousBlock = -1;
+    for (const auto &word : page.words) {
+        if (word.block == previousBlock) continue;
+        previousBlock = word.block;
+        page.regions[regionIndex++].type = types[word.block-1] == "math" ? QStringLiteral("equation") : QStringLiteral("text");
+    }
     return page;
 }
 
