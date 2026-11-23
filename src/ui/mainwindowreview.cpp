@@ -47,7 +47,7 @@ void MainWindow::editSymbolRules(bool fromSelection)
     }
     auto shared = core::loadSymbolLibrary();
     if (!shared) { showError(shared.error()); return; }
-    auto snapshot = document; snapshot.sourcePath = originalPath; snapshot.totalPages = pageCount;
+    auto snapshot = document; snapshot.totalPages = pageCount;
     SymbolRulesDialog dialog(std::move(snapshot), *shared, this, seed, bounds, currentPage, reading, wordIndex, characterStart, characterLength);
     while (dialog.exec() == QDialog::Accepted) {
         const auto sharedRules = dialog.sharedRules();

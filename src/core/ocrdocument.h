@@ -139,9 +139,18 @@ struct OcrPage {
     bool extractRegion(const QVector<int> &wordIndices);
 };
 
+struct DocumentPageSource {
+    QString path;
+    int page = 1;
+};
+
 class OcrDocument {
 public:
     QString sourcePath;
+    // Empty for an unmodified single source; otherwise one entry per logical page.
+    QVector<DocumentPageSource> pageSources;
+    DocumentPageSource sourceForPage(int number) const;
+    void materializePageSources();
     QString engine;
     QString language;
     int totalPages = 1;

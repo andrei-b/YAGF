@@ -85,11 +85,14 @@ bool ProjectFile::save(const QString &path, const OcrDocument &document, QString
         return false;
     }
     OcrDocument stored = document;
-    if (QDir::isAbsolutePath(stored.sourcePath)) {
-        const QString relative = QDir(QFileInfo(target).absolutePath()).relativeFilePath(stored.sourcePath);
+    const auto relativePath = [&](QString &source) {
+        if (!QDir::isAbsolutePath(source)) return;
+        const QString relative = QDir(QFileInfo(target).absolutePath()).relativeFilePath(source);
         if (!relative.startsWith(QStringLiteral("../")) && relative != QStringLiteral("..") &&
-            !QDir::isAbsolutePath(relative)) stored.sourcePath = relative;
-    }
+            !QDir::isAbsolutePath(relative)) source = relative;
+    };
+    relativePath(stored.sourcePath);
+    for (auto &source : stored.pageSources) relativePath(source.path);
     const auto documentJson=stored.toJson();
     for(const auto &page:documentJson["pages"].toArray()) {
         CoordinateFrames frames;
@@ -141,8 +144,12 @@ bool ProjectFile::load(const QString &path, OcrDocument *document, QString *erro
     OcrDocument parsed;
     if (!OcrDocument::fromJson(root.value(QStringLiteral("document")).toObject(), &parsed, error))
         return false;
-    if (QDir::isRelativePath(parsed.sourcePath))
-        parsed.sourcePath = QDir(QFileInfo(projectTarget(path)).absolutePath()).absoluteFilePath(parsed.sourcePath);
+    const auto absolutePath = [&](QString &source) {
+        if (QDir::isRelativePath(source))
+            source = QDir(QFileInfo(projectTarget(path)).absolutePath()).absoluteFilePath(source);
+    };
+    absolutePath(parsed.sourcePath);
+    for (auto &source : parsed.pageSources) absolutePath(source.path);
     if (!document) return fail(error, QStringLiteral("No output document."));
     *document = std::move(parsed);
     return true;
@@ -160,34 +167,40 @@ bool ProjectFile::savePortable(const QString &directory, const OcrDocument &docu
         return fail(error, QStringLiteral("Could not create the portable project directory."));
     if (!bundle.mkpath(QStringLiteral("assets")))
         return fail(error, QStringLiteral("Could not create the project assets directory."));
-    const QByteArray digest = fileHash(document.sourcePath);
-    if (digest.isEmpty()) return fail(error, QStringLiteral("Could not read the source document."));
-    QString suffix = QFileInfo(document.sourcePath).suffix().toLower();
-    if (!QRegularExpression(QStringLiteral("^[a-z0-9]{1,12}$")).match(suffix).hasMatch())
-        suffix = QStringLiteral("bin");
-    const QString assetName = QString::fromLatin1(digest) + QLatin1Char('.') + suffix;
-    const QString assetPath = bundle.filePath(QStringLiteral("assets/") + assetName);
-    if (fileHash(assetPath) != digest) {
-        QFile input(document.sourcePath);
-        QSaveFile output(assetPath);
-        if (!input.open(QIODevice::ReadOnly) || !output.open(QIODevice::WriteOnly))
-            return fail(error, QStringLiteral("Could not copy the source document into the project."));
-        while (!input.atEnd()) {
-            const QByteArray chunk = input.read(1024 * 1024);
-            if (chunk.isEmpty() || output.write(chunk) != chunk.size()) {
-                output.cancelWriting();
-                return fail(error, QStringLiteral("Could not write the project source asset."));
+    const auto copyAsset = [&](QString &source) -> bool {
+        const QByteArray digest = fileHash(source);
+        if (digest.isEmpty()) return fail(error, QStringLiteral("Could not read the source document."));
+        QString suffix = QFileInfo(source).suffix().toLower();
+        if (!QRegularExpression(QStringLiteral("^[a-z0-9]{1,12}$")).match(suffix).hasMatch())
+            suffix = QStringLiteral("bin");
+        const QString assetName = QString::fromLatin1(digest) + QLatin1Char('.') + suffix;
+        const QString assetPath = bundle.filePath(QStringLiteral("assets/") + assetName);
+        if (fileHash(assetPath) != digest) {
+            QFile input(source);
+            QSaveFile output(assetPath);
+            if (!input.open(QIODevice::ReadOnly) || !output.open(QIODevice::WriteOnly))
+                return fail(error, QStringLiteral("Could not copy the source document into the project."));
+            while (!input.atEnd()) {
+                const QByteArray chunk = input.read(1024 * 1024);
+                if (chunk.isEmpty() || output.write(chunk) != chunk.size()) {
+                    output.cancelWriting();
+                    return fail(error, QStringLiteral("Could not write the project source asset."));
+                }
+            }
+            if (!output.commit())
+                return fail(error, QStringLiteral("Could not complete the project source asset."));
+            if (fileHash(assetPath) != digest) {
+                QFile::remove(assetPath);
+                return fail(error, QStringLiteral("The source changed while the portable project was being saved."));
             }
         }
-        if (!output.commit())
-            return fail(error, QStringLiteral("Could not complete the project source asset."));
-        if (fileHash(assetPath) != digest) {
-            QFile::remove(assetPath);
-            return fail(error, QStringLiteral("The source changed while the portable project was being saved."));
-        }
-    }
+        source = QFileInfo(assetPath).absoluteFilePath();
+        return true;
+    };
     OcrDocument portable = document;
-    portable.sourcePath = QFileInfo(assetPath).absoluteFilePath();
+    if (!copyAsset(portable.sourcePath)) return false;
+    for (auto &source : portable.pageSources)
+        if (!copyAsset(source.path)) return false;
     return save(portableManifest(directory), portable, error);
 }
 
@@ -198,14 +211,20 @@ bool ProjectFile::loadPortable(const QString &directory, OcrDocument *document, 
     OcrDocument loaded;
     if (!load(portableManifest(directory), &loaded, error)) return false;
     const QString assets = QFileInfo(QDir(directory).filePath(QStringLiteral("assets"))).canonicalFilePath();
-    const QString source = QFileInfo(loaded.sourcePath).canonicalFilePath();
-    if (assets.isEmpty() || source.isEmpty() ||
-        !source.startsWith(assets + QLatin1Char('/')))
-        return fail(error, QStringLiteral("The portable project source is outside its assets directory."));
-    const QByteArray expected = QFileInfo(source).completeBaseName().toLatin1();
-    if (expected.size() != 64 || !QRegularExpression(QStringLiteral("^[0-9a-f]{64}$"))
-            .match(QString::fromLatin1(expected)).hasMatch() || fileHash(source) != expected)
-        return fail(error, QStringLiteral("The portable project source failed its integrity check."));
+    const auto validateAsset = [&](const QString &path) {
+        const QString source = QFileInfo(path).canonicalFilePath();
+        if (assets.isEmpty() || source.isEmpty() ||
+            !source.startsWith(assets + QLatin1Char('/')))
+            return fail(error, QStringLiteral("The portable project source is outside its assets directory."));
+        const QByteArray expected = QFileInfo(source).completeBaseName().toLatin1();
+        if (expected.size() != 64 || !QRegularExpression(QStringLiteral("^[0-9a-f]{64}$"))
+                .match(QString::fromLatin1(expected)).hasMatch() || fileHash(source) != expected)
+            return fail(error, QStringLiteral("The portable project source failed its integrity check."));
+        return true;
+    };
+    if (!validateAsset(loaded.sourcePath)) return false;
+    for (const auto &source : loaded.pageSources)
+        if (!validateAsset(source.path)) return false;
     if (!document) return fail(error, QStringLiteral("No output document."));
     *document = std::move(loaded);
     return true;

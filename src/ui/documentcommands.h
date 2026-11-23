@@ -5,8 +5,28 @@
 #include <QUndoCommand>
 
 #include <optional>
+#include <functional>
 
 namespace yagf::ui {
+
+class ChangePageSequenceCommand final : public QUndoCommand {
+public:
+    ChangePageSequenceCommand(core::OcrDocument &document, core::OcrDocument after,
+        int beforePage, int afterPage, std::function<void(int)> refresh, const QString &label);
+    void redo() override;
+    void undo() override;
+private:
+    core::OcrDocument &document;
+    struct State {
+        QVector<core::OcrPage> pages;
+        QVector<core::DocumentPageSource> sources;
+        int totalPages;
+    };
+    void restore(const State &state, int selectedPage);
+    State before, after;
+    int beforePage, afterPage;
+    std::function<void(int)> refresh;
+};
 
 class ChangeNativeOcrModelCommand final : public QUndoCommand {
 public:

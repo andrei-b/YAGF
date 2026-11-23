@@ -133,12 +133,12 @@ std::expected<QJsonObject,QString> runExperiment(const core::OcrDocument &docume
             };
             if(!engine){finish(QStringLiteral("Unknown provider"));continue;}
             const auto *original=document.page(ref.number);
-            core::OcrDocument sourceOnly;sourceOnly.sourcePath=document.sourcePath;sourceOnly.totalPages=document.totalPages;
+            core::OcrDocument sourceOnly;sourceOnly.sourcePath=document.sourcePath;sourceOnly.totalPages=document.totalPages;sourceOnly.pageSources=document.pageSources;
             sourceOnly.rendering={p.dpi>0?p.dpi:p.dpi==0?original->renderDpi:150,p.dpi==-1};
             QElapsedTimer prep;prep.start();
             auto raw=processing::readExportPage(sourceOnly,ref.number,temporary,cancelled);
             if(!raw){finish(raw.error().error.isEmpty()?QStringLiteral("Cancelled"):raw.error().error);continue;}
-            const int dpi=processing::isPagedSource(document.sourcePath)?qRound(raw->dotsPerMeterY()*.0254):150;
+            const int dpi=processing::isPagedSource(document.sourceForPage(ref.number).path)?qRound(raw->dotsPerMeterY()*.0254):150;
             auto settings=original->preprocessing;
             if(!p.savedFilters){settings.autoContrast=false;settings.denoise=false;settings.adaptiveBinarization=false;settings.inkThreshold=0;settings.levelShadows=false;}
             settings.autoContrast|=p.contrast;settings.denoise|=p.denoise;

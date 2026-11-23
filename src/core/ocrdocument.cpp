@@ -435,6 +435,18 @@ QString OcrDocument::layoutHtml() const
     return html + QStringLiteral("</body></html>");
 }
 
+DocumentPageSource OcrDocument::sourceForPage(int number) const
+{
+    if (number < 1 || number > totalPages) return {};
+    return pageSources.isEmpty() ? DocumentPageSource{sourcePath, number} : pageSources.value(number - 1);
+}
+
+void OcrDocument::materializePageSources()
+{
+    if (!pageSources.isEmpty()) return;
+    for (int number = 1; number <= totalPages; ++number) pageSources.append({sourcePath, number});
+}
+
 QJsonObject OcrDocument::toJson(bool includeRestoredPixels) const
 {
     QJsonArray pageItems;
@@ -515,7 +527,10 @@ QJsonObject OcrDocument::toJson(bool includeRestoredPixels) const
             item.insert("restored_page_png", QString::fromLatin1(page.preprocessing.restoredPng.toBase64()));
         pageItems.append(item);
     }
-    return {{"schema_version", 2}, {"source", sourcePath}, {"engine", engine},
+    QJsonArray sources;
+    for (const auto &source : pageSources)
+        sources.append(QJsonObject{{"path", source.path}, {"page", source.page}});
+    QJsonObject result{{"schema_version", 2}, {"source", sourcePath}, {"engine", engine},
             {"preserve_formatting", preserveFormatting}, {"math_ocr", mathOcr},
             {"unicode_formulas", unicodeFormulas},
             {"use_raw_ocr_output", useRawOcrOutput},
@@ -525,6 +540,8 @@ QJsonObject OcrDocument::toJson(bool includeRestoredPixels) const
             {"native_ocr_url", nativeOcrUrl},
             {"context", QJsonObject{{"description", context.description},
                                     {"infer_from_recognized_text", context.inferFromRecognizedText}}}};
+    if (!pageSources.isEmpty() || totalPages == 0) result["page_sources"] = sources;
+    return result;
 }
 
 bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString *error)
@@ -593,10 +610,23 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
                                      {"words", json.value(QStringLiteral("words"))}});
         parsed.totalPages = 1;
     } else {
-        if (!integer(json, QStringLiteral("total_pages"), &parsed.totalPages) || parsed.totalPages < 1 ||
+        if (!integer(json, QStringLiteral("total_pages"), &parsed.totalPages) || parsed.totalPages < 0 ||
+            (parsed.totalPages == 0 && !json.contains("page_sources")) ||
             !json.value(QStringLiteral("pages")).isArray())
             return fail(QStringLiteral("Invalid page count or page list."));
         pageItems = json.value(QStringLiteral("pages")).toArray();
+    }
+    if (json.contains("page_sources")) {
+        if (!json["page_sources"].isArray() || json["page_sources"].toArray().size() != parsed.totalPages)
+            return fail(QStringLiteral("Invalid page source list."));
+        for (const auto &value : json["page_sources"].toArray()) {
+            const auto source = value.toObject();
+            int number = 0;
+            if (!source["path"].isString() || source["path"].toString().isEmpty() ||
+                !integer(source, QStringLiteral("page"), &number) || number < 1)
+                return fail(QStringLiteral("Invalid page source."));
+            parsed.pageSources.append({source["path"].toString(), number});
+        }
     }
     for (const auto &value : pageItems) {
         if (!value.isObject()) return fail(QStringLiteral("Invalid page entry."));

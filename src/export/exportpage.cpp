@@ -55,10 +55,12 @@ std::expected<QImage, ExportResult> readExportPage(const core::OcrDocument &docu
     const core::OcrPage *page = document.page(number);
     int dpi = page ? page->renderDpi : document.rendering.adaptive ? 150 : document.rendering.dpi;
     if (!core::validRenderDpi(dpi)) return std::unexpected(failure(QStringLiteral("Invalid rendering resolution on page %1.").arg(number)));
-    QString imagePath = document.sourcePath;
-    if (isPagedSource(document.sourcePath)) {
+    const auto sourceReference = document.sourceForPage(number);
+    const auto &sourcePath = sourceReference.path;
+    QString imagePath = sourcePath;
+    if (isPagedSource(sourcePath)) {
         const QString prefix = temporary.filePath(QStringLiteral("page"));
-        const auto [program, arguments, outputPath] = pageRenderCommand(document.sourcePath, number, prefix, false, dpi);
+        const auto [program, arguments, outputPath] = pageRenderCommand(sourcePath, sourceReference.page, prefix, false, dpi);
         const auto rendered = detail::runExportCommand(program, arguments, cancelled);
         if (rendered.status != ExportResult::Status::Success) return std::unexpected(rendered);
         imagePath = outputPath;
@@ -68,12 +70,12 @@ std::expected<QImage, ExportResult> readExportPage(const core::OcrDocument &docu
     QImage source = reader.read();
     if (source.isNull())
         return std::unexpected(failure(QStringLiteral("Could not read page %1: %2").arg(number).arg(reader.errorString())));
-    if (!page && document.rendering.adaptive && isPagedSource(document.sourcePath)) {
+    if (!page && document.rendering.adaptive && isPagedSource(sourcePath)) {
         dpi = ImageProcessor::recommendedRenderDpi(source);
         while (dpi > 150 && double(source.width()) * source.height() * dpi * dpi / 22500 > 80000000)
             dpi = dpi == 400 ? 300 : dpi == 300 ? 200 : 150;
         if (dpi != 150) {
-            const auto command = pageRenderCommand(document.sourcePath, number, temporary.filePath("adaptive-page"), false, dpi);
+            const auto command = pageRenderCommand(sourcePath, sourceReference.page, temporary.filePath("adaptive-page"), false, dpi);
             const auto rendered = detail::runExportCommand(command.program, command.arguments, cancelled);
             if (rendered.status != ExportResult::Status::Success) return std::unexpected(rendered);
             QImageReader adaptive(command.outputPath); adaptive.setAutoTransform(true); source = adaptive.read();
@@ -87,8 +89,8 @@ std::expected<QImage, ExportResult> readExportPage(const core::OcrDocument &docu
     if (!processed) return std::unexpected(failure(processed.error()));
     if (page && (processed->width() != page->width || processed->height() != page->height))
         return std::unexpected(failure(QStringLiteral("Processed dimensions changed on page %1.").arg(number)));
-    if (preserveImageDpi && !isPagedSource(document.sourcePath)) return std::move(*processed);
-    const int outputDpi = isPagedSource(document.sourcePath) ? dpi : 150;
+    if (preserveImageDpi && !isPagedSource(sourcePath)) return std::move(*processed);
+    const int outputDpi = isPagedSource(sourcePath) ? dpi : 150;
     processed->setDotsPerMeterX(qRound(outputDpi / 0.0254));
     processed->setDotsPerMeterY(qRound(outputDpi / 0.0254));
     return std::move(*processed);
