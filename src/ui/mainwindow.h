@@ -134,6 +134,9 @@ protected:
 private:
     void openFile();
     void scanPage();
+    bool appendScannedPage(const QString &path);
+    void removeDocumentPage(int number);
+    void refreshPageSequence(int number);
     void pasteImage();
     void importMimeData(const QMimeData *mime);
     QString saveImportedImage(const QImage &image);

@@ -3,6 +3,22 @@
 
 namespace yagf::ui {
 
+ChangePageSequenceCommand::ChangePageSequenceCommand(core::OcrDocument &document, core::OcrDocument after,
+    int beforePage, int afterPage, std::function<void(int)> refresh, const QString &label)
+    : QUndoCommand(label), document(document),
+      before{document.pages, document.pageSources, document.totalPages},
+      after{std::move(after.pages), std::move(after.pageSources), after.totalPages},
+      beforePage(beforePage), afterPage(afterPage), refresh(std::move(refresh)) {}
+void ChangePageSequenceCommand::restore(const State &state, int selectedPage)
+{
+    document.pages = state.pages;
+    document.pageSources = state.sources;
+    document.totalPages = state.totalPages;
+    refresh(selectedPage);
+}
+void ChangePageSequenceCommand::redo() { restore(after, afterPage); }
+void ChangePageSequenceCommand::undo() { restore(before, beforePage); }
+
 ChangeNativeOcrModelCommand::ChangeNativeOcrModelCommand(core::OcrDocument &document, QString url)
     : QUndoCommand(QStringLiteral("Use native OCR model")),document(document),before(document.nativeOcrUrl),after(std::move(url)) {}
 void ChangeNativeOcrModelCommand::redo() {document.nativeOcrUrl=after;}

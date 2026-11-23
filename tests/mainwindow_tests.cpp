@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "exportpage.h"
 #include "projectfile.h"
 #include "verificationcontroller.h"
 #include "correctionretention.h"
@@ -63,7 +64,270 @@
 #undef NDEBUG
 #endif
 #include <cassert>
+#include <functional>
 namespace processing = yagf::processing;
+
+static void testUnrecognizedProjectSaving(const QTemporaryDir &directory)
+{
+    QApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
+    const auto wait = [](const std::function<bool()> &ready) {
+        QElapsedTimer timer; timer.start();
+        while (!ready() && timer.elapsed() < 10000) { QApplication::processEvents(); QThread::msleep(5); }
+        assert(ready());
+    };
+    const auto imagePath = directory.filePath("unrecognized.png");
+    QImage image(200, 100, QImage::Format_RGB32); image.fill(Qt::red); assert(image.save(imagePath));
+    const auto pdfPath = directory.filePath("unrecognized.pdf");
+    {
+        QPdfWriter writer(pdfPath);
+        writer.setResolution(150);
+        writer.setPageSize(QPageSize(QSizeF(100, 120), QPageSize::Millimeter));
+        writer.setPageMargins(QMarginsF(0, 0, 0, 0));
+        QPainter painter(&writer);
+        painter.fillRect(0, 0, writer.width(), writer.height(), Qt::red);
+        assert(writer.newPage());
+        painter.fillRect(0, 0, writer.width(), writer.height(), Qt::blue);
+    }
+    for (const auto &source : {imagePath, pdfPath}) {
+        yagf::ui::MainWindow window;
+        window.show();
+        window.loadSource(source);
+        auto *pages = window.findChild<QListWidget *>("pageMiniatures");
+        auto *recognize = window.findChild<QAction *>("recognizeAllAction");
+        auto *view = window.findChild<yagf::ui::PageView *>();
+        const int count = source == pdfPath ? 2 : 1;
+        wait([&] { return recognize->isEnabled() && pages->count() == count; });
+        QAction *save = nullptr;
+        for (auto *action : window.findChildren<QAction *>())
+            if (action->text() == "Save project") save = action;
+        assert(save);
+        const QStringList actions{"Save project", "Save project as…", "Save portable project folder…"};
+        for (int i = 0; i < actions.size(); ++i) {
+            QAction *saveAction = nullptr;
+            for (auto *action : window.findChildren<QAction *>())
+                if (action->text() == actions[i]) saveAction = action;
+            assert(saveAction);
+            const bool portable = i == 2;
+            const auto destination = directory.filePath(QFileInfo(source).fileName() + QString::number(i) +
+                (portable ? ".yagfproj" : ".yagf.json"));
+            QTimer::singleShot(0, &window, [&] {
+                auto *dialog = qobject_cast<QFileDialog *>(QApplication::activeModalWidget()); assert(dialog);
+                dialog->selectFile(destination);
+                QMetaObject::invokeMethod(dialog, "accept", Qt::DirectConnection);
+            });
+            saveAction->trigger();
+            yagf::core::OcrDocument saved;
+            QString error;
+            const auto load = [&] {
+                return portable ? yagf::core::ProjectFile::loadPortable(destination, &saved, &error)
+                                : yagf::core::ProjectFile::load(destination, &saved, &error);
+            };
+            assert(load() && saved.totalPages == count && saved.pages.isEmpty() && saved.engine.isEmpty());
+            window.loadProject(destination);
+            wait([&] { return recognize->isEnabled() && pages->count() == count; });
+            // A saved source can be reopened and resaved without creating OCR records.
+            save->trigger();
+            assert(load() && saved.pages.isEmpty());
+            for (int number = 1; number <= count; ++number) {
+                pages->setCurrentRow(number - 1);
+                wait([&] { return recognize->isEnabled(); });
+                bool foundImage = false;
+                for (auto *item : view->scene()->items())
+                    if (auto *pixmap = qgraphicsitem_cast<QGraphicsPixmapItem *>(item)) {
+                        const auto displayed = pixmap->pixmap().toImage();
+                        assert(displayed.pixelColor(displayed.width()/2, displayed.height()/2) ==
+                            (number == 1 ? QColor(Qt::red) : QColor(Qt::blue)));
+                        foundImage = true;
+                    }
+                assert(foundImage);
+            }
+        }
+    }
+}
+
+static void testScannedPages(const QTemporaryDir &directory)
+{
+    using yagf::core::OcrDocument;
+    using yagf::core::ProjectFile;
+    const auto wait = [](const std::function<bool()> &ready) {
+        QElapsedTimer timer; timer.start();
+        while (!ready() && timer.elapsed() < 10000) { QApplication::processEvents(); QThread::msleep(5); }
+        assert(ready());
+    };
+    QFile scanner(directory.filePath("scanimage"));
+    assert(scanner.open(QIODevice::WriteOnly));
+    scanner.write("#!/bin/sh\n"
+        "case \"$1\" in --formatted-device-list=*) printf 'virtual:0\\tTest scanner\\n'; exit 0;; esac\n"
+        "for arg do case \"$arg\" in --output-file=*) cp \"$YAGF_PAGE_FIXTURE\" \"${arg#--output-file=}\";; esac; done\n");
+    scanner.close();
+    assert(scanner.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+    yagf::ui::MainWindow window;
+    window.show();
+    auto *pages = window.findChild<QListWidget *>("pageMiniatures");
+    QAction *scan = nullptr, *save = nullptr, *undo = nullptr, *redo = nullptr;
+    for (auto *action : window.findChildren<QAction *>()) {
+        if (action->iconText() == "Scan") scan = action;
+        if (action->text() == "Save project") save = action;
+        if (action->shortcut() == QKeySequence::Undo) undo = action;
+        if (action->shortcut() == QKeySequence::Redo) redo = action;
+    }
+    assert(scan && save && undo && redo);
+    QTest::keyClick(pages, Qt::Key_Delete); // No document means no removal prompt.
+    const auto scanPage = [&](QColor color, QSize size) {
+        QImage fixture(size, QImage::Format_RGB32); fixture.fill(color);
+        const auto path = directory.filePath("new-scan.png"); assert(fixture.save(path));
+        qputenv("YAGF_PAGE_FIXTURE", QFile::encodeName(path));
+        QTimer start;
+        QObject::connect(&start, &QTimer::timeout, &window, [&] {
+            auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+            if (!dialog) return;
+            for (auto *button : dialog->findChildren<QPushButton *>())
+                if (button->text() == "Scan" && button->isEnabled()) { start.stop(); button->click(); return; }
+        });
+        start.start(5);
+        scan->trigger();
+        assert(!start.isActive());
+        wait([&] { return scan->isEnabled(); });
+    };
+    scanPage(Qt::red, {80, 100});
+    assert(pages->count() == 1);
+    undo->trigger(); assert(pages->count() == 0);
+    redo->trigger(); assert(pages->count() == 1);
+    scanPage(Qt::blue, {90, 110});
+    assert(pages->count() == 2 && pages->currentRow() == 1);
+    undo->trigger(); assert(pages->count() == 1);
+    redo->trigger(); assert(pages->count() == 2 && pages->currentRow() == 1);
+    const auto project = directory.filePath("scanned-pages.yagf.json");
+    QTimer::singleShot(0, &window, [&] {
+        auto *dialog = qobject_cast<QFileDialog *>(QApplication::activeModalWidget()); assert(dialog);
+        dialog->selectFile(project); QMetaObject::invokeMethod(dialog, "accept", Qt::DirectConnection);
+    });
+    save->trigger();
+    QString error;
+    OcrDocument saved; assert(ProjectFile::load(project, &saved, &error));
+    assert(saved.totalPages == 2 && saved.pages.size() == 2 && saved.pageSources.size() == 2);
+    std::atomic_bool cancelled = false;
+    for (int number = 1; number <= 2; ++number) {
+        auto image = processing::readExportPage(saved, number, directory, cancelled);
+        assert(image && image->pixelColor(0, 0) == (number == 1 ? QColor(Qt::red) : QColor(Qt::blue)));
+    }
+    // Recognized text and stable IDs survive appending and deleting preceding pages.
+    auto *second = saved.page(2);
+    second->words.append({2, 1, 1, 1, QRect(10, 10, 20, 10), "original", "corrected", 99, true});
+    second->rebuildHierarchy();
+    const auto wordId = second->words.first().id;
+    assert(ProjectFile::save(project, saved, &error));
+    window.loadProject(project);
+    wait([&] { return scan->isEnabled(); });
+    assert(pages->count() == 2);
+    scanPage(Qt::green, {100, 120});
+    assert(pages->count() == 3);
+    save->trigger();
+    assert(ProjectFile::load(project, &saved, &error));
+    assert(saved.page(2)->words.first().text == "corrected");
+    const auto portable = directory.filePath("scans.yagfproj");
+    assert(ProjectFile::savePortable(portable, saved, &error));
+    OcrDocument bundled; assert(ProjectFile::loadPortable(portable, &bundled, &error));
+    assert(bundled.pageSources.size() == 3);
+    auto blue = processing::readExportPage(bundled, 2, directory, cancelled);
+    assert(blue && blue->pixelColor(0, 0) == QColor(Qt::blue));
+    // Delete applies to the focused thumbnail and defaults to keeping the page.
+    pages->setCurrentRow(1);
+    pages->setFocus();
+    const auto confirm = [&](QMessageBox::StandardButton answer, int number) {
+        QTimer::singleShot(0, &window, [&, answer, number] {
+            auto *dialog = qobject_cast<QMessageBox *>(QApplication::activeModalWidget()); assert(dialog);
+            assert(dialog->windowTitle() == "Remove page" && dialog->text().contains(QString::number(number)));
+            assert(dialog->defaultButton() == dialog->button(QMessageBox::No));
+            dialog->button(answer)->click();
+        });
+    };
+    confirm(QMessageBox::No, 2);
+    QTest::keyClick(pages, Qt::Key_Delete);
+    assert(pages->count() == 3);
+    // Deleting text does not remove a page or open a confirmation.
+    auto *textEditor = window.findChild<QTextEdit *>("recognizedTextEditor");
+    textEditor->moveCursor(QTextCursor::End);
+    QTest::keyClick(textEditor, Qt::Key_Delete);
+    assert(pages->count() == 3);
+    // The context menu targets the clicked thumbnail, even if another page is selected.
+    pages->setCurrentRow(2);
+    pages->scrollToItem(pages->item(0)); pages->doItemsLayout();
+    const QPoint position = pages->visualItemRect(pages->item(0)).center();
+    QTimer::singleShot(0, &window, [&] {
+        auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget()); assert(menu);
+        auto *remove = menu->findChild<QAction *>("removePageAction"); assert(remove && remove->isEnabled());
+        confirm(QMessageBox::Yes, 1);
+        remove->trigger(); menu->close();
+    });
+    QContextMenuEvent context(QContextMenuEvent::Mouse, position, pages->viewport()->mapToGlobal(position));
+    QApplication::sendEvent(pages->viewport(), &context);
+    assert(pages->count() == 2 && pages->currentRow() == 1);
+    save->trigger();
+    assert(ProjectFile::load(project, &saved, &error));
+    assert(saved.page(1)->words.first().text == "corrected");
+    assert(saved.page(1)->words.first().page == 1 && saved.page(1)->words.first().id == wordId);
+    undo->trigger(); assert(pages->count() == 3);
+    redo->trigger(); assert(pages->count() == 2);
+    pages->setFocus();
+    confirm(QMessageBox::Yes, 2);
+    QTest::keyClick(pages, Qt::Key_Delete);
+    assert(pages->count() == 1 && pages->currentRow() == 0);
+    confirm(QMessageBox::Yes, 1);
+    QTest::keyClick(pages, Qt::Key_Delete);
+    assert(pages->count() == 0 && !window.findChild<QAction *>("recognizeAllAction")->isEnabled());
+    save->trigger();
+    assert(ProjectFile::load(project, &saved, &error) && saved.totalPages == 0);
+    window.loadProject(project);
+    assert(pages->count() == 0);
+    scanPage(Qt::yellow, {70, 90});
+    assert(pages->count() == 1);
+    save->trigger();
+    window.loadProject(project);
+    assert(pages->count() == 1);
+    // Physical PDF page numbers stay attached to logical pages after removal.
+    const auto pdf = directory.filePath("scanning-source.pdf");
+    {
+        QPdfWriter writer(pdf);
+        writer.setResolution(150);
+        writer.setPageSize(QPageSize(QSizeF(100, 120), QPageSize::Millimeter));
+        writer.setPageMargins(QMarginsF(0, 0, 0, 0));
+        QPainter painter(&writer);
+        painter.fillRect(0, 0, writer.width(), writer.height(), Qt::red);
+        assert(writer.newPage());
+        painter.fillRect(0, 0, writer.width(), writer.height(), Qt::blue);
+    }
+    window.loadSource(pdf);
+    wait([&] { return scan->isEnabled() && pages->count() == 2; });
+    pages->setCurrentRow(0);
+    confirm(QMessageBox::Yes, 1);
+    QTest::keyClick(pages, Qt::Key_Delete);
+    wait([&] { return scan->isEnabled() && pages->count() == 1; });
+    scanPage(Qt::green, {200, 120});
+    assert(pages->count() == 2);
+    QTimer::singleShot(0, &window, [&] {
+        auto *dialog = qobject_cast<QFileDialog *>(QApplication::activeModalWidget()); assert(dialog);
+        dialog->selectFile(directory.filePath("mixed-pages.yagf.json"));
+        QMetaObject::invokeMethod(dialog, "accept", Qt::DirectConnection);
+    });
+    save->trigger();
+    assert(ProjectFile::load(directory.filePath("mixed-pages.yagf.json"), &saved, &error));
+    assert(saved.sourceForPage(1).page == 2 && saved.sourceForPage(1).path == pdf);
+    blue = processing::readExportPage(saved, 1, directory, cancelled);
+    assert(blue && blue->pixelColor(blue->width()/2, blue->height()/2) == QColor(Qt::blue));
+    window.loadProject(directory.filePath("mixed-pages.yagf.json"));
+    wait([&] { return scan->isEnabled() && pages->count() == 2; });
+    pages->setCurrentRow(1);
+    wait([&] { return scan->isEnabled(); });
+    window.findChild<QAction *>("rawOcrOutputAction")->setChecked(true);
+    auto *recognizeAll = window.findChild<QAction *>("recognizeAllAction");
+    recognizeAll->trigger();
+    wait([&] { return scan->isEnabled(); });
+    save->trigger();
+    assert(ProjectFile::load(directory.filePath("mixed-pages.yagf.json"), &saved, &error));
+    assert(saved.page(1)->words.size() == 2 && saved.page(2)->words.size() == 2);
+    window.findChild<QAction *>("rawOcrOutputAction")->setChecked(false);
+}
 
 int main(int argc, char **argv)
 {
@@ -129,6 +393,11 @@ int main(int argc, char **argv)
     qputenv("PATH", QFile::encodeName(directory.path()) + ':' + qgetenv("PATH"));
     qputenv("YAGF_TEST_TSV", QFile::encodeName(fixturePath));
     qputenv("YAGF_TEST_ARGS", QFile::encodeName(argsPath));
+
+    testUnrecognizedProjectSaving(directory);
+    if (app.arguments().contains("--unrecognized-save-only")) return 0;
+    testScannedPages(directory);
+    if (app.arguments().contains("--scanned-pages-only")) return 0;
 
     yagf::ui::MainWindow window;
     auto *rawOcr = window.findChild<QAction *>("rawOcrOutputAction");

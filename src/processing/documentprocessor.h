@@ -81,6 +81,8 @@ private:
     int selectedRenderDpi(int number) const;
     QString pagePrefix(int number) const;
     QString pageFile(int number) const;
+    QString sourcePath(int number) const;
+    int sourcePage(int number) const;
     void selectRenderDpi(int number, int dpiOverride = 0);
     bool adaptRenderedPage(int number);
     void start(Job job, const QString &program, const QStringList &arguments);
