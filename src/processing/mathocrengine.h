@@ -22,6 +22,10 @@ private:
     QJsonObject structuredOutput;
 };
 
+// Compose the ordered retry crops into a single editable formula. When available,
+// prefer page text OCR for prose inside the corresponding child crop.
+QString formulaRowLatex(const core::RecognitionResult &row, const QVector<core::OcrWord> &pageWords = {});
+
 // Uses the selected remote recognizer, or batches through the local model when null.
 std::expected<core::OcrPage, OcrError> recognizeFormulaBoxes(
     IOcrEngine *provider, const QImage &image, const OcrOptions &options, std::stop_token stop,

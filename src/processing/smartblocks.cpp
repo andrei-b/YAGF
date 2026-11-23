@@ -1020,6 +1020,13 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
         for (auto formula : formulas.words) {
             const int crop = boxes.indexOf(formula.bounds);
             if (crop < 0) continue;
+            for (const auto &row : formulas.recognitionEvidence) {
+                if (row.provenance.inputArea == formula.bounds && !row.text.isEmpty() &&
+                    row.structuredOutput.contains("formula_row_sections")) {
+                    formula.text = formulaRowLatex(row, original.words);
+                    break;
+                }
+            }
             if (inlineMath[crop]) formula.text = "\\(" + formula.text + "\\)";
             formula.originalText = formula.text;
             readIsolatedSymbol(formula,symbolEvidence,image,settings,inlineMath[crop],formulas.recognitionHistory);

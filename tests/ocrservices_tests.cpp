@@ -43,7 +43,8 @@ namespace {
 class VisionServer:public QTcpServer {
 public:
     bool invalid=false,stall=false,compatible=true;
-    int posts=0;
+    int posts=0, stallAt=0, truncateAt=0;
+    std::function<QString(int)> transcription;
     QString prompt;
     QStringList prompts;
     QVector<QSize> crops;
@@ -70,9 +71,9 @@ public:
                     if (prompt == "Formula Recognition:") formulaRequested->store(true);
                     const auto data=content[0].toObject()["image_url"].toObject()["url"].toString().section(',',1).toLatin1();
                     QImage image; image.loadFromData(QByteArray::fromBase64(data),"PNG"); crops.append(image.size());
-                    if (stall) return;
-                    result={{"choices",QJsonArray{QJsonObject{{"finish_reason",invalid ? "length" : "stop"},
-                        {"message",QJsonObject{{"content","\\[\\frac{333}{106}=3,141509\\ldots\\]"}}}}}}};
+                    if (stall || posts == stallAt) return;
+                    result={{"choices",QJsonArray{QJsonObject{{"finish_reason",(invalid || posts == truncateAt) ? "length" : "stop"},
+                        {"message",QJsonObject{{"content",transcription ? transcription(posts) : QStringLiteral("\\[\\frac{333}{106}=3,141509\\ldots\\]")}}}}}}};
                 } else status=404;
                 const auto body=QJsonDocument(result).toJson(QJsonDocument::Compact);
                 socket->write("HTTP/1.1 "+QByteArray::number(status)+" Result\r\nContent-Type: application/json\r\nContent-Length: "+QByteArray::number(body.size())+"\r\nConnection: close\r\n\r\n"+body);
@@ -403,6 +404,97 @@ private slots:
         server.invalid=false;server.stall=true;std::stop_source stop;QTimer::singleShot(80,this,[&]{stop.request_stop();});
         page=processing::recognizeFormulaBoxes(engine->get(),image,{},stop.get_token(),{box});
         QVERIFY(!page);QVERIFY(page.error().cancelled);
+    }
+    void splitFormulaRow_data() {
+        QTest::addColumn<QString>("trigger");
+        QTest::newRow("whole-row-success") << QString("none");
+        QTest::newRow("token-limit") << QString("limit");
+        QTest::newRow("decode-loop") << QString("repeat");
+        QTest::newRow("timeout") << QString("timeout");
+        QTest::newRow("unbalanced-children") << QString("braces");
+        QTest::newRow("failed-child") << QString("child-failure");
+    }
+    void splitFormulaRow() {
+        QFETCH(QString, trigger);
+        const QImage row(QFINDTESTDATA("tests/data/math/regressions/context/eigenvalue-formula-row.png"));
+        QCOMPARE(row.size(), QSize(511,49));
+        VisionServer server;
+        const QString loop = QStringLiteral("\\approx\\|f_n\\|^{2}").repeated(30);
+        server.truncateAt = trigger == "limit" ? 1 : 0;
+        server.stallAt = trigger == "timeout" ? 1 : 0;
+        server.transcription = [&](int call) -> QString {
+            if (call == 1) return (trigger == "none" || trigger == "limit") ? QStringLiteral("x=y") : loop;
+            if (trigger == "braces" && call == 2) return QStringLiteral("{x");
+            if (trigger == "braces" && call == 3) return QStringLiteral("y}");
+            if (call == 4 && trigger == "child-failure") return loop;
+            if (call == 5) return QStringLiteral("и т. п.");
+            return QStringLiteral("\\[f_{%1}(x)\\]").arg(call-1);
+        };
+        auto engine = processing::makeOcrServiceEngine(server.service());
+        QVERIFY(engine);
+        QStringList warnings;
+        auto page = processing::recognizeFormulaBoxes(engine->get(),row,{}, {},{row.rect()},&warnings,3000);
+        QVERIFY(page);
+        if (trigger == "none") {
+            QCOMPARE(server.posts,1);
+            QCOMPARE(page->words.first().text,"x=y");
+            return;
+        }
+        if (trigger == "child-failure") {
+            QCOMPARE(server.posts,4);
+            QVERIFY(page->words.isEmpty());
+            QVERIFY(!warnings.isEmpty());
+            return;
+        }
+        QCOMPARE(server.posts,5);
+        if (trigger == "braces") {
+            QVERIFY(page->words.isEmpty());
+            QVERIFY(!warnings.isEmpty());
+            return;
+        }
+        QCOMPARE(server.prompts,QStringList({"Formula Recognition:","Formula Recognition:","Formula Recognition:",
+                                            "Formula Recognition:","OCR:"}));
+        QVERIFY(warnings.isEmpty());
+        QCOMPARE(page->words.size(),1);
+        QCOMPARE(page->words.first().text,QStringLiteral("f_{1}(x)\\quad f_{2}(x)\\quad f_{3}(x)\\quad \\text{и т. п.}"));
+        const auto &result=page->recognitionEvidence.first();
+        QCOMPARE(result.formulas.size(),3);
+        QCOMPARE(result.text.size(),1);
+        const QList<QRect> ink{{8,4,115,41},{142,4,141,41},{316,4,118,41}};
+        for (int i=0; i<3; ++i) {
+            QCOMPARE(result.formulas[i].order,i);
+            QVERIFY(!result.formulas[i].bounds);
+            QVERIFY(result.formulas[i].inputArea);
+            QVERIFY(result.formulas[i].inputArea->contains(ink[i].center()));
+            QVERIFY(result.formulas[i].inputArea->right() < (i<2 ? ink[i+1].left() : 450));
+        }
+        QCOMPARE(result.text.first().order,3);
+        auto placed = result;
+        placed.provenance.inputArea.translate(119, 111);
+        placed.text[0].text = "H T.Π.";
+        core::OcrWord local;
+        local.bounds = placed.text[0].inputArea->translated(119, 111);
+        local.text = QStringLiteral("и т. п.");
+        QCOMPARE(processing::formulaRowLatex(placed, {local}), page->words.first().text);
+    }
+    void formulaRowWithoutClearGapsIsKeptWhole() {
+        QImage row(QFINDTESTDATA("tests/data/math/regressions/context/eigenvalue-formula-row.png"));
+        QVERIFY(!row.isNull());
+        // A full-width fraction bar connects the groups into one expression.
+        row = row.convertToFormat(QImage::Format_RGB32);
+        QPainter painter(&row);
+        painter.drawLine(5, row.height()/2, row.width()-5, row.height()/2);
+        painter.end();
+        VisionServer server;
+        server.truncateAt = 1;
+        auto engine = processing::makeOcrServiceEngine(server.service());
+        QVERIFY(engine);
+        QStringList warnings;
+        auto page = processing::recognizeFormulaBoxes(engine->get(), row, {}, {}, {row.rect()}, &warnings);
+        QVERIFY(page);
+        QCOMPARE(server.posts, 1);
+        QVERIFY(page->words.isEmpty());
+        QVERIFY(!warnings.isEmpty());
     }
     void visionTextRetainsMarkdownWithoutClaimingWordCoordinates() {
         VisionServer server; auto engine=processing::makeOcrServiceEngine(server.service());QVERIFY(engine);

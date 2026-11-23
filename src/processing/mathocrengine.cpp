@@ -1,6 +1,8 @@
 #include "mathocrengine.h"
 #include "recognitionrecorder.h"
 
+#include <algorithm>
+#include <QMap>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
@@ -12,6 +14,66 @@
 #include <QScopeGuard>
 
 namespace yagf::processing {
+
+namespace {
+QString unwrapFormula(QString text)
+{
+    text = text.trimmed();
+    if (text.startsWith("```")) {
+        const auto newline = text.indexOf('\n');
+        if (newline >= 0 && text.endsWith("```")) text = text.mid(newline+1, text.size()-newline-4).trimmed();
+    }
+    if ((text.startsWith("\\[") && text.endsWith("\\]")) ||
+        (text.startsWith("\\(") && text.endsWith("\\)")) ||
+        (text.startsWith("$$") && text.endsWith("$$"))) text = text.mid(2, text.size()-4).trimmed();
+    else if (text.startsWith('$') && text.endsWith('$')) text = text.mid(1, text.size()-2).trimmed();
+    return text;
+}
+
+bool validFormula(const QString &text)
+{
+    if (text.isEmpty() || text.size() > 65536) return false;
+    int braces = 0;
+    for (qsizetype i = 0; i < text.size(); ++i) {
+        if (text[i] == '\\') { ++i; continue; }
+        if (text[i] == '{') ++braces;
+        if (text[i] == '}' && --braces < 0) return false;
+    }
+    return braces == 0;
+}
+}
+
+QString formulaRowLatex(const core::RecognitionResult &row, const QVector<core::OcrWord> &pageWords)
+{
+    QMap<int, QString> parts;
+    for (const auto &formula : row.formulas) {
+        const QString latex = unwrapFormula(formula.latex);
+        if (!validFormula(latex)) return {};
+        parts.insert(formula.order, latex);
+    }
+    for (const auto &region : row.text) {
+        QString text = region.text;
+        if (region.inputArea && !pageWords.isEmpty()) {
+            const QRect area = region.inputArea->translated(row.provenance.inputArea.topLeft());
+            QVector<const core::OcrWord *> words;
+            QRect covered;
+            for (const auto &word : pageWords) {
+                if (!area.contains(word.bounds.center()) || word.layoutBlock) continue;
+                words.append(&word);
+                covered |= word.bounds;
+            }
+            std::ranges::stable_sort(words, {}, [](const auto *word) { return word->bounds.left(); });
+            QStringList native;
+            for (const auto *word : words) native.append(word->text);
+            const QString candidate = native.join(' ');
+            static const QRegularExpression prose(QStringLiteral(R"(^(?=.*\p{L}.*\p{L})[\p{L}\s.,;:!?()–—-]+$)"));
+            if (covered.intersected(area).width() * 4 >= area.width() * 3 && prose.match(candidate).hasMatch())
+                text = candidate;
+        }
+        parts.insert(region.order, QStringLiteral("\\text{") + text + '}');
+    }
+    return parts.values().join(QStringLiteral("\\quad "));
+}
 
 std::expected<core::OcrPage, OcrError> recognizeFormulaBoxes(
     IOcrEngine *provider, const QImage &image, const OcrOptions &options, std::stop_token stop,
@@ -39,7 +101,10 @@ std::expected<core::OcrPage, OcrError> recognizeFormulaBoxes(
             if (!warnings) return std::unexpected(OcrError{message});
             warnings->append(message); break;
         }
-        auto settings = croppedOcrOptions(options,box); settings.formula=true; settings.historyRole="formula"; settings.language = "auto"; settings.formula = true;
+        auto settings = croppedOcrOptions(options, box);
+        settings.formula = true;
+        settings.historyRole = "formula";
+        settings.language = "auto";
         settings.timeoutMs = std::min(remaining, 30000);
         if (options.progress) options.progress(QStringLiteral("Recognizing formulas"), i, boxes.size());
         auto reading = provider->recognize(image.copy(box), settings, stop);
@@ -48,24 +113,15 @@ std::expected<core::OcrPage, OcrError> recognizeFormulaBoxes(
             if (reading.error().cancelled || stop.stop_requested()) return std::unexpected(reading.error());
             error = reading.error().message;
         } else {
-            QStringList parts;
-            for (const auto &word : reading->words) parts.append(word.text);
-            text = parts.join('\n').trimmed();
-            if (text.startsWith("```")) {
-                const auto newline = text.indexOf('\n');
-                if (newline >= 0 && text.endsWith("```")) text = text.mid(newline+1, text.size()-newline-4).trimmed();
+            const auto &evidence = reading->recognitionEvidence;
+            if (evidence.size() == 1 && evidence.first().structuredOutput.contains("formula_row_sections")) {
+                text = formulaRowLatex(evidence.first());
+            } else {
+                QStringList parts;
+                for (const auto &word : reading->words) parts.append(word.text);
+                text = unwrapFormula(parts.join('\n'));
             }
-            if ((text.startsWith("\\[") && text.endsWith("\\]")) ||
-                (text.startsWith("\\(") && text.endsWith("\\)")) ||
-                (text.startsWith("$$") && text.endsWith("$$"))) text = text.mid(2, text.size()-4).trimmed();
-            else if (text.startsWith('$') && text.endsWith('$')) text = text.mid(1, text.size()-2).trimmed();
-            int braces = 0;
-            for (int k = 0; k < text.size(); ++k) {
-                if (text[k] == '\\') { ++k; continue; }
-                if (text[k] == '{') ++braces;
-                if (text[k] == '}' && --braces < 0) break;
-            }
-            if (text.isEmpty() || text.size() > 65536 || braces != 0)
+            if (!validFormula(text))
                 error = QStringLiteral("Empty or unbalanced formula reading.");
         }
         if (!error.isEmpty()) {

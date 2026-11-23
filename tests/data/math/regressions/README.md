@@ -10,6 +10,8 @@ Use a formula PNG to test a formula engine directly. Use its context PNG to test
 | [Continued fractions](context/continued-fraction-definitions.png) · [decimal convergents](context/decimal-convergents.png) | Read the nested fractions and subscripts, distinguish 333/106 from 355/113, and preserve the decimal commas. The reported three-expression row is available [in full](formulas/convergents-full-row.png) and as three individual crops. These examples are from printed page 66, file page 70. |
 | [Isolated glyphs](context/symbol-strip.png) · [summation](context/typeset-sum.png) | Test italic x, z, u and v, Fraktur A, and the sum, integral and product operators individually. The typeset sum adds upper and lower limits and a neighboring quotient. |
 
+The [formula row from page 423](context/eigenvalue-formula-row.png) reproduces a whole-row timeout. A successful retry reads three approximations in order, keeps their stacked fractions intact and preserves the trailing Russian abbreviation «и т. п.».
+
 ## Coordinates and comparison
 
 All rectangles use integer pixels in the order `[x, y, width, height]`, measured from the top left. The right and bottom edges are exclusive. A case’s `context_xywh` selects its exact formula PNG from the context image. Landmark and neighboring-block rectangles use the same context coordinates. Add the context’s `source_xywh` origin to recover page coordinates in the named source raster. Page numbers are one-based.
