@@ -57,7 +57,7 @@ public:
     void recognizeTypedRegions(const QString &imagePath, const QString &language, int pageNumber,
                                const QVector<core::ImageRegion> &selected);
     void recognizeRegion(const QString &imagePath, const QString &language,
-                         int pageNumber, const QRect &region, std::optional<OcrService> tableService = {});
+                         int pageNumber, const QRect &region, std::optional<OcrService> tableService = {}, const QString &blockId = {});
     void recognizePages(const QVector<BatchPageOptions> &pages);
     void cancel();
 signals:
@@ -66,7 +66,7 @@ signals:
     void pageRendered(int pageNumber, const QString &imagePath);
     void thumbnailReady(int pageNumber, const QString &imagePath);
     void blocksSplit(core::OcrPage page);
-    void recognized(core::OcrPage page, const QPoint &offset, const QRect &region);
+    void recognized(core::OcrPage page, const QPoint &offset, const QRect &region, const QString &blockId);
     void recognitionHistoryReady(core::OcrPage page);
     void batchPageRecognized(core::OcrPage page, const QSize &sourceSize);
     void batchProgress(qsizetype completed, qsizetype total);
@@ -91,7 +91,7 @@ private:
     void prepareBatchImage(const QString &path);
     void finishBatchError(const QString &message);
     void startOcrImage(const QString &path, const QImage &image, OcrOptions options,
-                       const QRect &region, bool batch, bool splitOnly = false, QVector<core::ImageRegion> selected = {}, std::optional<OcrService> tableService = {});
+                       const QRect &region, bool batch, bool splitOnly = false, QVector<core::ImageRegion> selected = {}, std::optional<OcrService> tableService = {}, const QString &blockId = {});
 
     struct OcrJobResult {
         std::expected<core::OcrPage, OcrError> outcome;
@@ -99,6 +99,7 @@ private:
         QStringList warnings;
         QPoint offset;
         QRect region;
+        QString blockId;
         QVector<core::ImageRegion> selected;
     };
 

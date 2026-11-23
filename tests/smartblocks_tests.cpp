@@ -1,4 +1,5 @@
 #include "smartblocks.h"
+#include "overlapreading.h"
 #include "recognitionrecorder.h"
 #include "formulatext.h"
 #include "wordeditor.h"
@@ -386,6 +387,115 @@ private slots:
     }
 
     void cleanupTestCase() { qputenv("PATH", originalPath); qputenv("XDG_DATA_HOME", originalDataHome); }
+
+    void competingBlockReadingsUseTheBestLocalizedSpan()
+    {
+        const QRegion left(QRect(0,0,130,70)), right(QRect(40,3,140,70));
+        auto clipped = word(1,1,{40,15,16,12},"ing");
+        auto complete = word(2,1,{18,15,38,12},"reading");
+        auto lower = word(1,2,{41,24,17,12},"ing");
+        complete.confidence=79; clipped.confidence=99;
+        auto joined = word(1,1,{75,15,41,12},"twowords");
+        joined.confidence=45;
+        const auto two=word(2,1,{75,16,15,12},"two"), words=word(2,1,{93,16,23,12},"words");
+        QVector<core::OcrWord> a{complete,joined}, b{clipped,two,words,lower};
+        core::reconcileOverlap(a,b,left & right,left,right);
+        QCOMPARE(a.size(),3); QCOMPARE(a[0].text,"reading"); QCOMPARE(a[1].text,"two");
+        QCOMPARE(a[2].text,"words"); QCOMPARE(b.size(),1); QCOMPARE(b.first().bounds,lower.bounds);
+
+        joined.reviewed=true; a={two,words}; b={joined};
+        core::reconcileOverlap(a,b,left & right,right,left);
+        QCOMPARE(a.size(),1); QVERIFY(a.first().reviewed); QCOMPARE(a.first().text,"twowords");
+        QVERIFY(b.isEmpty());
+    }
+
+    void clippedLineAndEllipsisOnPage212()
+    {
+        // Page 212: the lower crop began halfway through the preceding line.
+        const QRegion upper(QRect(25,386,677,369)), lower(QRect(26,692,676,174));
+        auto full = word(1,1,{153,688,47,11},"—это");
+        auto edge = word(2,1,{160,692,39,16},"мам");
+        full.confidence = 88;
+        edge.confidence = 38;
+        const auto next = word(2,2,{151,710,14,11},"т.");
+        QVector<core::OcrWord> a{full}, b{edge,next};
+        core::reconcileOverlap(a,b,upper & lower,upper,lower);
+        QCOMPARE(a.size(),1);
+        QCOMPARE(a.first().text,full.text);
+        QCOMPARE(b.size(),1);
+        QCOMPARE(b.first().text,next.text);
+
+        a = {word(1,1,{239,628,35,7},"...,")};
+        b = {word(2,1,{239,628,6,6},"...,")};
+        core::reconcileOverlap(a,b,upper,upper,upper);
+        QCOMPARE(a.size(),1);
+        QVERIFY(b.isEmpty());
+    }
+
+    void overlappingFormulaCropsChooseSuccessfulCompleteReading()
+    {
+        const auto raw = reading({word(1,1,{80,24,20,12},"x")},{200,72});
+        const QRect tight(80,20,40,30), padded(67,15,63,45);
+        class FormulaEngine : public processing::IOcrEngine {
+        public:
+            QString id() const override { return "formula-fixture"; }
+            processing::EngineCapabilities capabilities() const override { return {.supportsFormulas=true}; }
+            std::expected<core::RecognitionResult,processing::OcrError> recognizeResult(
+                const QImage &crop,const processing::OcrOptions &,std::stop_token) override {
+                auto item = word(1,1,crop.rect(),crop.width()==40 ? "y" : "x");
+                item.confidence = crop.width()==40 ? 95 : 84;
+                return processing::recognitionFromPage(reading({item},crop.size()));
+            }
+        } engine;
+        for (bool reverse : {false,true}) {
+            QVector<core::ImageRegion> blocks{{"tight",tight,{},false,"math",false,"display_formula"},
+                {"padded",padded,{},false,"math",false,"display_formula"}};
+            if (reverse) std::reverse(blocks.begin(),blocks.end());
+            auto result = processing::recognizeSmartBlocks(scan(raw),{.language="rus"},blocks,false,{},false,
+                                                           &raw,nullptr,nullptr,&engine);
+            QVERIFY2(result,qPrintable(result ? QString() : result.error().message));
+            QCOMPARE(result->words.size(),1);
+            QCOMPARE(result->words.first().text,"x");
+            QCOMPARE(result->words.first().bounds,padded);
+            QCOMPARE(result->imageRegions.size(),2);
+        }
+    }
+
+    void overlappingTextCropsPreserveOutlinesAndCompareIndependentResults()
+    {
+        const auto native = reading({word(1,1,{8,12,22,10},"before"),
+            word(1,1,{61,15,30,10},"native"), word(1,2,{61,28,30,10},"repeat"),
+            word(1,2,{160,32,32,10},"after")},{210,70});
+        auto low=native;
+        low.words[1].confidence=35;
+        const QRect left(0,0,140,60), right(40,2,170,68);
+        const auto image=scan(low);
+        class CropEngine : public processing::IOcrEngine {
+        public:
+            QString id() const override { return "crop-fixture"; }
+            processing::EngineCapabilities capabilities() const override { return {}; }
+            std::expected<core::RecognitionResult,processing::OcrError> recognizeResult(
+                const QImage &crop,const processing::OcrOptions &,std::stop_token) override {
+                const bool left=crop.width()==140;
+                const QPoint origin=left ? QPoint() : QPoint(40,2);
+                auto best=word(1,1,QRect(61,15,30,10).translated(-origin),left ? "best" : "weak");
+                best.confidence=left ? 97 : 55;
+                QVector<core::OcrWord> found{best};
+                if (!left) found.append(word(1,1,QRect(100,18,20,10).translated(-origin),"unique"));
+                return processing::recognitionFromPage(reading(found,crop.size()));
+            }
+        } engine;
+        for (bool reverse : {false,true}) {
+            QVector<core::ImageRegion> blocks{{"left",left,{},false,"text"},{"right",right,{},false,"text"}};
+            if (reverse) std::reverse(blocks.begin(),blocks.end());
+            auto result=processing::recognizeSmartBlocks(image,{.language="rus"},blocks,false,{},true,
+                                                        &low,nullptr,&engine);
+            QVERIFY2(result,qPrintable(result ? QString() : result.error().message));
+            QCOMPARE(text(*result),(QStringList{"before","best","unique","repeat","after"}));
+            QCOMPARE(result->imageRegions[0].shape(),blocks[0].shape());
+            QCOMPARE(result->imageRegions[1].shape(),blocks[1].shape());
+        }
+    }
 
     void overlappingLinesUseRawParagraphs()
     {

@@ -37,6 +37,7 @@ elseif(MSVC)
 endif()
 
 add_library(yagf_core STATIC
+    src/core/overlapreading.cpp src/core/overlapreading.h
     src/core/layoutcorrection.cpp src/core/layoutcorrection.h src/core/layouttraining.h
     src/core/recognitionhistory.cpp src/core/recognitionhistory.h
     src/core/coordinateframes.cpp src/core/coordinateframes.h

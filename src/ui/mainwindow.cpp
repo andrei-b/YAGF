@@ -8,6 +8,7 @@
 #include "docxexporter.h"
 #include "verifiedsampleexporter.h"
 #include "mainwindow.h"
+#include "overlapreading.h"
 #include "regionoutline.h"
 #include <QScopeGuard>
 #include "blockminiaturelist.h"
@@ -1519,14 +1520,15 @@ MainWindow::MainWindow()
         undoStack.push(new ReplacePageCommand(document,evidence.number,std::move(page),tr("Save recognition history")));
     });
     connect(&processor, &DocumentProcessor::recognized, this,
-            [this](OcrPage newPage, const QPoint &offset, const QRect &region) {
+            [this](OcrPage newPage, const QPoint &offset, const QRect &region, const QString &blockId) {
         QImageReader reader(imagePath);
         const QSize size = reader.size();
         const OcrPage *oldPage = document.page(currentPage);
         ImageRegion selectedArea;
         selectedArea.bounds = region;
         if (oldPage && !region.isEmpty()) {
-            const auto match = std::ranges::find(oldPage->imageRegions,region,&ImageRegion::bounds);
+            const auto match = blockId.isEmpty() ? std::ranges::find(oldPage->imageRegions,region,&ImageRegion::bounds)
+                                                 : std::ranges::find(oldPage->imageRegions,blockId,&ImageRegion::id);
             if (match != oldPage->imageRegions.end()) selectedArea = *match;
         }
         const bool correctedFrame = region.isEmpty() && newPage.preprocessing != displayedPreprocessing;
@@ -1563,6 +1565,11 @@ MainWindow::MainWindow()
             area.translate(offset);
         }
         core::attachRecognitionCoordinates(newPage);
+        const bool table = std::ranges::any_of(newPage.recognitionEvidence, [](const auto &r) {
+            return r.provenance.task == "table";
+        });
+        const QRegion shared = oldPage && !region.isEmpty() && !table
+            ? core::sharedReadingArea(selectedArea,oldPage->imageRegions) : QRegion{};
         if (region.isEmpty()) {
             if (oldPage) newPage.words.removeIf([&](const OcrWord &word) {
                 return std::ranges::any_of(oldPage->imageRegions, [&](const ImageRegion &block) {
@@ -1576,6 +1583,13 @@ MainWindow::MainWindow()
             previous.words.removeIf([&](const auto &word) { return !overlapsWord(word, selectedArea); });
             previous.pendingCorrections.removeIf([&](const auto &word) { return !overlapsWord(word, selectedArea); });
             previous.deletedWords.removeIf([&](const auto &word) { return !overlapsWord(word, selectedArea); });
+            if (!shared.isEmpty()) {
+                QVector<OcrWord> neighbors;
+                for (const auto &word : previous.words)
+                    if (shared.intersects(word.bounds)) neighbors.append(word);
+                core::reconcileOverlap(newPage.words,neighbors,shared,selectedArea.shape(),{});
+                for (auto &word : neighbors) core::insertOverlapWord(newPage.words,std::move(word));
+            }
             newPage.width = size.width(); newPage.height = size.height();
             core::retainCorrections(newPage, previous, document.preserveFormatting);
             core::normalizeBlockFontSizes(newPage, {}, true);
@@ -1595,7 +1609,7 @@ MainWindow::MainWindow()
                 if (target != merged.imageRegions.end() && target->content.isEmpty())
                     target->content = detected.content;
             }
-            if (std::ranges::any_of(newPage.recognitionEvidence, [](const auto &r) {return r.provenance.task=="table";})) {
+            if (table) {
                 for (auto &block : merged.imageRegions) if (block.id == selectedArea.id) {
                     block.notText = false;
                     block.content = "text";
@@ -1645,7 +1659,20 @@ MainWindow::MainWindow()
                 insertion = 0;
                 while (insertion < kept.size() && kept.at(insertion).bounds.top() < region.top()) ++insertion;
             }
-            for (const OcrWord &word : newPage.words) kept.insert(insertion++, word);
+            if (!shared.isEmpty()) {
+                // A crop can read just the last few letters of a word whose
+                // center and most of its ink belong to the neighboring block.
+                // Keep its reading position even if the token splits or joins.
+                QVector<OcrWord> before = kept.mid(0,insertion);
+                QVector<OcrWord> after = kept.mid(insertion);
+                core::reconcileOverlap(before,newPage.words,shared,{},selectedArea.shape());
+                core::reconcileOverlap(after,newPage.words,shared,{},selectedArea.shape());
+                kept = std::move(before);
+                kept += newPage.words;
+                kept += after;
+            } else {
+                for (const OcrWord &word : newPage.words) kept.insert(insertion++, word);
+            }
             merged.words = std::move(kept);
             if (!document.useRawOcrOutput || merged.engineId!="tesseract") core::setFormulaOutput(merged,document.unicodeFormulas);
             undoStack.push(new ReplacePageCommand(document, currentPage, std::move(merged), tr("Recognize region")));
@@ -2775,7 +2802,7 @@ void MainWindow::runNextImageRegion()
                     .arg(nextQueuedImageRegion + 1).arg(queuedImageRegions.size()));
     const auto &region = queuedImageRegions.at(nextQueuedImageRegion);
     if (region.detectedLabel == "table") recognizeTable(region, false);
-    else processor.recognizeRegion(imagePath, blockLanguage(region), currentPage, region.bounds);
+    else processor.recognizeRegion(imagePath, blockLanguage(region), currentPage, region.bounds, {}, region.id);
 }
 
 bool MainWindow::usePaddleVlService(const QUrl &url)
@@ -3844,7 +3871,7 @@ void MainWindow::recognizeTable(const ImageRegion &region, bool confirmCorrectio
     const auto &words = document.page(currentPage)->words;
     if (confirmCorrections && std::ranges::any_of(words, [&](const auto &word) { return word.reviewed && overlapsWord(word, region); }) &&
         QMessageBox::question(this, tr("Recognize table"), tr("Replace the corrected text in this area?")) != QMessageBox::Yes) return;
-    processor.recognizeRegion(imagePath, blockLanguage(region), currentPage, region.bounds, service);
+    processor.recognizeRegion(imagePath, blockLanguage(region), currentPage, region.bounds, service, region.id);
 }
 
 void MainWindow::showBlockContextMenu(int index, const QPoint &globalPosition)

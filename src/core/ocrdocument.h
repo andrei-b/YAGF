@@ -52,6 +52,7 @@ struct OcrWord {
     int sourceFontSizePx = 0;
     QString latexText; // Canonical formula-bearing text retained for Unicode output.
     bool geometryInferred = false; // Editor input extent, not model-localized geometry.
+    bool atOcrCropEdge = false; // Localized ink touched the recognition crop boundary.
     [[nodiscard]] QString fontFamilyCss() const;
 };
 

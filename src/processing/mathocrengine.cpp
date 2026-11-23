@@ -133,7 +133,8 @@ std::expected<core::OcrPage, OcrError> recognizeFormulaBoxes(
         word.page = page.number; word.block = page.words.size()+1; word.line = word.paragraph = 1;
         word.bounds = box; word.layoutBlock = true; word.text = word.originalText = text;
         word.geometryInferred = true; // The selected crop is an editing extent, not a formula-model word box.
-        word.readingEngine = provider->id(); word.confidence = -1;
+        word.readingEngine = provider->id();
+        if (reading->words.size() == 1) word.confidence = reading->words.first().confidence;
         page.words.append(std::move(word));
         appendRecognitionEvidence(page, *reading, box.topLeft());
     }
