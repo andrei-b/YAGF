@@ -16,7 +16,7 @@ const QHash<QString, QString> &symbols()
         for (int i=0;i<a.size();++i) m.insert(a[i],b[i]);
         const QVector<QPair<QString,QString>> operators{
             {"pm","±"},{"mp","∓"},{"times","×"},{"div","÷"},{"cdot","·"},{"ast","∗"},{"star","⋆"},{"circ","∘"},{"bullet","∙"},
-            {"le","≤"},{"leq","≤"},{"ge","≥"},{"geq","≥"},{"ne","≠"},{"neq","≠"},{"approx","≈"},{"sim","∼"},{"simeq","≃"},{"equiv","≡"},{"cong","≅"},{"propto","∝"},{"ll","≪"},{"gg","≫"},
+            {"le","≤"},{"leq","≤"},{"leqslant","⩽"},{"ge","≥"},{"geq","≥"},{"geqslant","⩾"},{"ne","≠"},{"neq","≠"},{"approx","≈"},{"sim","∼"},{"simeq","≃"},{"equiv","≡"},{"cong","≅"},{"propto","∝"},{"ll","≪"},{"gg","≫"},
             {"in","∈"},{"notin","∉"},{"ni","∋"},{"subset","⊂"},{"supset","⊃"},{"subseteq","⊆"},{"supseteq","⊇"},{"cup","∪"},{"cap","∩"},{"setminus","∖"},{"emptyset","∅"},{"varnothing","∅"},
             {"forall","∀"},{"exists","∃"},{"nexists","∄"},{"neg","¬"},{"land","∧"},{"wedge","∧"},{"lor","∨"},{"vee","∨"},{"partial","∂"},{"nabla","∇"},{"infty","∞"},{"ell","ℓ"},{"hbar","ℏ"},{"imath","ı"},{"jmath","ȷ"},
             {"sum","∑"},{"prod","∏"},{"coprod","∐"},{"int","∫"},{"iint","∬"},{"iiint","∭"},{"oint","∮"},{"bigcup","⋃"},{"bigcap","⋂"},

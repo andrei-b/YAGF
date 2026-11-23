@@ -1,6 +1,34 @@
 {
   "version": 1,
   "sources": {
+    "calculus-72": {
+      "title": "matematika_dlya_vtuzov_spets_kursy.djvu",
+      "raster_size": [734, 1142],
+      "file_page": 72,
+      "printed_page": 72,
+      "render_dpi": 150
+    },
+    "calculus-73": {
+      "title": "matematika_dlya_vtuzov_spets_kursy.djvu",
+      "raster_size": [734, 1142],
+      "file_page": 73,
+      "printed_page": 73,
+      "render_dpi": 150
+    },
+    "calculus-79": {
+      "title": "matematika_dlya_vtuzov_spets_kursy.djvu",
+      "raster_size": [734, 1142],
+      "file_page": 79,
+      "printed_page": 79,
+      "render_dpi": 150
+    },
+    "calculus-119": {
+      "title": "matematika_dlya_vtuzov_spets_kursy.djvu",
+      "raster_size": [736, 1144],
+      "file_page": 119,
+      "printed_page": 119,
+      "render_dpi": 150
+    },
     "calculus-69": {
       "title": "matematika_dlya_vtuzov_spets_kursy.djvu",
       "raster_size": [734, 1142],
@@ -34,6 +62,26 @@
     }
   },
   "contexts": {
+    "diagram-and-piecewise-definition": {
+      "source": "calculus-72",
+      "image": "context/diagram-and-piecewise-definition.png",
+      "source_xywh": [15, 320, 705, 360]
+    },
+    "gamma-definition": {
+      "source": "calculus-73",
+      "image": "context/gamma-definition.png",
+      "source_xywh": [18, 178, 697, 109]
+    },
+    "laurent-expansion": {
+      "source": "calculus-79",
+      "image": "context/laurent-expansion.png",
+      "source_xywh": [16, 620, 694, 83]
+    },
+    "asymptotic-expansion": {
+      "source": "calculus-119",
+      "image": "context/asymptotic-expansion.png",
+      "source_xywh": [20, 110, 702, 101]
+    },
     "calculus-displays": {
       "source": "calculus-69",
       "image": "context/calculus-displays.png",
@@ -76,6 +124,38 @@
     }
   },
   "cases": [
+    {
+      "id": "piecewise-continuation",
+      "image": "formulas/piecewise-continuation.png",
+      "context": "diagram-and-piecewise-definition",
+      "context_xywh": [243, 10, 217, 57],
+      "expected_latex": "f_1(z)=\\begin{cases}f(z)&(z\\in(G)),\\\\g(z)&(z\\in(D))\\end{cases}",
+      "check": "Keep both branches and their shared brace together. Separate the hatched diagram and its caption from the prose at its right."
+    },
+    {
+      "id": "gamma-integrals",
+      "image": "formulas/gamma-integrals.png",
+      "context": "gamma-definition",
+      "context_xywh": [139, 35, 439, 66],
+      "expected_latex": "\\Gamma(p)=\\int_0^\\infty e^{-x}x^{p-1}\\,dx=\\int_0^\\infty\\exp[-x+(p-1)\\ln x]\\,dx",
+      "check": "Retain both pairs of integration limits and the term (p−1) in the exponential. Keep equation number (18) separate."
+    },
+    {
+      "id": "laurent-double-sum",
+      "image": "formulas/laurent-double-sum.png",
+      "context": "laurent-expansion",
+      "context_xywh": [185, 19, 333, 56],
+      "expected_latex": "f(z)=\\sum_{k=-\\infty}^{\\infty}c_k\\zeta^k=\\sum_{k=-\\infty}^{\\infty}c_k(z-a)^{k/n}",
+      "check": "Preserve both negative-infinity lower limits, the Greek zeta and the fractional exponent. Keep equation number (2) separate."
+    },
+    {
+      "id": "asymptotic-endpoint-sums",
+      "image": "formulas/asymptotic-endpoint-sums.png",
+      "context": "asymptotic-expansion",
+      "context_xywh": [108, 17, 470, 68],
+      "expected_latex": "I(\\nu)\\sim e^{i\\nu a}\\sum_{n=1}^{\\infty}\\frac{i^n}{\\nu^n}f^{(n-1)}(a)-e^{i\\nu b}\\sum_{n=1}^{\\infty}\\frac{i^n}{\\nu^n}f^{(n-1)}(b)",
+      "check": "Keep the subtraction between sums, the two endpoints and the derivative orders. Keep equation number (11) separate."
+    },
     {
       "id": "hyperbolic-tangent",
       "image": "formulas/hyperbolic-tangent.png",

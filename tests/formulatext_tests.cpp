@@ -28,6 +28,7 @@ int main(int argc,char **argv)
     const QVector<QPair<QString,QString>> expressions{
         {R"(p_{3}=2,\ q_1=1)","p₃=2,\u2009q₁=1"},
         {R"(\psi\leq\alpha+\beta)","ψ≤α+β"},
+        {R"(l\leqslant k-1,\quad\alpha_i\geqslant0)","l⩽k−1,\u2003αᵢ⩾0"},
         {R"(x^{2}+n^{-1})","x²+n⁻¹"},
         {R"(a_{n+1}+b_{ij})","aₙ₊₁+bᵢⱼ"},
         {R"(\frac{a+b}{c})","(a+b)/c"},

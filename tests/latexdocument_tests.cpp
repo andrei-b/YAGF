@@ -21,13 +21,14 @@ int main(int argc,char **argv)
     core::OcrDocument book; book.sourcePath=directory.filePath("scan.png"); book.engine="fixture"; book.language="rus";
     QImage image(200,300,QImage::Format_RGB32); image.fill(Qt::white); image.setPixelColor(20,160,Qt::blue); assert(image.save(book.sourcePath));
     core::OcrPage page; page.number=1; page.width=page.sourceWidth=200; page.height=page.sourceHeight=300;
-    const QStringList text{"Заголовок",R"(справа: \(p_3=2\), \(\psi\leq1\).)",R"(\[x^2=\frac{1}{2}\])", "Значение\nA\t42", "[Picture]", "Рисунок 1", R"(literal \input{ignored} # $ % & _ { } ^ ~)",R"(\end{document})"};
+    const QStringList text{"Заголовок",R"(справа: \(p_3=2\), \(\psi\leq1\).)",R"(\[x^2=\frac{1}{2}\])", "Значение\nA\t42", "[Picture]", "Рисунок 1", R"(literal \input{ignored} # $ % & _ { } ^ ~)",R"(\end{document})",
+        R"(\begin{array}{l l}{{\mathrm{a~b}\alpha_i\geqslant0}}&x\\ y&z\leqslant1\end{array})"};
     for (int i=0;i<text.size();++i) {
         const auto bounds=i==4 ? QRect(20,160,70,60) : QRect(10,5+i*25,150,20);
         page.words.append({1,i+1,1,1,bounds,text[i],text[i],90}); page.words.last().layoutBlock=true;
     }
     page.rebuildHierarchy();
-    const QStringList types{"heading","text","equation","table","picture","caption","text","code"};
+    const QStringList types{"heading","text","equation","table","picture","caption","text","code","equation"};
     for (int i=0;i<types.size();++i) page.regions[i].type=types[i];
     page.regions[3].tableLayout={QJsonArray{QJsonObject{{"header",true},{"colspan",2}}},QJsonArray{QJsonObject{},QJsonObject{}}};
     core::setFormulaOutput(page,true); book.unicodeFormulas=true; book.replacePage(page);
@@ -37,6 +38,13 @@ int main(int argc,char **argv)
     if (result.status!=processing::ExportResult::Status::Success) qFatal("%s",qPrintable(result.error));
     QFile file(destination); assert(file.open(QIODevice::ReadOnly)); const auto data=file.readAll(); file.close();
     assert(data.contains("\\section*{") && data.contains("\\frac ") && data.contains("\\psi "));
+    assert(data.contains("\\begin{array}{ll}") && data.contains("\\end{array}") &&
+           data.contains("\\geqslant ") && data.contains("\\leqslant "));
+    const auto aligned = processing::detail::safeLatexMath(R"(\begin{array}[t]{|r c|}1&2\end{array})");
+    assert(aligned && aligned->contains(R"(\begin{array}[t]{|rc|})"));
+    for (const auto *invalid : {R"(\begin{array}{||}x\end{array})", R"(\begin{array}x\end{array})",
+                                R"(\begin{array}{\alpha}x\end{array})", R"(\begin{array}{c}x\end{matrix})"})
+        assert(!processing::detail::safeLatexMath(invalid));
     assert(data.contains("\\multicolumn{2}") && data.contains("\\clearpage"));
     assert(!data.contains("\\input{") && data.contains("\\textbackslash{}input\\{ignored\\}"));
     const auto asset=QRegularExpression("(yagf-assets-[a-f0-9-]+/page-1-figure-5.png)").match(QString::fromUtf8(data)); assert(asset.hasMatch());
@@ -70,6 +78,7 @@ int main(int argc,char **argv)
             assert(xml.contains("Заголовок") && xml.contains("Second page"));
             assert(xml.count("w:type=\"page\"") == 1);
             assert(xml.contains("<m:f>") && xml.contains("<w:tbl>") && xml.contains("<w:drawing>"));
+            assert(xml.contains("<m:m>") && xml.contains("<m:mr>") && xml.contains("⩽") && xml.contains("⩾"));
         }
         assert(QDir(directory.path()).entryList({"yagf-assets-*"}, QDir::Dirs) == assetsBefore);
     }

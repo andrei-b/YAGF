@@ -38,7 +38,7 @@ std::expected<QString, QString> mathTokens(const QString &source, bool allowUnic
             "sum prod coprod int iint iiint oint lim limsup liminf max min inf sup "
             "sin cos tan cot sec csc arcsin arccos arctan sinh cosh tanh log ln exp det gcd dim "
             "pm mp times div cdot cdots ldots vdots ddots dots ast star circ bullet "
-            "le leq ge geq ne neq approx sim simeq equiv cong propto ll gg not "
+            "le leq leqslant ge geq geqslant ne neq approx sim simeq equiv cong propto ll gg not "
             "in notin ni subset supset subseteq supseteq cup cap setminus emptyset varnothing "
             "forall exists neg land lor wedge vee partial nabla infty ell hbar imath jmath "
             "to mapsto gets implies iff rightarrow leftarrow leftrightarrow Rightarrow Leftarrow "
@@ -52,9 +52,13 @@ std::expected<QString, QString> mathTokens(const QString &source, bool allowUnic
         return QSet<QString>(list.begin(), list.end());
     }();
     static const QSet<QString> environments{"matrix","pmatrix","bmatrix","Bmatrix","vmatrix","Vmatrix",
-                                            "smallmatrix","aligned","gathered","cases"};
+                                            "smallmatrix","aligned","gathered","cases","array"};
+    // An array's preamble is a different grammar from its math cells.
+    // Accept literal column alignments and vertical rules used by OCR.
+    static const QRegularExpression arrayColumns(QStringLiteral(R"(\s*(?:\[([tbc])\]\s*)?\{([lcr|\s]+)\})"));
     static const QHash<QChar,QString> unicode{{u'−',"-"},{u'×',"\\times "},{u'÷',"\\div "},
-        {u'≤',"\\le "},{u'≥',"\\ge "},{u'≠',"\\ne "},{u'≈',"\\approx "},{u'∞',"\\infty "},
+        {u'≤',"\\le "},{u'≥',"\\ge "},{u'⩽',"\\leqslant "},{u'⩾',"\\geqslant "},
+        {u'≠',"\\ne "},{u'≈',"\\approx "},{u'∞',"\\infty "},
         {u'∑',"\\sum "},{u'∫',"\\int "},{u'√',"\\sqrt "},{u'·',"\\cdot "},{u'²',"^{2}"},
         {u'°',"^{\\circ}"},{u'³',"^{3}"},{u'π',"\\pi "},{u'θ',"\\theta "},{u'α',"\\alpha "},{u'β',"\\beta "},
         {u'γ',"\\gamma "},{u'δ',"\\delta "},{u'λ',"\\lambda "},{u'μ',"\\mu "},{u'σ',"\\sigma "}};
@@ -79,6 +83,16 @@ std::expected<QString, QString> mathTokens(const QString &source, bool allowUnic
                 if (name == "begin") stack.append(env);
                 output += "\\" + name + "{" + env + "}";
                 i = end + 1;
+                if (name == "begin" && env == "array") {
+                    const auto spec = arrayColumns.match(source, i, QRegularExpression::NormalMatch,
+                                                          QRegularExpression::AnchorAtOffsetMatchOption);
+                    const auto columns = spec.captured(2).simplified().remove(' ');
+                    if (!spec.hasMatch() || std::ranges::none_of(columns, [](QChar column) { return column != '|'; }))
+                        return std::unexpected(QStringLiteral("Invalid or unsupported array column specification."));
+                    if (!spec.captured(1).isEmpty()) output += '[' + spec.captured(1) + ']';
+                    output += '{' + columns + '}';
+                    i = spec.capturedEnd();
+                }
             } else if (!name.isEmpty()) {
                 if (!commands.contains(name)) return std::unexpected(QStringLiteral("Unsupported math command \\%1.").arg(name));
                 output += "\\" + name + " ";
@@ -94,7 +108,7 @@ std::expected<QString, QString> mathTokens(const QString &source, bool allowUnic
             output += c;
         } else if (c.isSpace()) output += ' ';
         else if (unicode.contains(c)) output += unicode.value(c);
-        else if (((c.unicode() < 128 || (c.unicode() >= 0x0400 && c.unicode() <= 0x04ff)) && c.isLetterOrNumber()) || QStringLiteral("+-=<>/.,:;!?()[]^_*'|&").contains(c))
+        else if (((c.unicode() < 128 || (c.unicode() >= 0x0400 && c.unicode() <= 0x04ff)) && c.isLetterOrNumber()) || QStringLiteral("+-=<>/.,:;!?()[]^_*'|&~").contains(c))
             output += c;
         else if (allowUnicode && c.unicode()>=128 && (c.isPrint() || c.isHighSurrogate() || c.isLowSurrogate())) output+=c;
         else return std::unexpected(QStringLiteral("Unsupported math character %1.").arg(c));
