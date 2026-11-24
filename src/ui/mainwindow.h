@@ -227,6 +227,10 @@ private:
     void scheduleRecoverySnapshot();
     void writeRecoverySnapshot();
     void discardRecoverySnapshot();
+    QAction *intelligenceAction=nullptr;
+    void inspectIntelligence();
+    QAction *aiResultAction=nullptr;
+    void reviewResultWithAi(QVector<int> words);
     void editLayout();
     void createRegionFromSelection();
     void improveCurrentPage();

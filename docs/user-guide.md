@@ -67,6 +67,14 @@ Click **Navigate** beside the page controls, or press **Ctrl+Shift+J**. The **Do
 - **Uncertain words** lists unverified words with low confidence, conflicting readings, spelling flags, or suspect geometry. Select a word to review or mark it verified.
 - **Review queue** keeps the full list of outstanding issues, including unrecognized pages and saved corrections that can be restored or discarded.
 
+### Review an OCR result with general-purpose AI
+
+Open **Tools → Review → Review page OCR with AI…** to review the current recognized page. To review a smaller selection, open **Document intelligence…**, select a drawn block, region, paragraph, line or word, and choose **Review with AI…**.
+
+Enter a chat-completions endpoint and model name. The default sends text and works with a general-purpose text model. For a vision model, select **Include the scan crop**. Check the source text and click **Ask AI to review**. Long pages are sent in batches. The optional bearer token stays in memory for the session.
+
+The result shows each original passage, proposed replacement and reason. Select a suggestion to inspect its scan crop. Check the individual changes you agree with and choose **Apply checked changes**. **Undo** reverses the review as a single edit. The project retains the original OCR text and the model name on accepted changes. Closing the dialog discards unapplied suggestions.
+
 ### Reconstructing uncertain passages
 
 Choose **Tools → Recognition → Document context…** to describe the document's subject, period, terminology or names; for example, “A German physics textbook about thermodynamics, published in 1920.” The description is saved with the project and supports Undo/Redo. Leave it empty to let the configured AI infer the subject from earlier recognized text, or combine both sources of context.
@@ -188,6 +196,15 @@ python3 -m venv "$math_env"
 Choose **Tools → Recognition → OCR engine… → Surya**, open a scan, and recognize the page or use **Tools → Recognition → Recognize all pages** for a PDF. The Surya service detects layout, predicts reading order, and transcribes inline and display mathematics into LaTeX. Tables retain row and cell boundaries, header cells, and merged-cell spans. Figures and diagrams retain their source rectangles even when they contain no recognized text. See the [service setup](../service/README.md#surya).
 
 Select one layout block to edit its transcription. In a table, tabs separate cells and newlines separate rows. In **Tools → Page & layout → Edit layout…**, compare the ordered regions with the page, correct a label or figure crop, and move regions up or down. Save the project to retain these edits.
+
+### Inspect document structure and competing readings
+
+Open **Tools → Page & layout → Document intelligence…** or right-click a drawn block and choose **Document intelligence…**. The inspector opens on the selected block or word. Expand a region to see its paragraphs, lines and words. Double-click a relation to follow it. To find a particular OCR reading, enter it in the search field and press Enter. Press Enter again for the next occurrence.
+
+Select a word to see its scan crop, the current text, alternative readings and their evidence. For example, search for `2` on a page with coordinate names and compare italic *z* with the digit. A lower ink distance means a closer visual fit. **Use selected reading** records your decision. **Reject OCR reading** records a rejection against the source run and keeps the current text. When the evidence is inconclusive, **Request OCR from …** sends the displayed selection with a small margin to the named model and adds its result to the project. Available models come from **Tools → Recognition settings…**.
+
+Select a caption, continuation or equation-reference relation and choose **Confirm relation** to retain the link. **Remove confirmation** returns it to automatic inference. Use **Undo** to reverse a reading, an additional OCR run or a relation decision, and **Save project** to keep it.
+
 
 **File → Export → Text and HTML → Scientific book as HTML…** writes a self-contained, reflowable document in the reviewed reading order. It includes selectable formulas in the chosen LaTeX/Unicode output mode, HTML tables and embedded PNG figure crops. A caption immediately above or below a single figure or table stays with it. Ambiguous and separated captions remain at their reading positions. Plain text and JSON exports follow the same formula output mode; JSON also retains original LaTeX when available. Check equations, table alignment and multi-column order against the scan before publication.
 

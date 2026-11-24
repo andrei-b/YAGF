@@ -446,6 +446,92 @@ static void testScannedPages(const QTemporaryDir &directory)
     window.findChild<QAction *>("rawOcrOutputAction")->setChecked(false);
 }
 
+static void testIntelligenceCropReview(const QTemporaryDir &directory, const QString &source)
+{
+    using namespace yagf;
+    core::OcrDocument document;
+    document.sourcePath = source;
+    document.language = "eng";
+    core::OcrPage page;
+    page.width = 200;
+    page.height = 100;
+    page.language = "eng";
+    page.words = { { 1, 1, 1, 1, { 30, 20, 24, 24 }, "2", "2", 80 } };
+    document.replacePage(page);
+    QString error;
+    const auto path = directory.filePath("intelligence.yagf.json");
+    assert(core::ProjectFile::save(path, document, &error));
+    QFile tsv(directory.filePath("intelligence.tsv"));
+    assert(tsv.open(QIODevice::WriteOnly));
+    tsv.write("level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n"
+              "5\t1\t1\t1\t1\t1\t8\t8\t24\t24\t92\tz\n");
+    tsv.close();
+    const auto old = qgetenv("YAGF_TEST_TSV");
+    qputenv("YAGF_TEST_TSV", QFile::encodeName(tsv.fileName()));
+    ui::MainWindow window;
+    window.loadProject(path);
+    auto *words = window.findChild<QListWidget *>("recognizedWords");
+    words->setCurrentRow(0, QItemSelectionModel::ClearAndSelect);
+    auto *inspect = window.findChild<QAction *>("documentIntelligenceAction");
+    assert(inspect && inspect->isEnabled());
+    auto *ai = window.findChild<QAction *>("aiResultAction");
+    assert(ai && ai->isEnabled());
+    QTimer::singleShot(0, &window, [] {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        assert(dialog && dialog->objectName() == "aiResultReview");
+        assert(dialog->findChild<QPlainTextEdit *>()->toPlainText() == "2");
+        dialog->reject();
+    });
+    ai->trigger();
+    int phase = 0;
+    QTimer poll;
+    QObject::connect(&poll, &QTimer::timeout, &window, [&] {
+        auto *dialog = QApplication::activeModalWidget();
+        if (!dialog)
+            return;
+        assert(!qobject_cast<QMessageBox *>(dialog));
+        if (dialog->objectName() != "documentIntelligenceDialog")
+            return;
+        if (!phase) {
+            auto *request = dialog->findChild<QPushButton *>("requestIntelligenceOcr");
+            assert(request && request->isVisible());
+            ++phase;
+            request->click();
+        } else {
+            auto *list = dialog->findChild<QListWidget *>("intelligenceReadings");
+            const auto z = list->findItems("z ", Qt::MatchStartsWith);
+            assert(z.size() == 1);
+            list->setCurrentItem(z.first());
+            ++phase;
+            poll.stop();
+            dialog->findChild<QPushButton *>("useIntelligenceReading")->click();
+        }
+    });
+    poll.start(15);
+    inspect->trigger();
+    qputenv("YAGF_TEST_TSV", old);
+    assert(phase == 2);
+    QAction *save = nullptr, *undo = nullptr;
+    for (auto *action : window.findChildren<QAction *>()) {
+        if (action->shortcut() == QKeySequence::Save)
+            save = action;
+        if (action->shortcut() == QKeySequence::Undo)
+            undo = action;
+    }
+    assert(save && undo);
+    save->trigger();
+    core::OcrDocument saved;
+    assert(core::ProjectFile::load(path, &saved, &error));
+    const auto *fresh = saved.page(1);
+    assert(fresh && fresh->words.first().text == "z" && fresh->words.first().originalText == "2");
+    assert(fresh->recognitionHistory.runs.size() == 1 && fresh->recognitionHistory.decisions.size() == 1);
+    assert(fresh->recognitionHistory.decisions.first().runId == fresh->recognitionHistory.runs.first().id);
+    undo->trigger();
+    save->trigger();
+    assert(core::ProjectFile::load(path, &saved, &error));
+    assert(saved.page(1)->words.first().text == "2" && saved.page(1)->ocrReadings.size() == 1);
+}
+
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
@@ -511,6 +597,7 @@ int main(int argc, char **argv)
     qputenv("YAGF_TEST_TSV", QFile::encodeName(fixturePath));
     qputenv("YAGF_TEST_ARGS", QFile::encodeName(argsPath));
 
+    testIntelligenceCropReview(directory, sourcePath);
     testInlineTarget(directory, sourcePath);
     testInlineTarget(directory, sourcePath, true);
     if (app.arguments().contains("--inline-target-only")) return 0;

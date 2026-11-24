@@ -828,6 +828,12 @@ MainWindow::MainWindow()
     improveAction->setEnabled(false);
     restoreAction->setEnabled(false);
     pageToolsMenu->addSeparator();
+    aiResultAction=reviewToolsMenu->addAction(tr("Review page OCR with AI…"),this,[this]{reviewResultWithAi({});});
+    aiResultAction->setObjectName("aiResultAction");
+    aiResultAction->setEnabled(false);
+    intelligenceAction=pageToolsMenu->addAction(tr("Document intelligence…"),this,&MainWindow::inspectIntelligence);
+    intelligenceAction->setObjectName("documentIntelligenceAction");
+    intelligenceAction->setEnabled(false);
     layoutAction = pageToolsMenu->addAction(tr("Edit layout…"), this, &MainWindow::editLayout);
     createRegionAction = pageToolsMenu->addAction(tr("Create region from selection"), this,
                                              &MainWindow::createRegionFromSelection);
@@ -1865,6 +1871,7 @@ void MainWindow::setBusy(bool busy)
     deleteRegionButton->setEnabled(!blocked && selectedImageRegion >= 0);
     improveAction->setEnabled(!blocked && !rawImage.isNull());
     restoreAction->setEnabled(!blocked && !rawImage.isNull());
+    intelligenceAction->setEnabled(!blocked && document.page(currentPage) && !imagePath.isEmpty());
     layoutAction->setEnabled(!blocked && document.page(currentPage) && !document.page(currentPage)->regions.isEmpty());
     createRegionAction->setEnabled(!blocked && !selectedWords.isEmpty() &&
         document.page(currentPage) && selectedWords.size() < document.page(currentPage)->words.size());
@@ -1911,6 +1918,8 @@ void MainWindow::updatePageControls()
     if (documentContextAction) documentContextAction->setEnabled(available && !originalPath.isEmpty());
     if (nextSpecialistAction) nextSpecialistAction->setEnabled(available && !imagePath.isEmpty() &&
         document.page(currentPage) && !document.page(currentPage)->words.isEmpty());
+    if (aiResultAction) aiResultAction->setEnabled(available && document.page(currentPage) && !document.page(currentPage)->words.isEmpty());
+    if (intelligenceAction) intelligenceAction->setEnabled(available && document.page(currentPage) && !imagePath.isEmpty());
     if (layoutAction) layoutAction->setEnabled(available && document.page(currentPage) &&
         !document.page(currentPage)->regions.isEmpty());
     if (createRegionAction) createRegionAction->setEnabled(available && !selectedWords.isEmpty() &&
@@ -3613,6 +3622,7 @@ void MainWindow::showPageActions(int number, const QPoint &globalPosition, bool 
     if (number==currentPage && page && selectedRegionIds.size()==1)
         for (int i=0;i<page->imageRegions.size();++i) if (selectedRegionIds.contains(page->imageRegions[i].id)) { selected=i; break; }
     if (selected>=0) {
+        menu.addAction(intelligenceAction);
         auto *copy=menu.addAction(tr("Copy selected block as image"));
         copy->setObjectName("copyBlockImageAction");
         copy->setEnabled(!processor.isBusy() && !exportBusy && !projectLoading && !imagePath.isEmpty());
@@ -3946,6 +3956,7 @@ void MainWindow::showBlockContextMenu(int index, const QPoint &globalPosition)
             commitBlockEdit(std::move(changed), tr("Set block content"));
         });
     }
+    menu.addAction(intelligenceAction);
     menu.addAction(aiSplitBlockAction);
     menu.addAction(refineFormulaAction);
     auto *copy=menu.addAction(QIcon::fromTheme("edit-copy",style()->standardIcon(QStyle::SP_FileIcon)),tr("Copy block as image"));

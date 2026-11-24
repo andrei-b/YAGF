@@ -71,3 +71,14 @@ For this document, choose 300 DPI, **Improve page… → Detect orientation + sk
 `scanneddocument_tests` checks orientation, residual skew, word coverage on both halves of the German spreads, serialization, and identical processed pixels for OCR/export. The fixture is user-provided and not redistributed; the test skips when it is absent or has a different SHA-256. Set `YAGF_SCAN_REGRESSION_PDF` to its location. Its expected SHA-256 is `6ee9337949b87bd6bf81f157e81944979ee31fe3a74b9b0be5ff91700ef7db22`.
 
 The small generated reference project in `tests/data/benchmark` has known text and is suitable for checking the experiment machinery. It is not representative evidence for choosing an engine for photographed scientific books. See [the anonymized smoke-run example](benchmarks/README.md) for recorded results without deployment or host identity information.
+
+## Document intelligence on the Klein scan
+
+The inverse-rendering check reused the Russian OCR tokens, their whole-word boxes and the 150 DPI scans from the italic *z* experiment. Every run began with an empty correction memory. The engine selected its rendering parameters from ordinary words on the same page. The evaluation used the whole OCR line as context.
+
+| Review outcome | Development pages 96–110 | 46 held-out pages |
+| --- | ---: | ---: |
+| Printed italic *z* read by OCR as `2`, suggested as *z* | 3/3 | 15/16 |
+| Genuine twos suggested as *z* | 0/3 | 0/23 |
+
+The remaining held-out item was a clipped ≠ sign. The engine abstained on it and on one printed *z*. All 40 held-out items were visually labeled isolated OCR readings of `2` in running text. The earlier book-specific typeface matcher recovered the same 15 letters. This comparison measures candidate ranking on one edition. Whole-page recall, structural link accuracy, review time and the contribution of semantic memory require separate measurements.

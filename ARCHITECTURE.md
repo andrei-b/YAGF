@@ -57,6 +57,8 @@ CMake enforces the dependency direction through separate libraries:
 
 ```mermaid
 graph TD
+    yagf2 --> yagf_intelligence
+    yagf_intelligence --> yagf_core
     yagf2 --> yagf_processing
     yagf2 --> yagf_export
     yagf_processing --> yagf_ocr
@@ -70,7 +72,8 @@ graph TD
 
 | Target | Owns | Qt dependencies |
 | --- | --- | --- |
-| `yagf_core` | Document model, geometry, corrections, projects | Core only |
+| `yagf_core` | Document model, geometry, corrections, projects and raster comparison | Core and Gui |
+| `yagf_intelligence` | Document graph, evidence ranking, model preference and review decisions | Core and Gui through yagf_core |
 | `yagf_imaging` | Image preprocessing, source commands, symbol rasters | Gui |
 | `yagf_ocr` | OCR providers, specialist readings, font estimation | Gui; Network private to provider implementation |
 | `yagf_processing` | Async document jobs, thumbnails, batching | Concurrent |
@@ -78,7 +81,7 @@ graph TD
 | `yagf_experiments` | Verified reference evaluation, pipeline execution, immutable hypotheses and reports | Gui; source loading and providers through existing targets |
 | `yagf2` | Main window and dialogs | Widgets; Network explicitly for AI review |
 
-Neither imaging nor OCR providers depend on `DocumentProcessor`. Export depends on provider support, not on the asynchronous document controller, widgets, or Qt Concurrent. The UI links the controller and exporters independently. Tests link the smallest relevant target. In particular, core targets compile without Gui headers or linkage, and export-only tests do not link the document controller. The optional Python service and Jetson runtime are separate from the desktop binary. The application uses C++23, including `std::expected` for image-processing errors and `std::span` for skew scoring.
+Neither imaging nor OCR providers depend on `DocumentProcessor`. Export depends on provider support, not on the asynchronous document controller, widgets, or Qt Concurrent. The UI links the controller and exporters independently. Tests link the smallest relevant target. Export-only tests do not link the document controller. The optional Python service and Jetson runtime are separate from the desktop binary. The application uses C++23, including `std::expected` for image-processing errors and `std::span` for skew scoring.
 
 ## Data ownership
 
@@ -128,6 +131,34 @@ Searchable-scan PDF export paints the source image and an invisible corrected-te
 Reference confirmation in the dialog modifies only its snapshot. The UI sends progress through queued signals and owns no worker-side document state. Session credentials are omitted from pipeline serialization. Tesseract's optional benchmark memory collection uses a separate process group so cancellation also stops its GNU time child. Remote telemetry declares its scope; the VL bridge cannot measure its upstream GPU model. The read-only Python Jetson collector provides separately timestamped hardware observations.
 
 The source preprocessing model now persists right-angle orientation and adaptive-binarization choices. Fine skew always uses a locally thresholded mask; choosing binarization of the actual OCR image is separate. `pageorientation` owns optional Tesseract OSD, timeouts, and cancellation. The dialog runs it asynchronously. Orientation, fine skew, smooth bend, and traced-line restoration preserve recognition geometry through the source frame. Contrast, denoise, shadow leveling, and binarization have no geometric step. Perspective is available in the preprocessing/coordinate API; this change adds no perspective-corner editing UI.
+
+## YAGF Document Intelligence Engine
+
+The `yagf_intelligence` library consumes an immutable `OcrDocument` snapshot. Each review builds a graph for the active page, indexes the book’s corrections and numbered displays, and resolves relevant cross-page links. The library has no OCR provider, network, widget or job-controller dependency. The desktop passes it the displayed scan and asks for an assessment only when a word is selected.
+
+### What a block represents
+
+Drawn OCR areas are nodes alongside recognized regions, paragraphs, lines and words. Containment follows the saved hierarchy. Reading order follows the editor. Area overlap uses the actual block shape and localized source fragments. A caption can link to a single vertically adjacent, horizontally aligned figure. Hyphenated text can link consecutive blocks or pages. A parenthesized number can link to a uniquely numbered equation elsewhere in the project. These inferred links are offered for inspection.
+
+Confirmed links are optional page data in project JSON. Source-word anchors and original readings identify both endpoints. A confirmed link can survive a layout move. An absent or changed anchor leaves the decision dormant. Existing page commands handle acceptance, Undo and Redo. Older projects need no conversion. Reopening the inspector reconstructs the graph after an edit.
+
+### One decision from scan to editor
+
+For an isolated OCR `2` in «оси x, y, z одной системы», the engine retains the original reading and adds italic *z* as a competing interpretation. Other candidates come from localized native and companion OCR, single-word specialist alternatives and verified corrections in the book. A verified coordinate list can support another occurrence. References and genuine parenthesized numbers favor the current reading.
+
+For short candidates the engine renders the competing strings at the observed ink height. It compares aspect ratio and normalized ink against the original crop. When enough long prose words are available, up to five independent examples select a font family and smoothing setting for the page. The word’s saved font family takes priority. Each candidate gets the same upright and italic fits. A margin and an absolute distance threshold govern recommendations. Missing ink, inferred word geometry, crop-edge flags and a mismatched raster size can cause abstention. For whole LaTeX items the engine can flag unbalanced groups. These checks concern transcription and references.
+
+For an unresolved reading the engine proposes a padded crop and a recognition task. The UI filters configured models by readiness and advertised capabilities. Given the eligible models, the engine prefers models with better recorded review outcomes for that task, using mean run time to break ties. An explicit OCR request runs through the existing provider adapter and retains the crop, output and run history. The user can then accept a reading through the ordinary undoable document commands.
+
+### General-purpose AI review
+
+The inspector can also pass its selected graph node to the result reviewer. The Review menu offers the same operation on the whole page. The engine partitions source items into bounded batches. A chat-completions client sends the current OCR text, optionally accompanied by a scan crop. Responses identify a batch fragment and quote an exact, unique substring. The reviewer rejects ambiguous anchors and overlapping changes. Only checked changes flow into the document. Edits preserve source IDs and geometry through the normal word editor, carry the model label, and form one undoable page command. The word-level vision reviewer shares the same network client.
+
+### Research evaluation
+
+Start with ambiguous isolated symbols in running text. Score on complete, held-out pages so genuine numerals, ordinary words and characters missed by every candidate generator count. Compare the original OCR, the existing typeface matcher, and the new ranking using the same candidates. Report candidate coverage separately from ranking accuracy. Add rendering, document relations and verified memory individually and together to measure their contributions. Freeze memory before testing on a book, and test several editions. Report correct recoveries, false changes to genuine digits, abstentions and review time. A separate structure test should score reading order and reference links against human annotations.
+
+Related work provides baselines for individual components. GraphDoc studies spatial and logical relations among document elements. Ocular jointly models glyph rendering and transcription. CDM compares rendered formula transcriptions for evaluation. The research question for YAGF is whether combining scan evidence with editable, book-specific relations improves mathematical transcription at a fixed review cost. [GraphDoc](https://arxiv.org/abs/2502.02501), [Ocular](https://nlp.cs.berkeley.edu/pubs/BergKirkpatrick-Durrett-Klein_2013_OCR_paper.pdf), [CDM](https://openaccess.thecvf.com/content/CVPR2025/papers/Wang_Image_Over_Text_Transforming_Formula_Recognition_Evaluation_with_Character_Detection_CVPR_2025_paper.pdf)
 
 ## Next implementation slices
 

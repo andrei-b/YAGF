@@ -1,12 +1,11 @@
 #pragma once
 
 #include "correctionmemory.h"
+#include "reviewchat.h"
 
 #include <QDialog>
 #include <QImage>
-#include <QNetworkAccessManager>
 #include <QRect>
-#include <QTimer>
 
 class QComboBox;
 class QLabel;
@@ -15,7 +14,6 @@ class QListWidget;
 class QPushButton;
 class QSpinBox;
 class QPlainTextEdit;
-class QNetworkReply;
 
 namespace yagf::ui {
 
@@ -34,7 +32,7 @@ private:
     void setCandidate(const QString &text);
     void refreshPreviews();
     void askAi();
-    void finishAi();
+    void finishAi(ReviewChat::Answer answer);
 
     bool passage;
     QString secondEngine, secondReading;
@@ -58,10 +56,7 @@ private:
     QListWidget *suggestions = nullptr;
     QLabel *message = nullptr;
     QPushButton *askButton = nullptr;
-    QNetworkAccessManager network;
-    QNetworkReply *reply = nullptr;
-    QTimer deadline;
-    bool timedOut = false;
+    ReviewChat chat;
 };
 
 } // namespace yagf::ui

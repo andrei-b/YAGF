@@ -45,6 +45,7 @@ add_library(yagf_core STATIC
     src/core/coordinatetransform.cpp src/core/coordinatetransform.h
     src/core/recognitionresult.cpp src/core/recognitionresult.h
     src/core/ocrreadings.cpp src/core/ocrreadings.h
+    src/core/textraster.cpp src/core/textraster.h
     src/core/blockfont.cpp src/core/blockfont.h
     src/core/formulatext.cpp src/core/formulatext.h
     src/core/symbolrules.cpp src/core/symbolrules.h
@@ -64,6 +65,12 @@ add_library(yagf_core STATIC
     src/core/wordeditor.cpp src/core/wordeditor.h)
 target_link_libraries(yagf_core PUBLIC Qt6::Core Qt6::Gui)
 target_include_directories(yagf_core PUBLIC src/core)
+
+add_library(yagf_intelligence STATIC
+    src/intelligence/documentintelligence.cpp src/intelligence/documentintelligence.h
+    src/intelligence/resultreview.cpp src/intelligence/resultreview.h)
+target_link_libraries(yagf_intelligence PUBLIC yagf_core)
+target_include_directories(yagf_intelligence PUBLIC src/intelligence)
 
 # Image/source operations have no OCR, network, or job-controller dependency.
 add_library(yagf_imaging STATIC
@@ -144,7 +151,7 @@ target_compile_definitions(yagf2-benchmark PRIVATE YAGF_VERSION="${PROJECT_VERSI
 qt_add_executable(yagf2
     src/ui/blockminiaturelist.cpp src/ui/blockminiaturelist.h
     src/ui/verificationcontroller.cpp src/ui/verificationcontroller.h
-    src/ui/mainwindowreview.cpp src/ui/mainwindowexport.cpp src/ui/experimentdialog.cpp src/ui/experimentdialog.h
+    src/ui/mainwindowintelligence.cpp src/ui/resultreviewdialog.cpp src/ui/intelligencedialog.cpp src/ui/mainwindowreview.cpp src/ui/mainwindowexport.cpp src/ui/experimentdialog.cpp src/ui/experimentdialog.h
     src/main.cpp src/ui/mainwindow.cpp src/ui/mainwindow.h src/ui/formulaeditor.cpp src/ui/formulaeditor.h src/ui/inlineformuladialog.cpp
     src/ui/restorationdialog.cpp src/ui/restorationdialog.h
     src/ui/preprocessdialog.cpp src/ui/preprocessdialog.h
@@ -154,11 +161,11 @@ target_sources(yagf2 PRIVATE src/ui/documentcommands.cpp src/ui/documentcommands
 target_sources(yagf2 PRIVATE src/ui/nativetrainingdialog.cpp src/ui/nativetrainingdialog.h)
 target_sources(yagf2 PRIVATE src/ui/ocrlanguagedialog.cpp src/ui/ocrlanguagedialog.h src/ui/ocrservicesdialog.cpp src/ui/ocrservicesdialog.h src/ui/ocrreadingsdialog.cpp src/ui/ocrreadingsdialog.h)
 target_sources(yagf2 PRIVATE src/ui/aipagelayoutdialog.cpp src/ui/aipagelayoutdialog.h)
-target_sources(yagf2 PRIVATE src/ui/aireviewdialog.cpp src/ui/aireviewdialog.h)
+target_sources(yagf2 PRIVATE src/ui/reviewchat.cpp src/ui/aireviewdialog.cpp src/ui/aireviewdialog.h)
 target_sources(yagf2 PRIVATE src/ui/spellhighlighter.cpp src/ui/spellhighlighter.h)
 target_sources(yagf2 PRIVATE src/ui/symbolrulesdialog.cpp src/ui/symbolrulesdialog.h)
 target_compile_definitions(yagf2 PRIVATE YAGF_VERSION="${PROJECT_VERSION}")
-target_link_libraries(yagf2 PRIVATE yagf_experiments yagf_core yagf_processing yagf_export Qt6::Widgets Qt6::Concurrent Qt6::Network)
+target_link_libraries(yagf2 PRIVATE yagf_intelligence yagf_experiments yagf_core yagf_processing yagf_export Qt6::Widgets Qt6::Concurrent Qt6::Network)
 
 install(TARGETS yagf2 yagf2-benchmark RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(PROGRAMS tools/export_layout_training.py DESTINATION ${CMAKE_INSTALL_BINDIR} RENAME yagf2-export-layout-training)
@@ -210,6 +217,12 @@ if(BUILD_TESTING)
     target_link_libraries(recognitionresult_tests PRIVATE yagf_ocr Qt6::Network Qt6::Test)
     add_test(NAME recognitionresult_tests COMMAND recognitionresult_tests)
     find_package(Qt6 6.2 REQUIRED COMPONENTS Test)
+    qt_add_executable(documentintelligence_tests tests/documentintelligence_tests.cpp
+        src/ui/intelligencedialog.cpp src/ui/documentcommands.cpp)
+    target_include_directories(documentintelligence_tests PRIVATE src/ui)
+    target_link_libraries(documentintelligence_tests PRIVATE yagf_intelligence yagf_ocr Qt6::Widgets Qt6::Test)
+    add_test(NAME documentintelligence_tests COMMAND documentintelligence_tests)
+    set_tests_properties(documentintelligence_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     qt_add_executable(recognitionliveness_tests tests/recognitionliveness_tests.cpp)
     target_link_libraries(recognitionliveness_tests PRIVATE yagf_processing Qt6::Test)
     add_test(NAME recognitionliveness_tests COMMAND recognitionliveness_tests)
@@ -336,7 +349,7 @@ if(BUILD_TESTING)
     qt_add_executable(mainwindow_tests tests/mainwindow_tests.cpp
         src/ui/blockminiaturelist.cpp src/ui/blockminiaturelist.h
         src/ui/verificationcontroller.cpp src/ui/verificationcontroller.h
-        src/ui/mainwindowreview.cpp src/ui/mainwindowexport.cpp src/ui/experimentdialog.cpp src/ui/experimentdialog.h
+        src/ui/mainwindowintelligence.cpp src/ui/resultreviewdialog.cpp src/ui/intelligencedialog.cpp src/ui/mainwindowreview.cpp src/ui/mainwindowexport.cpp src/ui/experimentdialog.cpp src/ui/experimentdialog.h
         src/ui/mainwindow.cpp src/ui/mainwindow.h src/ui/formulaeditor.cpp src/ui/formulaeditor.h src/ui/inlineformuladialog.cpp
         src/ui/restorationdialog.cpp src/ui/restorationdialog.h
         src/ui/preprocessdialog.cpp src/ui/preprocessdialog.h
@@ -346,15 +359,20 @@ if(BUILD_TESTING)
     target_sources(mainwindow_tests PRIVATE src/ui/nativetrainingdialog.cpp src/ui/nativetrainingdialog.h)
     target_sources(mainwindow_tests PRIVATE src/ui/ocrlanguagedialog.cpp src/ui/ocrlanguagedialog.h src/ui/ocrservicesdialog.cpp src/ui/ocrservicesdialog.h src/ui/ocrreadingsdialog.cpp src/ui/ocrreadingsdialog.h)
     target_sources(mainwindow_tests PRIVATE src/ui/aipagelayoutdialog.cpp src/ui/aipagelayoutdialog.h)
-    target_sources(mainwindow_tests PRIVATE src/ui/aireviewdialog.cpp src/ui/aireviewdialog.h)
+    target_sources(mainwindow_tests PRIVATE src/ui/reviewchat.cpp src/ui/aireviewdialog.cpp src/ui/aireviewdialog.h)
     target_sources(mainwindow_tests PRIVATE src/ui/spellhighlighter.cpp src/ui/spellhighlighter.h)
     target_sources(mainwindow_tests PRIVATE src/ui/symbolrulesdialog.cpp src/ui/symbolrulesdialog.h)
-    target_link_libraries(mainwindow_tests PRIVATE yagf_experiments yagf_processing yagf_export Qt6::Widgets Qt6::Concurrent Qt6::Network Qt6::Test)
+    target_link_libraries(mainwindow_tests PRIVATE yagf_intelligence yagf_experiments yagf_processing yagf_export Qt6::Widgets Qt6::Concurrent Qt6::Network Qt6::Test)
     target_include_directories(mainwindow_tests PRIVATE src/ui)
     add_test(NAME mainwindow_tests COMMAND mainwindow_tests)
     set_tests_properties(mainwindow_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    qt_add_executable(airesultreview_tests tests/airesultreview_tests.cpp src/ui/resultreviewdialog.cpp src/ui/reviewchat.cpp)
+    target_include_directories(airesultreview_tests PRIVATE src/ui)
+    target_link_libraries(airesultreview_tests PRIVATE yagf_intelligence Qt6::Widgets Qt6::Network Qt6::Test)
+    add_test(NAME airesultreview_tests COMMAND airesultreview_tests)
+    set_tests_properties(airesultreview_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     qt_add_executable(aireviewdialog_tests tests/aireviewdialog_tests.cpp
-        src/ui/aireviewdialog.cpp src/ui/aireviewdialog.h)
+        src/ui/reviewchat.cpp src/ui/aireviewdialog.cpp src/ui/aireviewdialog.h)
     target_link_libraries(aireviewdialog_tests PRIVATE yagf_imaging Qt6::Widgets Qt6::Network Qt6::Test)
     target_include_directories(aireviewdialog_tests PRIVATE src/ui)
     add_test(NAME aireviewdialog_tests COMMAND aireviewdialog_tests)

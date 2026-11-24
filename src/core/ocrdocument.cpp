@@ -510,6 +510,14 @@ QJsonObject OcrDocument::toJson(bool includeRestoredPixels) const
                                      {"regions", regionItems}, {"image_regions", imageRegionItems},
                                      {"words", wordItems},
                                      {"reading_order", readingOrder}};
+        if (!page.reviewedRelations.isEmpty()) {
+            QJsonArray relations;
+            for (const auto &r : page.reviewedRelations)
+                relations.append(QJsonObject { { "type", r.type }, { "source", r.sourceWord },
+                    { "page", r.targetPageId }, { "target", r.targetWord },
+                    { "source_original", r.sourceOriginal }, { "target_original", r.targetOriginal } });
+            item["reviewed_relations"] = relations;
+        }
         if (!page.ocrReadings.isEmpty()) item.insert("ocr_readings",ocrReadingsJson(page.ocrReadings,&coordinateFrames));
         if(page.coordinates.isDefined())item["coordinates"]=page.coordinates.toJson();
         if(!page.sourceGeometry.isEmpty())item["source_geometry"]=geometryAnchorsJson(page.sourceGeometry);
@@ -752,6 +760,24 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
                 auto result = coordinateFrames.decode(entry.toObject());
                 if (!result) return fail(result.error());
                 page.recognitionEvidence.append(std::move(*result));
+            }
+        }
+        if (object.contains("reviewed_relations")) {
+            const auto value = object.value("reviewed_relations");
+            if (!value.isArray() || value.toArray().size() > 10000)
+                return fail(QStringLiteral("Invalid reviewed relations."));
+            for (const auto &entry : value.toArray()) {
+                const auto o = entry.toObject();
+                for (const auto *key :
+                    { "type", "source", "page", "target", "source_original", "target_original" })
+                    if (!o[key].isString() || o[key].toString().size() > 65536)
+                        return fail(QStringLiteral("Invalid relation endpoint."));
+                ReviewedRelation r { o["type"].toString(), o["source"].toString(), o["page"].toString(),
+                    o["target"].toString(), o["source_original"].toString(), o["target_original"].toString() };
+                if ((r.type != "caption" && r.type != "continuation" && r.type != "reference")
+                    || r.sourceWord.isEmpty() || r.targetPageId.isEmpty() || r.targetWord.isEmpty())
+                    return fail(QStringLiteral("Invalid reviewed relation."));
+                page.reviewedRelations.append(std::move(r));
             }
         }
         if (object.contains("layout_training")) {

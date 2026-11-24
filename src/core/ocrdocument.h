@@ -114,6 +114,12 @@ struct OcrReading {
     QStringList historyIds; // Stable references into the page's immutable run history.
 };
 
+// Endpoints refer to source words. A region is anchored by its first word.
+struct ReviewedRelation {
+    QString type, sourceWord, targetPageId, targetWord, sourceOriginal, targetOriginal;
+    bool operator==(const ReviewedRelation &) const = default;
+};
+
 struct OcrPage {
     QString id;
     int number = 1;
@@ -134,6 +140,7 @@ struct OcrPage {
     QVector<RecognitionResult> recognitionEvidence; // Immutable model output, separate from edits.
     RecognitionHistory recognitionHistory;
     LayoutTraining layoutTraining;
+    QVector<ReviewedRelation> reviewedRelations;
     CoordinatePipeline coordinates;
     QHash<QString, GeometryAnchor> sourceGeometry;
     [[nodiscard]] QVector<int> specialistSpan(int start) const;
