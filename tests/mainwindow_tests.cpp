@@ -66,6 +66,7 @@
 #ifdef NDEBUG
 #undef NDEBUG
 #endif
+#include <algorithm>
 #include <cassert>
 #include <functional>
 namespace processing = yagf::processing;
@@ -446,6 +447,71 @@ static void testScannedPages(const QTemporaryDir &directory)
     window.findChild<QAction *>("rawOcrOutputAction")->setChecked(false);
 }
 
+static void testProseTypefaceReview(const QTemporaryDir &directory, const QString &source)
+{
+    yagf::ui::MainWindow window;
+    auto *action = window.findChild<QAction *>("reviewProseTypefaceAction");
+    assert(action && !action->isEnabled());
+    window.loadSource(source);
+    assert(action->isEnabled());
+    const QString model = directory.filePath("typeface.json");
+    QFile modelFile(model);
+    assert(modelFile.open(QIODevice::WriteOnly));
+    modelFile.close();
+    // Stub the worker, exercising the real model chooser, process arguments and review UI.
+    QTemporaryDir bin;
+    QFile helper(bin.filePath("python3"));
+    assert(helper.open(QIODevice::WriteOnly));
+    helper.write(R"SH(#!/bin/sh
+[ -f "$1" ] && [ "$2" = inspect ] && [ -f "$3" ] && [ -s "$4" ] && [ "$6" = --scope ] && [ "$7" = prose ] || exit 2
+echo '{"counts":{"formula_match":1,"unusual":1,"unknown":1,"word_letters":7},"findings":[{"status":"formula_match","char":"а","suggested":"α","word":"а","box":[4,5,14,20]},{"status":"unusual","char":"x","word":"x","box":[4,5,14,20]},{"status":"unknown","char":"Q","word":"Q","box":[22,5,36,20]}]}' > "$5"
+)SH");
+    helper.close();
+    assert(helper.setPermissions(QFile::ReadOwner | QFile::ExeOwner));
+    const auto path = qgetenv("PATH");
+    qputenv("PATH", QFile::encodeName(bin.path()) + ':' + path);
+    QApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
+    bool located = false;
+    QTimer poll;
+    QObject::connect(&poll, &QTimer::timeout, &window, [&] {
+        auto *dialog = QApplication::activeModalWidget();
+        if (auto *choose = qobject_cast<QFileDialog *>(dialog)) {
+            auto *name = choose->findChild<QLineEdit *>("fileNameEdit");
+            assert(name);
+            name->setText(model);
+            QMetaObject::invokeMethod(choose, "accept", Qt::DirectConnection);
+        } else if (dialog && dialog->objectName() == "proseTypefaceReview") {
+            auto *list = dialog->findChild<QListWidget *>();
+            if (!list->count()) return;
+            assert(list->count() == 2 && list->currentItem()->text().contains("Math letter α"));
+            assert(list->currentItem()->text().contains("а") && list->item(1)->text().contains("Unusual"));
+            const auto labels = dialog->findChildren<QLabel *>();
+            assert(std::ranges::any_of(labels, [](const QLabel *label) {
+                return label->text().contains("Skipped 7 letters in words");
+            }));
+            dialog->findChild<QCheckBox *>()->click();
+            assert(list->count() == 3);
+            poll.stop();
+            auto *buttons = dialog->findChild<QDialogButtonBox *>();
+            for (auto *button : buttons->buttons()) if (buttons->buttonRole(button) == QDialogButtonBox::AcceptRole) {
+                located = true;
+                button->click();
+                break;
+            }
+        }
+    });
+    QTimer timeout;
+    timeout.setSingleShot(true);
+    QObject::connect(&timeout, &QTimer::timeout, &window, [] {
+        if (auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget())) dialog->reject();
+    });
+    timeout.start(10000);
+    poll.start(20);
+    action->trigger();
+    qputenv("PATH", path);
+    assert(located);
+}
+
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
@@ -511,6 +577,7 @@ int main(int argc, char **argv)
     qputenv("YAGF_TEST_TSV", QFile::encodeName(fixturePath));
     qputenv("YAGF_TEST_ARGS", QFile::encodeName(argsPath));
 
+    testProseTypefaceReview(directory, sourcePath);
     testInlineTarget(directory, sourcePath);
     testInlineTarget(directory, sourcePath, true);
     if (app.arguments().contains("--inline-target-only")) return 0;

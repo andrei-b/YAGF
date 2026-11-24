@@ -144,7 +144,7 @@ target_compile_definitions(yagf2-benchmark PRIVATE YAGF_VERSION="${PROJECT_VERSI
 qt_add_executable(yagf2
     src/ui/blockminiaturelist.cpp src/ui/blockminiaturelist.h
     src/ui/verificationcontroller.cpp src/ui/verificationcontroller.h
-    src/ui/mainwindowreview.cpp src/ui/mainwindowexport.cpp src/ui/experimentdialog.cpp src/ui/experimentdialog.h
+    src/ui/mainwindowreview.cpp src/ui/mainwindowtypeface.cpp src/ui/mainwindowexport.cpp src/ui/experimentdialog.cpp src/ui/experimentdialog.h
     src/main.cpp src/ui/mainwindow.cpp src/ui/mainwindow.h src/ui/formulaeditor.cpp src/ui/formulaeditor.h src/ui/inlineformuladialog.cpp
     src/ui/restorationdialog.cpp src/ui/restorationdialog.h
     src/ui/preprocessdialog.cpp src/ui/preprocessdialog.h
@@ -161,6 +161,8 @@ target_compile_definitions(yagf2 PRIVATE YAGF_VERSION="${PROJECT_VERSION}")
 target_link_libraries(yagf2 PRIVATE yagf_experiments yagf_core yagf_processing yagf_export Qt6::Widgets Qt6::Concurrent Qt6::Network)
 
 install(TARGETS yagf2 yagf2-benchmark RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+configure_file(tools/prose_typeface.py yagf2-prose-typeface COPYONLY)
+install(PROGRAMS tools/prose_typeface.py DESTINATION ${CMAKE_INSTALL_BINDIR} RENAME yagf2-prose-typeface)
 install(PROGRAMS tools/export_layout_training.py DESTINATION ${CMAKE_INSTALL_BINDIR} RENAME yagf2-export-layout-training)
 install(FILES packaging/io.github.andrei_b.YAGF.desktop
         DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
@@ -336,7 +338,7 @@ if(BUILD_TESTING)
     qt_add_executable(mainwindow_tests tests/mainwindow_tests.cpp
         src/ui/blockminiaturelist.cpp src/ui/blockminiaturelist.h
         src/ui/verificationcontroller.cpp src/ui/verificationcontroller.h
-        src/ui/mainwindowreview.cpp src/ui/mainwindowexport.cpp src/ui/experimentdialog.cpp src/ui/experimentdialog.h
+        src/ui/mainwindowreview.cpp src/ui/mainwindowtypeface.cpp src/ui/mainwindowexport.cpp src/ui/experimentdialog.cpp src/ui/experimentdialog.h
         src/ui/mainwindow.cpp src/ui/mainwindow.h src/ui/formulaeditor.cpp src/ui/formulaeditor.h src/ui/inlineformuladialog.cpp
         src/ui/restorationdialog.cpp src/ui/restorationdialog.h
         src/ui/preprocessdialog.cpp src/ui/preprocessdialog.h
@@ -394,6 +396,8 @@ if(BUILD_TESTING)
     add_test(NAME remoteocrengine_tests COMMAND remoteocrengine_tests)
     find_package(Python3 QUIET COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND)
+        add_test(NAME prose_typeface_tests COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_prose_typeface.py)
+        set_tests_properties(prose_typeface_tests PROPERTIES SKIP_RETURN_CODE 77)
         add_test(NAME packaging_tests COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_packaging.py)
         set_tests_properties(packaging_tests PROPERTIES TIMEOUT 30)
         add_test(NAME public_files_tests COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_public_files.py)

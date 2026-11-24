@@ -858,6 +858,9 @@ MainWindow::MainWindow()
     });
     similarSymbolsAction = trainingToolsMenu->addAction(tr("Match similar symbol images"));
     similarSymbolsAction->setCheckable(true);
+    proseTypefaceAction = trainingToolsMenu->addAction(tr("Find math letters in running text…"), this, &MainWindow::reviewProseTypeface);
+    proseTypefaceAction->setObjectName("reviewProseTypefaceAction");
+    proseTypefaceAction->setEnabled(false);
     symbolRulesAction = trainingToolsMenu->addAction(tr("Symbol recognition rules…"));
     symbolRulesAction->setObjectName("symbolRulesAction");
     connect(symbolRulesAction, &QAction::triggered, this, [this] { editSymbolRules(false); });
@@ -1833,6 +1836,7 @@ void MainWindow::setBusy(bool busy)
     }
     const bool blocked = busy || exportBusy || projectLoading;
     verification->setBusy(blocked);
+    proseTypefaceAction->setEnabled(!blocked && !imagePath.isEmpty());
     symbolRulesAction->setEnabled(!blocked && !originalPath.isEmpty());
     teachSymbolAction->setEnabled(!blocked && !imagePath.isEmpty() && !editorPending && !selectedWords.isEmpty());
     scanAction->setEnabled(!blocked);

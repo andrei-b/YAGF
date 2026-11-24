@@ -177,6 +177,7 @@ private:
     void updateComparisonEngines();
     void updatePageLayoutService();
     void reviewOcrReadings();
+    void reviewProseTypeface();
     QVector<processing::OcrService> ocrServices;
     QString layoutSessionToken;
     QAction *ocrServicesAction=nullptr,*ocrReadingsAction=nullptr;
@@ -344,6 +345,7 @@ private:
     SpecialistService formulaService, proseService;
     QAction *nextSpecialistAction = nullptr;
     QAction *similarSymbolsAction = nullptr;
+    QAction *proseTypefaceAction = nullptr;
     QAction *symbolRulesAction = nullptr;
     QAction *teachSymbolAction = nullptr;
     QAction *documentContextAction = nullptr;

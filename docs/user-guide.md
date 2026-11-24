@@ -211,6 +211,51 @@ Matching is local and case-sensitive. Exact OCR readings take priority. When the
 
 Both memory and export use reviewed single-token text changes with one source word, one matching source box, and recorded OCR confidence. This excludes unchanged readings, inserted words, and estimated split or merged boxes. The exported pairs can be used for later model training.
 
+### Learn the prose typeface of one book
+
+Use **Tools → Training & experiments → Find math letters in running text…** and select the book’s model. The review looks for an isolated printed letter beside ordinary words, as in “a circle of radius *R*.” Select a row to compare its OCR context with the scan. **Locate on page** centers the scan on that letter. **Include characters with no prose reference** shows additional isolated letters whose OCR readings have no prose templates.
+
+The search uses words on the same OCR line, their spacing and their height. It skips letters inside words, including italic words, and ignores recognizable expressions such as `f(x)` and `x = 0`. In a project it also omits marked formula, picture and table areas when their coordinates match the displayed scan. Fragmented formulas and one-letter prose words can still produce findings. A model with Greek examples can also recognize some letters that general OCR reads as digits or signs. Review leaves the recognized text intact.
+
+The running-text search also handles a letter at the edge of a parenthesized quotation. If the OCR box for a letter overlaps nearby punctuation, the search uses gaps in the printed ink to recover the letter’s bounds. When low-confidence OCR assigns two overlapping letters to one connected shape, the review can offer a single math letter for the whole shape. The row shows both the suggested letter and the original OCR reading.
+
+To train, render several representative pages of the same book at the resolution you will review. Mixed prose and math are fine. With Python 3.9+, Pillow 9.1+ and NumPy available, run the installed command or use `python3 tools/prose_typeface.py` from a checkout.
+
+```sh
+yagf2-prose-typeface collect --language rus letters.json.gz scans/page-*.png
+yagf2-prose-typeface train letters.json.gz book-typeface.json
+yagf2-prose-typeface inspect book-typeface.json held-out-page.png page-review.json
+```
+
+Collection uses the selected Tesseract model and its word dictionary. Put `tesseract`, `combine_tessdata` and `dawg2wordlist` on your path, or provide `--wordlist words.txt` with one accepted word form per line to use an independent dictionary. The default selection requires at least five alphabetic characters, a dictionary match, distinct character boxes and word confidence of at least 90. The collector excludes all-capitals and explicitly styled words. Training also estimates slant across whole words and filters examples that differ from the dominant slant. The shape comparison preserves each character’s slant and aspect ratio.
+
+Use at least three distinct pages with eligible words. The trainer reserves every fourth eligible page starting with the third for calibration. A letter needs samples from at least two fitting pages and three different words, at least twelve fitting crops and eight calibration crops. Letters with less evidence stay unmodeled. Reserve additional pages for evaluation. To train on a Jetson, copy the script and the compressed samples there, run the same `train` command, and copy the resulting model back. Training uses the CPU. The samples contain word readings, page names and normalized glyphs. The page scans can stay on the desktop.
+
+The command uses the same prose search by default. Use `inspect --scope page` to reproduce the earlier whole-page experiment. The JSON review uses pixel boxes in left, top, right, bottom order, with exclusive right and bottom edges. A score of 2 means the distance to the closest stored example of the same OCR letter was twice that letter’s threshold. Use the score to rank visual mismatches for review. [Pilot results on a Russian calculus book](benchmarks/prose-typeface.md)
+
+To add examples of Greek letters and italic variables from the same book, supply a saved YAGF project with recognition history. The trainer uses accepted formula transcriptions with their original crops, or formula readings with confidence of at least 90 out of 100 and known crop coordinates. A dedicated single-formula input can supply the whole crop. Some engines omit confidence. For those readings, accept the formula in the inline formula editor or supply a visually checked crop.
+
+~~~sh
+yagf2-prose-typeface learn-formulas book-typeface.json book.yagf.json book-with-formulas.json
+yagf2-prose-typeface inspect book-with-formulas.json held-out-page.png page-review.json
+~~~
+
+For separately saved crops, pass a JSON manifest in place of the project. Each image contains the transcribed expression and its path is relative to the manifest. Mark a reading reviewed after comparing it with the scan.
+
+~~~json
+{"format":"yagf-formula-crops/1","formulas":[
+  {"image":"alpha-equals-x.png","latex":"\\alpha=x","reviewed":true}
+]}
+~~~
+
+The trainer aligns simple single-line expressions where each printed symbol occupies a separate group of ink columns. Single-character scripts must also fall on the expected side of the baseline. Numbers and operators can anchor the alignment. The trainer also stores aligned printed digits as comparison examples. A reviewed crop containing a single known Greek letter or digit is valid input. The trainer skips stacked fractions, touching glyphs with ambiguous boundaries, upright text commands and multi-letter names. You can add another batch by using the enriched model as input and choosing a new output file.
+
+Open the enriched model in the typeface review to see **Math letter** suggestions first. Each row shows the suggested letter, the original OCR reading and nearby words. A suggestion requires a close visual match that is distinct from both the other learned formula letters and the book’s prose letters. Letters inside words are skipped before this check. In the JSON report these entries have status `formula_match`, the printed-letter suggestion in `suggested`, and the ink distance in `distance`. Smaller distances mean closer shapes.
+
+For Greek letters, include examples of the missing letter from other pages of the same book and verified digit crops at the review resolution. The prose search considers a standalone OCR digit when the model has at least two distinct examples of that digit. A Greek suggestion must beat the book’s printed digits, prose letters and other formula letters. A standalone `@`, `&`, `%` or `©` reading requires two distinct examples of the proposed Greek letter and a closer shape match. The review continues to skip digits and signs inside words and multi-digit numbers. On the calculus scan this recovered printed ζ read as `6` and α read as `%`.
+
+For italic *z* read as `2`, include at least two distinct examples each of printed *z* and the numeral 2. You can add individually reviewed crops of both using `learn-formulas`. A standalone `2` in running text can then appear as **Math letter z · OCR read 2** when its ink matches *z* more closely than the competing letters and digits. Click the row to compare the suggestion with the scan.
+
 ### Teach new OCR symbols
 
 Select a word in the page or word list, highlight a misread symbol in its text, and choose **Tools → Training & experiments → Teach selected symbol…** (also in the text context menu). Enter the intended character, such as `ψ` or `☺`, and choose **This book** or **All projects**. The language field limits the rule to an OCR language or combination, such as `rus`; leave it empty to apply across languages.
