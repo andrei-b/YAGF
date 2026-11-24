@@ -50,6 +50,7 @@
 #include <QSignalSpy>
 #include <QScrollBar>
 #include <QPlainTextEdit>
+#include <QTextBrowser>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QTemporaryDir>
@@ -479,7 +480,8 @@ static void testIntelligenceCropReview(const QTemporaryDir &directory, const QSt
     QTimer::singleShot(0, &window, [] {
         auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
         assert(dialog && dialog->objectName() == "aiResultReview");
-        assert(dialog->findChild<QPlainTextEdit *>()->toPlainText() == "2");
+        auto *transcription = dialog->findChild<QTextBrowser *>("aiReviewPaper");
+        assert(transcription && transcription->toPlainText() == "2");
         dialog->reject();
     });
     ai->trigger();

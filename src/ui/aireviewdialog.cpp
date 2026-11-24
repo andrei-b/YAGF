@@ -308,7 +308,7 @@ void AiReviewDialog::askAi()
             "between readings supported by the marked image; never invent text to fit the subject.\n");
         prompt += contextPreview->toPlainText();
     }
-    const auto started=chat.send(endpoint->text(),model->text(),token->text(),prompt,png,passage?2048:160,
+    const auto started=chat.send(endpoint->text(),model->text(),token->text(),prompt,png,{.maxTokens = passage ? 2048 : 160},
         [this](ReviewChat::Answer answer){finishAi(std::move(answer));});
     if (!started) {message->setText(started.error());return;}
     askButton->setEnabled(false);

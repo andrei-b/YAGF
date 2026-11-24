@@ -67,13 +67,15 @@ Click **Navigate** beside the page controls, or press **Ctrl+Shift+J**. The **Do
 - **Uncertain words** lists unverified words with low confidence, conflicting readings, spelling flags, or suspect geometry. Select a word to review or mark it verified.
 - **Review queue** keeps the full list of outstanding issues, including unrecognized pages and saved corrections that can be restored or discarded.
 
-### Review an OCR result with general-purpose AI
+### AI-assisted review
 
-Open **Tools → Review → Review page OCR with AI…** to review the current recognized page. To review a smaller selection, open **Document intelligence…**, select a drawn block, region, paragraph, line or word, and choose **Review with AI…**.
+Open **Tools → Review → AI-assisted review…** to review the current recognized page. To review a smaller selection, open **Document intelligence…**, select a drawn block, region, paragraph, line or word, and choose **AI-assisted review…**.
 
-Enter a chat-completions endpoint and model name. The default sends text and works with a general-purpose text model. For a vision model, select **Include the scan crop**. Check the source text and click **Ask AI to review**. Long pages are sent in batches. The optional bearer token stays in memory for the session.
+Enter a chat-completions endpoint and model name. The default sends text and works with a general-purpose text model. For a vision model, select **Include the scan crop**. Check the source text and click **Ask AI to review**. Long pages are sent in batches. While the model streams a reply, the dialog shows the batch and elapsed time. A batch can run for more than two minutes while data continues to arrive. After a timeout, click **Ask AI to review** to retry the interrupted batch. The optional bearer token stays in memory for the session.
 
-The result shows each original passage, proposed replacement and reason. Select a suggestion to inspect its scan crop. Check the individual changes you agree with and choose **Apply checked changes**. **Undo** reverses the review as a single edit. The project retains the original OCR text and the model name on accepted changes. Closing the dialog discards unapplied suggestions.
+For a reasoning model that accepts `reasoning_effort=none`, **Request a direct answer** skips extended reasoning and can shorten review time. The dialog remembers this choice for the last endpoint and model used.
+
+The recognized text previews each correction inline. The original wording is struck through, and the proposed replacement appears right after it. Click a marked passage or choose **Show in text** on a note to see the explanation and scan crop. Select the changes you agree with and choose **Apply selected changes**. **Undo** reverses the review as a single edit. The project retains the original OCR text and the model name on accepted changes. Closing the dialog discards unapplied suggestions.
 
 ### Reconstructing uncertain passages
 

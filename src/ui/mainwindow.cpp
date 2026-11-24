@@ -828,7 +828,7 @@ MainWindow::MainWindow()
     improveAction->setEnabled(false);
     restoreAction->setEnabled(false);
     pageToolsMenu->addSeparator();
-    aiResultAction=reviewToolsMenu->addAction(tr("Review page OCR with AI…"),this,[this]{reviewResultWithAi({});});
+    aiResultAction=reviewToolsMenu->addAction(tr("AI-assisted review…"),this,[this]{reviewResultWithAi({});});
     aiResultAction->setObjectName("aiResultAction");
     aiResultAction->setEnabled(false);
     intelligenceAction=pageToolsMenu->addAction(tr("Document intelligence…"),this,&MainWindow::inspectIntelligence);

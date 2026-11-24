@@ -150,7 +150,7 @@ For short candidates the engine renders the competing strings at the observed in
 
 For an unresolved reading the engine proposes a padded crop and a recognition task. The UI filters configured models by readiness and advertised capabilities. Given the eligible models, the engine prefers models with better recorded review outcomes for that task, using mean run time to break ties. An explicit OCR request runs through the existing provider adapter and retains the crop, output and run history. The user can then accept a reading through the ordinary undoable document commands.
 
-### General-purpose AI review
+### AI-assisted review
 
 The inspector can also pass its selected graph node to the result reviewer. The Review menu offers the same operation on the whole page. The engine partitions source items into bounded batches. A chat-completions client sends the current OCR text, optionally accompanied by a scan crop. Responses identify a batch fragment and quote an exact, unique substring. The reviewer rejects ambiguous anchors and overlapping changes. Only checked changes flow into the document. Edits preserve source IDs and geometry through the normal word editor, carry the model label, and form one undoable page command. The word-level vision reviewer shares the same network client.
 

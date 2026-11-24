@@ -100,7 +100,7 @@ IntelligenceDialog::IntelligenceDialog(const core::OcrDocument& document, int nu
         edited = std::move(*result);
         accept();
     });
-    auto* askAi = buttons->addButton(tr("Review with AI…"), QDialogButtonBox::ActionRole);
+    auto* askAi = buttons->addButton(tr("AI-assisted review…"), QDialogButtonBox::ActionRole);
     askAi->setObjectName("reviewStructureWithAi");
     const auto selectAiWords = [this](int n) {
         QVector<int> result;
