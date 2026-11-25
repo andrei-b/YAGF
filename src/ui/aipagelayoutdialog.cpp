@@ -85,8 +85,9 @@ QToolButton *thumbnail(const QImage &image,const core::ImageRegion &block,QWidge
     return button;
 }
 }
-AiPageLayoutDialog::AiPageLayoutDialog(QImage source,QVector<core::ImageRegion> blocks,QWidget *parent,int pageNumber,QString bearerToken,bool blockScope,double deskewAdjustment)
-    :QDialog(parent),image(std::move(source)),ink(image),existing(std::move(blocks)),blockScope(blockScope)
+AiPageLayoutDialog::AiPageLayoutDialog(QImage source,QVector<core::ImageRegion> blocks,QWidget *parent,int pageNumber,QString bearerToken,bool blockScope,double deskewAdjustment,bool hasAppliedLayout)
+    :QDialog(parent),image(std::move(source)),ink(image),existing(std::move(blocks)),blockScope(blockScope),
+     hasAppliedLayout(hasAppliedLayout || std::ranges::any_of(existing, [](const auto &r){ return !r.detectedLabel.isEmpty(); }))
 {
     setWindowTitle(tr("AI page areas")); setWindowIcon(aiPageAreasIcon()); setObjectName("aiPageLayoutDialog"); resize(1160,820);
     setStyleSheet(QStringLiteral(R"(
@@ -221,7 +222,12 @@ void AiPageLayoutDialog::showEvent(QShowEvent *event)
     if (!opened) {
         opened = true;
         QTimer::singleShot(0, this, [this] {
-            if (isVisible()) { fitPreview(); analyze(); }
+            if (!isVisible()) return;
+            fitPreview();
+            if (!blockScope && hasAppliedLayout && !existing.isEmpty())
+                message->setText(tr("Showing the page’s applied layout. Choose Analyze again to request new proposals."));
+            else
+                analyze();
         });
     }
 }
@@ -296,7 +302,7 @@ void AiPageLayoutDialog::populate()
     }
     boxes.clear(); cards.clear(); areaItems.clear(); miniatures->clear();
     for (int i=0;i<existing.size();++i) {
-        const auto &region=existing[i]; const bool kept=!replaceAutomatic->isChecked() || !region.autoDetected;
+        const auto &region=existing[i]; const bool kept=!hasAnalysis || !replaceAutomatic->isChecked() || !region.autoDetected;
         preservedBoxes[i]->setVisible(kept || !hasAnalysis);
         if (!kept && hasAnalysis) continue;
         auto *item=new QListWidgetItem(miniatures); item->setData(Qt::UserRole,-i-1); item->setSizeHint(QSize(380,144));
@@ -367,6 +373,7 @@ void AiPageLayoutDialog::updateSelection()
 }
 QVector<core::ImageRegion> AiPageLayoutDialog::regions() const
 {
+    if (!hasAnalysis) return existing;
     QVector<processing::PageArea> accepted;
     for (int i=0;i<areas.size();++i) if (areaItems[i]->checkState()==Qt::Checked) accepted.append(areas[i]);
     return processing::mergePageAreas(existing,accepted,replaceAutomatic->isChecked());

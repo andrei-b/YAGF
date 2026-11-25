@@ -24,7 +24,8 @@ class AiPageLayoutDialog : public QDialog {
     Q_OBJECT
 public:
     AiPageLayoutDialog(QImage image, QVector<core::ImageRegion> existing, QWidget *parent=nullptr, int pageNumber=0,
-                       QString bearerToken={}, bool blockScope=false, double deskewAdjustment=0);
+                       QString bearerToken={}, bool blockScope=false, double deskewAdjustment=0,
+                       bool hasAppliedLayout=false);
     ~AiPageLayoutDialog() override;
     QVector<core::ImageRegion> regions() const;
     const QVector<core::ImageRegion> &proposedRegions() const { return initialRegions; }
@@ -80,6 +81,7 @@ private:
     bool opened=false;
     bool hasAnalysis=false;
     bool blockScope=false;
+    bool hasAppliedLayout=false;
     std::stop_source stop;
     processing::OcrOptions historyContext;
     QString historySourcePath;

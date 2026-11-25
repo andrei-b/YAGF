@@ -355,6 +355,28 @@ private slots:
         QCOMPARE(automatic.id,"old"); QCOMPARE(manual.language,"rus");
         apply->click(); QCOMPARE(dialog.result(),int(QDialog::Accepted));
     }
+    void reopenedLayoutKeepsAppliedAreasUntilAnalysisIsRequested() {
+        Server server;
+        server.areas={area("new","text",{80,0,100,60},.95)};
+        QSettings("YAGF","YAGF Revival").setValue("layout/url",server.url().toString());
+        const core::ImageRegion saved{"saved",{20,30,60,40},{},false,"math",true,"display_formula",.92};
+        ui::AiPageLayoutDialog dialog(sample(),{saved});
+        dialog.show();
+        QTRY_VERIFY(dialog.findChild<QLabel *>("layoutMessage")->text().contains("applied layout"));
+        QCOMPARE(server.requests,0);
+        const auto existing=dialog.regions();
+        QCOMPARE(existing.size(),1);
+        QCOMPARE(existing.first().id,saved.id);
+        QCOMPARE(existing.first().bounds,saved.bounds);
+        QCOMPARE(existing.first().content,saved.content);
+        auto *apply=dialog.findChild<QPushButton *>("applyPageAreas");
+        QVERIFY(!apply->isEnabled());
+        dialog.findChild<QPushButton *>("analyzePageAreas")->click();
+        QTRY_VERIFY_WITH_TIMEOUT(apply->isEnabled(),3000);
+        QCOMPARE(server.requests,1);
+        QCOMPARE(dialog.regions().first().content,"text");
+    }
+
     void failedAnalysisCannotApply() {
         Server server; server.change=[](QJsonObject &root){root["width"]=500;}; QSettings("YAGF","YAGF Revival").setValue("layout/url",server.url().toString());
         ui::AiPageLayoutDialog dialog(sample(),{}); dialog.show(); auto *analyze=dialog.findChild<QPushButton *>("analyzePageAreas"); analyze->click();

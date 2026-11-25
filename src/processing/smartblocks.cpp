@@ -828,6 +828,10 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
                 word.bounds.translate(row.box.topLeft()-QPoint(pad, pad));
                 word.bounds = word.bounds.intersected(row.box);
                 if (word.bounds.isEmpty()) continue;
+                // Each line retry numbers its words from the start. Give them
+                // page-unique identities before reconciling overlapping crops.
+                word.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+                word.sourceWordIds.clear();
                 word.sourceBoxes.clear();
                 row.words.append(std::move(word));
                 row.recovered = true;

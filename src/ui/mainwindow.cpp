@@ -3710,7 +3710,8 @@ void MainWindow::classifyPageAreas()
     auto prepared = prepareCurrentLayoutPage(image, old ? *old : OcrPage{});
     if (!prepared) { showError(prepared.error()); return; }
     AiPageLayoutDialog dialog(prepared->image, prepared->page.imageRegions, this, currentPage, layoutSessionToken,
-                              false, prepared->page.preprocessing.deskewDegrees - displayedPreprocessing.deskewDegrees);
+                              false, prepared->page.preprocessing.deskewDegrees - displayedPreprocessing.deskewDegrees,
+                              !prepared->page.layoutTraining.splitId.isEmpty());
     processing::OcrOptions context; context.pageNumber = currentPage;
     context.historyCoordinates = prepared->page.coordinates;
     dialog.enableHistory(context, originalPath, core::preprocessingEvidence(prepared->page.preprocessing, prepared->page.renderDpi));

@@ -497,6 +497,34 @@ private slots:
         }
     }
 
+    void overlappingBlocksRecoverDistinctLinesWithCropLocalIds()
+    {
+        const auto native = reading({word(1,1,{5,5,20,10},"Header")},{200,120});
+        auto pageImage = scan(native,{80,40,42,10});
+        {
+            QPainter painter(&pageImage);
+            painter.fillRect(QRect(80,85,42,10),Qt::black);
+        }
+        const QVector<core::ImageRegion> blocks{{"left",{50,25,95,85},{},false,"text"},
+                                                {"right",{65,25,115,85},{},false,"text"}};
+        auto result = processing::recognizeSmartBlocks(pageImage,{.language="rus"},blocks,false,{},true,&native);
+        QVERIFY2(result,qPrintable(result ? QString() : result.error().message));
+        QSet<QString> ids;
+        QSet<QString> sources;
+        for (const auto &item : result->words) {
+            QVERIFY(pageImage.rect().contains(item.bounds));
+            QVERIFY(!item.id.isEmpty() && !ids.contains(item.id));
+            ids.insert(item.id);
+            if (item.bounds.y() == 40 || item.bounds.y() == 85) {
+                QCOMPARE(item.text,"Recovered");
+                QCOMPARE(item.sourceWordIds,QStringList{item.id});
+                sources.insert(item.id);
+            }
+        }
+        QCOMPARE(sources.size(),2);
+        QCOMPARE(result->words.first().id,native.words.first().id);
+    }
+
     void overlappingLinesUseRawParagraphs()
     {
         const auto raw = reading({word(1, 1, {100, 10, 80, 14}, "Заголовок"),
