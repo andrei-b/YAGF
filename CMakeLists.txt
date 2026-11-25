@@ -52,7 +52,7 @@ add_library(yagf_core STATIC
     src/core/spellchecker.cpp src/core/spellchecker.h
     src/core/wordspelling.cpp src/core/wordspelling.h
     src/core/verificationqueue.cpp src/core/verificationqueue.h
-    src/core/rendersettings.h src/core/correctionretention.cpp src/core/correctionretention.h
+    src/core/rendersettings.h src/core/scansettings.h src/core/correctionretention.cpp src/core/correctionretention.h
     src/core/ocrdocument.cpp src/core/ocrdocument.h src/core/preprocesssettings.h
     src/core/bookvocabulary.cpp src/core/bookvocabulary.h
     src/core/documentcontext.cpp src/core/documentcontext.h
@@ -408,7 +408,7 @@ if(BUILD_TESTING)
     qt_add_executable(scannerdialog_tests tests/scannerdialog_tests.cpp
         src/ui/scannerdialog.cpp src/ui/scannerdialog.h)
     target_link_libraries(scannerdialog_tests PRIVATE Qt6::Widgets)
-    target_include_directories(scannerdialog_tests PRIVATE src/ui)
+    target_include_directories(scannerdialog_tests PRIVATE src/ui src/core)
     add_test(NAME scannerdialog_tests COMMAND scannerdialog_tests)
     set_tests_properties(scannerdialog_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     find_program(PDFTOTEXT_EXECUTABLE pdftotext)

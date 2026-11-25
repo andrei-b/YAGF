@@ -135,7 +135,7 @@ protected:
 private:
     void openFile();
     void scanPage();
-    bool appendScannedPage(const QString &path);
+    bool appendScannedPage(const QString &path, const core::ScanSettings &settings);
     void removeDocumentPage(int number);
     void refreshPageSequence(int number);
     void pasteImage();

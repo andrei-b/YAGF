@@ -546,6 +546,8 @@ QJsonObject OcrDocument::toJson(bool includeRestoredPixels) const
             {"native_ocr_url", nativeOcrUrl},
             {"context", QJsonObject{{"description", context.description},
                                     {"infer_from_recognized_text", context.inferFromRecognizedText}}}};
+    if (scanning != ScanSettings{})
+        result["scanning"] = QJsonObject{{"device", scanning.device}, {"dpi", scanning.dpi}, {"mode", scanning.mode}};
     if (!pageSources.isEmpty() || totalPages == 0) result["page_sources"] = sources;
     return result;
 }
@@ -586,6 +588,18 @@ bool OcrDocument::fromJson(const QJsonObject &json, OcrDocument *result, QString
     if (json.contains("unicode_formulas") && !json["unicode_formulas"].isBool()) return fail(QStringLiteral("Invalid formula output mode."));
     parsed.unicodeFormulas=json["unicode_formulas"].toBool();
     parsed.preserveFormatting = json.value("preserve_formatting").toBool();
+    if (json.contains("scanning")) {
+        const auto settings = json.value("scanning").toObject();
+        if (!settings.value("device").isString() || !settings.value("mode").isString() ||
+            !integer(settings, "dpi", &parsed.scanning.dpi) || parsed.scanning.dpi < ScanSettings::minimumDpi ||
+            parsed.scanning.dpi > ScanSettings::maximumDpi)
+            return fail(QStringLiteral("Invalid scan settings."));
+        parsed.scanning.device = settings.value("device").toString();
+        parsed.scanning.mode = settings.value("mode").toString();
+        if (!parsed.scanning.mode.isEmpty() && parsed.scanning.mode != "Color" &&
+            parsed.scanning.mode != "Gray" && parsed.scanning.mode != "Lineart")
+            return fail(QStringLiteral("Invalid scanner mode."));
+    }
     if (json.contains("rendering")) {
         const auto settings = json.value("rendering");
         if (!settings.isObject() || !integer(settings.toObject(), "dpi", &parsed.rendering.dpi) ||

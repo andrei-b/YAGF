@@ -3,6 +3,7 @@
 #include "preprocesssettings.h"
 #include "documentcontext.h"
 #include "rendersettings.h"
+#include "scansettings.h"
 #include "symbolrules.h"
 #include "recognitionresult.h"
 #include "recognitionhistory.h"
@@ -163,6 +164,7 @@ public:
     bool mathOcr = false;
     bool unicodeFormulas = false;
     RenderSettings rendering;
+    ScanSettings scanning;
     QVector<OcrPage> pages;
     QVector<SymbolRule> symbolRules;
     QString nativeOcrUrl; // Validated model endpoint; authentication remains session-only.

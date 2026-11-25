@@ -1,5 +1,7 @@
 #pragma once
 
+#include "scansettings.h"
+
 #include <QDialog>
 #include <QProcess>
 #include <QTimer>
@@ -14,7 +16,8 @@ namespace yagf::ui {
 class ScannerDialog : public QDialog {
     Q_OBJECT
 public:
-    explicit ScannerDialog(QString destination, QWidget *parent = nullptr);
+    explicit ScannerDialog(QString destination, const core::ScanSettings &defaults = {}, QWidget *parent = nullptr);
+    core::ScanSettings scanSettings() const;
     ~ScannerDialog() override;
 
 private:
@@ -25,6 +28,7 @@ private:
     void finishScan(int exitCode, QProcess::ExitStatus status);
 
     QString destination;
+    QString projectDevice;
     QProcess discovery;
     QProcess addressDiscovery;
     QTimer addressTimeout;

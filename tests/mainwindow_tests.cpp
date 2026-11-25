@@ -270,6 +270,7 @@ static void testScannedPages(const QTemporaryDir &directory)
 {
     using yagf::core::OcrDocument;
     using yagf::core::ProjectFile;
+    using yagf::core::ScanSettings;
     const auto wait = [](const std::function<bool()> &ready) {
         QElapsedTimer timer; timer.start();
         while (!ready() && timer.elapsed() < 10000) { QApplication::processEvents(); QThread::msleep(5); }
@@ -278,7 +279,7 @@ static void testScannedPages(const QTemporaryDir &directory)
     QFile scanner(directory.filePath("scanimage"));
     assert(scanner.open(QIODevice::WriteOnly));
     scanner.write("#!/bin/sh\n"
-        "case \"$1\" in --formatted-device-list=*) printf 'virtual:0\\tTest scanner\\n'; exit 0;; esac\n"
+        "case \"$1\" in --formatted-device-list=*) printf 'virtual:0\\tTest scanner\\nvirtual:1\\tBook scanner\\n'; exit 0;; esac\n"
         "for arg do case \"$arg\" in --output-file=*) cp \"$YAGF_PAGE_FIXTURE\" \"${arg#--output-file=}\";; esac; done\n");
     scanner.close();
     assert(scanner.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
@@ -294,7 +295,9 @@ static void testScannedPages(const QTemporaryDir &directory)
     }
     assert(scan && save && undo && redo);
     QTest::keyClick(pages, Qt::Key_Delete); // No document means no removal prompt.
-    const auto scanPage = [&](QColor color, QSize size) {
+    const ScanSettings initial{"virtual:0", 300, {}};
+    const ScanSettings bookScanner{"virtual:1", 600, "Gray"};
+    const auto scanPage = [&](QColor color, QSize size, const ScanSettings &expected, const ScanSettings &chosen) {
         QImage fixture(size, QImage::Format_RGB32); fixture.fill(color);
         const auto path = directory.filePath("new-scan.png"); assert(fixture.save(path));
         qputenv("YAGF_PAGE_FIXTURE", QFile::encodeName(path));
@@ -303,18 +306,28 @@ static void testScannedPages(const QTemporaryDir &directory)
             auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
             if (!dialog) return;
             for (auto *button : dialog->findChildren<QPushButton *>())
-                if (button->text() == "Scan" && button->isEnabled()) { start.stop(); button->click(); return; }
+                if (button->text() == "Scan" && button->isEnabled()) {
+                    auto *device = dialog->findChild<QComboBox *>("scannerDevices");
+                    auto *dpi = dialog->findChild<QSpinBox *>("scannerResolution");
+                    auto *mode = dialog->findChild<QComboBox *>("scannerMode");
+                    assert(device->currentData() == expected.device && dpi->value() == expected.dpi &&
+                           mode->currentData() == expected.mode);
+                    device->setCurrentIndex(device->findData(chosen.device));
+                    dpi->setValue(chosen.dpi);
+                    mode->setCurrentIndex(mode->findData(chosen.mode));
+                    start.stop(); button->click(); return;
+                }
         });
         start.start(5);
         scan->trigger();
         assert(!start.isActive());
         wait([&] { return scan->isEnabled(); });
     };
-    scanPage(Qt::red, {80, 100});
+    scanPage(Qt::red, {80, 100}, initial, bookScanner);
     assert(pages->count() == 1);
     undo->trigger(); assert(pages->count() == 0);
     redo->trigger(); assert(pages->count() == 1);
-    scanPage(Qt::blue, {90, 110});
+    scanPage(Qt::blue, {90, 110}, bookScanner, bookScanner);
     assert(pages->count() == 2 && pages->currentRow() == 1);
     undo->trigger(); assert(pages->count() == 1);
     redo->trigger(); assert(pages->count() == 2 && pages->currentRow() == 1);
@@ -326,6 +339,7 @@ static void testScannedPages(const QTemporaryDir &directory)
     save->trigger();
     QString error;
     OcrDocument saved; assert(ProjectFile::load(project, &saved, &error));
+    assert(saved.scanning == bookScanner);
     assert(saved.totalPages == 2 && saved.pages.size() == 2 && saved.pageSources.size() == 2);
     std::atomic_bool cancelled = false;
     for (int number = 1; number <= 2; ++number) {
@@ -337,11 +351,22 @@ static void testScannedPages(const QTemporaryDir &directory)
     second->words.append({2, 1, 1, 1, QRect(10, 10, 20, 10), "original", "corrected", 99, true});
     second->rebuildHierarchy();
     const auto wordId = second->words.first().id;
+    const ScanSettings revised{"virtual:0", 450, "Lineart"};
+    saved.scanning = revised;
     assert(ProjectFile::save(project, saved, &error));
     window.loadProject(project);
     wait([&] { return scan->isEnabled(); });
     assert(pages->count() == 2);
-    scanPage(Qt::green, {100, 120});
+    QTimer::singleShot(0, &window, [&] {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        assert(dialog);
+        dialog->findChild<QComboBox *>("scannerDevices")->setCurrentIndex(1);
+        dialog->findChild<QSpinBox *>("scannerResolution")->setValue(1200);
+        dialog->findChild<QComboBox *>("scannerMode")->setCurrentIndex(0);
+        dialog->reject();
+    });
+    scan->trigger();
+    scanPage(Qt::green, {100, 120}, revised, revised);
     assert(pages->count() == 3);
     save->trigger();
     assert(ProjectFile::load(project, &saved, &error));
@@ -349,7 +374,7 @@ static void testScannedPages(const QTemporaryDir &directory)
     const auto portable = directory.filePath("scans.yagfproj");
     assert(ProjectFile::savePortable(portable, saved, &error));
     OcrDocument bundled; assert(ProjectFile::loadPortable(portable, &bundled, &error));
-    assert(bundled.pageSources.size() == 3);
+    assert(bundled.pageSources.size() == 3 && bundled.scanning == revised);
     auto blue = processing::readExportPage(bundled, 2, directory, cancelled);
     assert(blue && blue->pixelColor(0, 0) == QColor(Qt::blue));
     // Delete applies to the focused thumbnail and defaults to keeping the page.
@@ -401,7 +426,7 @@ static void testScannedPages(const QTemporaryDir &directory)
     assert(ProjectFile::load(project, &saved, &error) && saved.totalPages == 0);
     window.loadProject(project);
     assert(pages->count() == 0);
-    scanPage(Qt::yellow, {70, 90});
+    scanPage(Qt::yellow, {70, 90}, revised, revised);
     assert(pages->count() == 1);
     save->trigger();
     window.loadProject(project);
@@ -424,7 +449,7 @@ static void testScannedPages(const QTemporaryDir &directory)
     confirm(QMessageBox::Yes, 1);
     QTest::keyClick(pages, Qt::Key_Delete);
     wait([&] { return scan->isEnabled() && pages->count() == 1; });
-    scanPage(Qt::green, {200, 120});
+    scanPage(Qt::green, {200, 120}, initial, initial);
     assert(pages->count() == 2);
     QTimer::singleShot(0, &window, [&] {
         auto *dialog = qobject_cast<QFileDialog *>(QApplication::activeModalWidget()); assert(dialog);

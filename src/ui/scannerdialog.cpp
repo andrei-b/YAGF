@@ -19,7 +19,8 @@
 
 namespace yagf::ui {
 namespace {
-struct ScannerDevice {QString id,label;};
+struct ScannerDevice {QString id, label, key;};
+constexpr int deviceKeyRole = Qt::UserRole + 1;
 struct ScannerSession {QVector<ScannerDevice> devices; QString selected; bool discovered=false;};
 ScannerSession &scannerSession() {static ScannerSession state; return state;}
 
@@ -67,8 +68,8 @@ QString airscanAddress(const QString &id, const QByteArray &addresses)
 }
 }
 
-ScannerDialog::ScannerDialog(QString destination, QWidget *parent)
-    : QDialog(parent), destination(std::move(destination))
+ScannerDialog::ScannerDialog(QString destination, const core::ScanSettings &defaults, QWidget *parent)
+    : QDialog(parent), destination(std::move(destination)), projectDevice(defaults.device)
 {
     setWindowTitle(tr("Scan a page"));
     auto *layout = new QVBoxLayout(this);
@@ -77,9 +78,10 @@ ScannerDialog::ScannerDialog(QString destination, QWidget *parent)
     devices->setObjectName("scannerDevices");
     form->addRow(tr("Scanner:"), devices);
     resolution = new QSpinBox(this);
-    resolution->setRange(75, 1200);
+    resolution->setObjectName("scannerResolution");
+    resolution->setRange(core::ScanSettings::minimumDpi, core::ScanSettings::maximumDpi);
     resolution->setSingleStep(50);
-    resolution->setValue(300);
+    resolution->setValue(defaults.dpi);
     resolution->setSuffix(tr(" DPI"));
     form->addRow(tr("Resolution:"), resolution);
     mode = new QComboBox(this);
@@ -87,6 +89,8 @@ ScannerDialog::ScannerDialog(QString destination, QWidget *parent)
     mode->addItem(tr("Color"), QStringLiteral("Color"));
     mode->addItem(tr("Grayscale"), QStringLiteral("Gray"));
     mode->addItem(tr("Black and white"), QStringLiteral("Lineart"));
+    mode->setObjectName("scannerMode");
+    mode->setCurrentIndex(mode->findData(defaults.mode));
     form->addRow(tr("Mode:"), mode);
     layout->addLayout(form);
     message = new QLabel(this);
@@ -104,7 +108,11 @@ ScannerDialog::ScannerDialog(QString destination, QWidget *parent)
     layout->addLayout(buttons);
     connect(refreshButton, &QPushButton::clicked, this, &ScannerDialog::discover);
     connect(devices,&QComboBox::currentIndexChanged,this,[this] {
-        if (devices->currentIndex()>=0) scannerSession().selected=devices->currentData().toString();
+        if (devices->currentIndex() >= 0) {
+            scannerSession().selected = devices->currentData().toString();
+            scanButton->setEnabled(true);
+            message->setText(tr("Ready to scan one page."));
+        }
     });
     connect(scanButton, &QPushButton::clicked, this, &ScannerDialog::startScan);
     connect(cancelButton, &QPushButton::clicked, this, [this] {
@@ -117,7 +125,7 @@ ScannerDialog::ScannerDialog(QString destination, QWidget *parent)
         if (status != QProcess::NormalExit || exitCode != 0) {
             refreshButton->setEnabled(true);
             devices->setEnabled(true);
-            scanButton->setEnabled(devices->count()>0);
+            scanButton->setEnabled(devices->currentIndex() >= 0);
             message->setText(tr("Scanner discovery failed: %1")
                 .arg(QString::fromUtf8(discovery.readAllStandardError()).trimmed()));
             return;
@@ -151,7 +159,7 @@ ScannerDialog::ScannerDialog(QString destination, QWidget *parent)
         if (error == QProcess::FailedToStart) {
             refreshButton->setEnabled(true);
             devices->setEnabled(true);
-            scanButton->setEnabled(devices->count()>0);
+            scanButton->setEnabled(devices->currentIndex() >= 0);
             message->setText(tr("Could not start scanimage."));
         }
     });
@@ -161,6 +169,8 @@ ScannerDialog::ScannerDialog(QString destination, QWidget *parent)
             scanButton->setEnabled(true);
             refreshButton->setEnabled(true);
             devices->setEnabled(true);
+            resolution->setEnabled(true);
+            mode->setEnabled(true);
             message->setText(tr("Could not start scanimage."));
         }
     });
@@ -177,7 +187,11 @@ void ScannerDialog::finishDiscovery(const QByteArray &addresses)
         if (original.isEmpty()) continue;
         const QString id = airscanAddress(original, addresses);
         unresolved |= airscanIdentity(id).hasMatch();
-        found.append({id, parts.size() > 1 ? QStringLiteral("%1 (%2)").arg(parts.at(1).trimmed(), id) : id});
+        // Persist AirScan's protocol and advertised name across backend renumbering and address changes.
+        const auto identity = airscanIdentity(original);
+        const QString key = identity.hasMatch()
+            ? QStringLiteral("airscan:%1:%2").arg(identity.captured(1), identity.captured(2)) : original;
+        found.append({id, parts.size() > 1 ? QStringLiteral("%1 (%2)").arg(parts.at(1).trimmed(), id) : id, key});
     }
     pendingDevices.clear();
     auto &session = scannerSession();
@@ -198,15 +212,25 @@ void ScannerDialog::finishDiscovery(const QByteArray &addresses)
 void ScannerDialog::useCachedDevices()
 {
     auto &session=scannerSession();
+    const QString previous = devices->currentData(deviceKeyRole).toString();
     const QSignalBlocker block(devices);
     devices->clear();
-    for (const auto &device:session.devices) devices->addItem(device.label,device.id);
-    const int selected=devices->findData(session.selected);
-    if (selected>=0) devices->setCurrentIndex(selected);
-    session.selected=devices->currentData().toString();
-    scanButton->setEnabled(devices->count()>0);
-    message->setText(devices->count() ? tr("Ready to scan one page. Refresh scanners if devices have changed.")
-        : tr("No scanner found. Check its connection and SANE driver, then refresh."));
+    for (const auto &device : session.devices) {
+        devices->addItem(device.label, device.id);
+        devices->setItemData(devices->count() - 1, device.key, deviceKeyRole);
+    }
+    int selected = devices->findData(previous, deviceKeyRole);
+    if (selected < 0 && !projectDevice.isEmpty()) selected = devices->findData(projectDevice, deviceKeyRole);
+    if (selected < 0 && projectDevice.isEmpty()) {
+        selected = devices->findData(session.selected);
+        if (selected < 0 && devices->count()) selected = 0;
+    }
+    devices->setCurrentIndex(selected);
+    if (selected >= 0) session.selected = devices->currentData().toString();
+    scanButton->setEnabled(selected >= 0);
+    if (!devices->count()) message->setText(tr("No scanner found. Check its connection and SANE driver, then refresh."));
+    else if (selected < 0) message->setText(tr("The project's scanner is unavailable. Choose a scanner or refresh the list."));
+    else message->setText(tr("Ready to scan one page. Refresh scanners if devices have changed."));
 }
 
 ScannerDialog::~ScannerDialog()
@@ -233,12 +257,17 @@ void ScannerDialog::discover()
     if (QStandardPaths::findExecutable(QStringLiteral("scanimage")).isEmpty()) {
         refreshButton->setEnabled(true);
         devices->setEnabled(true);
-        scanButton->setEnabled(devices->count()>0);
+        scanButton->setEnabled(devices->currentIndex() >= 0);
         message->setText(tr("Install SANE's scanimage command to use a scanner."));
         return;
     }
     discovery.start(QStringLiteral("scanimage"),
         {QStringLiteral("--formatted-device-list=%d\t%v %m%n")});
+}
+
+core::ScanSettings ScannerDialog::scanSettings() const
+{
+    return {devices->currentData(deviceKeyRole).toString(), resolution->value(), mode->currentData().toString()};
 }
 
 void ScannerDialog::startScan()
@@ -255,6 +284,8 @@ void ScannerDialog::startScan()
     scanButton->setEnabled(false);
     refreshButton->setEnabled(false);
     devices->setEnabled(false);
+    resolution->setEnabled(false);
+    mode->setEnabled(false);
     message->setText(tr("Scanning…"));
     scan.start(QStringLiteral("scanimage"), arguments);
 }
@@ -270,6 +301,8 @@ void ScannerDialog::finishScan(int exitCode, QProcess::ExitStatus status)
     scanButton->setEnabled(devices->count() > 0);
     refreshButton->setEnabled(true);
     devices->setEnabled(true);
+    resolution->setEnabled(true);
+    mode->setEnabled(true);
     message->setText(tr("Scanning failed: %1")
         .arg(QString::fromUtf8(scan.readAllStandardError()).trimmed()));
 }

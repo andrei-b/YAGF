@@ -1961,12 +1961,12 @@ void MainWindow::scanPage()
     if (!QDir().mkpath(directory)) { showError(tr("Could not create the image import folder.")); return; }
     const QString path = directory + QLatin1Char('/') +
         QUuid::createUuid().toString(QUuid::WithoutBraces) + QStringLiteral(".png");
-    ScannerDialog dialog(path, this);
+    ScannerDialog dialog(path, document.scanning, this);
     if (dialog.exec() != QDialog::Accepted) return;
-    if (!appendScannedPage(path)) QFile::remove(path);
+    if (!appendScannedPage(path, dialog.scanSettings())) QFile::remove(path);
 }
 
-bool MainWindow::appendScannedPage(const QString &path)
+bool MainWindow::appendScannedPage(const QString &path, const core::ScanSettings &settings)
 {
     if (processor.isBusy() || exportBusy || projectLoading || !maybeApplyEditor()) return false;
     QImageReader reader(path);
@@ -1994,6 +1994,10 @@ bool MainWindow::appendScannedPage(const QString &path)
     if (firstPage) {
         document.totalPages = 0;
         currentPage = 0;
+    }
+    if (document.scanning != settings) {
+        document.scanning = settings;
+        externalDirty = true;
     }
     undoStack.push(new ChangePageSequenceCommand(document, std::move(after), currentPage, number,
         [this](int selectedPage) { refreshPageSequence(selectedPage); }, tr("Add scanned page")));

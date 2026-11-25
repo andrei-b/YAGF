@@ -6,6 +6,7 @@
 #include <QFile>
 #include <QImage>
 #include <QPushButton>
+#include <QSpinBox>
 #include <QTemporaryDir>
 #include <QThread>
 #include <functional>
@@ -88,7 +89,10 @@ int main(int argc, char **argv)
     for (QPushButton *button : dialog.findChildren<QPushButton *>())
         if (button->text() == QStringLiteral("Scan")) scanButton = button;
     assert(scanButton && scanButton->isEnabled());
+    combos.at(1)->setCurrentIndex(combos.at(1)->findData("Gray"));
+    dialog.findChild<QSpinBox *>("scannerResolution")->setValue(600);
     scanButton->click();
+    assert(!combos.at(1)->isEnabled() && !dialog.findChild<QSpinBox *>("scannerResolution")->isEnabled());
     timer.restart();
     while (dialog.result() != QDialog::Accepted && timer.elapsed() < 3000) {
         QApplication::processEvents();
@@ -96,7 +100,9 @@ int main(int argc, char **argv)
     }
     assert(dialog.result() == QDialog::Accepted);
     assert(QImage(scannedPath).size() == fixture.size());
-    {QFile args(argsPath);assert(args.open(QIODevice::ReadOnly));assert(args.readAll().contains("--device-name=virtual:1\n"));}
+    {QFile args(argsPath);assert(args.open(QIODevice::ReadOnly));const auto arguments = args.readAll();
+        assert(arguments.contains("--device-name=virtual:1\n") && arguments.contains("--mode=Gray\n") &&
+               arguments.contains("--resolution=600\n"));}
 
     qputenv("TEST_SCAN_BAD", "1");
     const QString badPath = directory.filePath(QStringLiteral("bad.png"));
@@ -136,6 +142,18 @@ int main(int argc, char **argv)
     deviceList("virtual:2\tReplacement Scanner\n");
     refresh->click();wait([&]{return refresh->isEnabled() && probes()==3;});
     assert(devices->count()==1 && devices->currentData().toString()=="virtual:2");
+
+    // An absent project device needs an explicit replacement. Its resolution and mode still apply.
+    const auto settings = dialog.scanSettings();
+    yagf::ui::ScannerDialog missing(directory.filePath("missing.png"), settings);
+    auto *choice = missing.findChild<QComboBox *>("scannerDevices");
+    QPushButton *missingScan = nullptr;
+    for (auto *button : missing.findChildren<QPushButton *>())
+        if (button->text() == "Scan") missingScan = button;
+    assert(choice->currentIndex() < 0 && missingScan && !missingScan->isEnabled());
+    choice->setCurrentIndex(0);
+    assert(missingScan->isEnabled() && missing.scanSettings().device == "virtual:2" &&
+           missing.scanSettings().dpi == 600 && missing.scanSettings().mode == "Gray");
 
     // An unsuccessful refresh must not destroy the last known list/selection.
     qputenv("TEST_SCAN_DISCOVERY_FAIL","1");refresh->click();wait([&]{return refresh->isEnabled() && probes()==4;});
@@ -205,10 +223,15 @@ int main(int argc, char **argv)
 
     // Renumbering and reordering cannot change which scanner/protocol was selected.
     networkDevices->setCurrentIndex(1);
+    const auto networkSettings = empty.scanSettings();
     deviceList("airscan:w0:Brother Scanner\tWSD Brother Scanner\nairscan:e2:Brother Scanner\teSCL Brother Scanner\n");
     emptyRefresh->click();wait([&]{return emptyRefresh->isEnabled() && probes()==9;});
     assert(networkDevices->currentIndex()==0 && networkDevices->currentData().toString()==wsd && addressProbes()==2);
     scanPage("airscan-wsd.png",wsd);
+    networkDevices->setCurrentIndex(1); // A different device was used in the session.
+    yagf::ui::ScannerDialog restored(directory.filePath("restored.png"), networkSettings);
+    assert(restored.findChild<QComboBox *>("scannerDevices")->currentData().toString() == wsd);
+    networkDevices->setCurrentIndex(0);
 
     // Resolution failure must preserve a usable cached address rather than its new temporary ID.
     qputenv("TEST_SCAN_ADDRESS_FAIL","1");
