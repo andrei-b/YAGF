@@ -55,6 +55,7 @@ class QTimer;
 namespace yagf::core { class SessionRecovery; }
 
 namespace yagf::ui {
+class RecognizedPageView;
 
 class SpellHighlighter;
 class VerificationController;
@@ -216,7 +217,7 @@ private:
     void markSelectedInlineFormula(QRect crop = {});
     void editFormulaAt(int index, qsizetype start, qsizetype length, bool display);
     void refreshSpellLanguage();
-    void updateSelection(const QVector<int> &indices);
+    void updateSelection(const QVector<int> &indices, bool openEditor = true);
     QVector<int> indicesForIds(const QStringList &ids) const;
     bool applyCorrection();
     bool maybeApplyEditor();
@@ -255,6 +256,8 @@ private:
     QListWidget *wordList;
     QListWidget *pageList = nullptr;
     QListWidget *regionList = nullptr;
+    QTabWidget *textTabs;
+    RecognizedPageView *recognizedPage;
     QTextEdit *selectionEditor;
     SpellHighlighter *spellHighlighter = nullptr;
     VerificationController *verification = nullptr;

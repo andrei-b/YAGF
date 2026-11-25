@@ -1,4 +1,8 @@
 #include "mainwindow.h"
+#include "recognizedpageview.h"
+#include <QTextTable>
+#include <QTabWidget>
+#include <QMimeData>
 #include "exportpage.h"
 #include "latexdocumentexporter.h"
 #include "docxexporter.h"
@@ -446,9 +450,45 @@ static void testScannedPages(const QTemporaryDir &directory)
     window.findChild<QAction *>("rawOcrOutputAction")->setChecked(false);
 }
 
+static void testRecognizedPageView()
+{
+    using namespace yagf;
+    core::OcrPage page;
+    page.width = 600;
+    page.height = 400;
+    page.words = {{1,1,1,1,{20,0,560,30},"Title","Title"},
+                  {1,2,1,1,{20,60,230,40},"Left",R"(Left \(\frac{a_i}{b^2}\))"},
+                  {1,3,1,1,{340,65,230,40},"Right",R"(Right \(\unknowncommand{x}\))"},
+                  {1,4,1,1,{20,150,560,30},"Footer","Footer"}};
+    page.rebuildHierarchy();
+    ui::RecognizedPageView view;
+    view.setPage(&page);
+    auto *doc = view.document();
+    const auto frames = doc->rootFrame()->childFrames();
+    assert(frames.size() == 1);
+    auto *columns = qobject_cast<QTextTable *>(frames.first());
+    assert(columns && columns->columns() == 2);
+    assert(doc->find("Left").currentTable() == columns);
+    assert(columns->cellAt(doc->find("Right")).column() == 1);
+    assert(!doc->find("Title").currentTable() && !doc->find("Footer").currentTable());
+    assert(view.toPlainText().contains(R"(\unknowncommand{x})"));
+    if (!QStandardPaths::findExecutable("pdflatex").isEmpty() && !QStandardPaths::findExecutable("pdftoppm").isEmpty()) {
+        assert(QTest::qWaitFor([&] { return view.toPlainText().contains(QChar::ObjectReplacementCharacter); }, 15000));
+        view.selectAll();
+        view.copy();
+        assert(QApplication::clipboard()->text().contains(R"(\frac{a_i}{b^2})"));
+        assert(QApplication::clipboard()->mimeData()->html().contains("data:image/png;base64,"));
+        assert(view.toPlainText().contains(R"(\unknowncommand{x})"));
+    }
+    view.setPage(&page);
+    view.setPage(nullptr);
+    assert(view.toPlainText().isEmpty());
+}
+
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
+    testRecognizedPageView();
     QTemporaryDir directory;
     assert(directory.isValid());
     qputenv("XDG_DATA_HOME", QFile::encodeName(directory.path()));
@@ -1506,6 +1546,8 @@ int main(int argc, char **argv)
         assert(yagf::core::ProjectFile::save(mixedPath, mixedBook, &error));
         yagf::ui::MainWindow mixedWindow;
         mixedWindow.loadProject(mixedPath);
+        auto *tabs = mixedWindow.findChild<QTabWidget *>("recognizedTextTabs");
+        assert(tabs && tabs->currentIndex() == 0);
         auto *text = mixedWindow.findChild<QTextEdit *>("recognizedTextEditor");
         auto *apply = mixedWindow.findChild<QPushButton *>("applyButton");
         auto *list = mixedWindow.findChild<QListWidget *>("recognizedWords");
@@ -1515,6 +1557,10 @@ int main(int argc, char **argv)
         assert(list->count() == 5 && list->item(0)->text() == "x = 2");
         assert(list->item(3)->text() == R"(\(x = 2\))" && list->item(4)->text() == "истинно.");
         list->setCurrentRow(3, QItemSelectionModel::ClearAndSelect);
+        assert(tabs->currentIndex() == 1);
+        tabs->setCurrentIndex(0);
+        assert(mixedWindow.findChild<QTextEdit *>("recognizedPageView")->toPlainText().contains("теперь"));
+        tabs->setCurrentIndex(1);
         auto *edit = mixedWindow.findChild<QAction *>("editFormulaAction");
         assert(edit && edit->isEnabled());
         // Use real preview tools when installed, outside this test's fake OCR tool directory.

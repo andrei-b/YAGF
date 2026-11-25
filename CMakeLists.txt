@@ -146,6 +146,7 @@ qt_add_executable(yagf2
     src/ui/verificationcontroller.cpp src/ui/verificationcontroller.h
     src/ui/mainwindowreview.cpp src/ui/mainwindowexport.cpp src/ui/experimentdialog.cpp src/ui/experimentdialog.h
     src/main.cpp src/ui/mainwindow.cpp src/ui/mainwindow.h src/ui/formulaeditor.cpp src/ui/formulaeditor.h src/ui/inlineformuladialog.cpp
+    src/ui/recognizedpageview.cpp src/ui/recognizedpageview.h
     src/ui/restorationdialog.cpp src/ui/restorationdialog.h
     src/ui/preprocessdialog.cpp src/ui/preprocessdialog.h
     src/ui/layoutdialog.cpp src/ui/layoutdialog.h resources/icons.qrc)
@@ -338,6 +339,7 @@ if(BUILD_TESTING)
         src/ui/verificationcontroller.cpp src/ui/verificationcontroller.h
         src/ui/mainwindowreview.cpp src/ui/mainwindowexport.cpp src/ui/experimentdialog.cpp src/ui/experimentdialog.h
         src/ui/mainwindow.cpp src/ui/mainwindow.h src/ui/formulaeditor.cpp src/ui/formulaeditor.h src/ui/inlineformuladialog.cpp
+        src/ui/recognizedpageview.cpp src/ui/recognizedpageview.h
         src/ui/restorationdialog.cpp src/ui/restorationdialog.h
         src/ui/preprocessdialog.cpp src/ui/preprocessdialog.h
         src/ui/layoutdialog.cpp src/ui/layoutdialog.h

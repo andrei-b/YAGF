@@ -1,6 +1,7 @@
 #include "pdfexporter.h"
 #include "detail/pdfformulas.h"
 #include "formulaeditor.h"
+#include "recognizedpageview.h"
 #include "inlineformuladialog.h"
 #include "exportpage.h"
 #include "scientificbookexporter.h"
@@ -107,6 +108,7 @@
 #include <QToolButton>
 #include <QWidgetAction>
 #include <QTimer>
+#include <QTabWidget>
 #include <QCursor>
 #include <QEventLoop>
 #include <QVBoxLayout>
@@ -1238,7 +1240,7 @@ MainWindow::MainWindow()
     formatToolbar->setObjectName(QStringLiteral("formatToolbar"));
     formatToolbar->setMovable(false);
     formatToolbar->setIconSize(QSize(16, 16));
-    textLayout->addWidget(formatToolbar);
+
     editFormulaAction = formatToolbar->addAction(tr("Edit formula…"), this, &MainWindow::editSelectedFormula);
     editFormulaAction->setObjectName("editFormulaAction");
     editFormulaAction->setToolTip(tr("Edit the selected equation as LaTeX with a live preview."));
@@ -1248,7 +1250,17 @@ MainWindow::MainWindow()
     editorSplitter->setChildrenCollapsible(false);
     editorSplitter->setHandleWidth(8);
     textLayout->addWidget(editorSplitter, 1);
-    selectionEditor = new QTextEdit(editorSplitter);
+    textTabs = new QTabWidget(editorSplitter);
+    textTabs->setObjectName("recognizedTextTabs");
+    recognizedPage = new RecognizedPageView(textTabs);
+    textTabs->addTab(recognizedPage, tr("Page layout"));
+    auto *editTab = new QWidget(textTabs);
+    auto *sourceLayout = new QVBoxLayout(editTab);
+    sourceLayout->setContentsMargins(0, 0, 0, 0);
+    sourceLayout->addWidget(formatToolbar);
+    selectionEditor = new QTextEdit(editTab);
+    sourceLayout->addWidget(selectionEditor);
+    textTabs->addTab(editTab, tr("Edit text"));
     selectionEditor->setObjectName(QStringLiteral("recognizedTextEditor"));
     selectionEditor->setPlaceholderText(tr("Select words on the page or drag a region, then edit here."));
     selectionEditor->setAcceptRichText(true);
@@ -1280,7 +1292,17 @@ MainWindow::MainWindow()
     regionOcrButton->setIcon(recognizeActionIcon());
     regionOcrButton->setObjectName(QStringLiteral("recognizeRegionButton"));
     regionOcrButton->setEnabled(false);
-    editButtons->addWidget(applyButton);
+    sourceLayout->addWidget(applyButton);
+    connect(textTabs, &QTabWidget::currentChanged, this, [this](int tab) {
+        if (tab == 0 && editorPending && !selectedWords.isEmpty()) {
+            // Apply text just as we do when leaving the selection for another page.
+            const QSignalBlocker blocker(textTabs);
+            tab = maybeApplyEditor() ? 0 : 1;
+            textTabs->setCurrentIndex(tab);
+        }
+        selectionLabel->setText(tab == 0 || selectedWords.isEmpty() ? tr("Recognized text")
+            : tr("Selected text (%1 items)").arg(selectedWords.size()));
+    });
     editButtons->addWidget(regionOcrButton);
     wordLayout->addLayout(editButtons);
     reviewWordButton = new QPushButton(tr("Review word…"), textPanel);
@@ -2125,6 +2147,8 @@ void MainWindow::loadSource(const QString &path)
     selectedRegionIds.clear();
     selectedImageRegion = -1;
     queuedImageRegions.clear();
+    recognizedPage->setPage(nullptr);
+    textTabs->setCurrentIndex(0);
     selectionEditor->clear();
     applyButton->setEnabled(false);
     regionOcrButton->setEnabled(false);
@@ -2283,6 +2307,8 @@ bool MainWindow::loadProjectFile(const QString &path, bool recovered, const QStr
     selectedRegionIds.clear();
     selectedImageRegion = -1;
     queuedImageRegions.clear();
+    recognizedPage->setPage(nullptr);
+    textTabs->setCurrentIndex(0);
     selectionEditor->clear();
     applyButton->setEnabled(false);
     regionOcrButton->setEnabled(false);
@@ -2620,6 +2646,8 @@ void MainWindow::showPage(int number)
     selectedRegionIds.clear();
     selectedImageRegion = -1;
     queuedImageRegions.clear();
+    recognizedPage->setPage(nullptr);
+    textTabs->setCurrentIndex(0);
     selectionEditor->clear();
     applyButton->setEnabled(false);
     regionOcrButton->setEnabled(false);
@@ -3293,7 +3321,11 @@ void MainWindow::showDocument()
     OcrPage *page = document.page(currentPage);
     // Batch OCR may have used a new default DPI. Wait for its render before
     // painting new geometry over the previous preview.
-    if (page && !rawImage.isNull() && (page->sourceWidth != rawImage.width() || page->sourceHeight != rawImage.height())) return;
+    if (page && !rawImage.isNull() && (page->sourceWidth != rawImage.width() || page->sourceHeight != rawImage.height())) {
+        recognizedPage->setPage(nullptr);
+        return;
+    }
+    recognizedPage->setPage(page);
     formattedPdfAction->setEnabled(!processor.isBusy() && !exportBusy && document.wordCount() > 0);
     nextSpecialistAction->setEnabled(!processor.isBusy() && !exportBusy && !imagePath.isEmpty() &&
         page && !page->words.isEmpty());
@@ -3497,7 +3529,7 @@ void MainWindow::refreshImageRegionSelection(bool updateWords)
     ocrButton->setToolTip(scope);
     if (!rows.isEmpty()) status->setText(tr("%1 regions selected · %2 words").arg(rows.size()).arg(matches.size()));
     else status->setText(tr("Recognize will process the whole page."));
-    if (updateWords) updateSelection(matches);
+    if (updateWords) updateSelection(matches, !rows.isEmpty());
     refreshImageToolbar();
 }
 
@@ -4032,7 +4064,7 @@ void MainWindow::refreshReviewLabel()
     reviewWordButton->setText(reviewLabel);
 }
 
-void MainWindow::updateSelection(const QVector<int> &indices)
+void MainWindow::updateSelection(const QVector<int> &indices, bool openEditor)
 {
     editorWordRanges.clear();
     selectedWords = indices;
@@ -4067,7 +4099,9 @@ void MainWindow::updateSelection(const QVector<int> &indices)
         [this](int i) { return displayedWords.at(i)->layoutBlock; });
     selectionEditor->setReadOnly(indices.isEmpty());
     applyButton->setEnabled(!processor.isBusy() && !exportBusy && !indices.isEmpty());
-    selectionLabel->setText(indices.isEmpty() ? tr("Recognized text") : tr("Selected text (%1 items)").arg(indices.size()));
+    if (openEditor && !indices.isEmpty()) textTabs->setCurrentIndex(1);
+    selectionLabel->setText(indices.isEmpty() || textTabs->currentIndex() == 0 ? tr("Recognized text")
+        : tr("Selected text (%1 items)").arg(indices.size()));
     QTextCursor cursor(selectionEditor->document());
     cursor.movePosition(QTextCursor::Start);
     const OcrWord *previous = nullptr;
