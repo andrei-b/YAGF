@@ -1,0 +1,27 @@
+\documentclass{article}
+\usepackage{amsmath}
+\begin{document}
+\section*{Heat diffusion in a finite rod}
+A rod of length $L$ has thermal diffusivity $\alpha>0$.
+
+With both ends held at zero temperature, the heat equation is
+\begin{equation}
+\frac{\partial u}{\partial t}=\alpha\,\frac{\partial^2 u}{\partial x^2}
+\end{equation}
+
+Separation of variables gives the following eigenvalues.
+\begin{equation}
+\lambda_n=\left(\frac{n\pi}{L}\right)^2
+\end{equation}
+
+The initial temperature profile $f(x)$ fixes each coefficient.
+\begin{equation}
+b_n=\frac{2}{L}\int_0^L f(x)\,\sin\!\left(\frac{n\pi x}{L}\right)\,dx
+\end{equation}
+
+Combining the modes gives the temperature at time $t$.
+\begin{equation}
+u(x,t)=\sum_{n=1}^{\infty} b_n\,e^{-\alpha\lambda_n t}\,\sin\!\left(\frac{n\pi x}{L}\right)
+\end{equation}
+
+\end{document}
