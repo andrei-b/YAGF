@@ -8,6 +8,7 @@
 #include "recognitionhistory.h"
 #include "layouttraining.h"
 
+#include <span>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QRect>
@@ -53,7 +54,10 @@ struct OcrWord {
     QString latexText; // Canonical formula-bearing text retained for Unicode output.
     bool geometryInferred = false; // Editor input extent, not model-localized geometry.
     bool atOcrCropEdge = false; // Localized ink touched the recognition crop boundary.
+    QVector<ScriptGlyph> scripts;
     [[nodiscard]] QString fontFamilyCss() const;
+    [[nodiscard]] std::span<const ScriptGlyph> inlineScripts() const;
+    [[nodiscard]] QString htmlText() const;
 };
 
 struct OcrLine {

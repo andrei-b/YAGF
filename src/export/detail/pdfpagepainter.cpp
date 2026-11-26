@@ -178,6 +178,28 @@ void drawFormattedWord(QPainter &painter, const core::OcrWord &word, int dpi)
         painter.translate(word.bounds.topLeft());
         painter.scale(scale, scale);
         layout->draw(&painter, -inkBounds.topLeft());
+    } else if (const auto scripts = word.inlineScripts(); !scripts.empty()) {
+        QTextLayout layout(word.text, font);
+        QList<QTextLayout::FormatRange> formats;
+        for (const auto &glyph : scripts) {
+            QTextCharFormat format;
+            format.setVerticalAlignment(glyph.position == core::ScriptPosition::Superscript
+                ? QTextCharFormat::AlignSuperScript : QTextCharFormat::AlignSubScript);
+            formats.append({glyph.start, glyph.length, format});
+        }
+        layout.setFormats(formats);
+        layout.beginLayout();
+        auto line = layout.createLine();
+        if (line.isValid()) line.setNumColumns(word.text.size());
+        layout.endLayout();
+        if (line.isValid()) {
+            const QSizeF size(line.naturalTextWidth(), line.height());
+            const qreal scale = std::min({1.0, word.bounds.width() / std::max(1.0, size.width()),
+                                         word.bounds.height() / std::max(1.0, size.height())});
+            painter.translate(word.bounds.topLeft());
+            painter.scale(scale, scale);
+            layout.draw(&painter, QPointF(0, 0));
+        }
     } else {
         const QFontMetricsF metrics(font);
         const QRectF ink = metrics.tightBoundingRect(word.text);

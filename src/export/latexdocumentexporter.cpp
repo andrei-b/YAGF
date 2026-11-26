@@ -135,7 +135,22 @@ ExportResult LatexDocumentExporter::write(const core::OcrDocument &document,cons
         QImage image;
         QSet<QString> emitted;
         const auto formattedWord=[&](const core::OcrWord &word,bool heading=false)->std::expected<QString,QString> {
-            auto text=passage(core::formulaSourceText(word),heading); if (!text) return text;
+            const auto source = core::formulaSourceText(word);
+            auto text = passage(source, heading);
+            if (!text) return text;
+            const auto scripts = word.inlineScripts();
+            if (!scripts.empty() && source == word.text && core::mathTextSpans(source).isEmpty()) {
+                text->clear();
+                int from = 0;
+                for (const auto &glyph : scripts) {
+                    *text += prose(source.mid(from, glyph.start - from));
+                    *text += glyph.position == core::ScriptPosition::Superscript
+                        ? QStringLiteral("\\textsuperscript{") : QStringLiteral("\\textsubscript{");
+                    *text += prose(source.mid(glyph.start, glyph.length)) + '}';
+                    from = glyph.start + glyph.length;
+                }
+                *text += prose(source.mid(from));
+            }
             if (word.bold) *text="{\\bfseries "+*text+'}';
             if (word.italic) *text="{\\itshape "+*text+'}';
             return text;

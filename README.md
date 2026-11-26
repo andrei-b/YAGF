@@ -174,6 +174,8 @@ the desktop package does not download models or enable services automatically.
 
 ### Recognition evidence and decisions
 
+With the experimental inline-script build of Tesseract on your PATH, select a recognized word in YAGF and click a raised or lowered character in the text editor. The scan highlights the character box supplied by Tesseract. Saving the project preserves the placement. Layout HTML, scientific HTML, LaTeX, Word, and formatted PDF can render the recorded script positions.
+
 Every recognition attempt is retained in the project: engine and model identity, reported version/hash, exact input PNG, source-file and preprocessing SHA-256 fingerprints, original coordinate mappings, full structured output, elapsed time, errors and warnings. Tesseract also records its version, traineddata fingerprints and original TSV. Remote retries retain their individual responses and crop coordinates. Shared input images and coordinate frames are stored once per page.
 
 Open **Review OCR readings → Recognition history…** to inspect a run and its crop, output, preprocessing, coordinate frames and decisions. Accepting a companion or specialist reading records an acceptance; **Reject this reading** or keeping a specialist's original text records a rejection. Review choices apply when you save the review window and support Undo/Redo.

@@ -71,6 +71,7 @@ QJsonObject wordJson(const OcrWord &word)
                                    {"source_font_size_px", word.sourceFontSizePx},
                                    {"font_size_pt", word.fontSizePt},
                                    {"source_font_size_pt", word.sourceFontSizePt}}}};
+    writeScriptGlyphs(result, word.scripts);
     if (!word.readingEngine.isEmpty()) result.insert("reading_engine", word.readingEngine);
     if (!word.latexText.isEmpty()) result.insert("latex_text", word.latexText);
     if (!word.alternative.sourceTokens.isEmpty()) {
@@ -134,6 +135,7 @@ bool parseWord(const QJsonObject &json, int pageNumber, int width, int height, O
     }
     word->originalText = json.value(QStringLiteral("original_text")).toString();
     word->text = json.value(QStringLiteral("text")).toString();
+    if (!readScriptGlyphs(json, word->originalText, word->scripts)) return false;
     word->confidence = json.value(QStringLiteral("confidence")).toDouble();
     word->reviewed = json.value(QStringLiteral("reviewed")).toBool();
     word->id = json.value(QStringLiteral("id")).toString();
@@ -412,6 +414,25 @@ QString OcrDocument::plainText() const
     return output;
 }
 
+std::span<const ScriptGlyph> OcrWord::inlineScripts() const
+{
+    if (text != originalText) return {};
+    return {scripts.constData(), static_cast<size_t>(scripts.size())};
+}
+
+QString OcrWord::htmlText() const
+{
+    QString html;
+    int from = 0;
+    for (const auto &glyph : inlineScripts()) {
+        html += text.mid(from, glyph.start - from).toHtmlEscaped();
+        const auto tag = glyph.position == ScriptPosition::Superscript ? QStringLiteral("sup") : QStringLiteral("sub");
+        html += QStringLiteral("<%1>%2</%1>").arg(tag, text.mid(glyph.start, glyph.length).toHtmlEscaped());
+        from = glyph.start + glyph.length;
+    }
+    return html + text.mid(from).toHtmlEscaped();
+}
+
 QString OcrDocument::layoutHtml() const
 {
     QString html = QStringLiteral("<!doctype html><html><head><meta charset=\"utf-8\"><title>YAGF OCR</title>"
@@ -432,7 +453,7 @@ QString OcrDocument::layoutHtml() const
                         .arg(word.bold ? QStringLiteral("bold") : QStringLiteral("normal"))
                         .arg(word.italic ? QStringLiteral("italic") : QStringLiteral("normal"))
                         .arg(word.fontFamilyCss().toHtmlEscaped())
-                        .arg(word.text.toHtmlEscaped());
+                        .arg(word.htmlText());
         }
         html += QStringLiteral("</section>");
     }

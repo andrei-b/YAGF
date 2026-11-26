@@ -16,7 +16,7 @@ QString formattedText(const core::OcrWord &word)
     if (word.italic) css += QStringLiteral("font-style:italic;");
     if (word.fontSizePt > 0 && (!word.fontFamily.isEmpty() || word.fontSizePt != word.sourceFontSizePt))
         css += QStringLiteral("font-size:%1pt;").arg(word.fontSizePt);
-    const QString text = word.text.toHtmlEscaped();
+    const QString text = word.htmlText();
     return css.isEmpty() ? text : QStringLiteral("<span style=\"%1\">%2</span>").arg(css.toHtmlEscaped(), text);
 }
 

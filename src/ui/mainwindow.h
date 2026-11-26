@@ -197,6 +197,8 @@ private:
     void reviewSelectedWord();
     void showDocument();
     void selectWord(int index);
+    void highlightEditorScript();
+    int highlightedScriptWord = -1;
     void selectRegion(const QRectF &bounds);
     void activateImageRegion(int index, bool toggle = false);
     void moveImageRegion(int index, const QRectF &bounds);

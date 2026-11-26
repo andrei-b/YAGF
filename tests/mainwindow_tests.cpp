@@ -6,6 +6,7 @@
 #include "verificationcontroller.h"
 #include "correctionretention.h"
 #include "imageprocessor.h"
+#include "tesseractengine.h"
 #include "symbolfixture.h"
 #include "symbolrulesdialog.h"
 #include "formulatext.h"
@@ -70,6 +71,109 @@
 #include <cassert>
 #include <functional>
 namespace processing = yagf::processing;
+
+static void testInlineScriptEditor(const QTemporaryDir &directory, const QStringList &args)
+{
+    using namespace yagf;
+    const int superscriptOption = args.indexOf("--superscript-scan");
+    const bool raisedScan = superscriptOption >= 0;
+    const int option = raisedScan ? superscriptOption : args.indexOf("--subscript-scan");
+    core::OcrDocument book;
+    core::OcrPage page;
+    if (option >= 0) {
+        // Exercise the installed experimental engine on either a lowered index or a raised exponent.
+        book.sourcePath = QFileInfo(args.at(option + 1)).absoluteFilePath();
+        processing::TesseractEngine engine;
+        const auto result = engine.recognizeResult(QImage(book.sourcePath),
+            {.language = "eng", .singleTextLine = true}, {});
+        assert(result);
+        const auto converted = processing::recognitionToPage(*result);
+        assert(converted);
+        page = *converted;
+    } else {
+        book.sourcePath = directory.filePath("subscript.png");
+        QImage scan(160, 80, QImage::Format_RGB32);
+        scan.fill(Qt::white);
+        assert(scan.save(book.sourcePath));
+        page.width = page.sourceWidth = scan.width();
+        page.height = page.sourceHeight = scan.height();
+        page.words = {{1, 1, 1, 1, {10, 15, 40, 20}, "C12,", "C12,", 90}};
+        page.words[0].scripts = {{1, 1, {0.5, 0.5, 0.25, 0.5}},
+                                 {2, 1, {0.75, 0, 0.25, 0.5}, core::ScriptPosition::Superscript}};
+        page.rebuildHierarchy();
+    }
+    const auto target = std::ranges::find_if(page.words, [option, raisedScan](const auto &word) {
+        if (raisedScan) return std::ranges::any_of(word.scripts, [](const auto &glyph) {
+            return glyph.position == core::ScriptPosition::Superscript;
+        });
+        return option >= 0 ? word.text == "C1" && word.scripts.size() == 1 :
+                             word.text == "C12," && word.scripts.size() == 2;
+    });
+    assert(target != page.words.end());
+    const int row = int(target - page.words.begin());
+    const auto expectedPosition = raisedScan ? core::ScriptPosition::Superscript : core::ScriptPosition::Subscript;
+    const auto glyph = *std::ranges::find(target->scripts, expectedPosition, &core::ScriptGlyph::position);
+    assert(glyph.start > 0 && glyph.length == 1);
+    const QRectF box = glyph.imageBox(target->bounds);
+    book.replacePage(page);
+    if (option < 0) {
+        assert(book.layoutHtml().contains("C<sub>1</sub><sup>2</sup>,"));
+        const auto tex = directory.filePath("inline-script.tex");
+        const std::atomic_bool cancelled(false);
+        const auto exported = processing::LatexDocumentExporter::write(book, tex, cancelled);
+        if (exported.status != processing::ExportResult::Status::Success) qWarning() << exported.error;
+        assert(exported.status == processing::ExportResult::Status::Success);
+        QFile source(tex);
+        assert(source.open(QIODevice::ReadOnly));
+        assert(source.readAll().contains(R"(C\textsubscript{1}\textsuperscript{2})"));
+    }
+    const auto path = option >= 0 && args.size() > option + 2 ?
+        args.at(option + 2) : directory.filePath("subscript.yagf.json");
+    QString error;
+    assert(core::ProjectFile::save(path, book, &error));
+    ui::MainWindow window;
+    window.loadProject(path);
+    window.show();
+    window.activateWindow();
+    QApplication::processEvents();
+    auto *list = window.findChild<QListWidget *>("recognizedWords");
+    auto *editor = window.findChild<QTextEdit *>("recognizedTextEditor");
+    auto *view = window.findChild<QGraphicsView *>("pagePreview");
+    assert(list && editor && view);
+    list->setCurrentRow(row, QItemSelectionModel::ClearAndSelect);
+    assert(editor->toPlainText() == target->text);
+    if (option >= 0) editor->zoomIn(5);
+    QTextCursor cursor(editor->document());
+    cursor.setPosition(glyph.start);
+    assert(cursor.charFormat().verticalAlignment() == QTextCharFormat::AlignNormal);
+    const QRect left = editor->cursorRect(cursor);
+    cursor.setPosition(glyph.start + glyph.length);
+    assert(cursor.charFormat().verticalAlignment() ==
+           (raisedScan ? QTextCharFormat::AlignSuperScript : QTextCharFormat::AlignSubScript));
+    const QPoint click = (left.center() + editor->cursorRect(cursor).center()) / 2;
+    QTest::mouseClick(editor->viewport(), Qt::LeftButton, {}, click);
+    QGraphicsRectItem *marker = nullptr;
+    for (auto *item : view->scene()->items()) {
+        auto *rect = qgraphicsitem_cast<QGraphicsRectItem *>(item);
+        if (rect && rect->parentItem() && rect->isVisible() && rect->rect() == box) marker = rect;
+    }
+    if (!marker) qWarning() << "Script click" << target->text << glyph.start << glyph.length
+                            << editor->textCursor().position() << editor->hasFocus() << click << box;
+    assert(marker);
+    if (option >= 0 && args.size() > option + 3) assert(window.grab().save(args.at(option + 3)));
+    QTest::keyClick(editor, Qt::Key_Home);
+    assert(!marker->isVisible());
+    if (option < 0) {
+        cursor.setPosition(3);
+        assert(cursor.charFormat().verticalAlignment() == QTextCharFormat::AlignSuperScript);
+        editor->setTextCursor(cursor);
+        const auto raised = target->scripts.last().imageBox(target->bounds);
+        assert(std::ranges::any_of(view->scene()->items(), [&](auto *item) {
+            auto *rect = qgraphicsitem_cast<QGraphicsRectItem *>(item);
+            return rect && rect->parentItem() && rect->isVisible() && rect->rect() == raised;
+        }));
+    }
+}
 
 static void testInlineTarget(const QTemporaryDir &directory, const QString &sourcePath, bool table = false)
 {
@@ -543,6 +647,8 @@ int main(int argc, char **argv)
     QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, directory.path());
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, directory.path());
+    testInlineScriptEditor(directory, app.arguments());
+    if (app.arguments().contains("--subscript-scan") || app.arguments().contains("--superscript-scan")) return 0;
     {
         processing::OcrService text; text.provider="tesseract";text.label="Local Russian text";text.language="rus";
         processing::OcrService formulas;formulas.provider="paddleocr-vl";formulas.label="Jetson formulas";

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QRect>
 #include <QSize>
@@ -23,11 +24,25 @@ struct RecognitionRegion {
     int order = -1;
     double confidence = -1; // 0..100, or unknown.
 };
+enum class ScriptPosition { Subscript, Superscript };
+
+// The box is relative to the word in unit coordinates so it also follows
+// the word when a recognized crop is translated or resized.
+struct ScriptGlyph {
+    int start = 0, length = 0; // UTF-16 range in the original transcription.
+    QRectF relativeBox;
+    ScriptPosition position = ScriptPosition::Subscript;
+    QRectF imageBox(const QRect &word) const;
+};
+void writeScriptGlyphs(QJsonObject &object, const QVector<ScriptGlyph> &glyphs);
+bool readScriptGlyphs(const QJsonObject &object, const QString &text, QVector<ScriptGlyph> &glyphs);
+
 struct TextRegion : RecognitionRegion {
     QString text;
     TextGranularity granularity = TextGranularity::Block;
     QString type = QStringLiteral("text");
     int block = 0, paragraph = 0, line = 0;
+    QVector<ScriptGlyph> scripts;
 };
 struct FormulaRegion : RecognitionRegion {
     QString latex;

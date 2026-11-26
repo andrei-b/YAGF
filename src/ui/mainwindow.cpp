@@ -1262,6 +1262,7 @@ MainWindow::MainWindow()
     spellHighlighter = new SpellHighlighter(selectionEditor);
     selectionEditor->addAction(teachSymbolAction);
     selectionEditor->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(selectionEditor, &QTextEdit::cursorPositionChanged, this, &MainWindow::highlightEditorScript);
     connect(selectionEditor, &QTextEdit::selectionChanged, this, [this] {
         teachSymbolAction->setEnabled(!processor.isBusy() && !exportBusy && !projectLoading &&
             !imagePath.isEmpty() && !editorPending && !selectedWords.isEmpty());
@@ -1420,7 +1421,11 @@ MainWindow::MainWindow()
     connect(applyButton, &QPushButton::clicked, this, &MainWindow::applyCorrection);
     connect(regionOcrButton, &QPushButton::clicked, this, &MainWindow::runOcr);
     connect(reviewWordButton, &QPushButton::clicked, this, &MainWindow::reviewSelectedWord);
-    connect(selectionEditor, &QTextEdit::textChanged, this, [this] { editorPending = true; teachSymbolAction->setEnabled(false); });
+    connect(selectionEditor, &QTextEdit::textChanged, this, [this] {
+        editorPending = true;
+        highlightEditorScript();
+        teachSymbolAction->setEnabled(false);
+    });
     connect(view, &PageView::wordClicked, this, &MainWindow::selectWord);
     connect(wordList, &QListWidget::itemSelectionChanged, this, [this] {
         QStringList ids;
@@ -3335,6 +3340,15 @@ void MainWindow::showDocument()
         box->setData(0, i);
         box->setZValue(1);
         wordBoxes.append(box);
+        for (const auto &glyph : word.inlineScripts()) {
+            auto *marker = new QGraphicsRectItem(glyph.imageBox(word.bounds), box);
+            marker->setData(0, i);
+            marker->setData(1, glyph.start);
+            marker->setPen(QPen(QColor(185, 82, 0), 2));
+            marker->setBrush(QColor(255, 174, 45, 70));
+            marker->setAcceptedMouseButtons(Qt::NoButton);
+            marker->hide();
+        }
         auto *item = new QListWidgetItem(word.text, wordList);
         if (word.reviewed) item->setForeground(QColor(0, 90, 20));
         else if (word.confidence >= 0 && word.confidence < 70)
@@ -4042,9 +4056,41 @@ void MainWindow::refreshReviewLabel()
     reviewWordButton->setText(reviewLabel);
 }
 
+void MainWindow::highlightEditorScript()
+{
+    if (highlightedScriptWord >= 0 && highlightedScriptWord < wordBoxes.size())
+        for (auto *item : wordBoxes[highlightedScriptWord]->childItems()) item->hide();
+    highlightedScriptWord = -1;
+    if (editorPending || !selectionEditor->hasFocus()) return;
+    const int pos = selectionEditor->textCursor().position();
+    for (auto it = editorWordRanges.cbegin(); it != editorWordRanges.cend(); ++it) {
+        if (it.key() >= displayedWords.size() || it.key() >= wordBoxes.size()) continue;
+        const int at = pos - it.value().first;
+        if (at < 0 || at > it.value().second) continue;
+        const auto *word = displayedWords.at(it.key());
+        const auto scripts = word->inlineScripts();
+        const auto next = std::ranges::upper_bound(scripts, at, {}, &core::ScriptGlyph::start);
+        if (next == scripts.begin()) continue;
+        const auto &glyph = *std::prev(next);
+        // A click on the right half of a glyph can put the caret after it.
+        if (at > glyph.start + glyph.length) continue;
+        for (auto *item : wordBoxes[it.key()]->childItems()) {
+            if (item->data(1).toInt() != glyph.start) continue;
+            item->show();
+            const qreal scale = view->transform().m11();
+            const qreal readableScale = std::min(8.0, 22.0 / glyph.imageBox(word->bounds).height());
+            if (scale > 0 && scale < readableScale) view->zoomBy(readableScale / scale);
+            view->ensureVisible(item, 24, 24);
+            highlightedScriptWord = it.key();
+            return;
+        }
+    }
+}
+
 void MainWindow::updateSelection(const QVector<int> &indices)
 {
     editorWordRanges.clear();
+    highlightEditorScript();
     selectedWords = indices;
     const auto *page = document.page(currentPage);
     editFormulaAction->setEnabled(!processor.isBusy() && !exportBusy && page &&
@@ -4093,7 +4139,7 @@ void MainWindow::updateSelection(const QVector<int> &indices)
                 (structured && (paragraph || standalone(*word) || standalone(*previous)));
             const QString separator = separate || paragraph
                 ? QStringLiteral("\n\n") : previous->line != word->line ? QStringLiteral("\n") : QStringLiteral(" ");
-            cursor.insertText(separator);
+            cursor.insertText(separator, QTextCharFormat{});
             if (separate) {
                 auto boundary = cursor;
                 boundary.movePosition(QTextCursor::PreviousCharacter);
@@ -4106,7 +4152,16 @@ void MainWindow::updateSelection(const QVector<int> &indices)
         format.setFontItalic(word->italic);
         if (word->fontSizePt > 0) format.setFontPointSize(word->fontSizePt);
         editorWordRanges.insert(index, {cursor.position(), int(word->text.size())});
-        cursor.insertText(word->text, format);
+        int from = 0;
+        for (const auto &glyph : word->inlineScripts()) {
+            auto scriptFormat = format;
+            scriptFormat.setVerticalAlignment(glyph.position == core::ScriptPosition::Superscript
+                ? QTextCharFormat::AlignSuperScript : QTextCharFormat::AlignSubScript);
+            cursor.insertText(word->text.mid(from, glyph.start - from), format);
+            cursor.insertText(word->text.mid(glyph.start, glyph.length), scriptFormat);
+            from = glyph.start + glyph.length;
+        }
+        cursor.insertText(word->text.mid(from), format);
         previous = word;
     }
     selectionEditor->moveCursor(QTextCursor::Start);

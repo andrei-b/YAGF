@@ -81,6 +81,7 @@ QVector<OcrWord> changedSpan(const OcrPage &page, const QVector<OcrWord> &old,
             OcrWord word = anchor ? *anchor : OcrWord{};
             word.id = newId();
             word.originalText.clear();
+            word.scripts.clear();
             word.sourceWordIds.clear();
             word.sourceBoxes.clear();
             word.symbolShape.clear();
@@ -171,6 +172,7 @@ QVector<OcrWord> changedSpan(const OcrPage &page, const QVector<OcrWord> &old,
         word.id = usedIds.contains(word.id) ? newId() : word.id;
         usedIds.insert(word.id);
         word.sourceWordIds = sourceIds;
+        word.scripts.clear();
         word.originalText = originalTexts.join(QLatin1Char(' '));
         word.sourceBoxes = std::move(sourceBoxes);
         word.symbolShape.clear();
@@ -212,6 +214,7 @@ std::expected<OcrPage, QString> WordEditor::acceptSpecialist(const OcrPage &page
     }
     if (alternative.formula) {
         auto &block = edited.words[anchor];
+        block.scripts.clear();
         block.originalText = alternative.sourceTokens.join(' ');
         block.text = text;
         if (!block.latexText.isEmpty()) {

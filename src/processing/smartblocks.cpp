@@ -602,6 +602,7 @@ static void readIsolatedSymbol(OcrWord &word, const SymbolEvidence &evidence,
     if (word.text == text) return;
     const auto previous = word.text;
     const auto provider = word.readingEngine;
+    word.scripts.clear();
     word.originalText = word.text = text;
     QStringList historyIds;
     const auto pageCrop = word.bounds.translated(options.historyOffset);
@@ -1097,6 +1098,7 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
                 }
             }
             if (inlineMath[crop]) formula.text = "\\(" + formula.text + "\\)";
+            formula.scripts.clear();
             formula.originalText = formula.text;
             readIsolatedSymbol(formula,symbolEvidence,image,settings,inlineMath[crop],formulas.recognitionHistory);
             formula.id = original.id + "/math-" + QUuid::createUuid().toString(QUuid::WithoutBraces);
@@ -1199,6 +1201,7 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
             auto &word = page.words[indices[i]];
             word.text = formulas->words[i].text;
             if (types[word.block-1] == "mixed") word.text = "\\(" + word.text + "\\)";
+            word.scripts.clear();
             word.originalText = word.text;
             word.readingEngine = formulas->words[i].readingEngine;
             word.confidence = formulas->words[i].confidence;

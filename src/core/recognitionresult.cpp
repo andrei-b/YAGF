@@ -4,6 +4,7 @@
 #include <QJsonDocument>
 #include <QHash>
 #include <QSet>
+#include <algorithm>
 #include <cmath>
 #include <limits>
 
@@ -39,6 +40,67 @@ bool readRegion(const QJsonObject &value, RecognitionRegion &region) {
     if (value.contains("input_area")) { QRect box; if (!readBox(value["input_area"], box)) return false; region.inputArea = box; }
     return true;
 }
+bool validScript(const ScriptGlyph &glyph, int previousEnd, qsizetype textLength)
+{
+    const auto &r = glyph.relativeBox;
+    return (glyph.position == ScriptPosition::Subscript || glyph.position == ScriptPosition::Superscript) &&
+        glyph.start >= previousEnd && glyph.length > 0 &&
+        qint64(glyph.start) + glyph.length <= textLength &&
+        r.x() >= 0 && r.y() >= 0 && r.width() > 0 && r.height() > 0 &&
+        r.right() <= 1.000001 && r.bottom() <= 1.000001;
+}
+}
+
+QRectF ScriptGlyph::imageBox(const QRect &word) const
+{
+    return {word.x() + relativeBox.x() * word.width(), word.y() + relativeBox.y() * word.height(),
+            relativeBox.width() * word.width(), relativeBox.height() * word.height()};
+}
+
+void writeScriptGlyphs(QJsonObject &object, const QVector<ScriptGlyph> &glyphs)
+{
+    QJsonArray lowered, raised;
+    for (const auto &glyph : glyphs) {
+        const auto &r = glyph.relativeBox;
+        auto &array = glyph.position == ScriptPosition::Superscript ? raised : lowered;
+        array.append(QJsonArray{glyph.start, glyph.length, r.x(), r.y(), r.width(), r.height()});
+    }
+    if (!lowered.isEmpty()) object["subscripts"] = lowered;
+    if (!raised.isEmpty()) object["superscripts"] = raised;
+}
+
+bool readScriptGlyphs(const QJsonObject &object, const QString &text, QVector<ScriptGlyph> &glyphs)
+{
+    QVector<ScriptGlyph> parsed;
+    const auto read = [&](const QJsonValue &value, ScriptPosition position) {
+        if (value.isUndefined()) return true;
+        const auto array = value.toArray();
+        if (!value.isArray() || parsed.size() + array.size() > text.size()) return false;
+        int end = 0;
+        for (const auto &item : array) {
+            const auto a = item.toArray();
+            ScriptGlyph glyph;
+            glyph.position = position;
+            if (a.size() != 6 || !integer(a[0], glyph.start) || !integer(a[1], glyph.length)) return false;
+            for (int i = 2; i < 6; ++i)
+                if (!a[i].isDouble() || !std::isfinite(a[i].toDouble())) return false;
+            glyph.relativeBox = {a[2].toDouble(), a[3].toDouble(), a[4].toDouble(), a[5].toDouble()};
+            if (!validScript(glyph, end, text.size())) return false;
+            end = glyph.start + glyph.length;
+            parsed.append(glyph);
+        }
+        return true;
+    };
+    if (!read(object.value("subscripts"), ScriptPosition::Subscript) ||
+        !read(object.value("superscripts"), ScriptPosition::Superscript)) return false;
+    std::ranges::sort(parsed, {}, &ScriptGlyph::start);
+    int end = 0;
+    for (const auto &glyph : parsed) {
+        if (glyph.start < end) return false;
+        end = glyph.start + glyph.length;
+    }
+    glyphs = std::move(parsed);
+    return true;
 }
 
 QJsonObject recognitionResultJson(const RecognitionResult &result) {
@@ -46,6 +108,7 @@ QJsonObject recognitionResultJson(const RecognitionResult &result) {
     for (const auto &region : result.text) {
         auto value = regionJson(region); value["text"] = region.text;
         value["granularity"] = granularities.value(static_cast<int>(region.granularity)); value["type"] = region.type;
+        writeScriptGlyphs(value, region.scripts);
         value["block"] = region.block; value["paragraph"] = region.paragraph; value["line"] = region.line; text.append(value);
     }
     for (const auto &region : result.formulas) {
@@ -94,6 +157,11 @@ std::expected<void, QString> validateRecognitionResult(const RecognitionResult &
     for (const auto &r : result.text) {
         if (!valid(r) || int(r.granularity) < 0 || int(r.granularity) >= granularities.size() || r.type.isEmpty() || r.type.size() > 128 ||
             r.block < 0 || r.paragraph < 0 || r.line < 0 || r.block > 1000000 || r.paragraph > 1000000 || r.line > 1000000) return fail();
+        int end = 0;
+        for (const auto &glyph : r.scripts) {
+            if (!r.bounds || !validScript(glyph, end, r.text.size())) return fail();
+            end = glyph.start + glyph.length;
+        }
     }
     for (const auto &r : result.formulas) if (!valid(r)) return fail();
     for (const auto &r : result.tables) if (!valid(r)) return fail();
@@ -135,7 +203,9 @@ std::expected<RecognitionResult, QString> readRecognitionResult(const QJsonObjec
                 TextRegion r; int granularity = granularities.indexOf(value["granularity"].toString());
                 if (!readRegion(value, r) || !value["text"].isString() || !value["type"].isString() || granularity < 0 ||
                     !integer(value["block"], r.block) || !integer(value["paragraph"], r.paragraph) || !integer(value["line"], r.line)) return fail();
-                r.text = value["text"].toString(); r.type = value["type"].toString(); r.granularity = TextGranularity(granularity); result.text.append(r);
+                r.text = value["text"].toString(); r.type = value["type"].toString();
+                if (!readScriptGlyphs(value, r.text, r.scripts)) return fail();
+                r.granularity = TextGranularity(granularity); result.text.append(r);
             } else if (QString(key) == "formulas") {
                 FormulaRegion r; if (!readRegion(value, r) || !value["latex"].isString() || !value["display"].isBool()) return fail();
                 r.latex = value["latex"].toString(); r.display = value["display"].toBool(); result.formulas.append(r);

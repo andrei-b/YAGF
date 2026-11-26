@@ -1,6 +1,7 @@
 #include "tesseractengine.h"
 #include "recognitionrecorder.h"
 #include <QScopeGuard>
+#include <QXmlStreamReader>
 #include <QJsonDocument>
 #include <QDir>
 #include <QJsonArray>
@@ -18,6 +19,117 @@
 #endif
 
 namespace yagf::processing {
+
+namespace {
+bool supportsInlineScripts(const QString &executable, std::stop_token stop,
+                           const std::atomic_bool *cancelled)
+{
+    static std::mutex mutex;
+    static QHash<QString, bool> cache;
+    const QFileInfo file(executable);
+    const QString key = executable + ':' + QString::number(file.lastModified().toMSecsSinceEpoch());
+    {
+        std::lock_guard guard(mutex);
+        if (cache.contains(key)) return cache.value(key);
+    }
+    QProcess probe;
+    probe.start(executable, {"--print-parameters"});
+    QElapsedTimer timer;
+    timer.start();
+    while (!probe.waitForFinished(50) && probe.state() != QProcess::NotRunning) {
+        if (stop.stop_requested() || (cancelled && cancelled->load()) || timer.elapsed() >= 2000) {
+            probe.kill();
+            probe.waitForFinished();
+            return false;
+        }
+    }
+    const bool available = probe.exitStatus() == QProcess::NormalExit && probe.exitCode() == 0 &&
+        probe.readAllStandardOutput().contains("\nlstm_reread_subscripts\t");
+    std::lock_guard guard(mutex);
+    cache.insert(key, available);
+    return available;
+}
+
+QRect hocrBox(QStringView title, QStringView name)
+{
+    if (!title.startsWith(name)) return {};
+    const auto values = title.sliced(name.size()).toString().section(';', 0, 0).split(' ', Qt::SkipEmptyParts);
+    if (values.size() != 4) return {};
+    int edges[4];
+    for (int i = 0; i < 4; ++i) {
+        bool ok = false;
+        edges[i] = values[i].toInt(&ok);
+        if (!ok || edges[i] < 0) return {};
+    }
+    return {edges[0], edges[1], edges[2] - edges[0], edges[3] - edges[1]};
+}
+
+// Join by bounds and full transcription. Both renderers use the same recognition run.
+bool applyHocrScripts(core::OcrPage &page, QIODevice &input)
+{
+    QMultiHash<QPoint, int> byOrigin;
+    for (int i = 0; i < page.words.size(); ++i) byOrigin.insert(page.words[i].bounds.topLeft(), i);
+    QXmlStreamReader xml(&input);
+    int depth = 0, wordDepth = -1, glyphDepth = -1;
+    QRect wordBox, glyphBox;
+    QString text, glyphText;
+    std::optional<core::ScriptPosition> position;
+    QVector<core::ScriptGlyph> glyphs;
+    QHash<int, QVector<core::ScriptGlyph>> found;
+    while (!xml.atEnd()) {
+        xml.readNext();
+        if (xml.isStartElement()) {
+            ++depth;
+            const auto attrs = xml.attributes();
+            const auto cls = attrs.value("class");
+            if (cls == u"ocrx_word") {
+                wordDepth = depth;
+                wordBox = hocrBox(attrs.value("title"), u"bbox ");
+                text.clear();
+                glyphs.clear();
+            } else if (wordDepth >= 0 && cls == u"ocrx_cinfo" &&
+                       attrs.value("title").startsWith(u"x_bboxes ")) {
+                glyphDepth = depth;
+                glyphBox = hocrBox(attrs.value("title"), u"x_bboxes ");
+                glyphText.clear();
+                position.reset();
+            } else if (glyphDepth >= 0 && xml.name() == u"sub") {
+                position = core::ScriptPosition::Subscript;
+            } else if (glyphDepth >= 0 && xml.name() == u"sup") {
+                position = core::ScriptPosition::Superscript;
+            }
+        } else if (xml.isCharacters() && glyphDepth >= 0) {
+            glyphText.append(xml.text());
+        } else if (xml.isEndElement()) {
+            if (depth == glyphDepth) {
+                if (position && !glyphText.isEmpty() && !glyphBox.isEmpty() && wordBox.contains(glyphBox)) {
+                    const qreal w = wordBox.width(), h = wordBox.height();
+                    glyphs.append({int(text.size()), int(glyphText.size()),
+                                   {(glyphBox.x()-wordBox.x())/w, (glyphBox.y()-wordBox.y())/h,
+                                    glyphBox.width()/w, glyphBox.height()/h}, *position});
+                }
+                text += glyphText;
+                glyphDepth = -1;
+            }
+            if (depth == wordDepth) {
+                if (!glyphs.isEmpty()) {
+                    for (int i : byOrigin.values(wordBox.topLeft())) {
+                        if (page.words[i].bounds == wordBox && page.words[i].originalText == text) {
+                            found.insert(i, glyphs);
+                            break;
+                        }
+                    }
+                }
+                wordDepth = -1;
+            }
+            --depth;
+        }
+    }
+    if (xml.hasError()) return false;
+    for (auto it = found.cbegin(); it != found.cend(); ++it) page.words[it.key()].scripts = it.value();
+    return true;
+}
+} // namespace
 
 std::expected<TesseractLanguages,QString> installedTesseractLanguages()
 {
@@ -80,7 +192,8 @@ std::expected<core::OcrPage, OcrError> TesseractEngine::recognize(
     if (interrupted()) return std::unexpected(OcrError{{}, true});
     if (image.isNull() || options.pageNumber < 1)
         return std::unexpected(OcrError{QStringLiteral("Invalid OCR image or options.")});
-    if (QStandardPaths::findExecutable(QStringLiteral("tesseract")).isEmpty())
+    const auto executable = QStandardPaths::findExecutable(QStringLiteral("tesseract"));
+    if (executable.isEmpty())
         return std::unexpected(OcrError{QStringLiteral("tesseract is not installed or is not on PATH.")});
     QTemporaryDir temporary;
     if (!temporary.isValid())
@@ -101,7 +214,17 @@ std::expected<core::OcrPage, OcrError> TesseractEngine::recognize(
             return std::unexpected(OcrError{QStringLiteral("Could not prepare the book vocabulary.")});
         arguments << QStringLiteral("--user-words") << vocabulary.fileName();
     }
-    arguments << QStringLiteral("tsv");
+    const bool scripts = supportsInlineScripts(executable, stop, cancelled);
+    if (interrupted()) return std::unexpected(OcrError{{}, true});
+    const QString outputBase = temporary.filePath("recognition");
+    if (scripts) {
+        arguments[1] = outputBase;
+        arguments << "-c" << "lstm_detect_subscripts=1" << "-c" << "lstm_recover_subscripts=1"
+                  << "-c" << "lstm_reread_subscripts=1" << "-c" << "hocr_char_boxes=1"
+                  << "-c" << "tessedit_create_tsv=1" << "-c" << "tessedit_create_hocr=1";
+    } else {
+        arguments << QStringLiteral("tsv");
+    }
     QProcess process;
     const auto capture=qScopeGuard([&]{
         if(!structuredOutput.contains("tsv")) {
@@ -111,12 +234,11 @@ std::expected<core::OcrPage, OcrError> TesseractEngine::recognize(
             structuredOutput["exit_code"]=process.exitCode();
         }
     });
-    QJsonObject modelEvidence;
+    QJsonObject modelEvidence{{"inline_subscripts", scripts}};
     if(options.history) {
         // Resolve version and data location once per executable/environment.
         // Recheck traineddata fingerprints independently, using file identity.
         static std::mutex metadataMutex;static QHash<QString,QPair<QString,QString>> metadataCache;
-        const auto executable=QStandardPaths::findExecutable("tesseract");
         const auto key=executable+':'+QString::number(QFileInfo(executable).lastModified().toMSecsSinceEpoch())+':'+qEnvironmentVariable("TESSDATA_PREFIX");
         QPair<QString,QString> metadataValue;
         {
@@ -166,9 +288,9 @@ std::expected<core::OcrPage, OcrError> TesseractEngine::recognize(
         // Cancel GNU time and its recognition child together.
         process.setChildProcessModifier([]{::setsid();});
 #endif
-        QStringList measured{"-f","%M","-o",memoryFile,"--",QStandardPaths::findExecutable(QStringLiteral("tesseract"))};
+        QStringList measured{"-f","%M","-o",memoryFile,"--",executable};
         measured+=arguments;process.start(QStringLiteral("/usr/bin/time"),measured);
-    } else process.start(QStringLiteral("tesseract"), arguments);
+    } else process.start(executable, arguments);
     if (!process.waitForStarted(10'000))
         return std::unexpected(OcrError{QStringLiteral("Could not start tesseract: %1")
             .arg(process.errorString())});
@@ -186,7 +308,11 @@ std::expected<core::OcrPage, OcrError> TesseractEngine::recognize(
         }
         process.waitForFinished(100);
     }
-    const auto tsv=process.readAllStandardOutput();
+    QByteArray tsv = process.readAllStandardOutput();
+    if (scripts) {
+        QFile file(outputBase + ".tsv");
+        if (file.open(QIODevice::ReadOnly)) tsv = file.readAll();
+    }
     const auto diagnostics=process.readAllStandardError();
     structuredOutput["format"]="tesseract-tsv";structuredOutput["tsv"]=QString::fromUtf8(tsv);
     structuredOutput["stderr"]=QString::fromUtf8(diagnostics);structuredOutput["exit_code"]=process.exitCode();
@@ -201,7 +327,13 @@ std::expected<core::OcrPage, OcrError> TesseractEngine::recognize(
             if(ok && kib>0){runDetails["peak_rss_bytes"]=kib*1024;runDetails["peak_rss_scope"]="Recognition child process";}
         }
     }
-    return parseTsv(tsv, image.size(), resolved);
+    auto page = parseTsv(tsv, image.size(), resolved);
+    if (scripts && page) {
+        QFile hocr(outputBase + ".hocr");
+        if (!hocr.open(QIODevice::ReadOnly) || !applyHocrScripts(*page, hocr))
+            structuredOutput["warnings"] = QJsonArray{QStringLiteral("Tesseract's hOCR output could not be read for script positions.")};
+    }
+    return page;
 }
 
 std::expected<core::OcrPage, OcrError> TesseractEngine::parseTsv(

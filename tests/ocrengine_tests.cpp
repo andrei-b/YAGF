@@ -51,6 +51,59 @@ public:
     bool waitForCancel;
     bool invalid;
 };
+
+void testInlineScriptEvidence(const QImage &image)
+{
+    QTemporaryDir bin;
+    QFile script(bin.filePath("tesseract"));
+    assert(script.open(QIODevice::WriteOnly));
+    script.write(R"SH(#!/bin/sh
+if [ "$1" = --print-parameters ]; then
+    printf 'Tesseract parameters:\nlstm_reread_subscripts\t0\tReread subscripts\n'
+    exit 0
+fi
+printf 'level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n5\t1\t1\t1\t1\t1\t10\t20\t38\t12\t90\tA12\n' > "$2.tsv"
+cat > "$2.hocr" <<'XML'
+<span class="ocrx_word" title="bbox 10 20 48 32; x_wconf 90">
+  <span class="ocrx_cinfo" title="x_bboxes 10 20 30 30">A</span>
+  <span class="ocrx_cinfo" title="x_bboxes 31 25 40 32"><sub>1</sub></span>
+  <span class="ocrx_cinfo" title="x_bboxes 40 20 48 27"><sup>2</sup></span>
+</span>
+XML
+if [ -e "$0.invalid" ]; then echo '<' >> "$2.hocr"; fi
+)SH");
+    script.close();
+    assert(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::ExeOwner));
+    const auto path = qgetenv("PATH");
+    qputenv("PATH", QFile::encodeName(bin.path()) + ':' + path);
+    TesseractEngine engine;
+    auto page = engine.recognize(image, {.language = "eng"}, {});
+    assert(page && page->words.size() == 1);
+    const auto &word = page->words.first();
+    assert(word.text == "A12" && word.scripts.size() == 2);
+    const auto &glyph = word.scripts.first();
+    assert(glyph.start == 1 && glyph.length == 1 && glyph.imageBox(word.bounds) == QRectF(31,25,9,7) &&
+           glyph.position == yagf::core::ScriptPosition::Subscript);
+    const auto &raised = word.scripts.last();
+    assert(raised.start == 2 && raised.length == 1 && raised.imageBox(word.bounds) == QRectF(40,20,8,7) &&
+           raised.position == yagf::core::ScriptPosition::Superscript);
+    const auto validEvidence = engine.recognizeResult(image, {.language = "eng"}, {});
+    assert(validEvidence && validEvidence->structuredOutput["inline_subscripts"].toBool());
+    assert(!validEvidence->structuredOutput.contains("warnings"));
+    const auto json = recognitionResultJson(*validEvidence);
+    const auto restored = yagf::core::readRecognitionResult(json);
+    assert(restored && restored->text.first().scripts.size() == 2);
+    assert(restored->text.first().scripts.last().position == yagf::core::ScriptPosition::Superscript);
+    QFile invalid(script.fileName() + ".invalid");
+    assert(invalid.open(QIODevice::WriteOnly));
+    invalid.close();
+    page = engine.recognize(image, {.language = "eng"}, {});
+    assert(page && page->words.first().text == "A12" && page->words.first().scripts.isEmpty());
+    const auto invalidEvidence = engine.recognizeResult(image, {.language = "eng"}, {});
+    assert(invalidEvidence && invalidEvidence->structuredOutput["inline_subscripts"].toBool());
+    assert(invalidEvidence->structuredOutput["warnings"].toArray().size() == 1);
+    qputenv("PATH", path);
+}
 }
 
 int main(int argc, char **argv)
@@ -92,6 +145,7 @@ int main(int argc, char **argv)
     qputenv("TEST_TSV_FILE", QFile::encodeName(fixturePath));
     QImage image(200, 100, QImage::Format_RGB32);
     image.fill(Qt::white);
+    testInlineScriptEvidence(image);
     TesseractEngine engine;
     assert(engine.capabilities().supportsConfidence);
     qputenv("TEST_MODEL_LANGUAGE", "eng");

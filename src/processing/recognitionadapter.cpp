@@ -63,7 +63,9 @@ std::expected<OcrPage, QString> recognitionToPage(const RecognitionResult &resul
             if (!parentLines.contains(lineId)) parentLines.insert(lineId, parentLines.size()+1);
             line = parentLines[lineId];
         }
+        if (r.text.isEmpty()) return;
         add(r, r.text, r.granularity != TextGranularity::Word, type, block, paragraph, line);
+        items.last().word.scripts = r.scripts;
     };
     for (const auto &r : result.text) {
         if (!r.id.isEmpty() && parents.contains(r.id)) continue;
@@ -157,6 +159,7 @@ RecognitionResult recognitionFromPage(const OcrPage &page) {
             result.tables.append(table);
         } else {
             TextRegion text; static_cast<RecognitionRegion &>(text) = base; text.text = source;
+            if (base.bounds && word.originalText == source) text.scripts = word.scripts;
             text.block = word.block; text.paragraph = word.paragraph; text.line = word.line; text.type = region.type;
             text.granularity = word.layoutBlock ? TextGranularity::Block : TextGranularity::Word;
             result.text.append(text);

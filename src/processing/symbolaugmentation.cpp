@@ -237,6 +237,7 @@ int applySymbolRules(core::OcrPage &page, const QImage &image, const QVector<cor
         });
         if (ambiguous) continue;
         auto word=page.words[neighbor]; word.bounds=found.bounds; word.originalText=word.text=found.label;
+        word.scripts.clear();
         word.id=QStringLiteral("page-%1/symbol-%2-%3-%4-%5").arg(page.number).arg(found.bounds.x()).arg(found.bounds.y()).arg(found.bounds.width()).arg(found.bounds.height());
         word.sourceWordIds={word.id}; word.sourceBoxes={found.bounds}; word.reviewed=false; word.confidence=-1;
         word.symbolShape=found.mask; word.alternative={}; word.readingEngine="symbol-augmentation";
