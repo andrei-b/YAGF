@@ -144,8 +144,19 @@ std::expected<core::OcrPage, OcrError> recognizeFormulaBoxes(
     return page;
 }
 
+bool MathOcrEngine::useUniMERNet()
+{
+    return !qEnvironmentVariableIsEmpty("YAGF_UNIMERNET_PYTHON");
+}
+
+static QString localModelName()
+{
+    return MathOcrEngine::useUniMERNet() ? QStringLiteral("UniMERNet") : QStringLiteral("Rapid LaTeX OCR");
+}
+
 QString MathOcrEngine::pythonPath()
 {
+    if (useUniMERNet()) return qEnvironmentVariable("YAGF_UNIMERNET_PYTHON");
     return QStandardPaths::locate(QStandardPaths::GenericDataLocation,
         QStringLiteral("yagf2/math-ocr/venv/bin/python"));
 }
@@ -156,7 +167,7 @@ std::expected<RecognitionResult, OcrError> MathOcrEngine::recognizeResult(
     auto page = recognizeBoxes(image, options, stop, {});
     if (!page) return std::unexpected(page.error());
     auto result = recognitionFromPage(*page);
-    result.provenance.model = "Rapid LaTeX OCR";
+    result.provenance.model = localModelName();
     result.provenance.task = "formula";
     return result;
 }
@@ -166,20 +177,28 @@ std::expected<core::OcrPage, OcrError> MathOcrEngine::recognizeBoxes(
     QStringList *warnings, int timeBudgetMs)
 {
     const bool record=options.history && !options.historyNativeCall;
-    core::RecognitionRun run;if(record)run=options.history->begin(id(),"Rapid LaTeX OCR",image,options);
+    core::RecognitionRun run;if(record)run=options.history->begin(id(),localModelName(),image,options);
     QElapsedTimer elapsed;elapsed.start();
     auto perform=[&]() -> std::expected<core::OcrPage,OcrError> {
     if (stop.stop_requested()) return std::unexpected(OcrError{{}, true});
     QJsonArray requested;for(const auto &box:boxes)requested.append(QJsonArray{box.x(),box.y(),box.width(),box.height()});
-    structuredOutput={{"requested_crops",requested},{"time_budget_ms",timeBudgetMs},{"crop_timeout_seconds",timeBudgetMs<=30000?5:15}};
+    structuredOutput={{"requested_crops",requested},{"time_budget_ms",timeBudgetMs},{"crop_timeout_seconds",useUniMERNet()?40:(timeBudgetMs<=30000?5:15)}};
     const QString python = pythonPath();
     if (!QFileInfo(python).isExecutable())
         return std::unexpected(OcrError{QStringLiteral("Local math OCR is not installed. See Local math OCR in the YAGF README.")});
     QTemporaryDir temporary;
     const QString input = temporary.filePath("page.png");
-    const QString script = temporary.filePath("math_ocr.py");
-    if (!temporary.isValid() || !image.save(input, "PNG") || !QFile::copy(":/math/math_ocr.py", script))
-        return std::unexpected(OcrError{QStringLiteral("Could not prepare the local math OCR input.")});
+    const QString helper = useUniMERNet() ? "unimernet_ocr.py" : "math_ocr.py";
+    const QString script = temporary.filePath(helper);
+    if (!temporary.isValid()) return std::unexpected(OcrError{temporary.errorString()});
+    if (!image.save(input, "PNG")) return std::unexpected(OcrError{QStringLiteral("Could not save the formula page image.")});
+    QFile resource(":/math/" + helper);
+    QFile scriptFile(script);
+    if (!resource.open(QIODevice::ReadOnly)) return std::unexpected(OcrError{resource.errorString()});
+    const QByteArray source = resource.readAll();
+    if (!scriptFile.open(QIODevice::WriteOnly) || scriptFile.write(source) != source.size() || !scriptFile.flush())
+        return std::unexpected(OcrError{scriptFile.errorString()});
+    scriptFile.close();
 
     QProcess process;
     QStringList arguments{script, input};
@@ -194,7 +213,7 @@ std::expected<core::OcrPage, OcrError> MathOcrEngine::recognizeBoxes(
         arguments.append(file.fileName());
     }
     arguments << "--time-budget" << QString::number(std::max(1,timeBudgetMs)/1000.0);
-    arguments << "--crop-timeout" << QString::number(timeBudgetMs<=30000 ? 5 : 15);
+    arguments << "--crop-timeout" << QString::number(useUniMERNet() ? 40 : (timeBudgetMs<=30000 ? 5 : 15));
     QByteArray diagnostics,progressBytes;
     const auto report=[&] {
         const auto data=process.readAllStandardError(); diagnostics+=data; progressBytes+=data;
@@ -268,6 +287,10 @@ std::expected<core::OcrPage, OcrError> MathOcrEngine::recognizeBoxes(
                 .arg(bounds.x()).arg(bounds.y()).arg(entry.value("error").toString()));
             continue;
         }
+        if (useUniMERNet() && !validFormula(text)) {
+            failures.append(QStringLiteral("Incomplete formula at %1,%2").arg(bounds.x()).arg(bounds.y()));
+            continue;
+        }
         if (text.isEmpty()) return std::unexpected(OcrError{QStringLiteral("Empty local math OCR reading.")});
         core::OcrWord word;
         word.page = page.number;
@@ -276,7 +299,7 @@ std::expected<core::OcrPage, OcrError> MathOcrEngine::recognizeBoxes(
         word.layoutBlock = true;
         word.bounds = bounds;
         word.text = word.originalText = text;
-        word.readingEngine = id();
+        word.readingEngine = useUniMERNet() ? QStringLiteral("unimernet") : id();
         page.words.append(std::move(word));
     }
     if (!boxes.isEmpty() && seen.size() != boxes.size())
@@ -290,7 +313,7 @@ std::expected<core::OcrPage, OcrError> MathOcrEngine::recognizeBoxes(
     for (auto &region : page.regions) region.type = QStringLiteral("equation");
     auto evidence = recognitionFromPage(page);
     evidence.structuredOutput=structuredOutput;
-    evidence.provenance.model = "Rapid LaTeX OCR"; evidence.provenance.task = "formula";
+    evidence.provenance.model = localModelName(); evidence.provenance.task = "formula";
     page.recognitionEvidence.append(std::move(evidence));
     return page;
     };

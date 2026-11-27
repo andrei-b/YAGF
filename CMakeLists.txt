@@ -109,10 +109,13 @@ add_library(yagf_ocr STATIC
     src/processing/tesseractengine.cpp src/processing/tesseractengine.h
     src/processing/paddletable.cpp src/processing/paddletable.h
     src/processing/remoteocrengine.cpp src/processing/remoteocrengine.h)
-qt_add_resources(yagf_ocr "local_math" PREFIX "/math" BASE tools FILES tools/math_ocr.py)
+qt_add_resources(yagf_ocr "local_math" PREFIX "/math" BASE tools FILES tools/math_ocr.py tools/unimernet_ocr.py)
 qt_add_resources(yagf_ocr "optional_models" PREFIX "/ocr" BASE service FILES service/optional-models.example.json)
 target_link_libraries(yagf_ocr PUBLIC yagf_core Qt6::Gui PRIVATE yagf_imaging Qt6::Network)
 target_include_directories(yagf_ocr PUBLIC src/processing)
+
+add_executable(benchmark_mixed_formulas EXCLUDE_FROM_ALL tools/benchmark_mixed_formulas.cpp)
+target_link_libraries(benchmark_mixed_formulas PRIVATE yagf_processing)
 
 add_library(yagf_processing STATIC
     src/processing/documentprocessor.cpp src/processing/documentprocessor.h

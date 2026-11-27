@@ -10,6 +10,7 @@ public:
     EngineCapabilities capabilities() const override
     { return {.supportsRegions = true, .supportsLayout = true, .supportsFormulas = true}; }
     static QString pythonPath();
+    static bool useUniMERNet();
     QJsonObject lastStructuredOutput() const override { return structuredOutput; }
     // With warnings, individual failed crops are omitted so the caller can
     // retain native text there. Without warnings, any crop failure is an error.

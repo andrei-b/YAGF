@@ -193,6 +193,19 @@ python3 -m venv "$math_env"
 "$math_env/bin/python" -c 'from rapid_latex_ocr import LaTeXOCR; LaTeXOCR()'
 ```
 
+To use a trained local formula adapter, set `YAGF_MATH_DECODER_ADAPTER` to its absolute `.npz` path before launching YAGF. The adapter must match the installed RapidLaTeXOCR weights and tokenizer. The [training tool](../tools/train_math_decoder_adapter.py) and [Old Scans Math evaluator](../tools/benchmark_old_scans_math.py) describe their inputs with `--help`.
+
+To try the higher-resolution retry, launch YAGF with `YAGF_MATH_RETRY_POLICY` set to the absolute path of a policy JSON from the [retry training tool](../tools/train_math_retry.py). Select one adapter or retry policy per launch. The retry shares the existing time limit for each formula crop.
+
+For the local PDF-Extract-Kit detector and UniMERNet reader, set these environment variables before launching YAGF. Select the local formula provider and use **Recognize** on an unmarked page. YAGF reads detected expressions in their original page coordinates and keeps the native prose. Explicit formula crops go directly to UniMERNet.
+
+| Variable | Local path |
+| --- | --- |
+| `YAGF_UNIMERNET_PYTHON` | Python executable in an environment containing PyTorch, Transformers, Ultralytics, Pillow and NumPy |
+| `YAGF_UNIMERNET_SOURCE` | MinerU checkout containing `mineru/model/mfr/unimernet/unimernet_hf` |
+| `YAGF_UNIMERNET_WEIGHTS` | UniMERNet small 2503 model directory including its tokenizer |
+| `YAGF_MFD_WEIGHTS` | PDF-Extract-Kit 1.0 formula detector checkpoint `yolo_v8_ft.pt` |
+
 ## Scientific books
 
 Choose **Tools → Recognition → OCR engine… → Surya**, open a scan, and recognize the page or use **Tools → Recognition → Recognize all pages** for a PDF. The Surya service detects layout, predicts reading order, and transcribes inline and display mathematics into LaTeX. Tables retain row and cell boundaries, header cells, and merged-cell spans. Figures and diagrams retain their source rectangles even when they contain no recognized text. See the [service setup](../service/README.md#surya).

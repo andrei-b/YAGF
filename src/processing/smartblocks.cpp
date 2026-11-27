@@ -636,7 +636,7 @@ static void readIsolatedSymbol(OcrWord &word, const SymbolEvidence &evidence,
 static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &image, const OcrOptions &options,
     const QVector<core::ImageRegion> &regions, bool splitOnly, std::stop_token stop, bool includeUnmarked,
     const core::OcrPage *initialReading, QStringList *warnings, IOcrEngine *textProvider, IOcrEngine *formulaProvider,
-    bool readBaseline, bool parallelFormulas)
+    bool readBaseline, bool parallelFormulas, const core::OcrPage *detectedFormulas)
 {
     // Existing callbacks need not be thread safe. Deliver progress from the two
     // engines one callback at a time, without sharing mutable OCR results.
@@ -677,7 +677,7 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
     const bool explicitMath = std::ranges::any_of(regions,[](const auto &r) {
         return !r.notText && !r.autoDetected && r.content == "math";
     });
-    const int formulaBudget = explicitMath ? 300000 : 30000;
+    const int formulaBudget = explicitMath || (!formulaProvider && MathOcrEngine::useUniMERNet()) ? 300000 : 30000;
     QVector<Row> rows;
     SymbolEvidence symbolEvidence;
     std::map<QString, core::OcrPage> baselines;
@@ -839,8 +839,9 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
     };
     const auto analyzeRegion = [&](const core::ImageRegion &region) -> std::expected<QVector<Row>, OcrError> {
         const QRect box = region.bounds.intersected(gray.rect());
-        const bool inlineFormula = region.detectedLabel == "inline_formula" || region.detectedLabel == "inline_formula_geometry";
-        if (!box.isEmpty() && region.content == "math" && (inlineFormula || region.detectedLabel == "display_formula" || !region.parts.isEmpty())) {
+        const bool inlineFormula = region.detectedLabel == "inline_formula" || region.detectedLabel == "inline_formula_geometry" ||
+                                   region.detectedLabel == "embedding";
+        if (!box.isEmpty() && region.content == "math" && (inlineFormula || region.detectedLabel == "display_formula" || region.detectedLabel == "isolated" || !region.parts.isEmpty())) {
             // The accepted crop is one expression, even if native OCR gives
             // the numerator and denominator different lines.
             if (inlineFormula) inlineCrops.insert(box);
@@ -865,7 +866,7 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
         return rows;
     };
     std::map<int, QVector<Row>> earlyRows;
-    if (!splitOnly && parallelFormulas && formulaProvider != &prose) {
+    if (!splitOnly && parallelFormulas && !detectedFormulas && formulaProvider != &prose) {
         QList<QRect> boxes;
         for (int i = 0; i < page.imageRegions.size(); ++i) {
             const auto &region = page.imageRegions[i];
@@ -908,7 +909,7 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
         }
     }
     const QRect remaining = includeUnmarked ? inkBox(uncovered, uncovered.rect()) : QRect{};
-    auto detected = analyze(uncovered, remaining, {}, page.language, occupied);
+    auto detected = analyze(uncovered, remaining, detectedFormulas ? QStringLiteral("text") : QString{}, page.language, occupied);
     if (!detected) return std::unexpected(detected.error());
     int lastText = -1;
     for (const auto &row : *detected) {
@@ -1045,7 +1046,9 @@ static std::expected<core::OcrPage, OcrError> recognizeBlocks(const QImage &imag
         }
         QStringList failures;
         core::OcrPage formulas;
-        if (!boxes.isEmpty()) {
+        if (detectedFormulas) {
+            formulas = *detectedFormulas;
+        } else if (!boxes.isEmpty()) {
             auto result = formulaReadings.recognize(formulaProvider, image, settings, stop, boxes, &failures,formulaBudget);
             if (!result) {
                 if (result.error().cancelled || stop.stop_requested()) return std::unexpected(result.error());
@@ -1251,7 +1254,12 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
     // block OCR has a fixed output coordinate frame and stays within that block.
     auto crops = regions;
     bool adjusted = false;
-    if (includeUnmarked && !splitOnly && std::ranges::any_of(regions,[](const auto &r) {
+    const bool detectFormulas = includeUnmarked && !splitOnly && !formulaProvider && MathOcrEngine::useUniMERNet() &&
+        std::ranges::all_of(regions, [](const auto &r) {
+            return r.autoDetected && !r.notText && r.language.isEmpty() && r.parts.isEmpty() &&
+                (r.detectedLabel.isEmpty() || r.detectedLabel == "embedding" || r.detectedLabel == "isolated");
+        });
+    if (!detectFormulas && includeUnmarked && !splitOnly && std::ranges::any_of(regions,[](const auto &r) {
             return !r.notText && r.content == "math" && (!r.autoDetected || !r.detectedLabel.isEmpty());
         })) {
         crops = growFormulaBlocks(image,regions,stop);
@@ -1267,8 +1275,34 @@ std::expected<core::OcrPage, OcrError> recognizeSmartBlocks(const QImage &image,
             crop.bounds = bounds;
         }
     }
+    std::optional<core::OcrPage> detectedFormulas;
+    if (detectFormulas) {
+        MathOcrEngine local;
+        QStringList failures;
+        auto reading = local.recognizeBoxes(image, options, stop, {}, &failures, 300000);
+        if (!reading) {
+            if (reading.error().cancelled || stop.stop_requested()) return std::unexpected(reading.error());
+            failures.append(reading.error().message);
+        } else {
+            crops.clear();
+            detectedFormulas = std::move(*reading);
+            QSet<QRect> inlineBoxes;
+            for (const auto &item : local.lastStructuredOutput()["results"].toArray()) {
+                const auto entry = item.toObject();
+                const auto b = entry["box"].toArray();
+                if (entry["label"] == "embedding" && b.size() == 4)
+                    inlineBoxes.insert(QRect(b[0].toInt(), b[1].toInt(), b[2].toInt(), b[3].toInt()));
+            }
+            for (const auto &word : detectedFormulas->words) {
+                core::ImageRegion region{QUuid::createUuid().toString(QUuid::WithoutBraces), word.bounds, {}, false, "math", true};
+                region.detectedLabel = inlineBoxes.contains(word.bounds) ? "embedding" : "isolated";
+                crops.append(std::move(region));
+            }
+        }
+        if (warnings) *warnings += failures;
+    }
     auto result = recognizeBlocks(image,options,crops,splitOnly,stop,includeUnmarked,initialReading,
-                                  warnings,textProvider,formulaProvider,readBaseline,parallelFormulas);
+                                  warnings,textProvider,formulaProvider,readBaseline,parallelFormulas,detectedFormulas ? &*detectedFormulas : nullptr);
     if (result && adjusted) {
         const core::RegionInk ink(image);
         auto outlines = regions;

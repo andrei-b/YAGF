@@ -11,6 +11,7 @@
 
 #include <QFile>
 #include <QProcess>
+#include <QScopeGuard>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QtTest>
@@ -82,6 +83,38 @@ private slots:
             QVERIFY(!inkBounds(*image).isEmpty());
             scans.append(std::move(*image));
         }
+    }
+
+    void uniMERNetKeepsCompletedFormulas()
+    {
+        QFile runner(temporary.filePath("formula-test-runner"));
+        QVERIFY(runner.open(QIODevice::WriteOnly));
+        runner.write("#!/bin/sh\n"
+                     "case \"$1\" in */unimernet_ocr.py) ;; *) exit 1 ;; esac\n"
+                     "test -s \"$2\" || exit 1\n"
+                     "echo '[{\"box\":[1,2,20,10],\"text\":\"x_{i}\",\"label\":\"embedding\"},"
+                     "{\"box\":[40,2,20,10],\"text\":\"y^{\",\"label\":\"isolated\"}]'\n");
+        runner.close();
+        QVERIFY(runner.setPermissions(QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+        const auto original = qgetenv("YAGF_UNIMERNET_PYTHON");
+        const auto restore = qScopeGuard([&] {
+            if (original.isNull()) qunsetenv("YAGF_UNIMERNET_PYTHON");
+            else qputenv("YAGF_UNIMERNET_PYTHON", original);
+        });
+        qputenv("YAGF_UNIMERNET_PYTHON", QFile::encodeName(runner.fileName()));
+        processing::MathOcrEngine engine;
+        QImage input(80, 20, QImage::Format_Grayscale8);
+        input.fill(Qt::white);
+        QStringList warnings;
+        auto page = engine.recognizeBoxes(input, {}, {}, {}, &warnings);
+        QVERIFY2(page, qPrintable(page ? QString() : page.error().message));
+        QCOMPARE(warnings.size(), 1);
+        QCOMPARE(page->words.size(), 1);
+        const auto &word = page->words.front();
+        QCOMPARE(word.bounds, QRect(1, 2, 20, 10));
+        QCOMPARE(word.text, QString("x_{i}"));
+        QCOMPARE(word.readingEngine, QString("unimernet"));
+        QCOMPARE(page->recognitionEvidence.front().provenance.model, QString("UniMERNet"));
     }
 
     void localOcr_data()
