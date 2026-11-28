@@ -775,6 +775,10 @@ MainWindow::MainWindow()
     toolbar->setMovable(false);
     toolbar->setIconSize(QSize(18, 18));
     toolbar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    newProjectAction = fileMenu->addAction(tr("&New Project"), this, &MainWindow::newProject);
+    newProjectAction->setObjectName(QStringLiteral("newProjectAction"));
+    newProjectAction->setShortcuts(QKeySequence::New);
+    addAction(newProjectAction);
     fileMenu->addAction(tr("Open image, PDF or DjVu…"), this, &MainWindow::openFile);
     auto *openAction = toolbar->addAction(style()->standardIcon(QStyle::SP_DialogOpenButton),
                                           tr("Open"), this, &MainWindow::openFile);
@@ -1899,9 +1903,10 @@ void MainWindow::setBusy(bool busy)
 void MainWindow::updatePageControls()
 {
     const QSignalBlocker blocker(pageSpin);
-    pageSpin->setMaximum(pageCount);
+    pageSpin->setRange(pageCount > 0 ? 1 : 0, pageCount);
     pageSpin->setValue(currentPage);
     const bool available = !processor.isBusy() && !exportBusy && !projectLoading;
+    newProjectAction->setEnabled(available);
     if (nativeTrainingAction) nativeTrainingAction->setEnabled(available && !originalPath.isEmpty());
     if (ocrServicesAction) ocrServicesAction->setEnabled(available);
     if (ocrReadingsAction) ocrReadingsAction->setEnabled(available && !imagePath.isEmpty() && document.page(currentPage) && (!document.page(currentPage)->ocrReadings.isEmpty() || !document.page(currentPage)->recognitionHistory.runs.isEmpty()));
@@ -1944,6 +1949,33 @@ void MainWindow::showError(const QString &message)
     finishProjectLoading();
     status->setText(message);
     QMessageBox::warning(this, tr("YAGF 2"), message);
+}
+
+void MainWindow::newProject()
+{
+    if (processor.isBusy() || exportBusy || projectLoading || !maybeSave()) return;
+
+    projectPath.clear();
+    document = {};
+    document.totalPages = 0;
+    document.unicodeFormulas = QSettings("YAGF", "YAGF Revival").value("ocr/unicodeFormulas", false).toBool();
+    externalDirty = false;
+
+    {
+        const QSignalBlocker formattingBlocker(preserveFormattingAction);
+        const QSignalBlocker rawOutputBlocker(rawOcrOutputAction);
+        const QSignalBlocker unicodeBlocker(unicodeFormulasAction);
+        preserveFormattingAction->setChecked(document.preserveFormatting);
+        rawOcrOutputAction->setChecked(document.useRawOcrOutput);
+        unicodeFormulasAction->setChecked(document.unicodeFormulas);
+    }
+    mathMode->setChecked(document.mathOcr);
+    syncNativeOcrModel();
+    refreshPageSequence(0);
+    textTabs->setCurrentIndex(0);
+    undoStack.clear();
+    refreshDirty();
+    statusBar()->clearMessage();
 }
 
 void MainWindow::openFile()

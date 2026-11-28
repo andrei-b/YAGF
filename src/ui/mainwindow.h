@@ -133,6 +133,7 @@ protected:
     void dragEnterEvent(QDragEnterEvent *event) override;
     void dropEvent(QDropEvent *event) override;
 private:
+    void newProject();
     void openFile();
     void scanPage();
     bool appendScannedPage(const QString &path, const core::ScanSettings &settings);
@@ -290,6 +291,7 @@ private:
     qsizetype recognizedThisRun = 0;
     QPushButton *previousButton;
     QPushButton *nextButton;
+    QAction *newProjectAction;
     QAction *scanAction;
     QAction *improveAction;
     QAction *restoreAction;

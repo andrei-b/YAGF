@@ -510,6 +510,96 @@ static void testRecognizedPageView()
     assert(view.toPlainText().isEmpty());
 }
 
+static void testNewProject(const QTemporaryDir &directory, const QString &sourcePath)
+{
+    using namespace yagf;
+    core::OcrDocument document;
+    document.sourcePath = sourcePath;
+    core::OcrPage page;
+    page.width = page.sourceWidth = 200;
+    page.height = page.sourceHeight = 100;
+    page.words = {{1, 1, 1, 1, {10, 20, 60, 12}, "original", "original", 90, false}};
+    page.rebuildHierarchy();
+    document.replacePage(page);
+    QString error;
+    const auto path = directory.filePath("new-project-test.yagf.json");
+    assert(core::ProjectFile::save(path, document, &error));
+
+    ui::MainWindow window;
+    window.show();
+    window.loadProject(path);
+    auto *newProject = window.findChild<QAction *>("newProjectAction");
+    auto *rawOutput = window.findChild<QAction *>("rawOcrOutputAction");
+    auto *recognize = window.findChild<QAction *>("recognizePageAction");
+    auto *pages = window.findChild<QListWidget *>("pageMiniatures");
+    auto *pageNumber = window.findChild<QSpinBox *>("pageNumber");
+    auto *words = window.findChild<QListWidget *>("recognizedWords");
+    auto *preview = window.findChild<QGraphicsView *>("pagePreview");
+    auto *result = window.findChild<ui::RecognizedPageView *>();
+    assert(newProject && newProject->isEnabled() && newProject->shortcut() == QKeySequence::New);
+    const auto *fileMenu = qobject_cast<QMenu *>(newProject->parent());
+    assert(fileMenu && fileMenu->title() == "&File" && fileMenu->actions().first() == newProject);
+    assert(rawOutput && recognize && pages && pageNumber && words && preview && result);
+    assert(pages->count() == 1 && words->count() == 1 && recognize->isEnabled());
+
+    QTimer reply;
+    QMessageBox::StandardButton response = QMessageBox::Cancel;
+    QObject::connect(&reply, &QTimer::timeout, &window, [&] {
+        auto *prompt = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        if (!prompt) return;
+        assert(prompt->windowTitle() == "Unsaved changes");
+        reply.stop();
+        prompt->button(response)->click();
+    });
+    const auto choose = [&](QMessageBox::StandardButton choice) {
+        response = choice;
+        reply.start(10);
+    };
+    const auto checkEmpty = [&] {
+        assert(window.windowTitle() == "YAGF 2 — Untitled");
+        assert(pages->count() == 0 && pageNumber->value() == 0 && words->count() == 0);
+        assert(preview->scene()->items().isEmpty() && result->toPlainText().isEmpty());
+        assert(!recognize->isEnabled() && !rawOutput->isChecked());
+        for (const auto *action : window.findChildren<QAction *>())
+            if (action->shortcut() == QKeySequence::Undo || action->shortcut() == QKeySequence::Redo)
+                assert(!action->isEnabled());
+    };
+
+    rawOutput->setChecked(true);
+    choose(QMessageBox::Cancel);
+    newProject->trigger();
+    assert(window.windowTitle().endsWith("new-project-test.yagf.json *"));
+    assert(rawOutput->isChecked() && recognize->isEnabled() && words->count() == 1);
+
+    window.activateWindow();
+    assert(QTest::qWaitFor([&] { return QApplication::activeWindow() == &window; }));
+    preview->setFocus();
+    QSignalSpy invoked(newProject, &QAction::triggered);
+    choose(QMessageBox::Save);
+    QTest::keyClick(window.windowHandle(), Qt::Key_N, Qt::ControlModifier);
+    assert(invoked.size() == 1);
+    checkEmpty();
+    assert(core::ProjectFile::load(path, &document, &error) && document.useRawOcrOutput);
+
+    window.loadProject(path);
+    auto *editor = window.findChild<QTextEdit *>("recognizedTextEditor");
+    auto *apply = window.findChild<QPushButton *>("applyButton");
+    assert(editor && apply && words->count() == 1);
+    words->setCurrentRow(0, QItemSelectionModel::ClearAndSelect);
+    editor->setPlainText("discard this edit");
+    assert(apply->isEnabled());
+    apply->click();
+    assert(window.windowTitle().endsWith(" *"));
+    choose(QMessageBox::Discard);
+    newProject->trigger();
+    checkEmpty();
+    assert(core::ProjectFile::load(path, &document, &error) && document.plainText().trimmed() == "original");
+
+    window.loadSource(sourcePath);
+    assert(recognize->isEnabled() && pages->count() == 1 && words->count() == 0);
+    assert(pageNumber->minimum() == 1 && pageNumber->value() == 1);
+}
+
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
@@ -552,6 +642,8 @@ int main(int argc, char **argv)
     QImage image(200, 100, QImage::Format_RGB32);
     image.fill(Qt::white);
     assert(image.save(sourcePath));
+    testNewProject(directory, sourcePath);
+    if (app.arguments().contains("--new-project-only")) return 0;
     const QString fixturePath = directory.filePath(QStringLiteral("result.tsv"));
     QFile fixture(fixturePath);
     assert(fixture.open(QIODevice::WriteOnly));
