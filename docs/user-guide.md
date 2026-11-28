@@ -206,6 +206,12 @@ For the local PDF-Extract-Kit detector and UniMERNet reader, set these environme
 | `YAGF_UNIMERNET_WEIGHTS` | UniMERNet small 2503 model directory including its tokenizer |
 | `YAGF_MFD_WEIGHTS` | PDF-Extract-Kit 1.0 formula detector checkpoint `yolo_v8_ft.pt` |
 
+On 36 Old Scans Math pages, this configuration recovered 93 of 458 complete reference expressions. [Full-page benchmark and results by book](benchmarks/old-scans-full-page.md)
+
+For a doubtful exponent, subscript or arithmetic sign in a PDF, the command-line rereader compares the same formula at two scan resolutions and lists the symbols that changed. [Reread a formula and inspect its small symbols](benchmarks/formula-small-symbols.md#reread-a-formula)
+
+For a single doubtful subscript, select its base letter and the small mark together. The local glyph rereader can compare that mark with labeled examples from other pages of the book. [Reread an individual subscript](benchmarks/formula-small-symbols.md#reread-an-individual-subscript)
+
 ## Scientific books
 
 Choose **Tools → Recognition → OCR engine… → Surya**, open a scan, and recognize the page or use **Tools → Recognition → Recognize all pages** for a PDF. The Surya service detects layout, predicts reading order, and transcribes inline and display mathematics into LaTeX. Tables retain row and cell boundaries, header cells, and merged-cell spans. Figures and diagrams retain their source rectangles even when they contain no recognized text. See the [service setup](../service/README.md#surya).

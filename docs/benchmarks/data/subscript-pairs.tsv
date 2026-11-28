@@ -1,0 +1,41 @@
+rule	ordinal	pdf	left	top	right	bottom	reference	usual	cohort	local_latex	local_subscript	suggested	status
+3_pg101_equation_02	1	3_pg101.pdf	907	1599	952	1642	1	1	audit	u _ { 1 }	1	1	matched
+3_pg101_equation_02	2	3_pg101.pdf	907	1667	950	1710	1	1	audit	{ \pmb x } _ { 1 }	1	1	matched
+3_pg101_equation_02	3	3_pg101.pdf	1048	1599	1091	1640	2	2	audit	u _ { 2 }	2		uncertain
+3_pg101_equation_02	4	3_pg101.pdf	1048	1667	1091	1709	2	2	audit	{ \mathfrak { x } } _ { \mathfrak { z } }	z		uncertain
+3_pg101_equation_02	5	3_pg101.pdf	1187	1599	1232	1640	3	3	audit	u _ { 8 }	8		no_separate_subscript
+3_pg101_equation_02	6	3_pg101.pdf	1187	1667	1229	1709	3	3	audit	{ \mathfrak { X } } _ { \mathfrak { g } }	g		no_separate_subscript
+3_pg101_equation_03	1	3_pg101.pdf	909	2130	961	2168	1	1	audit	{ \boldsymbol { \omega } } _ { 1 }	1	1	matched
+3_pg101_equation_03	2	3_pg101.pdf	914	2180	954	2236	1	1	audit	\boldsymbol { \xi } _ { 1 }	1	1	matched
+3_pg101_equation_03	3	3_pg101.pdf	1057	2128	1108	2167	2	2	audit	{ \boldsymbol { \omega } } _ { 2 }	2		uncertain
+3_pg101_equation_03	4	3_pg101.pdf	1063	2180	1104	2235	2	2	audit	\displaystyle \xi _ { 2 }	2	2	matched
+3_pg101_equation_03	5	3_pg101.pdf	1202	2128	1253	2166	3	8	audit	{ \pmb { \omega } } _ { \pmb { \ 8 } }	8		uncertain
+3_pg101_equation_03	6	3_pg101.pdf	1206	2178	1247	2235	3	3	audit	\xi _ { 3 }	3	3	matched
+3_pg204_equation_00	1	3_pg204.pdf	732	344	777	399	x	ω	audit	f _ { \infty }	∞	x	matched
+3_pg204_equation_00	2	3_pg204.pdf	878	344	926	399	x	ω	audit	\phi _ { \infty }	∞	x	matched
+3_pg204_equation_00	3	3_pg204.pdf	1030	346	1078	399	x	α	audit	\psi _ { \infty }	∞	x	matched
+3_pg204_equation_01	1	3_pg204.pdf	715	547	763	600	y	y	audit	\phi _ { y }	y	y	matched
+3_pg204_equation_01	2	3_pg204.pdf	839	547	884	602	z	z	audit	\phi _ { z }	z		uncertain
+3_pg204_equation_01	3	3_pg204.pdf	1020	547	1062	602	t	t	audit	\phi _ { t }	t		uncertain
+3_pg204_equation_02	1	3_pg204.pdf	719	734	767	787	y	y	audit	\psi _ { y }	y	y	matched
+3_pg204_equation_02	2	3_pg204.pdf	840	734	886	787	z	z	audit	\psi _ { z }	z		uncertain
+3_pg204_equation_02	3	3_pg204.pdf	1021	734	1064	787	t	t	audit	\boldsymbol { \psi } _ { t }	t		uncertain
+3_pg204_equation_04	1	3_pg204.pdf	741	1190	787	1243	y	y	audit	f _ { y }	y	y	matched
+3_pg204_equation_04	2	3_pg204.pdf	887	1188	935	1245	y	y	audit	\phi _ { y }	y		uncertain
+3_pg204_equation_04	3	3_pg204.pdf	1040	1188	1087	1243	y	y	audit	\phi _ { y }	y	y	matched
+3_pg634_equation_14	1	3_pg634.pdf	719	908	756	952	3		additional	\sum 3			uncertain
+3_pg634_equation_14	2	3_pg634.pdf	759	906	796	950	1		additional	\Xi _ { 1 }	1		uncertain
+3_pg634_equation_14	3	3_pg634.pdf	902	906	937	950	1		additional	\pmb { \xi _ { 1 } }	1		uncertain
+3_pg634_equation_14	4	3_pg634.pdf	942	906	981	952	3		additional	\sum q			uncertain
+3_pg634_equation_15	1	3_pg634.pdf	1107	904	1142	948	3		additional	\sum 3			uncertain
+3_pg634_equation_15	2	3_pg634.pdf	1147	906	1186	950	3		additional	\sum q			uncertain
+3_pg634_equation_18	1	3_pg634.pdf	503	1378	542	1422	2		additional	\sum 2		2	matched
+3_pg634_equation_18	2	3_pg634.pdf	547	1376	581	1420	1		additional	\sum q			uncertain
+3_pg634_equation_18	3	3_pg634.pdf	681	1376	718	1420	1		additional	\sum I			uncertain
+3_pg634_equation_18	4	3_pg634.pdf	723	1376	759	1422	2		additional	\sum \limits _ { i = 1 } ^ { \infty } z _ { i }	i		uncertain
+3_pg634_equation_19	1	3_pg634.pdf	926	1376	963	1420	2		additional	\Xi _ { 2 }	2	2	matched
+3_pg634_equation_19	2	3_pg634.pdf	966	1375	1004	1419	2		additional	\sum \limits _ { z = 0 } ^ { \infty } z			uncertain
+3_pg634_equation_20	1	3_pg634.pdf	1129	1375	1166	1419	2		additional	\sum 2			uncertain
+3_pg634_equation_20	2	3_pg634.pdf	1171	1376	1209	1420	3		additional	\sum q		3	matched
+3_pg634_equation_20	3	3_pg634.pdf	1314	1375	1351	1419	3		additional	\sum 3		3	matched
+3_pg634_equation_20	4	3_pg634.pdf	1356	1375	1396	1418	2		additional	\sum q			uncertain
