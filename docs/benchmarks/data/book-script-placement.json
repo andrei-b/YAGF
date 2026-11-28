@@ -1,0 +1,482 @@
+[
+  {
+    "book": "Functional Analysis",
+    "image": "functional-analysis/djvu-023.pgm",
+    "hocr": "functional-analysis/djvu-023.hocr",
+    "hocr_sha256": "51a4d02a7f121cb11e18b47b5d89885fab8e2b34183ca17e5438b3e5f5d5975c",
+    "prose": [],
+    "image_sha256": "22c9dcc0a1c1630d6ca657e7994d601ca2085b3343ef433ae58ac60e1bdab5b9",
+    "targets": [
+      {"character": "1", "index": 906, "outcome": "exact"},
+      {"character": "n", "index": 913, "outcome": "exact"},
+      {"character": "i", "index": 917, "outcome": "wrong_character"},
+      {"character": "1", "index": 940, "outcome": "wrong_character"},
+      {"character": "n", "index": 945, "outcome": "wrong_character"},
+      {"character": "1", "index": 997, "outcome": "wrong_character"},
+      {"character": "n", "index": 1006, "outcome": "wrong_character"},
+      {"character": "i", "index": 1022, "outcome": "position_missed"}
+    ]
+  },
+  {
+    "book": "Functional Analysis",
+    "image": "functional-analysis/djvu-029.pgm",
+    "hocr": "functional-analysis/djvu-029.hocr",
+    "hocr_sha256": "697314b5706fff8ff6456b3e059043a196cd3c3bec4f7010e10fe47f496275af",
+    "prose": [],
+    "image_sha256": "d39924a40fe2ff28df1060b16ee35faccc130bf1d63ba7a3d38b7c67c95fe21a",
+    "targets": [
+      {"character": "N", "index": 25, "outcome": "wrong_character"},
+      {"character": "N", "index": 31, "outcome": "wrong_character"},
+      {"character": "N", "index": 77, "outcome": "wrong_character"},
+      {"character": "N", "index": 85, "outcome": "wrong_character"},
+      {"character": "N", "index": 123, "outcome": "wrong_character"},
+      {"character": "N", "index": 177, "outcome": "wrong_character"},
+      {"character": "N", "index": 185, "outcome": "wrong_character"},
+      {"character": "N", "index": 222, "outcome": "wrong_character"},
+      {"character": "N", "index": 228, "outcome": "wrong_character"},
+      {"character": "N", "index": 264, "outcome": "wrong_character"},
+      {"character": "N", "index": 267, "outcome": "exact"},
+      {"character": "N", "index": 279, "outcome": "position_missed"},
+      {"character": "1", "index": 281, "outcome": "position_missed"},
+      {"character": "N", "index": 355, "outcome": "wrong_character"},
+      {"character": "1", "index": 357, "outcome": "position_missed"},
+      {"character": "N", "index": 374, "outcome": "wrong_character"},
+      {"character": "1", "index": 376, "outcome": "wrong_character"},
+      {"character": "N", "index": 391, "outcome": "wrong_character"},
+      {"character": "n", "index": 519, "outcome": "wrong_character"}
+    ]
+  },
+  {
+    "book": "Functional Analysis",
+    "image": "functional-analysis/djvu-037.pgm",
+    "hocr": "functional-analysis/djvu-037.hocr",
+    "hocr_sha256": "0a185f00db90799590a9aa16c9fa9e3ff4378b9e75fb71a19168abef018d935e",
+    "prose": [
+      [
+        47,
+        621,
+        1549,
+        751
+      ]
+    ],
+    "image_sha256": "9b451ee8cb3b70c708b678c8c1b35087ae86c9b55064449bb4d5e63e32d20f30",
+    "targets": [
+      {"character": "1", "index": 594, "outcome": "position_missed"},
+      {"character": "1", "index": 597, "outcome": "exact"},
+      {"character": "m", "index": 607, "outcome": "position_missed"},
+      {"character": "m", "index": 610, "outcome": "exact"},
+      {"character": "1", "index": 625, "outcome": "exact"},
+      {"character": "m", "index": 632, "outcome": "exact"},
+      {"character": "1", "index": 664, "outcome": "wrong_character"},
+      {"character": "m", "index": 671, "outcome": "exact"}
+    ]
+  },
+  {
+    "book": "Functional Analysis",
+    "image": "functional-analysis/djvu-045.pgm",
+    "hocr": "functional-analysis/djvu-045.hocr",
+    "hocr_sha256": "7f688880a013d9e316b1810597966012d81f173baa2ce18864d78a061c2e525a",
+    "prose": [],
+    "image_sha256": "5f6993506dbd68a63565c9999967e732d467bdbba215cd94945cc05e61279b4b",
+    "targets": [
+      {"character": "K", "index": 166, "outcome": "wrong_character"},
+      {"character": "N", "index": 230, "outcome": "wrong_character"},
+      {"character": "N", "index": 241, "outcome": "wrong_character"},
+      {"character": "i", "index": 266, "outcome": "position_missed"},
+      {"character": "i", "index": 326, "outcome": "position_missed"},
+      {"character": "j", "index": 327, "outcome": "wrong_character"},
+      {"character": "N", "index": 332, "outcome": "position_missed"},
+      {"character": "i", "index": 373, "outcome": "position_missed"},
+      {"character": "j", "index": 376, "outcome": "position_missed"},
+      {"character": "N", "index": 385, "outcome": "wrong_character"},
+      {"character": "i", "index": 565, "outcome": "position_missed"},
+      {"character": "0", "index": 571, "outcome": "wrong_character"},
+      {"character": "0", "index": 589, "outcome": "exact"},
+      {"character": "i", "index": 613, "outcome": "wrong_character"},
+      {"character": "0", "index": 617, "outcome": "wrong_character"}
+    ]
+  },
+  {
+    "book": "Functional Analysis",
+    "image": "functional-analysis/djvu-053.pgm",
+    "hocr": "functional-analysis/djvu-053.hocr",
+    "hocr_sha256": "6825c01331a5d05731809cb440a0fd48a1dc9c375d7a93bfb53c6cdb72e1a705",
+    "prose": [
+      [
+        71,
+        539,
+        1605,
+        877
+      ]
+    ],
+    "image_sha256": "d638b99f5edfb07d7c35c816eb49ebf6860e9e1fe94d4606586c4c0207a6545e",
+    "targets": []
+  },
+  {
+    "book": "Functional Analysis",
+    "image": "functional-analysis/djvu-118.pgm",
+    "hocr": "functional-analysis/djvu-118.hocr",
+    "hocr_sha256": "8b8e7453ae50a0fe469ab33e49f5f0a210db3d0ca11d82509419363da11d91bf",
+    "prose": [
+      [
+        101,
+        422,
+        687,
+        493
+      ]
+    ],
+    "image_sha256": "256daa3850d4a3333a961584d61dbc16746f58d5f11ad2e78b74919fe1f1a13b",
+    "targets": []
+  },
+  {
+    "book": "Functional Analysis",
+    "image": "functional-analysis/djvu-146.pgm",
+    "hocr": "functional-analysis/djvu-146.hocr",
+    "hocr_sha256": "aa7a2c6b994f6dab21736722cd28a60e6c7fed706dd1e01b939561a692a20d8d",
+    "prose": [],
+    "image_sha256": "c51004461963d7425f9de2436e11cefc11e1fbf7d6267362727982e75ae1c735",
+    "targets": [
+      {"character": "1", "index": 648, "outcome": "exact"},
+      {"character": "n", "index": 655, "outcome": "exact"},
+      {"character": "i", "index": 677, "outcome": "position_missed"},
+      {"character": "1", "index": 721, "outcome": "wrong_character"},
+      {"character": "1", "index": 800, "outcome": "exact"},
+      {"character": "0", "index": 842, "outcome": "wrong_character"},
+      {"character": "1", "index": 846, "outcome": "exact"},
+      {"character": "n", "index": 853, "outcome": "wrong_character"},
+      {"character": "0", "index": 874, "outcome": "wrong_character"},
+      {"character": "j", "index": 929, "outcome": "position_missed"}
+    ]
+  },
+  {
+    "book": "Functional Analysis",
+    "image": "functional-analysis/djvu-233.pgm",
+    "hocr": "functional-analysis/djvu-233.hocr",
+    "hocr_sha256": "f6b2cd10e08f8b2b948082ee1b8754e75848837a081571724ba07c75facafb9e",
+    "prose": [],
+    "image_sha256": "b33863e8b7a623617647cc123cb2d2aaf395e21dd5d6d575e7e9a2e1062e9204",
+    "targets": [
+      {"character": "1", "index": 462, "outcome": "position_missed"},
+      {"character": "k", "index": 469, "outcome": "wrong_character"},
+      {"character": "i", "index": 481, "outcome": "wrong_character"},
+      {"character": "i", "index": 524, "outcome": "exact"},
+      {"character": "i", "index": 528, "outcome": "position_missed"},
+      {"character": "i", "index": 536, "outcome": "exact"},
+      {"character": "1", "index": 539, "outcome": "wrong_character"},
+      {"character": "0", "index": 549, "outcome": "wrong_character"},
+      {"character": "1", "index": 618, "outcome": "wrong_character"},
+      {"character": "k", "index": 631, "outcome": "wrong_character"}
+    ]
+  },
+  {
+    "book": "Functional Analysis",
+    "image": "functional-analysis/djvu-385.pgm",
+    "hocr": "functional-analysis/djvu-385.hocr",
+    "hocr_sha256": "ddb2d55d933bca07430946a46f261ea04ae1499f1d5775656ad677d3b461a533",
+    "prose": [],
+    "image_sha256": "83a03f4a82b21a72029bcf02d0af0551825a9576ed6cc2bda8053b7332198a19",
+    "targets": []
+  },
+  {
+    "book": "Verification sheet",
+    "image": "verification-sheet/page-1.png",
+    "hocr": "verification-sheet/verification.hocr",
+    "hocr_sha256": "d34f5226ffd9a6f9bf64ded9aa7ce20b0b553f4fdd6df1c8db1670bfc7e4e798",
+    "prose": [],
+    "image_sha256": "ddd6a01029e67029cd04e55d4dc15ea7afb8f81ccbf50d4d2ad605bbad30319d",
+    "targets": [
+      {"character": "0", "index": 93, "outcome": "wrong_character"},
+      {"character": "f", "index": 113, "outcome": "wrong_character"},
+      {"character": "j", "index": 124, "outcome": "exact"},
+      {"character": "2", "index": 238, "outcome": "exact"},
+      {"character": "2", "index": 246, "outcome": "wrong_character"},
+      {"character": "2", "index": 262, "outcome": "exact"},
+      {"character": "f", "index": null, "outcome": "missing"},
+      {"character": "0", "index": null, "outcome": "missing"},
+      {"character": "0", "index": null, "outcome": "missing"},
+      {"character": "2", "index": null, "outcome": "missing"},
+      {"character": "3", "index": 297, "outcome": "exact"},
+      {"character": "4", "index": 321, "outcome": "exact"},
+      {"character": "4", "index": 330, "outcome": "exact"},
+      {"character": "r", "index": null, "outcome": "missing"},
+      {"character": "e", "index": 390, "outcome": "wrong_character"},
+      {"character": "f", "index": 391, "outcome": "exact"},
+      {"character": "n", "index": 423, "outcome": "wrong_character"},
+      {"character": "e", "index": 424, "outcome": "exact"},
+      {"character": "t", "index": null, "outcome": "missing"},
+      {"character": "n", "index": 494, "outcome": "exact"},
+      {"character": "e", "index": 495, "outcome": "exact"},
+      {"character": "t", "index": 496, "outcome": "exact"},
+      {"character": "3", "index": 499, "outcome": "exact"},
+      {"character": "4", "index": 502, "outcome": "exact"},
+      {"character": "r", "index": 505, "outcome": "exact"},
+      {"character": "e", "index": 506, "outcome": "exact"},
+      {"character": "f", "index": 507, "outcome": "exact"},
+      {"character": "z", "index": 534, "outcome": "exact"},
+      {"character": "y", "index": 563, "outcome": "wrong_character"},
+      {"character": "0", "index": 589, "outcome": "wrong_character"},
+      {"character": "z", "index": 590, "outcome": "wrong_character"},
+      {"character": "f", "index": 610, "outcome": "position_missed"},
+      {"character": "z", "index": 611, "outcome": "wrong_character"},
+      {"character": "1", "index": 631, "outcome": "exact"},
+      {"character": "3", "index": 636, "outcome": "exact"},
+      {"character": "3", "index": 687, "outcome": "exact"},
+      {"character": "f", "index": 709, "outcome": "position_missed"},
+      {"character": "z", "index": null, "outcome": "missing"},
+      {"character": "0", "index": 712, "outcome": "exact"},
+      {"character": "z", "index": 713, "outcome": "exact"},
+      {"character": "z", "index": 716, "outcome": "wrong_character"},
+      {"character": "4", "index": 718, "outcome": "position_missed"},
+      {"character": "0", "index": 765, "outcome": "wrong_character"},
+      {"character": "3", "index": 766, "outcome": "exact"},
+      {"character": "2", "index": 769, "outcome": "exact"},
+      {"character": "4", "index": 770, "outcome": "exact"},
+      {"character": "3", "index": 776, "outcome": "exact"},
+      {"character": "1", "index": 777, "outcome": "exact"},
+      {"character": "m", "index": 821, "outcome": "exact"},
+      {"character": "i", "index": 822, "outcome": "exact"},
+      {"character": "n", "index": 823, "outcome": "exact"},
+      {"character": "e", "index": 848, "outcome": "exact"},
+      {"character": "n", "index": 849, "outcome": "exact"},
+      {"character": "d", "index": 850, "outcome": "wrong_character"},
+      {"character": "j", "index": 944, "outcome": "position_missed"},
+      {"character": "j", "index": 947, "outcome": "position_missed"},
+      {"character": "j", "index": 953, "outcome": "exact"},
+      {"character": "3", "index": 986, "outcome": "exact"},
+      {"character": "4", "index": 989, "outcome": "exact"},
+      {"character": "4", "index": 1003, "outcome": "exact"},
+      {"character": "5", "index": 1006, "outcome": "wrong_character"},
+      {"character": "2", "index": 1038, "outcome": "exact"}
+    ]
+  },
+  {
+    "book": "OpenStax",
+    "image": "openstax/yagf-holdout-verified-000.png",
+    "hocr": "openstax/openstax-111.hocr",
+    "hocr_sha256": "531b82cbe15f71ac2707d38c6f122db797649d740ed4f1c1c56f8acab2ef2a25",
+    "prose": [],
+    "image_sha256": "a3221fbfef2686db959ba610dc70193fbfbb8eb749a4e5bf3056b62a9899ca79",
+    "targets": [
+      {"character": "f", "index": null, "outcome": "missing"},
+      {"character": "0", "index": null, "outcome": "missing"},
+      {"character": "0", "index": 40, "outcome": "exact"},
+      {"character": "f", "index": 42, "outcome": "exact"},
+      {"character": "f", "index": 292, "outcome": "exact"},
+      {"character": "0", "index": 297, "outcome": "wrong_character"},
+      {"character": "f", "index": 327, "outcome": "exact"},
+      {"character": "0", "index": 352, "outcome": "wrong_character"},
+      {"character": "0", "index": 572, "outcome": "wrong_character"},
+      {"character": "f", "index": 592, "outcome": "exact"},
+      {"character": "T", "index": 997, "outcome": "exact"},
+      {"character": "o", "index": 998, "outcome": "wrong_character"},
+      {"character": "t", "index": null, "outcome": "missing"},
+      {"character": "a", "index": 999, "outcome": "exact"},
+      {"character": "l", "index": 1000, "outcome": "wrong_character"},
+      {"character": "T", "index": 1084, "outcome": "exact"},
+      {"character": "o", "index": 1085, "outcome": "exact"},
+      {"character": "t", "index": 1086, "outcome": "exact"},
+      {"character": "a", "index": 1087, "outcome": "exact"},
+      {"character": "l", "index": 1088, "outcome": "exact"},
+      {"character": "i", "index": 1094, "outcome": "exact"},
+      {"character": "i", "index": 1108, "outcome": "wrong_character"},
+      {"character": "1", "index": 1161, "outcome": "exact"},
+      {"character": "1", "index": 1164, "outcome": "exact"},
+      {"character": "0", "index": 1167, "outcome": "exact"},
+      {"character": "2", "index": null, "outcome": "missing"},
+      {"character": "2", "index": 1190, "outcome": "exact"},
+      {"character": "1", "index": 1193, "outcome": "exact"}
+    ]
+  },
+  {
+    "book": "OpenStax",
+    "image": "openstax/yagf-holdout-verified-001.png",
+    "hocr": "openstax/openstax-112.hocr",
+    "hocr_sha256": "62e8c9477ef913ff1acd55acc3c1afe8a8e439cfae3c4a8b0d612788d1def3c9",
+    "prose": [],
+    "image_sha256": "0b0c2aabf2c5c218747e1c93fef12ae0984b98e4baf29c1a5457cd52773b3842",
+    "targets": [
+      {"character": "T", "index": null, "outcome": "missing"},
+      {"character": "o", "index": null, "outcome": "missing"},
+      {"character": "t", "index": null, "outcome": "missing"},
+      {"character": "a", "index": null, "outcome": "missing"},
+      {"character": "l", "index": null, "outcome": "missing"},
+      {"character": "1", "index": null, "outcome": "missing"},
+      {"character": "2", "index": null, "outcome": "missing"},
+      {"character": "T", "index": 528, "outcome": "exact"},
+      {"character": "o", "index": 529, "outcome": "exact"},
+      {"character": "t", "index": 530, "outcome": "exact"},
+      {"character": "a", "index": 531, "outcome": "exact"},
+      {"character": "l", "index": 532, "outcome": "wrong_character"},
+      {"character": "T", "index": null, "outcome": "missing"},
+      {"character": "o", "index": null, "outcome": "missing"},
+      {"character": "t", "index": null, "outcome": "missing"},
+      {"character": "a", "index": null, "outcome": "missing"},
+      {"character": "l", "index": null, "outcome": "missing"},
+      {"character": "1", "index": null, "outcome": "missing"},
+      {"character": "2", "index": null, "outcome": "missing"},
+      {"character": "i", "index": 970, "outcome": "wrong_character"},
+      {"character": "i", "index": 996, "outcome": "wrong_character"},
+      {"character": "1", "index": 1279, "outcome": "exact"},
+      {"character": "2", "index": 1284, "outcome": "exact"},
+      {"character": "1", "index": 1318, "outcome": "position_missed"},
+      {"character": "2", "index": 1323, "outcome": "wrong_character"},
+      {"character": "2", "index": 1406, "outcome": "position_missed"},
+      {"character": "1", "index": 1409, "outcome": "position_missed"},
+      {"character": "2", "index": 1416, "outcome": "wrong_character"},
+      {"character": "1", "index": 1419, "outcome": "position_missed"},
+      {"character": "1", "index": 1525, "outcome": "exact"},
+      {"character": "2", "index": 1530, "outcome": "exact"}
+    ]
+  },
+  {
+    "book": "OpenStax",
+    "image": "openstax/yagf-holdout-verified-002.png",
+    "hocr": "openstax/openstax-176.hocr",
+    "hocr_sha256": "d91d4ac4a6d98b446dacdad9ff745e2d8c4a394969a744d8ab0a8518727b95ce",
+    "prose": [],
+    "image_sha256": "9b2cf6676b202e7d5336cbfbe774608073b88873e1ffe2327cc93b136701413c",
+    "targets": [
+      {"character": "y", "index": 649, "outcome": "exact"},
+      {"character": "x", "index": 699, "outcome": "exact"},
+      {"character": "x", "index": 706, "outcome": "exact"},
+      {"character": "x", "index": 796, "outcome": "exact"},
+      {"character": "0", "index": 799, "outcome": "wrong_character"},
+      {"character": "x", "index": 801, "outcome": "exact"},
+      {"character": "y", "index": 1125, "outcome": "exact"},
+      {"character": "x", "index": 1131, "outcome": "exact"},
+      {"character": "0", "index": 1152, "outcome": "exact"},
+      {"character": "x", "index": 1153, "outcome": "position_missed"},
+      {"character": "x", "index": 1156, "outcome": "position_missed"},
+      {"character": "0", "index": 1163, "outcome": "wrong_character"},
+      {"character": "x", "index": 1166, "outcome": "exact"},
+      {"character": "0", "index": 1191, "outcome": "exact"},
+      {"character": "0", "index": 1196, "outcome": "exact"},
+      {"character": "y", "index": 1197, "outcome": "exact"},
+      {"character": "y", "index": 1200, "outcome": "position_missed"},
+      {"character": "y", "index": 1210, "outcome": "exact"},
+      {"character": "0", "index": 1213, "outcome": "wrong_character"},
+      {"character": "y", "index": 1214, "outcome": "exact"},
+      {"character": "0", "index": 1227, "outcome": "position_missed"},
+      {"character": "0", "index": 1230, "outcome": "wrong_character"},
+      {"character": "y", "index": 1231, "outcome": "position_missed"},
+      {"character": "y", "index": 1244, "outcome": "wrong_character"},
+      {"character": "0", "index": 1247, "outcome": "wrong_character"},
+      {"character": "y", "index": 1248, "outcome": "wrong_character"},
+      {"character": "0", "index": 1256, "outcome": "exact"}
+    ]
+  },
+  {
+    "book": "MLBook",
+    "image": "mlbook/MLBook-0.png",
+    "hocr": "mlbook/MLBook-0-two-view.hocr",
+    "hocr_sha256": "3364b6615a55760ec23d687cfd95b7b6c847edbfc7fadf3ba364d605c6255243",
+    "prose": [],
+    "image_sha256": "2aa47f585f7c31b1d60df59cf3622b72b5f1aca66f8fecba0254a3b72bfd72c0",
+    "targets": [
+      {"character": "i", "index": 9, "outcome": "wrong_character"},
+      {"character": "i", "index": null, "outcome": "missing"},
+      {"character": "i", "index": 25, "outcome": "wrong_character"},
+      {"character": "i", "index": 31, "outcome": "wrong_character"}
+    ]
+  },
+  {
+    "book": "MLBook",
+    "image": "mlbook/MLBook-1.png",
+    "hocr": "mlbook/MLBook-1-two-view.hocr",
+    "hocr_sha256": "65a0a9ee17742c88fc0a509876d7f8c047f596d0d4bb175802f2f7424c79bc23",
+    "prose": [
+      [
+        0,
+        0,
+        1680,
+        56
+      ]
+    ],
+    "image_sha256": "871745f349d057b1e0596a991a3683125d65e0b5ce2b4cc8e7d2ec2941b684ca",
+    "targets": []
+  },
+  {
+    "book": "5p",
+    "image": "5p/5p-0.png",
+    "hocr": "5p/5p-0-two-view.hocr",
+    "hocr_sha256": "a289d05a69fc2847f740d3623c1454e4e15cb508437146b2e7820005217922aa",
+    "prose": [],
+    "image_sha256": "9a617c3acc6a915f2dfd10f22cfa0a9722dbebf6411546f6f6e6f52bd9adf6c6",
+    "targets": [
+      {"character": "L", "index": 2, "outcome": "wrong_character"},
+      {"character": "L", "index": 5, "outcome": "wrong_character"}
+    ]
+  },
+  {
+    "book": "5p",
+    "image": "5p/5p-1.png",
+    "hocr": "5p/5p-1-two-view.hocr",
+    "hocr_sha256": "f502ca00311b6112cf0507507ba44bff8b07553df82eee5fc3cab09c5ca8578d",
+    "prose": [],
+    "image_sha256": "fd781097607703f6c1083302dfdd1aa2ccd442021e810d12d79bad6b95d43f38",
+    "targets": [
+      {"character": "F", "index": 2, "outcome": "wrong_character"},
+      {"character": "F", "index": 5, "outcome": "wrong_character"}
+    ]
+  },
+  {
+    "book": "5p",
+    "image": "5p/5p-2.png",
+    "hocr": "5p/5p-2-two-view.hocr",
+    "hocr_sha256": "792a523226536107a11f1c78d1cd481c7819ec15fac3c1d01983bd96d00c457c",
+    "prose": [
+      [
+        0,
+        0,
+        1050,
+        50
+      ]
+    ],
+    "image_sha256": "ac5c37b14dd3b130dde5d39bff64e9981a9fce2a607e932d90ce51a25f1dce9e",
+    "targets": []
+  },
+  {
+    "book": "Bass",
+    "image": "bass/Bass-0.png",
+    "hocr": "bass/Bass-0-two-view.hocr",
+    "hocr_sha256": "75ad883b02261bce46fb332e99d83f458a9c90ce99c26add7666e1249e3f8085",
+    "prose": [],
+    "image_sha256": "6be32e953245ef35b102e885cb4fd558db8166a947875a24f0353e2a30aa252d",
+    "targets": [
+      {"character": "0", "index": 1, "outcome": "wrong_character"},
+      {"character": "1", "index": 4, "outcome": "wrong_character"},
+      {"character": "n", "index": 11, "outcome": "wrong_character"}
+    ]
+  },
+  {
+    "book": "Bass",
+    "image": "bass/Bass-1.png",
+    "hocr": "bass/Bass-1-two-view.hocr",
+    "hocr_sha256": "84d66232c69cf556cab6eb9e6c195dc78f5471cff5741e60d3c1ab0db95d6434",
+    "prose": [],
+    "image_sha256": "285880e42f2ef255198b3c39fb4729e50eb81010c5cfbcbfa27d9f31b762d92e",
+    "targets": [
+      {"character": "1", "index": 1, "outcome": "wrong_character"},
+      {"character": "2", "index": 6, "outcome": "wrong_character"},
+      {"character": "3", "index": 10, "outcome": "exact"},
+      {"character": "4", "index": 14, "outcome": "wrong_character"},
+      {"character": "5", "index": 19, "outcome": "wrong_character"}
+    ]
+  },
+  {
+    "book": "Bass",
+    "image": "bass/Bass-2.png",
+    "hocr": "bass/Bass-2-two-view.hocr",
+    "hocr_sha256": "a723a8ea234efae6cf517254cb5bfa6dcb4f0ed5236fc50ddc2092a159b1b0dd",
+    "prose": [
+      [
+        0,
+        0,
+        1312,
+        58
+      ]
+    ],
+    "image_sha256": "acefbeb11298e0a14e2ad5634890da28723bd232d422ec0b9570feca2c41faec",
+    "targets": []
+  }
+]

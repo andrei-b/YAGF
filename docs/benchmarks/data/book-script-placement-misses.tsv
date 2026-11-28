@@ -1,0 +1,31 @@
+scan	x1	y1	x2	y2	character	candidate_bases	proposed_role	verifier_score	precision_result	review_result
+functional-analysis/djvu-023.pgm	1115	1674	1139	1724	i	4			base	base
+functional-analysis/djvu-029.pgm	921	582	942	608	N	4	sup	0.00401	base	base
+functional-analysis/djvu-029.pgm	972	587	985	608	1	4	sup	0.70217	sup	sup
+functional-analysis/djvu-029.pgm	998	738	1010	758	1	2			base	base
+functional-analysis/djvu-037.pgm	630	813	642	832	1	4			base	base
+functional-analysis/djvu-037.pgm	1001	821	1022	837	m	3			base	base
+functional-analysis/djvu-045.pgm	287	585	296	607	i	3	sub	0.2232	base	sub
+functional-analysis/djvu-045.pgm	611	642	621	665	i	4	sup	3e-05	base	base
+functional-analysis/djvu-045.pgm	806	616	828	682	N	1			base	base
+functional-analysis/djvu-045.pgm	569	689	578	712	i	3	sub	0.10669	base	base
+functional-analysis/djvu-045.pgm	699	672	731	725	j	3	sub	0.13466	base	base
+functional-analysis/djvu-045.pgm	451	886	460	909	i	3	sub	0.21248	base	base
+functional-analysis/djvu-146.pgm	826	1269	833	1284	i	2			base	base
+functional-analysis/djvu-146.pgm	782	1929	799	1957	j	4	sub	0.40083	base	sub
+functional-analysis/djvu-233.pgm	948	687	959	705	1	3	sub	0.32326	base	sub
+functional-analysis/djvu-233.pgm	1353	729	1363	752	i	1	sub	0.27275	base	sub
+verification-sheet/page-1.png	1363	1863	1377	1899	f	4	sub	0.12378	base	base
+verification-sheet/page-1.png	1070	2195	1100	2238	f	1	sub	0.6887	sub	sub
+verification-sheet/page-1.png	1379	2196	1400	2228	4	3			base	base
+verification-sheet/page-1.png	443	2802	457	2837	j	4	sub	0.08602	base	base
+verification-sheet/page-1.png	513	2802	527	2837	j	4	sub	0.10977	base	base
+openstax/yagf-holdout-verified-001.png	1200	1518	1209	1541	1	4	sub	0.16147	base	base
+openstax/yagf-holdout-verified-001.png	1252	1723	1383	1758	2	1			base	base
+openstax/yagf-holdout-verified-001.png	1361	1723	1383	1758	1	2			base	base
+openstax/yagf-holdout-verified-001.png	1359	1763	1390	1797	1	2	sub	0.06426	base	base
+openstax/yagf-holdout-verified-002.png	1067	2228	1179	2257	x	4			base	base
+openstax/yagf-holdout-verified-002.png	1152	2228	1176	2258	x	4	sub	0.30284	base	sub
+openstax/yagf-holdout-verified-002.png	1362	2386	1403	2428	y	2			base	base
+openstax/yagf-holdout-verified-002.png	1140	2570	1155	2594	0	3			base	base
+openstax/yagf-holdout-verified-002.png	1240	2559	1274	2600	y	4			base	base
